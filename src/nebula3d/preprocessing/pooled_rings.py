@@ -95,6 +95,7 @@ from nebula3d.preprocessing.radial_background import (
 )
 from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, ShellIsotropy, judge_shells
 from nebula3d.preprocessing.sampling import azimuthal_sampling_mask
+from nebula3d.utils.counting import bincount
 
 # plane → (stack axis, stack-axis attribute, the two in-plane axis indices)
 _PLANES: dict[str, tuple[int, str, tuple[int, int]]] = {
@@ -420,7 +421,7 @@ def _sector_profiles(
     ok = (qi >= 0) & (qi < n_bins)
     key = si[ok] * n_bins + qi[ok]
     vals = data[ok]
-    n = np.bincount(key, minlength=n_sec * n_bins)
+    n = bincount(key, minlength=n_sec * n_bins)
     sorted_vals = vals[np.lexsort((vals, key))]
     starts = np.zeros_like(n)
     np.cumsum(n[:-1], out=starts[1:])

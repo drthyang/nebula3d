@@ -33,6 +33,7 @@ from scipy.fft import fftfreq, fftn, fftshift, ifftn, ifftshift, next_fast_len
 from scipy.ndimage import gaussian_filter
 
 from nebula3d.core import HKLVolume, q_magnitude_from_axes
+from nebula3d.utils.counting import bincount
 from nebula3d.utils.reciprocal_space import direct_cell
 
 Window = Literal["hann", "gaussian", "none"]
@@ -1238,9 +1239,9 @@ def _fit_to_support(
     for i, rho2 in enumerate(ell.rho2_planes()):
         rho = np.sqrt(np.maximum(rho2, 0.0, out=rho2), out=rho2)
         b = np.minimum((rho * (_FIT_BINS / rho_max)).astype(np.intp), _FIT_BINS - 1)
-        hist_all += np.bincount(b.ravel(), minlength=_FIT_BINS)
+        hist_all += bincount(b.ravel(), minlength=_FIT_BINS)
         if open_[i].any():
-            hist_open += np.bincount(b[open_[i]], minlength=_FIT_BINS)
+            hist_open += bincount(b[open_[i]], minlength=_FIT_BINS)
             rho_open_min = min(rho_open_min, float(rho[open_[i]].min()))
     if tol <= 0.0:
         scale = min(1.0, rho_open_min)

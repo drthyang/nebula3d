@@ -55,6 +55,7 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.optimize import minimize, nnls
 
 from nebula3d.core import HKLVolume
+from nebula3d.utils.counting import bincount
 
 
 class _RingTemplateLike(Protocol):
@@ -1030,7 +1031,7 @@ def _robust_radial_profile(
     # ascending, then read the middle order statistic per bin — eliminating the
     # ~N_bins × N_patches individual np.median calls (the dominant cost).
     if method == "median":
-        n = np.bincount(bi, minlength=n_bins)          # bin counts, no sort
+        n = bincount(bi, minlength=n_bins)             # bin counts, no sort
         counts = n.astype(np.float64)
         order = np.lexsort((Iv, bi))                   # sort within bin by value
         I_sorted = Iv[order]

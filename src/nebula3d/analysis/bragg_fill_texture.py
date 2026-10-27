@@ -166,6 +166,7 @@ from scipy import ndimage
 
 from nebula3d.core import HKLVolume, low_memory
 from nebula3d.preprocessing.ring_isotropy import GRID_TOO_COARSE
+from nebula3d.utils.counting import bincount
 
 #: texture.ts's ``RIM``: the rim's depth (voxels, chessboard distance).
 RIM = 4
@@ -609,9 +610,9 @@ def _find_holes(
             # Labels run in C order of each component's first voxel.
             _, first = np.unique(ids, return_index=True)
             seeds.append(where[first].astype(np.int64) + z0 * plane)
-            counts.append(np.bincount(ids, minlength=n_new + 1)[1:].astype(np.int64))
+            counts.append(bincount(ids, minlength=n_new + 1)[1:].astype(np.int64))
             iz, ik, il = np.unravel_index(where, labels.shape)
-            sums.append(np.stack([np.bincount(ids, weights=c, minlength=n_new + 1)[1:]
+            sums.append(np.stack([bincount(ids, weights=c, minlength=n_new + 1)[1:]
                                   for c in (iz + z0, ik, il)], axis=1).astype(np.float64))
             del flat, where, ids, iz, ik, il
             boxes = ndimage.find_objects(labels)
@@ -652,8 +653,8 @@ def _find_holes(
     hi = np.zeros((n, 3), dtype=np.int64)
     np.minimum.at(lo, hole_of, lo_c)
     np.maximum.at(hi, hole_of, hi_c)
-    count = np.bincount(hole_of, weights=count_c, minlength=n).astype(np.int64)
-    coord_sum = np.stack([np.bincount(hole_of, weights=sum_c[:, d], minlength=n)
+    count = bincount(hole_of, weights=count_c, minlength=n).astype(np.int64)
+    coord_sum = np.stack([bincount(hole_of, weights=sum_c[:, d], minlength=n)
                           for d in range(3)], axis=1).astype(np.float64)
     order = np.argsort(seed, kind="stable")
     return _Found(seed=seed[order], lo=lo[order], hi=hi[order], count=count[order],
