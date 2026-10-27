@@ -187,9 +187,12 @@ interface MarkState {
   showAll: boolean; // the panel's Hide all / Show all; a hidden mark stays hidden either way
   next: number; // the next mark's number: never reused in a session, so "M2" in the transcript names one mark
   layoutRequest: LayoutRequest | null;
+  // The mark shown last (showMark), numbered so that showing the same mark
+  // again is a new request: the dock scrolls its outlined view into sight.
+  revealed: { id: string; seq: number } | null;
   add: (mark: Omit<Mark, "id">) => Mark;
   toggle: (id: string) => void;
-  reveal: (id: string) => void; // shown again, and the marks with it
+  reveal: (id: string) => void; // shown again, the marks with it, and its view brought into sight
   remove: (id: string) => void;
   clear: (datasetId: string) => void;
   setShowAll: (show: boolean) => void;
@@ -224,13 +227,19 @@ export const useMarkStore = create<MarkState>((set, get) => ({
   showAll: loaded.showAll,
   next: loaded.next,
   layoutRequest: null,
+  revealed: null,
   add: (fields) => {
     const mark: Mark = { ...fields, id: `M${get().next}` };
     set((s) => ({ marks: [...s.marks, mark], next: s.next + 1 }));
     return mark;
   },
   toggle: (id) => set((s) => ({ marks: s.marks.map((m) => (m.id !== id ? m : m.hidden ? withoutHidden(m) : { ...m, hidden: true })) })),
-  reveal: (id) => set((s) => ({ showAll: true, marks: s.marks.map((m) => (m.id === id && m.hidden ? withoutHidden(m) : m)) })),
+  reveal: (id) =>
+    set((s) => ({
+      showAll: true,
+      marks: s.marks.map((m) => (m.id === id && m.hidden ? withoutHidden(m) : m)),
+      revealed: { id, seq: (s.revealed?.seq ?? 0) + 1 },
+    })),
   remove: (id) => set((s) => ({ marks: s.marks.filter((m) => m.id !== id) })),
   clear: (datasetId) => set((s) => ({ marks: s.marks.filter((m) => m.datasetId !== datasetId) })),
   setShowAll: (showAll) => set({ showAll }),
