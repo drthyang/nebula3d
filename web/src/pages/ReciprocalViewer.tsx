@@ -80,7 +80,7 @@ export function ReciprocalViewer() {
   const setScaleRef = useViewerStore((s) => s.setScaleRef);
   const setView = useViewerStore((s) => s.setView);
   const setColormap = useViewerStore((s) => s.setColormap);
-  // "Unit cells" is one setting across the pages: here the lines of integer h, k, l.
+  // "Unit cell" is one setting across the pages: here the lines of integer h, k, l.
   const gridlines = useDpdfStore((s) => s.gridlines);
   const [cursor, setCursor] = useState<[number, number] | null>(null);
 
@@ -351,7 +351,7 @@ export function ReciprocalViewer() {
                     latY={latY}
                     latCut={latCut}
                   />
-                  {gridlines && <HklGrid viewport={viewport} geom={geom} />}
+                  {gridlines && <HklGrid viewport={viewport} geom={geom} lut={lut} />}
                   {r.isFetching && <span className="spin vf-spin" />}
                 </ViewFrame>
               ) : (

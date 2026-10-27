@@ -1,5 +1,5 @@
-// Unit-cell gridline overlay (SVG) for the slice views.  Draws gray dashed
-// lattice lines at integer multiples of a spacing along each displayed axis:
+// Unit-cell gridline overlay (SVG) for the slice views.  Draws dashed lattice
+// lines, in a colour the view's colormap lacks (gridColor.ts), at integer multiples of a spacing along each displayed axis:
 // the direct-lattice spacings on a ΔPDF section (Å), or one r.l.u. on a
 // reciprocal-space slice (HklGrid: the lines of integer h, k, l).  For a
 // section whose axes meet at a non-right angle (e.g. a hexagonal ab-plane,
@@ -9,6 +9,7 @@
 // one they cover a square [-half, +half] window.  Renders into a normalized
 // viewBox with a non-scaling stroke, so it fills its parent responsively.
 
+import { gridColor } from "./gridColor";
 import { gridSegments } from "./oblique";
 import { useViewSize } from "./viewSize";
 import { visibleBounds, type SliceGeom, type Viewport } from "./viewport";
@@ -19,11 +20,12 @@ interface Props {
   latX: number | null;
   latY: number | null;
   angle?: number; // angle between the displayed axes (deg); the slice header's axes_angle
+  lut: Uint8ClampedArray; // the view's colormap: the lines take a colour it lacks
 }
 
 const VB = 1000; // normalized viewBox side; stroke stays 1px (non-scaling)
 
-export function UnitCellGrid({ half, viewport, latX, latY, angle = 90 }: Props) {
+export function UnitCellGrid({ half, viewport, latX, latY, angle = 90, lut }: Props) {
   const size = useViewSize();
   // A viewport in a wide or tall view spans more along its longer side.
   const b = viewport ? visibleBounds(viewport, size.w, size.h) : { x0: -half, x1: half, y0: -half, y1: half };
@@ -49,9 +51,9 @@ export function UnitCellGrid({ half, viewport, latX, latY, angle = 90 }: Props) 
       }}
     >
       <g
-        stroke="rgba(150, 158, 172, 0.6)"
+        stroke={gridColor(lut)}
         strokeWidth={1}
-        strokeDasharray="4 3"
+        strokeDasharray="4 2"
         shapeRendering={angle === 90 ? "crispEdges" : "geometricPrecision"}
       >
         {segments.map(([x1, y1, x2, y2], i) => (
@@ -70,11 +72,11 @@ export function UnitCellGrid({ half, viewport, latX, latY, angle = 90 }: Props) 
 }
 
 /**
- * Dashed lines at integer h, k, l on an r.l.u. slice view (the "Unit cells"
+ * Dashed lines at integer h, k, l on an r.l.u. slice view (the "Unit cell"
  * switch on the reciprocal-space views): one r.l.u. apart along each displayed
  * axis, in the view's display units and at its axes angle — the geometry its
  * canvas and ticks use (viewport.ts hklGridSegments).
  */
-export function HklGrid({ viewport, geom }: { viewport: Viewport; geom: SliceGeom }) {
-  return <UnitCellGrid half={viewport.half} viewport={viewport} latX={geom.sx} latY={geom.sy} angle={geom.angle} />;
+export function HklGrid({ viewport, geom, lut }: { viewport: Viewport; geom: SliceGeom; lut: Uint8ClampedArray }) {
+  return <UnitCellGrid half={viewport.half} viewport={viewport} latX={geom.sx} latY={geom.sy} angle={geom.angle} lut={lut} />;
 }

@@ -173,7 +173,7 @@ describe("niceStep", () => {
   });
 });
 
-// The "Unit cells" switch on the r.l.u. views (Reciprocal cleanup, Q–R, the
+// The "Unit cell" switch on the r.l.u. views (Reciprocal cleanup, Q–R, the
 // Bragg tiles): dashed lines at integer h, k, l that stay on the data.
 describe("hklGridSegments", () => {
   const a = 4.2, b = 7.9;

@@ -29,7 +29,7 @@ export const SCALE_TITLES = {
 
 export const BRIGHTNESS_TITLE = "Brightness: vmax in stops about Auto; right is brighter";
 
-/** What the "Unit cells" lines are on each kind of view (its tooltip). */
+/** What the "Unit cell" lines are on each kind of view (its tooltip). */
 export const UNIT_CELL_TITLES = {
   hkl: "Dashed lines at integer h, k, l",
   cell: "Dashed lines at the unit-cell edges",

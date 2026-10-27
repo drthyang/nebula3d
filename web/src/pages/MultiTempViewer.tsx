@@ -282,6 +282,7 @@ export function MultiTempViewer() {
                             latX={planeLat[p.key][0]}
                             latY={planeLat[p.key][1]}
                             angle={data.header.axes_angle}
+                            lut={lut}
                           />
                         )}
                       </ViewFrame>
