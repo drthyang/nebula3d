@@ -1,29 +1,30 @@
-// The unit-cell lines take a colour the view's colormap lacks.
+// The unit-cell lines are white or near-black, against the image's background.
 
 import { describe, expect, it } from "vitest";
 
-import { COLORMAPS } from "../../colormaps/luts";
-import { GRID_CANDIDATES, distanceFromLut, gridColor } from "../gridColor";
-
-const rgbOf = (css: string) => css.match(/\d+/g)!.slice(0, 3).map(Number) as [number, number, number];
+import { COLORMAPS, DIVERGING_NAMES, SEQUENTIAL_NAMES } from "../../colormaps/luts";
+import { GRID_BLACK, GRID_WHITE, gridColor, isDiverging, lightnessAt } from "../gridColor";
 
 describe("gridColor", () => {
-  it("picks the candidate farthest from every colour of the map", () => {
-    for (const lut of Object.values(COLORMAPS)) {
-      const chosen = distanceFromLut(rgbOf(gridColor(lut)), lut);
-      for (const c of Object.values(GRID_CANDIDATES)) expect(chosen).toBeGreaterThanOrEqual(distanceFromLut(c, lut));
+  it("tells diverging maps from sequential ones", () => {
+    for (const n of DIVERGING_NAMES) expect(isDiverging(COLORMAPS[n]), n).toBe(true);
+    for (const n of SEQUENTIAL_NAMES) expect(isDiverging(COLORMAPS[n]), n).toBe(false);
+  });
+
+  it("is white on the sequential maps' dark low end", () => {
+    for (const n of ["inferno", "viridis", "magma", "plasma", "cividis", "gray"]) {
+      expect(gridColor(COLORMAPS[n]), n).toBe(GRID_WHITE);
     }
   });
 
-  it("stands clear of every map it is drawn on", () => {
-    for (const [name, lut] of Object.entries(COLORMAPS)) {
-      expect(distanceFromLut(rgbOf(gridColor(lut)), lut), name).toBeGreaterThan(0.25);
-    }
+  it("is near-black on the diverging maps' light centre", () => {
+    for (const n of DIVERGING_NAMES) expect(gridColor(COLORMAPS[n]), n).toBe(GRID_BLACK);
   });
 
-  it("is green on inferno, magenta on viridis and dark on RdBu_r's white centre", () => {
-    expect(gridColor(COLORMAPS.inferno)).toBe("rgba(0, 168, 68, 0.85)");
-    expect(gridColor(COLORMAPS.viridis)).toBe("rgba(255, 64, 214, 0.85)");
-    expect(gridColor(COLORMAPS.RdBu_r)).toBe("rgba(16, 18, 24, 0.85)");
+  it("always contrasts with the background colour", () => {
+    for (const [n, lut] of Object.entries(COLORMAPS)) {
+      const bg = lightnessAt(lut, isDiverging(lut) ? 128 : 0);
+      expect(Math.abs((gridColor(lut) === GRID_WHITE ? 1 : 0.1) - bg), n).toBeGreaterThan(0.35);
+    }
   });
 });
