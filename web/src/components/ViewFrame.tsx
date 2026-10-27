@@ -459,7 +459,8 @@ function Overlay({
         );
       } else {
         const Y = (1 - f) * h;
-        if (Y < 20 || Y > h - 20) continue;
+        // clear of the x labels' row along the bottom and the axis name at the top
+        if (Y < (small ? 12 : 26) || Y > h - 28) continue;
         ticks.push(
           <g key={`y${t}`}>
             <Tick x1={0} y1={Y} x2={5} y2={Y} />
