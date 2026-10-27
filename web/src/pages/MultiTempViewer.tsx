@@ -17,7 +17,6 @@ import { fetchDpdfSlice } from "../api/client";
 import { useDatasets, useDpdfMeta } from "../api/hooks";
 import type { Slice } from "../api/types";
 import { COLORMAPS, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
-import { DisplayBar } from "../components/DisplayBar";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../components/dpdfLevels";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { UnitCellGrid } from "../components/UnitCellGrid";
@@ -216,19 +215,19 @@ export function MultiTempViewer() {
             Reset zoom
           </button>
         }
-        display={
-          <DisplayBar
-            colormap={colormap}
-            colormaps={DIVERGING_NAMES}
-            onColormap={setColormap}
-            lut={lut}
-            lv={lv}
-            onLevels={(l) => setManualLimit(Math.abs(l.hi))}
-            onAuto={() => setManualLimit(null)}
-            symmetric
-            autoTitle={AUTO_TITLES.dpdf}
-          />
-        }
+        displays={[
+          {
+            colormap,
+            colormaps: DIVERGING_NAMES,
+            onColormap: setColormap,
+            lut,
+            lv,
+            onLevels: (l) => setManualLimit(Math.abs(l.hi)),
+            onAuto: () => setManualLimit(null),
+            symmetric: true,
+            autoTitle: AUTO_TITLES.dpdf,
+          },
+        ]}
       />
 
       {datasetsQ.isSuccess && temps.length === 0 && (

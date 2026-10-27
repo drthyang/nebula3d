@@ -16,7 +16,7 @@ import { useDatasets } from "../api/hooks";
 import type { ConsistencySettings, Slice } from "../api/types";
 import { COLORMAPS, SEQUENTIAL_NAMES, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
 import { fmtLevel } from "../components/colorScale";
-import { AutoButton, DisplayBar, LevelsBar } from "../components/DisplayBar";
+import { AutoButton, LevelsBar } from "../components/DisplayBar";
 import { qSection, reciprocalMetric } from "../components/reciprocal";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { StructureHits, StructureOverlay } from "../components/StructureOverlay";
@@ -529,37 +529,35 @@ export function ConsistencyViewer() {
           </>
         }
         end={<LayoutControl state={layout} dispatch={dispatchLayout} />}
-        display={
-          <>
-            <DisplayBar
-              badge={<span className="qr-rt-badge qr-rt--q">Q</span>}
-              colormapLabel="Q colormap"
-              colormap={colormap}
-              colormaps={SEQUENTIAL_NAMES}
-              onColormap={setColormap}
-              lut={seqLut}
-              lv={qLv}
-              onLevels={setQLevels}
-              onAuto={() => setQManual(null)}
-              scale={scale}
-              onScale={setScale}
-            />
-            {/* the Q and R badges set the two groups apart: no separator, which a wrap would strand */}
-            <DisplayBar
-              badge={<span className="qr-rt-badge qr-rt--r">R</span>}
-              colormapLabel="R colormap"
-              colormap={dpdfColormap}
-              colormaps={DIVERGING_NAMES}
-              onColormap={setDpdfColormap}
-              lut={divLut}
-              lv={rLv}
-              onLevels={(l) => setRLimit(l.hi)}
-              onAuto={() => setRManual(null)}
-              symmetric
-              autoTitle={AUTO_TITLES.signed}
-            />
-          </>
-        }
+        // the Q and R badges set the two bars apart (no separator, which a wrap would strand)
+        displays={[
+          {
+            badge: <span className="qr-rt-badge qr-rt--q">Q</span>,
+            colormapLabel: "Q colormap",
+            colormap,
+            colormaps: SEQUENTIAL_NAMES,
+            onColormap: setColormap,
+            lut: seqLut,
+            lv: qLv,
+            onLevels: setQLevels,
+            onAuto: () => setQManual(null),
+            scale,
+            onScale: setScale,
+          },
+          {
+            badge: <span className="qr-rt-badge qr-rt--r">R</span>,
+            colormapLabel: "R colormap",
+            colormap: dpdfColormap,
+            colormaps: DIVERGING_NAMES,
+            onColormap: setDpdfColormap,
+            lut: divLut,
+            lv: rLv,
+            onLevels: (l) => setRLimit(l.hi),
+            onAuto: () => setRManual(null),
+            symmetric: true,
+            autoTitle: AUTO_TITLES.signed,
+          },
+        ]}
         notes={
           showStructure &&
           structure &&

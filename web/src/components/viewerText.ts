@@ -3,6 +3,8 @@
 // behind the click modes' "?".  UI text only — nothing here is read by the
 // in-app agent.
 
+import { fmtLevel, type ScaleKind } from "./colorScale";
+
 /** The zoom, pan and reset gestures every view takes in any mode (the click modes' "?"). */
 export const VIEW_GESTURES: readonly string[] = [
   "Zoom: Ctrl/⌘ + wheel, pinch, or + / −",
@@ -43,3 +45,11 @@ export const RESET_ZOOM_TITLE = "Reset zoom (double-click the view, or 0)";
 
 export const STRUCTURE_TITLE = "Mark the structure's interatomic vectors on the ΔPDF";
 export const EDIT_STRUCTURE_TITLE = "Load a CIF, or enter sites and symmetry by hand";
+
+/** The phone header's display-row toggle (its name; aria-expanded says open or closed). */
+export const DISPLAY_TOGGLE_TITLE = "Colour settings: colormap, range, scale, Auto, Brightness";
+
+/** What a folded display bar says in the phone toggle: its scale, or the ± limit of signed data. */
+export function displaySummaryText(d: { symmetric?: boolean; scale?: ScaleKind; lv: { levels: { hi: number } } }): string {
+  return d.symmetric ? `±${fmtLevel(Math.abs(d.lv.levels.hi))}` : (d.scale ?? "lin");
+}

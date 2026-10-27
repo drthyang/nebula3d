@@ -11,7 +11,6 @@ import { useDatasets, useDpdfMeta, useDpdfSlice } from "../api/hooks";
 import type { Slice } from "../api/types";
 import { COLORMAPS, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
 import { fmtLevel } from "../components/colorScale";
-import { DisplayBar } from "../components/DisplayBar";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../components/dpdfLevels";
 import { latticeLabel } from "../components/oblique";
 import { SliceCanvas } from "../components/SliceCanvas";
@@ -268,19 +267,19 @@ export function DeltaPdfViewer() {
             </div>
           )
         }
-        display={
-          <DisplayBar
-            colormap={colormap}
-            colormaps={DIVERGING_NAMES}
-            onColormap={setColormap}
-            lut={lut}
-            lv={lv}
-            onLevels={(l) => setLimit(l.hi)}
-            onAuto={() => setManual(null)}
-            symmetric
-            autoTitle={AUTO_TITLES.dpdf}
-          />
-        }
+        displays={[
+          {
+            colormap,
+            colormaps: DIVERGING_NAMES,
+            onColormap: setColormap,
+            lut,
+            lv,
+            onLevels: (l) => setLimit(l.hi),
+            onAuto: () => setManual(null),
+            symmetric: true,
+            autoTitle: AUTO_TITLES.dpdf,
+          },
+        ]}
       />
 
       {structurePanel && (

@@ -12,7 +12,6 @@ import { useDatasets, useMeta } from "../api/hooks";
 import type { Slice } from "../api/types";
 import { COLORMAPS, SEQUENTIAL_NAMES } from "../colormaps/luts";
 import { autoLevels, fmtLevel, type AutoLevels, type ScaleKind } from "../components/colorScale";
-import { DisplayBar } from "../components/DisplayBar";
 import { SliceCanvas } from "../components/SliceCanvas";
 import {
   EmptyState,
@@ -260,20 +259,20 @@ export function ReciprocalViewer() {
           </>
         }
         end={<LayoutControl state={layout} dispatch={dispatchLayout} />}
-        display={
-          <DisplayBar
-            colormap={colormap}
-            colormaps={SEQUENTIAL_NAMES}
-            onColormap={setColormap}
-            lut={lut}
-            lv={lv}
-            onLevels={setLevels}
-            onAuto={() => setManual(null)}
-            scale={scale}
-            onScale={setScale}
-            dimRange={perPanel}
-          />
-        }
+        displays={[
+          {
+            colormap,
+            colormaps: SEQUENTIAL_NAMES,
+            onColormap: setColormap,
+            lut,
+            lv,
+            onLevels: setLevels,
+            onAuto: () => setManual(null),
+            scale,
+            onScale: setScale,
+            dimRange: perPanel,
+          },
+        ]}
         displayEnd={
           <label className="ws-field" title="The stage whose centre cut sets the shared colour range">
             <span className="field-label">Scale from</span>

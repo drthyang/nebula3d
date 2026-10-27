@@ -291,6 +291,23 @@ export function AutoButton({
  * Brightness.  `dimRange` greys the range and Brightness out (a page's
  * "each view on its own Auto").
  */
+export interface DisplayBarProps {
+  badge?: ReactNode;
+  colormapLabel?: string;
+  colormap: string;
+  colormaps: readonly string[];
+  onColormap: (name: string) => void;
+  lut: Uint8ClampedArray;
+  lv: LevelsModel;
+  onLevels: (l: Levels) => void;
+  onAuto: () => void;
+  scale?: ScaleKind;
+  onScale?: (s: ScaleKind) => void;
+  symmetric?: boolean;
+  autoTitle?: string;
+  dimRange?: boolean;
+}
+
 export function DisplayBar({
   badge,
   colormapLabel = "Colormap",
@@ -306,22 +323,7 @@ export function DisplayBar({
   symmetric = false,
   autoTitle,
   dimRange = false,
-}: {
-  badge?: ReactNode;
-  colormapLabel?: string;
-  colormap: string;
-  colormaps: readonly string[];
-  onColormap: (name: string) => void;
-  lut: Uint8ClampedArray;
-  lv: LevelsModel;
-  onLevels: (l: Levels) => void;
-  onAuto: () => void;
-  scale?: ScaleKind;
-  onScale?: (s: ScaleKind) => void;
-  symmetric?: boolean;
-  autoTitle?: string;
-  dimRange?: boolean;
-}) {
+}: DisplayBarProps) {
   const dim = dimRange ? "ws-dim" : undefined;
   const range = dimRange ? "ws-range ws-dim" : "ws-range";
   return (

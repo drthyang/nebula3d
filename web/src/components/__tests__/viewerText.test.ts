@@ -27,3 +27,15 @@ describe("viewer tooltips", () => {
     for (const s of all) expect(s).not.toMatch(/Shift\+double-click|Alt-click|zoom in 2×|Move mode/);
   });
 });
+
+describe("the folded display row's summary", () => {
+  const lv = (hi: number) => ({ levels: { hi } });
+  it("names the scale of sequential data, lin when none is set", () => {
+    expect(text.displaySummaryText({ scale: "asinh", lv: lv(3) })).toBe("asinh");
+    expect(text.displaySummaryText({ lv: lv(3) })).toBe("lin");
+  });
+  it("gives the ± limit of signed data", () => {
+    expect(text.displaySummaryText({ symmetric: true, lv: lv(2320) })).toBe("±2.32e+3");
+    expect(text.displaySummaryText({ symmetric: true, lv: lv(-55.1) })).toBe("±55.1");
+  });
+});

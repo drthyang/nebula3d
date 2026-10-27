@@ -5127,6 +5127,49 @@ h6.md-h {
    The :is() carries (0,1,1) specificity, so it also beats the per-component
    `.x select` sizes declared earlier. */
 @media (max-width: 599px), (max-width: 1099px) and (max-height: 500px) {
+  /* the header's display row folds behind a toggle at the end of row 1
+     (WorkspaceHeader); closed, the toggle sums each bar up: swatch + scale.
+     `.ws-head` lifts these over the base rules, which come later in the file. */
+  .ws-head .ws-display-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    min-height: 36px;
+    padding: 4px 10px;
+    font: 600 13px var(--font-mono);
+    color: var(--text-2);
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .ws-head .ws-display-toggle:hover,
+  .ws-head .ws-display-toggle.open {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .ws-display-sum {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ws-display-sum .cmap-bar {
+    width: 36px;
+    height: 10px;
+    border-radius: 3px;
+    flex: none;
+  }
+  .ws-display-chevron {
+    flex: none;
+    transition: transform 120ms ease;
+  }
+  .ws-display-toggle.open .ws-display-chevron {
+    transform: rotate(180deg);
+  }
+  .ws-head .ws-display--folded {
+    display: none;
+  }
   :is(input[type="number"], input[type="text"], select, textarea) {
     font-size: 16px;
   }
@@ -5255,6 +5298,11 @@ h6.md-h {
 .ws-display {
   padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
+}
+/* The display row's toggle: phones only (see "Phones" under Device layouts),
+   where the row folds behind it.  Elsewhere the row is always shown. */
+.ws-display-toggle {
+  display: none;
 }
 .ws-sep {
   width: 1px;

@@ -31,7 +31,6 @@ import {
   type TileAxes,
 } from "../components/braggView";
 import { autoLevels, type Levels, type ScaleKind } from "../components/colorScale";
-import { DisplayBar } from "../components/DisplayBar";
 import type { LayoutState } from "../components/layout";
 import { EmptyState, IconAlert, IconLattice, Switch } from "../components/ui";
 import { useLevels } from "../components/useLevels";
@@ -731,20 +730,20 @@ export function BraggProfileViewer() {
           />
         }
         end={<LayoutControl state={layout} dispatch={dispatchLayout} />}
-        display={
-          <DisplayBar
-            colormap={colormap}
-            colormaps={SEQUENTIAL_NAMES}
-            onColormap={setColormap}
-            lut={lut}
-            lv={lv}
-            onLevels={(l) => setRelLevels(relativeLevels(l, autoHi))}
-            onAuto={() => setRelLevels(null)}
-            scale={scale}
-            onScale={setScale}
-            autoTitle={AUTO_TITLES.bragg}
-          />
-        }
+        displays={[
+          {
+            colormap,
+            colormaps: SEQUENTIAL_NAMES,
+            onColormap: setColormap,
+            lut,
+            lv,
+            onLevels: (l) => setRelLevels(relativeLevels(l, autoHi)),
+            onAuto: () => setRelLevels(null),
+            scale,
+            onScale: setScale,
+            autoTitle: AUTO_TITLES.bragg,
+          },
+        ]}
       />
 
       <div className="bragg-card">
