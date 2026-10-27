@@ -1500,25 +1500,200 @@ input[type="range"]::-moz-range-track {
   opacity: 1;
   visibility: visible;
 }
-/* opening downwards, for a control near the top of the scrolling page */
-.helptip--below .helptip-bubble {
-  top: calc(100% + 8px);
-  bottom: auto;
+/* — key caps: the gesture card's keys and the wheel hint's ⌘ / Ctrl — */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font: 600 11px/1 var(--font-mono);
+  color: var(--text);
+  white-space: nowrap;
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
-.helptip--below .helptip-bubble::after {
-  top: auto;
-  bottom: 100%;
-  border-top-color: transparent;
-  border-bottom-color: var(--border-strong);
+
+/* — the gesture card (GestureHint.tsx): the "?" beside the click modes — */
+.gh {
+  position: relative;
+  display: inline-flex;
 }
-/* one gesture or fact per line */
-.helptip-line {
-  display: block;
+.gh-trigger {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font: 700 10px/1 system-ui, sans-serif;
+  color: var(--text-3);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
 }
-/* the click modes' "?": the gestures, each on one line */
-.click-mode .helptip-bubble {
-  width: 300px;
-  max-width: min(300px, calc(100vw - 48px));
+.gh-trigger:hover,
+.gh-trigger[aria-expanded="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+/* until the card has been opened once: a small dot that breathes */
+.gh-new::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
+  animation: gh-pulse 2s ease-out infinite;
+}
+@keyframes gh-pulse {
+  0% { box-shadow: 0 0 0 2px var(--surface), 0 0 0 2px rgba(79, 143, 247, 0.55); }
+  70%, 100% { box-shadow: 0 0 0 2px var(--surface), 0 0 0 9px rgba(79, 143, 247, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gh-new::after { animation: none; }
+}
+/* the card hangs under the "?", 8 px below it */
+.gh-pop {
+  position: absolute;
+  top: 100%;
+  z-index: 40;
+  padding-top: 8px;
+}
+.gh-card {
+  width: min(372px, calc(100vw - 16px));
+  padding: 11px 14px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  outline: none;
+  animation: gh-in 120ms ease-out;
+}
+.gh-card:focus-visible {
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), 0 0 0 2px var(--accent);
+}
+@keyframes gh-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+.gh-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.gh-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text);
+}
+.gh-sub {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.gh-close {
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-3);
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.gh-close:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.gh-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gh-row {
+  display: grid;
+  grid-template-columns: 20px 66px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.gh-row:first-child {
+  border-top: 0;
+}
+.gh-icon {
+  display: grid;
+  place-items: center;
+  height: 22px;
+  color: var(--accent-hi);
+}
+.gh-name {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
+  color: var(--text);
+}
+.gh-ways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.gh-way {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  white-space: nowrap;
+}
+.gh-text,
+.gh-glyph {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.gh-glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.gh-glyph svg {
+  color: var(--text);
+  flex: none;
+}
+.gh-btn {
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--accent-hi);
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 5px;
+}
+.gh-note {
+  margin: 6px 0 0;
+  padding-top: 8px;
+  font-size: 11px;
+  color: var(--text-3);
+  border-top: 1px solid var(--border-subtle);
 }
 /* Configure help icons sit at the right edge of stage heads and control rows;
    open their bubbles leftward (anchored to the icon's right edge) so they stay
@@ -5761,6 +5936,12 @@ h6.md-h {
 .vf-zoom button + button { border-top: 1px solid var(--border-strong); }
 .vf-zoom button:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
 /* the cooperative-wheel hint: a plain wheel over a view scrolls the page */
+.vf-hint .kbd {
+  height: 24px;
+  min-width: 28px;
+  margin: 0 3px;
+  font-size: 14px;
+}
 .vf-hint {
   position: absolute;
   inset: 0;
