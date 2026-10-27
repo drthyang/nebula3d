@@ -89,7 +89,7 @@ export function gestureCard({ mac, touch }: { mac: boolean; touch: boolean }): G
       { id: "reset", name: "Reset", ways: [[glyph("double-click", "double-click")], [key("0")], [button("↺ Reset zoom")]] },
       { id: "box", name: "Box zoom", ways: [[button("Box zoom"), text("then"), glyph("drag", "drag a box")], [key("Esc"), text("cancels")]] },
     ],
-    note: "Keys act on the view you clicked last.",
+    note: "Keys act on the focused view (click it or Tab to it).",
   };
 }
 
