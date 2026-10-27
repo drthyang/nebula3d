@@ -42,6 +42,7 @@ from numpy.typing import NDArray
 from scipy import ndimage, sparse
 
 from nebula3d.core import HKLVolume, q_magnitude_from_axes
+from nebula3d.utils.counting import bincount
 
 if TYPE_CHECKING:
     from nebula3d.symmetry import GridSymmetry
@@ -480,7 +481,7 @@ def _laplace_fill(
     idx = np.flatnonzero(labels)  # sorted → searchsorted neighbour lookup
     comp = labels.reshape(-1)[idx] - 1
     del labels
-    sizes = np.bincount(comp, minlength=n_comp)
+    sizes = bincount(comp, minlength=n_comp)
 
     oversized = sizes > max_unknowns
     if oversized.any():
@@ -583,10 +584,10 @@ def _laplace_solve_batch(
     # in by unmeasured voxels) has a singular block — give it the global median.
     lc = comp - comp.min()  # a batch holds a contiguous range of block ids
     k = int(lc.max()) + 1
-    c_links = np.bincount(lc, weights=n_links, minlength=k)
+    c_links = bincount(lc, weights=n_links, minlength=k)
     c_n = np.maximum(c_links, 1.0)
-    c_mean = np.bincount(lc, weights=rhs, minlength=k) / c_n
-    c_var = np.bincount(lc, weights=rhs_sq, minlength=k) / c_n - c_mean ** 2
+    c_mean = bincount(lc, weights=rhs, minlength=k) / c_n
+    c_var = bincount(lc, weights=rhs_sq, minlength=k) / c_n - c_mean ** 2
     c_sig = np.sqrt(np.maximum(c_var, 0.0))
     del rhs_sq, n_links
     solvable = c_links[lc] > 0
@@ -799,7 +800,7 @@ def _fill_direct_beam(
         nz = labels[box][labels[box] > 0]
         if nz.size == 0:
             return resolved  # no direct-beam region → generic fill handles all
-        lbl = int(np.bincount(nz).argmax())
+        lbl = int(bincount(nz).argmax())
 
     obj = ndimage.find_objects(labels, max_label=lbl)[lbl - 1]
     if obj is None:

@@ -76,6 +76,7 @@ from numpy.typing import NDArray
 
 from nebula3d.core import HKLVolume, low_memory, q_bin_indices
 from nebula3d.preprocessing.radial_flatten import measured_q_range, shell_edges
+from nebula3d.utils.counting import bincount
 
 #: The flatten's defaults (``FlattenParams``): shell width (Å⁻¹), the floor's
 #: percentile and the fewest measured voxels a shell's floor is taken from.
@@ -246,7 +247,7 @@ def shell_floors(
         b[(d < 1) | (d > n_ext)] = -1
         np.minimum(b, nb - 1, out=b)
         if first:
-            totals[:] += np.bincount(b[b >= 0], minlength=nb)
+            totals[:] += bincount(b[b >= 0], minlength=nb)
         return b
 
     def stream() -> Iterator[tuple[NDArray[np.integer], NDArray[np.floating]]]:
@@ -426,7 +427,7 @@ class _Bincount:
     def flush(self) -> NDArray[np.int64]:
         if self._parts:
             index = np.concatenate(self._parts).astype(np.intp, copy=False)
-            self.total += np.bincount(index, minlength=self.total.size)
+            self.total += bincount(index, minlength=self.total.size)
             self._parts, self._size = [], 0
         return self.total
 
@@ -488,7 +489,7 @@ def _select(
     for g, v in stream():
         if g.size == 0:
             continue
-        counts += np.bincount(g, minlength=n_groups)
+        counts += bincount(g, minlength=n_groups)
         _extremes(lo, hi, g, v)
         hist.add((g.astype(np.int64) << first) | (_sort_keys(v) >> shift))
     rows = hist.flush().reshape(n_groups, 1 << first)
