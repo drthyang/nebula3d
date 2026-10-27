@@ -50,7 +50,7 @@ function memoryStorage(): Storage {
 }
 
 beforeEach(() => {
-  useMarkStore.setState({ marks: [], next: 1, showAll: true, layoutRequest: null });
+  useMarkStore.setState({ marks: [], next: 1, showAll: true, layoutRequest: null, revealed: null });
   useViewerStore.setState(useViewerStore.getInitialState(), true);
   useDpdfStore.setState(useDpdfStore.getInitialState(), true);
   useNavStore.setState({ tab: "config" });
@@ -175,6 +175,10 @@ describe("showing a mark", () => {
     expect(vs.views.hk0).toEqual(plan.view.page === "cleanup" ? frameIn(plan.view.frame, undefined) : null);
     expect(useNavStore.getState().tab).toBe("reciprocal");
     expect(useMarkStore.getState().layoutRequest).toEqual({ page: "cleanup", primary: "flattened" });
+    // The dock brings the outlined view into sight: each showing is a new request.
+    expect(useMarkStore.getState().revealed).toEqual({ id: "M1", seq: 1 });
+    showMark(mark, "ds1");
+    expect(useMarkStore.getState().revealed).toEqual({ id: "M1", seq: 2 });
   });
 
   it("opens the 3D-ΔPDF page with its three cuts and the zoom of each section", () => {

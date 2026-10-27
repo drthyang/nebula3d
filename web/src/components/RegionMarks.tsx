@@ -102,7 +102,7 @@ export function RegionMarks({ items, geom, viewport, lut, extent }: Props) {
               <polygon points={svgPoints(pts)} stroke={stroke} strokeWidth={sw} strokeDasharray={d} />
             );
           return (
-            <g key={item.id} data-mark={item.id}>
+            <g key={item.id} data-mark={item.id} data-primary={item.primary ? "" : undefined}>
               {shape(halo, width + 2.5, dash)}
               {shape(color, width, dash)}
             </g>
