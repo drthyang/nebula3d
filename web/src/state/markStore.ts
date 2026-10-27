@@ -195,6 +195,11 @@ interface MarkState {
   reveal: (id: string) => void; // shown again, the marks with it, and its view brought into sight
   remove: (id: string) => void;
   clear: (datasetId: string) => void;
+  // Every mark, on every dataset, gone with the conversation that made them
+  // (the chat's Clear, llm/session.ts clearConversation), and the marks shown
+  // again for the next one's. The numbers go on: "M1" never names two marks
+  // in a session.
+  clearAll: () => void;
   setShowAll: (show: boolean) => void;
   setLayoutRequest: (r: LayoutRequest | null) => void;
   // Replace the marks with a saved session's (state/session.ts): only its
@@ -242,6 +247,7 @@ export const useMarkStore = create<MarkState>((set, get) => ({
     })),
   remove: (id) => set((s) => ({ marks: s.marks.filter((m) => m.id !== id) })),
   clear: (datasetId) => set((s) => ({ marks: s.marks.filter((m) => m.datasetId !== datasetId) })),
+  clearAll: () => set({ marks: [], showAll: true, revealed: null, layoutRequest: null }),
   setShowAll: (showAll) => set({ showAll }),
   setLayoutRequest: (layoutRequest) => set({ layoutRequest }),
   restore: (saved) => {

@@ -21,7 +21,7 @@ import {
 } from "../prompts/templates";
 import { seen } from "../readings";
 import { renderSliceToDataUrl } from "../render/sliceImage";
-import { askAssistant, replyContext, stopAssistant } from "../session";
+import { askAssistant, clearConversation, replyContext, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
 import { CHAT_TOOLS, factsOf, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
@@ -245,7 +245,6 @@ export function ChatView({
   const live = useChatStore((s) => s.live);
   const error = useChatStore((s) => s.error);
   const setDraft = useChatStore((s) => s.setDraft);
-  const clearChat = useChatStore((s) => s.clear);
   const usage = useChatStore((s) => s.usage);
   const scrollRef = useRef<HTMLDivElement>(null);
   // The reply whose analysis report is open (its turn id).
@@ -494,9 +493,9 @@ export function ChatView({
             <button
               type="button"
               className="ai-clear"
-              onClick={clearChat}
+              onClick={clearConversation}
               disabled={busy}
-              title="Clear the conversation"
+              title="Clear the conversation and the regions it marked"
             >
               Clear
             </button>

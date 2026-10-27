@@ -4,8 +4,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentStep } from "../agent";
+import { useMarkStore, type Mark } from "../../state/markStore";
 import { useChatStore } from "../chatStore";
-import { askAssistant, stopAssistant } from "../session";
+import { askAssistant, clearConversation, stopAssistant } from "../session";
 import { runRound, startReply, type AgentTool, type ToolContext } from "../tools";
 import { measured, notCounted } from "../usage";
 
@@ -163,5 +164,27 @@ describe("askAssistant", () => {
     await ask();
     expect(useChatStore.getState().turns).toHaveLength(1);
     expect(useChatStore.getState().error).toBe("HTTP 500");
+  });
+});
+
+describe("clearConversation", () => {
+  const mark = (id: string, datasetId: string): Mark => ({
+    id,
+    datasetId,
+    where: "pdf",
+    region: { shape: "box", center: [0, 0, 0], half: [1, 1, 1] },
+    label: "a strong + feature",
+    evidence: ["dpdf_peaks"],
+    created: "",
+    view: { page: "dpdf", index: [10, 10, 10], frames: {} },
+  });
+
+  it("clears the transcript and every region it marked, on every dataset", () => {
+    useChatStore.getState().addTurn({ role: "user", content: "Mark the strongest feature" });
+    useChatStore.getState().addTurn({ role: "assistant", content: "Marked it as M1; M2 is its partner on the other dataset." });
+    useMarkStore.setState({ marks: [mark("M1", "ds1"), mark("M2", "ds2")], next: 3, showAll: false });
+    clearConversation();
+    expect(useChatStore.getState()).toMatchObject({ turns: [], draft: "", error: null, usage: null });
+    expect(useMarkStore.getState()).toMatchObject({ marks: [], showAll: true, next: 3 });
   });
 });

@@ -4,7 +4,8 @@
 // high-|Q| data.  Four views in a workspace (grid · focus · single): Data, the
 // ΔPDF, the back-FFT and the residual.  Data, back-FFT and residual share one
 // plane, cut, colour scale and view; the ΔPDF has its own, oriented like the
-// Q plane while "Link orientation" is on.
+// Q plane while "Link orientation" is on.  The Pilot's marked regions are
+// drawn on them as on the cleanup and 3D-ΔPDF pages (state/markStore.ts).
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -17,7 +18,9 @@ import type { ConsistencySettings, Slice } from "../api/types";
 import { COLORMAPS, SEQUENTIAL_NAMES, DIVERGING_NAMES, DIVERGING_NAME } from "../colormaps/luts";
 import { fmtLevel } from "../components/colorScale";
 import { AutoButton, LevelsBar } from "../components/DisplayBar";
+import { markItems, whereOfFile } from "../components/markItems";
 import { qSection, reciprocalMetric } from "../components/reciprocal";
+import { RegionMarks, type MarkItem } from "../components/RegionMarks";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { StructureHits, StructureOverlay } from "../components/StructureOverlay";
 import { EmptyState, IconAlert, RangeSlider, Segmented, Slider, Switch } from "../components/ui";
@@ -31,6 +34,7 @@ import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader"
 import { AUTO_TITLES, STRUCTURE_TITLE } from "../components/viewerText";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
+import { isReciprocal, useMarkStore, visibleMarks } from "../state/markStore";
 import {
   AXIS_INDEX,
   AXIS_TO_PLANE,
@@ -357,6 +361,35 @@ export function ConsistencyViewer() {
   const rViewport: Viewport = rViews[dpdfPlane] ?? rFit;
   const rLimit = (h: number) => clampHalf(h, Math.max(rSpanMax, rFit.half), dpdfAxisInfo?.step || 0.5);
 
+  // The Pilot's marks (state/markStore.ts), each one's section by a view's
+  // one-voxel slab: the reciprocal ones on the Q views, the ΔPDF ones on the
+  // ΔPDF view (the round trip's grid; marks are in r.l.u. and Å, so any grid
+  // places them). As on the cleanup page, a mark is outlined with its label
+  // on the stage it was found in (the Data view, when the round trip reads
+  // that stage) and drawn thin and dashed with its id on the other views.
+  const allMarks = useMarkStore((s) => s.marks);
+  const showMarks = useMarkStore((s) => s.showAll);
+  const marks = useMemo(() => visibleMarks({ marks: allMarks, showAll: showMarks }, datasetId), [allMarks, showMarks, datasetId]);
+  const dataWhere = whereOfFile(meta?.settings.input, dataset?.raw_name);
+  const qMarks = useMemo(() => {
+    const none = { data: [] as MarkItem[], other: [] as MarkItem[] };
+    if (!axisInfo) return none;
+    const recip = marks.filter((m) => isReciprocal(m.where));
+    if (!recip.length) return none;
+    const axes = { u: AXIS_INDEX[qx], v: AXIS_INDEX[qy], cut: AXIS_INDEX[fixedAxis] };
+    const slab = axisInfo.step / 2;
+    return {
+      data: markItems(recip, axes, value, slab, (m) => m.where === dataWhere),
+      other: markItems(recip, axes, value, slab, () => false),
+    };
+  }, [marks, axisInfo, qx, qy, fixedAxis, value, dataWhere]);
+  const rMarks = useMemo(() => {
+    const pdf = marks.filter((m) => m.where === "pdf");
+    if (!dpdfAxisInfo || !pdf.length) return [];
+    const real = (ax: string) => REAL_AXIS_INDEX[ax.toUpperCase() as RealAxis];
+    return markItems(pdf, { u: real(rx), v: real(ry), cut: REAL_AXIS_INDEX[dpdfFixedAxis] }, dpdfValue, dpdfAxisInfo.step / 2, () => true);
+  }, [marks, dpdfAxisInfo, rx, ry, dpdfFixedAxis, dpdfValue]);
+
   const m = meta?.metrics;
   const qBandPending = band ? draftQ.min !== band.min || draftQ.max !== band.max : draftQ.min !== 0 || draftQ.max !== spanMax;
   const rBandPending = rBand ? draftR.min !== rBand.min || draftR.max !== rBand.max : draftR.min !== 0 || draftR.max !== rSpanMax;
@@ -404,7 +437,10 @@ export function ConsistencyViewer() {
     );
 
   const qAxes = { sx: qGeom.sx, sy: qGeom.sy, xLabel: qx, yLabel: qy, unit: "r.l.u.", fovUnit: "Å⁻¹" };
-  const qFrame = (s: Slice, opts: { lut: Uint8ClampedArray; lo: number; hi: number; diverging?: boolean; bands?: boolean }) => (
+  const qFrame = (
+    s: Slice,
+    opts: { lut: Uint8ClampedArray; lo: number; hi: number; diverging?: boolean; bands?: boolean; marks: MarkItem[] },
+  ) => (
     <ViewFrame
       viewport={qViewport}
       onViewport={(v) => setQView(plane, v)}
@@ -434,6 +470,7 @@ export function ConsistencyViewer() {
         latCut={latCut}
       />
       {gridlines && <HklGrid viewport={qViewport} geom={qGeom} lut={seqLut} />}
+      {opts.marks.length > 0 && <RegionMarks items={opts.marks} geom={qGeom} viewport={qViewport} lut={opts.lut} extent={s.header} />}
     </ViewFrame>
   );
 
@@ -633,7 +670,7 @@ export function ConsistencyViewer() {
                   })}
                 </>
               ),
-              children: body(qResults[0], (s) => qFrame(s, { lut: seqLut, lo: qLv.levels.lo, hi: qLv.levels.hi, bands: true })),
+              children: body(qResults[0], (s) => qFrame(s, { lut: seqLut, lo: qLv.levels.lo, hi: qLv.levels.hi, bands: true, marks: qMarks.data })),
             },
             {
               id: "dpdf",
@@ -732,6 +769,7 @@ export function ConsistencyViewer() {
                       lut={divLut}
                     />
                   )}
+                  {rMarks.length > 0 && <RegionMarks items={rMarks} geom={rGeom(s)} viewport={rViewport} lut={divLut} extent={s.header} />}
                   {showStructure && structure && (
                     <StructureOverlay
                       markers={rMarkers}
@@ -763,7 +801,7 @@ export function ConsistencyViewer() {
                   <span className="qr-metric-rms">RMS {m ? m.normalized_rms.toExponential(2) : "—"}</span>
                 </div>
               ),
-              children: body(qResults[1], (s) => qFrame(s, { lut: seqLut, lo: qLv.levels.lo, hi: qLv.levels.hi })),
+              children: body(qResults[1], (s) => qFrame(s, { lut: seqLut, lo: qLv.levels.lo, hi: qLv.levels.hi, marks: qMarks.other })),
             },
             {
               id: "residual",
@@ -780,7 +818,7 @@ export function ConsistencyViewer() {
                   <AutoButton active={resLv.isAuto} onClick={() => setResLimit(null)} title={AUTO_TITLES.signed} />
                 </div>
               ),
-              children: body(qResults[2], (s) => qFrame(s, { lut: divLut, lo: resLv.levels.lo, hi: resLv.levels.hi, diverging: true })),
+              children: body(qResults[2], (s) => qFrame(s, { lut: divLut, lo: resLv.levels.lo, hi: resLv.levels.hi, diverging: true, marks: qMarks.other })),
             },
           ]}
         />
