@@ -7,11 +7,16 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { AgentStep } from "../agent";
 import { loadSettings, saveSettings } from "../settings";
 import { contractDisagreements, RESULT_CONTRACTS } from "../tools/contracts";
 import { devCase } from "../evals/devData";
 
-type Call = [tool: string, args: Record<string, unknown>, userMessage?: string];
+type Call = [tool: string, args: Record<string, unknown>, userMessage?: string, replySteps?: AgentStep[]];
+
+// A cut measured earlier in the reply: what a mark rests on (mark_region's evidence).
+const MEASURED: AgentStep = { id: "0:c", name: "measure_reciprocal_cut", args: { plane: "h0l", value: 0 }, status: "done", result: JSON.stringify({ cut: "H–L plane at K = 0" }) };
+const PEAKS: AgentStep = { id: "1:c", name: "dpdf_peaks", args: {}, status: "done", result: JSON.stringify({ features: [] }) };
 
 // Each call in turn, on one handle: the tools that change settings or outputs
 // come last, so the reads see the case's default run.
@@ -59,6 +64,11 @@ const CALLS: Call[] = [
   ["configure_settings", {}],
   ["show_in_viewer", { view: "cleanup", plane: "hk0", value: 0 }],
   ["show_in_viewer", { view: "dpdf", plane: "xy", value: 0 }],
+  // A region inside the volume, and points of which one lies outside it (its clipped field).
+  ["mark_region", { where: "flatten", shape: "ellipsoid", center: [0.5, 0.5, 0], half_size: [0.2, 0.2, 0.2], label: "a diffuse maximum", evidence: ["measure_reciprocal_cut"] }, undefined, [MEASURED]],
+  ["mark_region", { where: "pdf", shape: "points", points: [[2, 0, 0], [99, 0, 0]], label: "a pair", evidence: ["dpdf_peaks"] }, undefined, [PEAKS]],
+  // The same mark again: already marked.
+  ["mark_region", { where: "pdf", shape: "points", points: [[2, 0, 0], [99, 0, 0]], label: "a pair", evidence: ["dpdf_peaks"] }, undefined, [PEAKS]],
   ["update_settings", { changes: { pdfWindowSupport: true, flattenQ2: true } }],
   ["update_settings", { changes: { flattenQ2: true } }],
   ["run_pipeline", { from_stage: "pdf" }],
@@ -105,8 +115,8 @@ describe("the tools' live results against their contracts", () => {
     const restore = contentTuner();
     const problems: string[] = [];
     try {
-      for (const [tool, args, userMessage] of CALLS) {
-        const r = await c.tool(tool, args, { userMessage });
+      for (const [tool, args, userMessage, replySteps] of CALLS) {
+        const r = await c.tool(tool, args, { userMessage, replySteps });
         const call = `${tool} ${JSON.stringify(args)}`;
         expect(r.ok, `${call}: ${r.summary}`).toBe(true);
         problems.push(...contractDisagreements(tool, r.result).map((d) => `${call}: ${d}`));

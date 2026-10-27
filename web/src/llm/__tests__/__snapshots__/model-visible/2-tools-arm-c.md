@@ -1,6 +1,6 @@
 # Tool definitions with the skills off (validation arm C)
 
-`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (25 tools, 22301 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
+`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (26 tools, 23907 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -80,6 +80,14 @@ Its parameters are as in 2-tools.md.
 
 ```text
 The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data). Neither says a feature is real.
+```
+
+Its parameters are as in 2-tools.md.
+
+## mark_region: its description with the skills off
+
+```text
+Mark a region in the console's slice views and move them to it, so the user sees what you found. where: the stage whose output shows it: raw, rings, punch, backfill or flatten (reciprocal space; h, k, l in r.l.u.), or pdf (the 3D-ΔPDF; x, y, z in Å along a, b, c). shape: box or ellipsoid, with center and half_size (half-widths along the three axes), or points, with up to 12 positions. evidence: the calls in this conversation whose results show it, as tool or tool.field (dpdf_peaks.features.0). A region without evidence, empty, or outside the volume is not marked. The result says which views and cuts it was drawn on, cut to the volume. Cite the mark by its id (M1, …) in your answer.
 ```
 
 Its parameters are as in 2-tools.md.

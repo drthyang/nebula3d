@@ -14,7 +14,7 @@
 // and a frozen clock. No model is loaded, no backend or API is called, and no
 // measured data is used.
 //
-// Tool results sampled: all 25 tools in CHAT_TOOLS. None skipped. Covered in part:
+// Tool results sampled: all 27 tools in CHAT_TOOLS. None skipped. Covered in part:
 // - read_skill: one skill's body; not a reference (those are docs/algorithms
 //   pages, read as written).
 // - run_pipeline, tune_pipeline: the runs are stubs; what is sampled is the
@@ -392,6 +392,22 @@ interface Sample {
   before?: () => void;
 }
 
+// Calls earlier in a reply that a mark rests on (mark_region's evidence), as the round keeps them.
+const PEAKS_STEP: AgentStep = {
+  id: "0:call_0",
+  name: "dpdf_peaks",
+  args: {},
+  status: "done",
+  result: JSON.stringify({ features: [{ sign: "+", length_A: 4, size_sigma: 40, n_vectors: 3, vectors_rlu: [[1, 0, 0]], vectors_A: [[4, 0, 0]] }] }),
+};
+const CUT_STEP: AgentStep = {
+  id: "0:call_0",
+  name: "measure_reciprocal_cut",
+  args: { plane: "hk0", value: 0 },
+  status: "done",
+  result: JSON.stringify({ cut: "H–K plane at L = 0", flatten: { after_floor_max_sigma: 1.1 } }),
+};
+
 const RUN_EVENTS: JobEvent[] = [
   { type: "progress", stage: "rings", status: "skip", message: "ring-removed output exists" },
   { type: "progress", stage: "punch", status: "start", message: "Bragg punch" },
@@ -511,10 +527,33 @@ const SAMPLES: Sample[] = [
     ctx: { userMessage: REGRID_ASKED },
   },
   { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 4 } },
+  {
+    name: "mark_region",
+    args: { where: "pdf", shape: "ellipsoid", center: [4, 0, 0], half_size: [0.8, 0.8, 0.8], label: "the strongest + pair, at a", evidence: ["dpdf_peaks.features.0"] },
+    note: "resting on a dpdf_peaks call earlier in the reply",
+    ctx: { replySteps: [PEAKS_STEP] },
+  },
+  {
+    name: "mark_region",
+    args: { where: "flatten", shape: "points", points: [[1.5, 0, 0], [2.5, 0, 0], [3.5, 0, 0]], label: "half-integer maxima along H", evidence: ["measure_reciprocal_cut"] },
+    note: "on the cleanup page, resting on a measure_reciprocal_cut call earlier in the reply; one point outside the volume",
+    ctx: { replySteps: [CUT_STEP] },
+  },
 ];
 
 // What the executor sends back for a call it cannot run.
 const ERRORS: Sample[] = [
+  {
+    name: "mark_region",
+    args: { where: "pdf", shape: "ellipsoid", center: [4, 0, 0], half_size: [0.8, 0.8, 0.8], label: "a feature", evidence: [] },
+    note: "a mark that cites no evidence",
+  },
+  {
+    name: "mark_region",
+    args: { where: "pdf", shape: "box", center: [20, 0, 0], half_size: [1, 1, 1], label: "a feature", evidence: ["dpdf_peaks"] },
+    note: "a mark outside the volume, its evidence in the reply",
+    ctx: { replySteps: [PEAKS_STEP] },
+  },
   { name: "delete_dataset", args: {}, note: "a tool that does not exist" },
   { name: "measure_reciprocal_cut", args: "{plane: hk0", note: "arguments that are not JSON" },
   { name: "measure_reciprocal_cut", args: { plane: "hk0", value: 7 }, note: "a cut outside the data" },

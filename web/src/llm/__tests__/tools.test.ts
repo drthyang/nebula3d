@@ -1,17 +1,20 @@
 // The assistant's tools against a mocked API: argument checking, the line
 // profile's row/column pick, the Bragg-peak sort, show_in_viewer moving the
-// console's stores, and the two that act: update_settings and run_pipeline.
+// console's stores, mark_region's marks and refusals, and the two that act:
+// update_settings and run_pipeline.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BraggProfile, Dataset, VolumeMeta, VolumeTexture } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
+import { useMarkStore } from "../../state/markStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { SIGMA_OF } from "../metrics/dpdf";
 import { loadSettings, saveSettings } from "../settings";
 import { useTuneStore, type StageRun } from "../tune/tuner";
+import type { AgentStep } from "../agent";
 import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type ToolContext } from "../tools";
 import { offLatticeBunching } from "../metrics/bunching";
 import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
@@ -207,6 +210,122 @@ describe("show_in_viewer", () => {
     // z ∈ [-10, 10] over 21 points → z = 5 is index 15; x and y stay centred.
     expect([s.cutX, s.cutY, s.cutZ]).toEqual([20, 20, 15]);
     expect(useNavStore.getState().tab).toBe("dpdf");
+  });
+});
+
+describe("mark_region", () => {
+  // A measurement this reply took, which a mark may rest on.
+  const measured = (name: string, result: unknown, id = "0:a"): AgentStep => ({ id, name, args: {}, status: "done", result: JSON.stringify(result) });
+  const CUT = measured("measure_reciprocal_cut", { cut: "H–K plane at L = 0", flatten: { after_floor_max_sigma: 1.1 } });
+  const PEAKS = measured("dpdf_peaks", { features: [{ sign: "+", vectors_A: [[2, 0, 0]] }] }, "1:b");
+  const withSteps = (replySteps: AgentStep[], earlierSteps: AgentStep[] = []): ToolContext => ({ dataset, datasets: [dataset], replySteps, earlierSteps });
+  const SATELLITES = { where: "flatten", shape: "points", points: [[1.25, 0, 0], [0.75, 0, 0]], label: "satellites at H = 1 ± 0.25", evidence: ["measure_reciprocal_cut"] };
+
+  beforeEach(() => {
+    useMarkStore.setState({ marks: [], next: 1, showAll: true, layoutRequest: null });
+    useViewerStore.setState(useViewerStore.getInitialState(), true);
+    useNavStore.setState({ tab: "config" });
+  });
+
+  it("marks a finding on the stage it was measured on, and says what it drew where", async () => {
+    const r = await callTool(withSteps([CUT]), "mark_region", SATELLITES);
+    expect(r.ok, r.text).toBe(true);
+    expect(JSON.parse(r.text)).toEqual({
+      marked: "M1",
+      label: "satellites at H = 1 ± 0.25",
+      where: "flatten",
+      page: "Reciprocal cleanup",
+      region: { shape: "points", points: [[1.25, 0, 0], [0.75, 0, 0]], unit: "r.l.u." },
+      // The dataset has these two reciprocal outputs; the points lie on L = 0 (and K = 0): L comes first.
+      drawn_on: [{ view: "H–K plane at L = 0", stages: ["raw", "flatten"], points: 2 }],
+      zoomed: false,
+      evidence: ["measure_reciprocal_cut (step 1)"],
+    });
+    expect(r.summary).toBe("M1 · satellites at H = 1 ± 0.25: H–K plane at L = 0, outlined on Background-corrected");
+    expect(r.view).toEqual({ view: "mark", label: "M1 · satellites at H = 1 ± 0.25", mark: "M1" });
+    expect(useMarkStore.getState().marks.map((m) => [m.id, m.datasetId, m.where])).toEqual([["M1", "demo", "flatten"]]);
+    expect(useViewerStore.getState().fixedAxis).toBe("L");
+    expect(useNavStore.getState().tab).toBe("reciprocal");
+  });
+
+  it("marks a ΔPDF region on each section through it, in Å", async () => {
+    const r = await callTool(withSteps([], [PEAKS]), "mark_region", {
+      where: "pdf",
+      shape: "ellipsoid",
+      center: [2, 0, 0],
+      half_size: [1, 1, 1],
+      label: "the strongest + pair",
+      evidence: ["dpdf_peaks.features.0"],
+    });
+    expect(r.ok, r.text).toBe(true);
+    const out = JSON.parse(r.text);
+    expect(out.region).toEqual({ shape: "ellipsoid", center: [2, 0, 0], half_size: [1, 1, 1], unit: "Å" });
+    expect(out.drawn_on.map((d: { view: string }) => d.view)).toEqual(["ΔPDF x–y section at z = 0 Å", "ΔPDF x–z section at y = 0 Å", "ΔPDF y–z section at x = 2 Å"]);
+    expect(out.zoomed).toBe(true);
+    expect(out.evidence).toEqual(["dpdf_peaks.features.0 (an earlier turn)"]);
+    expect(useDpdfStore.getState().cutX).toBe(22);
+    expect(useNavStore.getState().tab).toBe("dpdf");
+  });
+
+  it("takes what a local model may write: a stage's output name, one half-width, points in one list, evidence as text", async () => {
+    const r = await callTool(withSteps([CUT]), "mark_region", {
+      where: "flattened",
+      shape: "box",
+      center: ["1", 0, 0],
+      half_size: 0.2,
+      label: "  a leftover ring segment ",
+      evidence: "{{measure_reciprocal_cut.flatten}}",
+    });
+    expect(r.ok, r.text).toBe(true);
+    expect(JSON.parse(r.text)).toMatchObject({ where: "flatten", label: "a leftover ring segment", region: { shape: "box", center: [1, 0, 0], half_size: [0.2, 0.2, 0.2] } });
+    const flat = await callTool(withSteps([CUT]), "mark_region", { ...SATELLITES, label: "flat", points: [1.25, 0, 0, 0.75, 0, 0] });
+    expect(JSON.parse(flat.text).region.points).toEqual([[1.25, 0, 0], [0.75, 0, 0]]);
+  });
+
+  it("refuses a mark without its evidence, and moves nothing", async () => {
+    const none = await callTool(withSteps([]), "mark_region", { ...SATELLITES, evidence: [] });
+    expect(none.ok).toBe(false);
+    expect(none.text).toBe("Error: not marked: a mark needs its evidence: name the tool calls whose results show the region, by the tool's name or as tool.field (dpdf_peaks.features.0)");
+    const notRun = await callTool(withSteps([PEAKS]), "mark_region", SATELLITES);
+    expect(notRun.text).toBe("Error: not marked: measure_reciprocal_cut: measure_reciprocal_cut has not run in this conversation; call it, and mark what its result shows");
+    expect(useMarkStore.getState().marks).toEqual([]);
+    expect(useNavStore.getState().tab).toBe("config");
+  });
+
+  it("refuses a region outside the volume, an empty one, and a stage with no output, saying why", async () => {
+    const out = await callTool(withSteps([CUT]), "mark_region", { ...SATELLITES, points: [[3, 0, 0]] });
+    expect(out.text).toBe("Error: not marked: no point is inside the volume: the volume spans H -2 to 2 r.l.u., K -2 to 2 r.l.u., L -1 to 1 r.l.u.");
+    const empty = await callTool(withSteps([CUT]), "mark_region", { ...SATELLITES, shape: "box", center: [0, 0, 0], half_size: [0.1, 0, 0.1] });
+    expect(empty.text).toMatch(/^Error: not marked: the box is empty/);
+    const punch = await callTool(withSteps([CUT]), "mark_region", { ...SATELLITES, where: "punch" });
+    expect(punch.text).toBe("Error: not marked: the punch stage has no output for this dataset yet (the cleanup page shows raw, flatten); run the pipeline first");
+    expect(useMarkStore.getState().marks).toEqual([]);
+  });
+
+  it("reports what the volume cut off, and that a mark made again is the same mark", async () => {
+    const args = { ...SATELLITES, points: [[1.25, 0, 0], [2.5, 0, 0]] };
+    const first = JSON.parse((await callTool(withSteps([CUT]), "mark_region", args)).text);
+    expect(first.clipped).toEqual(["1 of 2 points are outside the volume and were left out"]);
+    expect(first.region.points).toEqual([[1.25, 0, 0]]);
+    const again = JSON.parse((await callTool(withSteps([CUT]), "mark_region", args)).text);
+    expect(again).toMatchObject({ marked: "M1", already_marked: true });
+    expect(useMarkStore.getState().marks).toHaveLength(1);
+  });
+
+  it("sends bad arguments back as such", async () => {
+    const cases: [Args, RegExp][] = [
+      [{ ...SATELLITES, where: "elsewhere" }, /where must be one of raw, rings, punch, backfill, flatten, pdf/],
+      [{ ...SATELLITES, shape: undefined, points: undefined }, /shape must be one of box, ellipsoid, points/],
+      [{ ...SATELLITES, shape: "box", center: [1, 0], half_size: [1, 1, 1] }, /center must be three numbers/],
+      [{ ...SATELLITES, points: [[1, 0, 0], [1, 0]] }, /points\[1\] must be three numbers/],
+      [{ ...SATELLITES, points: Array.from({ length: 13 }, (_, i) => [i / 10, 0, 0]) }, /at most 12 positions/],
+      [{ ...SATELLITES, label: " " }, /label must name what is there/],
+    ];
+    for (const [args, message] of cases) {
+      const r = await callTool(withSteps([CUT]), "mark_region", args);
+      expect(r.text, JSON.stringify(args)).toMatch(/^Error: invalid arguments — /);
+      expect(r.text).toMatch(message);
+    }
   });
 });
 

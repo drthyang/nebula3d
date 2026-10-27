@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (26 tools, 24515 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (27 tools, 26229 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -648,5 +648,65 @@ Parameters:
     }
   },
   "required": ["view", "plane", "value"]
+}
+```
+
+## 27. mark_region
+
+```text
+Mark a region in the console's slice views and move them to it, so the user sees what you found: use it for a finding they should look at, such as satellites at h ± q, a ring left over, or a ΔPDF feature. where: the stage whose output shows it: raw, rings, punch, backfill or flatten (reciprocal space; h, k, l in r.l.u.), or pdf (the 3D-ΔPDF; x, y, z in Å along a, b, c). shape: box or ellipsoid, with center and half_size (half-widths along the three axes), or points, with up to 12 positions. evidence: the calls in this conversation whose results show it, as tool or tool.field (dpdf_peaks.features.0). A region without evidence, empty, or outside the volume is not marked. The result says which views and cuts it was drawn on, cut to the volume. Cite the mark by its id (M1, …) in your answer.
+```
+
+Parameters:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "where": {
+      "type": "string",
+      "enum": ["raw", "rings", "punch", "backfill", "flatten", "pdf"]
+    },
+    "shape": {
+      "type": "string",
+      "enum": ["box", "ellipsoid", "points"]
+    },
+    "center": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "box or ellipsoid: its centre (three coordinates)"
+    },
+    "half_size": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "box or ellipsoid: its half-widths along the three axes"
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        }
+      },
+      "description": "points: up to 12 positions, three coordinates each"
+    },
+    "label": {
+      "type": "string",
+      "description": "What is there, in a few words (at most 48 characters)"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The calls whose results show it: tool or tool.field"
+    }
+  },
+  "required": ["where", "shape", "label", "evidence"]
 }
 ```

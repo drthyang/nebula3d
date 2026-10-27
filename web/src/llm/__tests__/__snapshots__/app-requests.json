@@ -260,6 +260,15 @@
        "properties": {}
       },
       "eager_input_streaming": true
+     },
+     {
+      "name": "mark_region",
+      "description": "mark_region.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
      }
     ],
     "betas": [
@@ -547,6 +556,15 @@
      {
       "name": "show_in_viewer",
       "description": "show_in_viewer.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "mark_region",
+      "description": "mark_region.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -820,6 +838,15 @@
        "properties": {}
       },
       "eager_input_streaming": true
+     },
+     {
+      "name": "mark_region",
+      "description": "mark_region.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
      }
     ],
     "betas": [
@@ -1107,6 +1134,15 @@
      {
       "name": "show_in_viewer",
       "description": "show_in_viewer.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "mark_region",
+      "description": "mark_region.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -1298,6 +1334,17 @@
         "properties": {}
        }
       }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "mark_region",
+       "description": "mark_region.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
      }
     ]
    },
@@ -1464,6 +1511,17 @@
       "function": {
        "name": "show_in_viewer",
        "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "mark_region",
+       "description": "mark_region.",
        "parameters": {
         "type": "object",
         "properties": {}
@@ -1623,6 +1681,17 @@
         "properties": {}
        }
       }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "mark_region",
+       "description": "mark_region.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
      }
     ]
    },
@@ -1789,6 +1858,17 @@
       "function": {
        "name": "show_in_viewer",
        "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "mark_region",
+       "description": "mark_region.",
        "parameters": {
         "type": "object",
         "properties": {}
@@ -1964,6 +2044,17 @@
         "properties": {}
        }
       }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "mark_region",
+       "description": "mark_region.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
      }
     ]
    },
@@ -2133,6 +2224,17 @@
         "properties": {}
        }
       }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "mark_region",
+       "description": "mark_region.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
      }
     ]
    }
@@ -2282,6 +2384,17 @@
       "function": {
        "name": "show_in_viewer",
        "description": "show_in_viewer.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "mark_region",
+       "description": "mark_region.",
        "parameters": {
         "type": "object",
         "properties": {}
