@@ -281,7 +281,13 @@ and zooms and pans by the same rules.
   the click modes and a **?** that lists the gestures, the overlays (*Unit
   cells*, *Structure*), the page's own controls (plane, cut, orientation,
   filters), the layout switch at the right; under them the display bar. Each
-  control has the same name and a one-line tooltip on every page.
+  control has the same name and a one-line tooltip on every page. On phones
+  (the phone tiers under [Screen sizes](#screen-sizes), held upright or on
+  their side) the display bar folds behind a button at the end of the first
+  row, closed at first: closed, it shows each bar's colormap swatch and its
+  scale (or ± limit); a tap opens it. Open or closed is remembered by the
+  browser, for every page. Tablets and desktops show the display bar as
+  before.
 
 - **Layouts** (icons at the right of the workspace header): *Grid* (every view
   the same size), *Focus* (one large view; the others are thumbnails beside it —

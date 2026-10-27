@@ -14,3 +14,9 @@
   with one ± range for every cell (Auto as on 3D-ΔPDF), and the grid spans
   the page. Q–R's ΔPDF range gets a Brightness knob; the view header's
   *Reset zoom* tooltip no longer mentions Shift+double-click.
+  **Phones:** the display bar folds behind a button at the end of the
+  header's first row (closed at first, remembered by the browser) that shows
+  each bar's colormap swatch and scale, so the views start on the first
+  screen. The colour range fits the header card at 390 px. **Tick and axis
+  labels** sit on small dark plates, so they read on light colormaps
+  (RdBu_r's white turned "−20" into "=20") as on dark ones.
