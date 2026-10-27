@@ -2235,77 +2235,116 @@ input[type="range"]::-moz-range-track {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.dataset-stage-board {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+/* The pipeline's outputs on disk, as one track: a node per stage, joined by
+   a line that is solid where both neighbours exist.  Available is the quiet
+   default (a filled node, no word); only stale or missing say so. */
+.stage-track-wrap {
   flex: 1 1 auto;
-  min-width: 220px;
+  min-width: 0;
 }
-.dataset-stage-item {
-  display: inline-flex;
+.stage-track {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stage-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  min-height: 26px;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-2);
+  padding: 0 4px;
+  text-align: center;
+  cursor: default;
 }
-.dataset-stage-item.ok {
-  border-color: color-mix(in srgb, var(--green) 52%, var(--border));
-  background: var(--green-soft);
+/* the connector to the previous node */
+.stage-step + .stage-step::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: calc(50% + 9px);
+  left: calc(-50% + 9px);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
 }
-.dataset-stage-item.missing {
-  border-color: color-mix(in srgb, var(--amber) 42%, var(--border));
-  background: var(--amber-soft);
+.stage-step.ok + .stage-step.ok::before {
+  background: color-mix(in srgb, var(--green) 55%, var(--border));
 }
-.dataset-stage-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
+.stage-node {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: var(--text-3);
+  border: 2px solid var(--text-3);
+  background: transparent;
 }
-.dataset-stage-item.ok .dataset-stage-dot {
+.stage-step.ok .stage-node {
+  border-color: var(--green);
   background: var(--green);
 }
-.dataset-stage-item.missing .dataset-stage-dot {
-  background: var(--amber);
+.stage-step.missing .stage-node {
+  border-color: var(--text-3);
+  border-style: dashed;
 }
-.dataset-stage-label,
-.dataset-stage-state {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dataset-stage-label {
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 700;
-}
-.dataset-stage-state {
-  color: var(--text-3);
-  font-size: 10.5px;
-}
-.dataset-stage-item.ok .dataset-stage-state {
-  color: var(--green);
-}
-.dataset-stage-item.missing .dataset-stage-state {
-  color: var(--amber);
-}
-/* An output older than one upstream of it: made before that stage last ran. */
-.dataset-stage-item.stale {
-  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+.stage-step.stale .stage-node {
+  border-color: var(--red);
   background: var(--red-soft);
 }
-.dataset-stage-item.stale .dataset-stage-dot {
-  background: var(--red);
+.stage-name {
+  max-width: 100%;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: normal;
+  hyphens: none;
 }
-.dataset-stage-item.stale .dataset-stage-state {
+.stage-step.ok .stage-name {
+  color: var(--text);
+}
+.stage-step.missing .stage-name {
+  color: var(--text-3);
+}
+.stage-flag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.stage-step.stale .stage-flag {
   color: var(--red);
+  background: var(--red-soft);
+}
+.stage-step.missing .stage-flag {
+  color: var(--text-3);
+  background: var(--surface-2);
+}
+/* On a narrow card the track runs down: node, then name and flag on its row. */
+@container main (max-width: 560px) {
+  .stage-track {
+    grid-template-columns: 1fr;
+    row-gap: 10px;
+  }
+  .stage-step {
+    flex-direction: row;
+    gap: 10px;
+    padding: 0;
+    text-align: left;
+  }
+  .stage-step + .stage-step::before {
+    top: -9px;
+    bottom: auto;
+    left: 5px;
+    right: auto;
+    width: 2px;
+    height: 8px;
+  }
 }
 .data-root-row {
   display: flex;
@@ -2417,11 +2456,8 @@ input[type="range"]::-moz-range-track {
     flex-direction: column;
     align-items: stretch;
   }
-  .dataset-stage-board {
+  .stage-track-wrap {
     width: 100%;
-  }
-  .dataset-stage-item {
-    flex: 1 1 150px;
   }
   .data-actions {
     justify-content: flex-start;
@@ -5206,10 +5242,6 @@ h6.md-h {
   .exec-log {
     max-height: 60vh;
   }
-  /* stage chips size to their text and wrap, rather than truncating to fit */
-  .dataset-stage-item {
-    flex: 1 1 auto;
-  }
 }
 
 /* viewer panels wrap into a grid instead of squeezing into one row */
@@ -5304,9 +5336,6 @@ h6.md-h {
   }
   .cfg-box {
     padding: 12px;
-  }
-  .dataset-stage-board {
-    min-width: 0;
   }
   .data-root-row input[type="text"] {
     min-width: 0;
