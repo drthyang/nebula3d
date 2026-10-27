@@ -61,9 +61,12 @@ export const snapIndex = (g: Pick<VolumeGrid, "ranges" | "shape">, axis: Axis, v
   return Math.max(0, Math.min(g.shape[axis] - 1, i));
 };
 
-/** The coordinate of sample `index` along an axis. */
-export const gridValue = (g: Pick<VolumeGrid, "ranges" | "shape">, axis: Axis, index: number): number =>
-  g.ranges[axis][0] + index * gridStep(g, axis);
+/** The coordinate of sample `index` along an axis; the sample at the origin is exactly 0, not float noise beside it. */
+export const gridValue = (g: Pick<VolumeGrid, "ranges" | "shape">, axis: Axis, index: number): number => {
+  const step = gridStep(g, axis);
+  const v = g.ranges[axis][0] + index * step;
+  return Math.abs(v) < Math.abs(step) * 1e-9 ? 0 : v;
+};
 
 /** The extent the voxels cover along an axis: the samples' range, half a step past each end. */
 const extent = (g: VolumeGrid, axis: Axis): Range => {
