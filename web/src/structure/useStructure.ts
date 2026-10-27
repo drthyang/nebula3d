@@ -11,6 +11,7 @@ import type { Cell } from "./cif";
 import {
   bestPermutation,
   cellFit,
+  CELL_TOLERANCE,
   cellMatches,
   elementOrder,
   expandSites,
@@ -23,19 +24,27 @@ import {
   type Marker,
   type PairDiff,
 } from "./pairs";
-import { symmetryGroup } from "./symops";
+import { symmetryGroup, type Vec3 } from "./symops";
 
 export interface StructureModel {
   def: StructureDef;
   error: string | null; // the operations could not be read
   nOps: number;
-  atoms: Atom[]; // empty on a cell mismatch: not expanded
+  atoms: Atom[];
   diffs: PairDiff[]; // empty when nothing can be drawn (see `blocked`)
   elements: string[]; // in site order
   keys: string[]; // element pairs present, A–A, A–B, …
   fit: CellFit | null; // the CIF cell (axes permuted) against the ΔPDF's
   suggested: number | null; // the permutation that matches, when the current one does not
-  mismatch: boolean; // the CIF cell does not fit the ΔPDF's: nothing is drawn
+  // The CIF cell differs from the ΔPDF's (beyond CELL_TOLERANCE): the pairs are
+  // still drawn, at the CIF's own lengths, with a warning (structureWarningText).
+  mismatch: boolean;
+  // Å along the ΔPDF's a, b, c that one lattice period spans where the vectors
+  // are placed: the ΔPDF's cell when the CIF's fits it (a slightly different
+  // cell, another temperature, does not shift the markers), else the CIF's own
+  // (permuted) lengths, so each pair sits at its real distance.  Null before
+  // the ΔPDF's cell is known.
+  drawLat: Vec3 | null;
   tooMany: boolean; // more than MAX_PAIR_ATOMS atoms per cell: nothing is drawn
   density: number | null; // atoms per Å³ (on the CIF's cell, else the ΔPDF's)
   tooDense: boolean; // denser than MAX_ATOM_DENSITY, no crystal: nothing is drawn
@@ -77,8 +86,9 @@ export function latticeCell(lat: Lattice | undefined): Cell | null {
 /**
  * The structure against the ΔPDF's cell `data`.  The pair differences — the
  * costly part, N² in the atoms — are found only when they can be drawn: a
- * ΔPDF cell to place them on, a CIF cell that fits it, no more than
- * MAX_PAIR_ATOMS atoms and no more than MAX_ATOM_DENSITY atoms per Å³.
+ * ΔPDF cell to place them on, no more than MAX_PAIR_ATOMS atoms and no more
+ * than MAX_ATOM_DENSITY atoms per Å³.  A CIF cell that differs from the
+ * ΔPDF's still draws, at its own lengths (drawLat), flagged as a mismatch.
  */
 export function buildModel(def: StructureDef, perm: number, data: Cell | null): StructureModel {
   let error: string | null = null;
@@ -94,15 +104,21 @@ export function buildModel(def: StructureDef, perm: number, data: Cell | null): 
   const mismatch = fit !== null && !cellMatches(fit);
   // Images of one site closer than DUPLICATE_TOLERANCE are one atom, on the
   // CIF's cell (its own axes) or else the ΔPDF's.
-  const atoms = mismatch ? [] : permuteAtoms(expandSites(def.sites, ops, def.cell ?? data), p);
+  const atoms = permuteAtoms(expandSites(def.sites, ops, def.cell ?? data), p);
   const tooMany = atoms.length > MAX_PAIR_ATOMS;
   const vol = def.cell ?? data ? cellVolume((def.cell ?? data)!) : 0;
-  const density = vol > 0 && !mismatch ? atoms.length / vol : null;
+  const density = vol > 0 ? atoms.length / vol : null;
   const tooDense = density !== null && density > MAX_ATOM_DENSITY;
-  const diffs = data && !mismatch && !tooMany && !tooDense ? pairDifferences(atoms) : [];
+  const diffs = data && !tooMany && !tooDense ? pairDifferences(atoms) : [];
+  const cif = def.cell ? [def.cell.a, def.cell.b, def.cell.c] : null;
+  const drawLat: Vec3 | null = !data
+    ? null
+    : mismatch && cif
+      ? [cif[p[0]], cif[p[1]], cif[p[2]]]
+      : [data.a, data.b, data.c];
   // Every element pair occurs (an atom with itself gives A–A), so the keys
   // follow from the elements without the pairs.
-  const elements = elementOrder(mismatch ? def.sites : atoms);
+  const elements = elementOrder(atoms);
   const keys: string[] = [];
   elements.forEach((a, i) => elements.slice(i).forEach((b) => keys.push(`${a}–${b}`)));
   return {
@@ -116,18 +132,15 @@ export function buildModel(def: StructureDef, perm: number, data: Cell | null): 
     fit,
     suggested: best !== null && best !== perm ? best : null,
     mismatch,
+    drawLat,
     tooMany,
     density,
     tooDense,
   };
 }
 
-/**
- * Why no vectors are drawn, or null when they are.  `where` says where the
- * axes are set ("in Edit structure").
- */
-export function structureBlockedText(model: StructureModel, where = "in Edit structure"): string | null {
-  if (model.mismatch) return `its cell does not match this ΔPDF's, so no vectors are drawn — check the axes ${where}.`;
+/** Why no vectors are drawn, or null when they are. */
+export function structureBlockedText(model: StructureModel): string | null {
   if (model.tooMany) {
     return `${model.atoms.length} atoms per cell, more than the ${MAX_PAIR_ATOMS} whose pair vectors the overlay draws (N² pairs would stall the page), so no vectors are drawn.`;
   }
@@ -135,6 +148,23 @@ export function structureBlockedText(model: StructureModel, where = "in Edit str
     return `${model.atoms.length} atoms per cell is ${model.density!.toFixed(2)} atoms/Å³, denser than any crystal (≤ ${MAX_ATOM_DENSITY}) — check the cell and the sites; no vectors are drawn.`;
   }
   return null;
+}
+
+/**
+ * The caution for vectors that are drawn but rest on an assumption, or null:
+ * a CIF cell that differs from the ΔPDF's.  `where` says where the axes are
+ * set ("in Edit structure").
+ */
+export function structureWarningText(model: StructureModel, where = "in Edit structure"): string | null {
+  if (!model.mismatch || !model.fit) return null;
+  const angles = model.fit.angle > CELL_TOLERANCE.angle;
+  return (
+    `its cell differs from this ΔPDF's by ${(model.fit.length * 100).toFixed(1)} % in length` +
+    (angles ? ` and ${model.fit.angle.toFixed(1)}° in angle` : "") +
+    `, so its pair vectors are drawn at the CIF's own lengths (Å) along the ΔPDF's axes` +
+    (angles ? "; with the angles differing, vectors off the axes are only approximate" : "") +
+    ` — check it is the same phase and axis setting (axes ${where}).`
+  );
 }
 
 /** The stored structure against the ΔPDF's cell; null when none is loaded. */
@@ -174,11 +204,12 @@ export function usePlaneMarkers(
   const show = useStructureStore((s) => s.show);
   const origin = activeOrigin(model, useStructureStore((s) => s.origin));
   const hidden = useStructureStore((s) => s.hidden);
-  const a = lattice?.a, b = lattice?.b, c = lattice?.c;
+  // The lengths the vectors are placed at: the ΔPDF's cell, or the CIF's own on a mismatch.
+  const [a, b, c] = model?.drawLat ?? [lattice?.a, lattice?.b, lattice?.c];
   const [h0, h1] = p.hRange ?? [0, 0];
   const [v0, v1] = p.vRange ?? [0, 0];
   return useMemo(() => {
-    if (!model || model.mismatch || !show || !a || !b || !c || !p.hRange || !p.vRange) return [];
+    if (!model || !show || !a || !b || !c || !p.hRange || !p.vRange) return [];
     return sliceMarkers(model.diffs, {
       lat: [a, b, c],
       axes: [AX_INDEX[p.h], AX_INDEX[p.v], AX_INDEX[p.cut]],

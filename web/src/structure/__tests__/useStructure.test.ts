@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { StructureDef } from "../../state/structureStore";
 import type { Cell } from "../cif";
-import { buildModel, cellVolume, MAX_PAIR_ATOMS, structureBlockedText } from "../useStructure";
+import { sliceMarkers } from "../pairs";
+import { buildModel, cellVolume, MAX_PAIR_ATOMS, structureBlockedText, structureWarningText } from "../useStructure";
 
 const CUBIC = (a: number): Cell => ({ a, b: a, c: a, alpha: 90, beta: 90, gamma: 90 });
 const rockSalt = (cell: Cell | null): StructureDef => ({
@@ -34,13 +35,33 @@ describe("buildModel", () => {
     expect(structureBlockedText(m)).toBeNull();
   });
 
-  it("builds no pairs when the cell does not match the ΔPDF's", () => {
-    const m = buildModel(p1(1080, 25.2), 0, CUBIC(4.2));
+  it("still draws a CIF whose cell differs from the ΔPDF's, at the CIF's own lengths, and warns", () => {
+    // rock salt on a 4.2 Å cell against a ΔPDF on a doubled 8.4 Å cell
+    const m = buildModel(rockSalt(CUBIC(4.2)), 0, CUBIC(8.4));
     expect(m.mismatch).toBe(true);
-    expect(m.atoms).toEqual([]);
-    expect(m.diffs).toEqual([]);
-    expect(m.keys).toEqual(["O–O"]);
-    expect(structureBlockedText(m, "here")).toMatch(/does not match.*check the axes here/);
+    expect(m.atoms.length).toBe(8);
+    expect(m.diffs.length).toBeGreaterThan(0);
+    expect(m.drawLat).toEqual([4.2, 4.2, 4.2]); // real distances, not stretched onto the 8.4 Å cell
+    expect(structureBlockedText(m)).toBeNull();
+    expect(structureWarningText(m, "here")).toMatch(/differs from this ΔPDF's by 50\.0 % in length.*CIF's own lengths.*axes here/);
+    expect(structureWarningText(m)).not.toMatch(/approximate/);
+    // the nearest Na–Cl vector sits at a/2 = 2.1 Å along a, as in the CIF
+    const marks = sliceMarkers(m.diffs, {
+      lat: m.drawLat!, axes: [0, 1, 2], cut: 0, depth: 0.1, hRange: [-3, 3], vRange: [-3, 3],
+    });
+    expect(marks.some((k) => k.key === "Na–Cl" && Math.abs(k.h - 2.1) < 1e-9 && Math.abs(k.v) < 1e-9)).toBe(true);
+  });
+
+  it("places a matching CIF on the ΔPDF's own cell and does not warn", () => {
+    const m = buildModel(rockSalt(CUBIC(4.2)), 0, CUBIC(4.25));
+    expect([m.mismatch, m.drawLat]).toEqual([false, [4.25, 4.25, 4.25]]);
+    expect(structureWarningText(m)).toBeNull();
+  });
+
+  it("says vectors off the axes are approximate when the angles differ too", () => {
+    const hex = { a: 4.2, b: 4.2, c: 5, alpha: 90, beta: 90, gamma: 120 };
+    const m = buildModel({ ...rockSalt(CUBIC(4.2)), cell: hex }, 0, CUBIC(4.2));
+    expect(structureWarningText(m)).toMatch(/30\.0° in angle.*approximate/);
   });
 
   it("builds no pairs above MAX_PAIR_ATOMS atoms and says why", () => {
