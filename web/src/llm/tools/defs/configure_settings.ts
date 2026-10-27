@@ -16,7 +16,7 @@ const HELD = new Set<string>(COMPOSITE.flatMap((p) => p.fields));
 
 export const configure_settings: ChatTool = {
   name: "configure_settings",
-  facts: { label: "Read the run settings", acts: null, reachesBackend: false },
+  facts: { label: "Read the run settings", acts: null, reachesBackend: false, measures: false },
   description:
     "The Configure page's current settings — what the next run would use (blank = the backend default). They may differ from the settings that produced the files on disk. Name settings exactly as returned here when you suggest a change.",
   parameters: { type: "object", properties: {} },

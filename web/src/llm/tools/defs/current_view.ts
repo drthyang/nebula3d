@@ -11,7 +11,7 @@ import type { ChatTool } from "../types";
 
 export const current_view: ChatTool = {
   name: "current_view",
-  facts: { label: "Checked your view", acts: null },
+  facts: { label: "Checked your view", acts: null, measures: false },
   description:
     "What the user is looking at: the console page and the cuts open in the reciprocal-space and ΔPDF viewers. Use it when the user says 'this', 'here' or 'what I'm looking at'.",
   parameters: { type: "object", properties: {} },

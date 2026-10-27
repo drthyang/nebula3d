@@ -6,7 +6,7 @@ import { ToolArgError, type ChatTool } from "../types";
 
 export const run_log: ChatTool = {
   name: "run_log",
-  facts: { label: "Read the run log", acts: null, reachesBackend: false, highlights: ["log"] },
+  facts: { label: "Read the run log", acts: null, reachesBackend: false, highlights: ["log"], measures: false },
   description:
     "The log of the last pipeline run in this session: each stage's start, skip, result and error lines (how many ring shells were fitted, peaks punched, voxels left unmeasured, the back-FFT r, …) and how the run ended. Use it to explain a result or a failure.",
   parameters: {

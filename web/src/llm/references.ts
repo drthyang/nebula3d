@@ -33,7 +33,7 @@ function shown(v: unknown): string | null {
 }
 
 /** The value at `path` (dot-separated keys; whole numbers index lists) in `root`, or undefined. */
-function at(root: unknown, path: string[]): unknown {
+export function valueAt(root: unknown, path: readonly string[]): unknown {
   let node: unknown = root;
   for (const key of path) {
     if (Array.isArray(node) && /^\d+$/.test(key)) node = node[Number(key)];
@@ -52,7 +52,7 @@ export function resolveReference(key: string, steps: readonly AgentStep[]): stri
   // The newest result of that tool that holds the field (an assess_stage for
   // the flatten, not the one for the rings after it).
   for (const { result } of resultsNewestFirst(steps, tool)) {
-    const v = at(result, path);
+    const v = valueAt(result, path);
     if (v !== undefined) return shown(v);
   }
   return null;

@@ -9,7 +9,7 @@ import type { ChatTool } from "../types";
 
 export const describe_dataset: ChatTool = {
   name: "describe_dataset",
-  facts: { label: "Read the dataset", acts: null },
+  facts: { label: "Read the dataset", acts: null, measures: false },
   description:
     "The selected dataset: which stage outputs exist, the reciprocal grid and its H/K/L ranges, the unit cell, the ΔPDF grid and x/y/z ranges, and the other datasets (e.g. other temperatures) available for compare_datasets.",
   parameters: { type: "object", properties: {} },
