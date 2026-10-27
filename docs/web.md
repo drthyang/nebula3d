@@ -264,18 +264,30 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 | --- | --- | --- |
 | **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (the *Model*, pooled 3D sectors by default; azimuthal patches and Fourier order for the per-plane models), punch (the *Footprint*: own width by default, profile-matched or an ellipsoid in the spherical ρ/θ/φ or reciprocal a*/b*/c* frame), backfill, background correction (the `flatten` stage: the radial background subtracted), ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. A stage's *Enable stage* switch turns it off: the run sends the switch (`params.rings_enabled`, `punch_enabled`, `backfill_enabled`; the background correction's `flatten_enabled`), the stage is not run, and the stage after it reads what came before it, never an output an earlier run left, whose file stays as it was (see [the complete pipeline](pipeline.md#the-complete-pipeline)). With *force* off, the stages after it keep the outputs that exist. The punch's *Modulation k*, *Form*, *Order m* and *± width* declare the sample's modulation, a fact about the sample that the off-lattice search leaves alone; the note under them is the backend's description of what they protect ([modulation.md](modulation.md#the-console-and-nebula-pilot)). The form is remembered per dataset in the browser, with the selected dataset: another temperature of the same sample starts from the form as it stands, another sample from the defaults (`state/configMemory.ts`). **Save session** writes the analysis to a file (`*.nebula-session.json`, `state/session.ts`): the dataset and its raw file (name, size, date), the form, the stage outputs present (and when each was written), the last run (its stages, settings and log), the NEBULA Pilot conversation, the structure overlay and the version. **Restore session…** (it asks first when it would replace a conversation or a run's log) brings it back on its dataset (in another browser too) and lists the outputs that are no longer there or were written again since, with **Recompute them**, which runs those stages with the settings of the last run when it made them (otherwise with the restored form, and says so); it is not offered when the raw file is not the session's (another size), and warns when the file is dated otherwise or the version differs. The pipeline is deterministic, so with the same input and settings they come back the same (bit-identical in the native console on the demo; the browser build computes in float32). The volumes themselves are not in the file. Default landing view. |
 | **Reciprocal cleanup** | `explore_slice.py` | One view per HKLVolume stage (raw / ring-removed / punched / backfilled / background-corrected) on one H/K/L plane and cut, in the [viewer workspace](#viewer-workspace). All views share **one colour range**, set from a reference stage (the output stage by default, or *Each view* to scale each stage on its own), and one linked zoom and crosshair; hovering reads every stage's value at the same (K, L). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
-| **Bragg profile** | — | Width diagnostics of the punch's fitted Bragg peaks: widths against \|Q\|, their distribution per axis, a sortable peak table and the selected peak's intensity in three slices through its centre (a\*·b\*, a\*·c\*, b\*·c\*) with the fitted, measured and \|Q\|-floor ellipses. The three tiles are one linked view about the peak, zoomed and panned as in the [viewer workspace](#viewer-workspace): zooming or panning one moves the other two through the same hkl point. They open (and reset, by double-click, 0 or *Reset view*) at 3.5× the peak's widest fitted width and zoom out to 10× that; the ellipses are drawn with the slices' own pixel mapping, so they stay on the data at any zoom. *Unit cells* draws integer h, k, l; *Brightness* moves vmax in stops about the 99th percentile around the peak. |
+| **Bragg profile** | — | Width diagnostics of the punch's fitted Bragg peaks: widths against \|Q\|, their distribution per axis, a sortable peak table and the selected peak's intensity in three slices through its centre (a\*·b\*, a\*·c\*, b\*·c\*) with the fitted, measured and \|Q\|-floor ellipses. The three tiles are one linked view about the peak, zoomed and panned as in the [viewer workspace](#viewer-workspace): zooming or panning one moves the other two through the same hkl point. They open (and reset, by double-click, 0 or a view's *Reset zoom*) at 3.5× the peak's widest fitted width and zoom out to 10× that; the ellipses are drawn with the slices' own pixel mapping, so they stay on the data at any zoom. The page has the workspace header: *Unit cells* draws integer h, k, l, *Integer HKL only* filters the peaks, the layout switch shows the three slices as a grid, one large with two thumbnails, or one alone; the display bar sets their one colour range. The dashboard gives the slices the wide column: scatter and peak table on the left, the selected peak and the width histograms on the right (one column on a narrow page, the slices second). |
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
-| **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid, sharing cut and contrast; a per-plane colour scale pooled across files. Each plane has one view shared by every file, zoomed and panned as in the [viewer workspace](#viewer-workspace), so the files are always compared at the same scale; views open at ±40 Å. Component retained; unrouted from the sidebar for now. |
+| **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid across the page, under the workspace header, sharing the cuts and one ± colour range (Auto as on 3D-ΔPDF, pooled over the files' centre sections). Each plane has one view shared by every file, zoomed and panned as in the [viewer workspace](#viewer-workspace), so the files are always compared at the same scale; views open at ±40 Å. Component retained; unrouted from the sidebar for now. |
 | **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. The round trip transforms what the run transformed, as the run did: the volume the run's ΔPDF was made from, with its window, σ, shape and support, padding and subtractions, which the ΔPDF records (`source_file`, `transform_config`), over the full \|Q\| range and the band applied here. Without a record to follow it falls back: to the package defaults when the ΔPDF records no transform (none on disk, or one written before the record), and to the flattened volume, else the backfilled one, when no record names its input or that file is gone. The header says which, and why: "the run's window: hann", or "the default window, gaussian σ 0.4: no ΔPDF on disk for this dataset; the view falls back to …". |
 | **NEBULA Pilot** | — (new) | A column docked beside every page, which the page reflows beside, never over it: drag its edge to resize it, or collapse it to a slim rail (opened from the sidebar or the rail). In a window under 1000 px wide (900 px in landscape) it is a bottom sheet under the page instead. With *Follow* on, the figure it works on stays fully in view beside it. Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic) model. One **chat**: free questions, five one-click stage reviews, and two one-click requests (*Assess the run*, *Tune for the best result*), grounded in metrics computed in the browser. With **Tools** on, the model measures any cut, judges each stage on three planes, checks the punch and backfill for texture, the ΔPDF's window against the data coverage (and where the raw counts begin and end in \|Q\|) and the ΔPDF's symmetry, sets the ΔPDF view's contrast, reads the Bragg profile, back-FFT check and run log, compares datasets, opens the viewer beside the chat, and acts: it runs the pipeline (shown live on the Execution page and in the chat), changes settings, and tunes the pipeline one stage at a time, keeping the best settings for each. Optional vision opt-in attaches the rendered slice for image-capable models. |
 
 ### Viewer workspace
 
-The slice views (Reciprocal cleanup, 3D-ΔPDF, Q–R) share one workspace, after
-the [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/)'s, so the
-two apps work the same way. Every slice view — the Bragg profile's peak tiles
-and the multi-volume grid too — zooms and pans by the same rules.
+The slice views (Reciprocal cleanup, Bragg profile, 3D-ΔPDF, Q–R) share one
+workspace, after the [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/)'s,
+so the two apps work the same way; the multi-volume grid has the same header
+and zooms and pans by the same rules.
+
+- **Header** (`components/WorkspaceHeader.tsx`), in one order on every page:
+  the click modes and a **?** that lists the gestures, the overlays (*Unit
+  cells*, *Structure*), the page's own controls (plane, cut, orientation,
+  filters), the layout switch at the right; under them the display bar. Each
+  control has the same name and a one-line tooltip on every page. On phones
+  (the phone tiers under [Screen sizes](#screen-sizes), held upright or on
+  their side) the display bar folds behind a button at the end of the first
+  row, closed at first: closed, it shows each bar's colormap swatch and its
+  scale (or ± limit); a tap opens it. Open or closed is remembered by the
+  browser, for every page. Tablets and desktops show the display bar as
+  before.
 
 - **Layouts** (icons at the right of the workspace header): *Grid* (every view
   the same size), *Focus* (one large view; the others are thumbnails beside it —
@@ -319,17 +331,23 @@ and the multi-volume grid too — zooms and pans by the same rules.
   the real-space views, and integer h, k, l on the r.l.u. views (Reciprocal
   cleanup, the Q–R page's Q views, the Bragg peak tiles), drawn at the slice's
   own scale and angle, so they stay on the data while it zooms and pans.
-- **Display bar**: colormap, then the colour range — vmin, the colour bar with
-  the reference data's histogram behind it and a handle at each limit, vmax —
-  then *asinh / lin / log*, *Auto* and *Brightness*. *Auto* sets vmin 0 (± for
+- **Display bar** (`DisplayBar`, the same order on every page): colormap, then
+  the colour range — vmin, the colour bar with the reference data's histogram
+  behind it and a handle at each limit, vmax — then *asinh / lin / log* (for
+  data that is not signed), *Auto* and *Brightness*. *Auto* sets vmin 0 (± for
   signed data), vmax at the 97th percentile and the asinh softening at the
   median of the positive values, from the centre cut, so the scale holds still
   while the cut moves. On the 3D-ΔPDF page Auto takes the 99.9th percentile of
   |ΔPDF| over the three centre sections, the origin's self-correlation disk left
   out (`components/dpdfLevels.ts`): a ΔPDF section is mostly FFT ripple, so the
-  97th percentile sits on the ripple and saturates every feature.
-  *Brightness* moves vmax in stops about Auto: right is
-  brighter. Typed or dragged limits hold until *Auto* or a dataset change.
+  97th percentile sits on the ripple and saturates every feature; the
+  multi-volume page does the same over every file. On the Bragg profile Auto
+  takes the 99th percentile of the three windows about the peak (not the
+  view, so the colours hold while zooming), its scale is its own (lin by
+  default), and limits are kept relative to each peak's Auto, so Brightness
+  carries from peak to peak. *Brightness* moves vmax in stops about Auto:
+  right is brighter. Typed or dragged limits hold until *Auto* or a dataset
+  change.
 - **Shared settings**: the reciprocal plane, cut, colour range, scale and zoom
   are shared by Reciprocal cleanup and Q–R; the ΔPDF colour range, colormap
   and zoom by 3D-ΔPDF and Q–R; *Unit cells* by every page.

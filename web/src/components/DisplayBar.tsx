@@ -1,9 +1,11 @@
 // Display-bar controls shared by the viewer pages, after the NeXus Viewer's
-// workspace header: the click mode, the colour range around its bar (with the
-// data's histogram behind it and a handle at each limit), the scale, Auto, and
-// a Brightness knob that moves the same vmax in stops about Auto.
+// workspace header: the click mode (with a "?" for the gestures every view
+// takes), the colour range around its bar (with the data's histogram behind it
+// and a handle at each limit), the scale, Auto, and a Brightness knob that
+// moves the same vmax in stops about Auto.  DisplayBar puts them together in
+// one order for every page; the tooltips are one plain line each.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useWorkspaceStore } from "../state/workspaceStore";
 import {
@@ -13,10 +15,9 @@ import {
   type Levels,
   type ScaleKind,
 } from "./colorScale";
-
-/** The zoom and pan gestures every view takes in any mode, for the tooltips. */
-export const VIEW_GESTURES =
-  "Wheel with Ctrl/⌘, or pinch, zooms; Shift-, middle- or two-finger drag pans; double-click resets the view";
+import { HelpTip } from "./ui";
+import type { LevelsModel } from "./useLevels";
+import { AUTO_TITLES, BRIGHTNESS_TITLE, CLICK_MODE_TITLES, SCALE_TITLES, VIEW_GESTURES } from "./viewerText";
 
 /**
  * Navigate (the default) and the one-shot Box zoom tool, shared by every viewer
@@ -27,26 +28,33 @@ export function ClickModeControl() {
   const mode = useWorkspaceStore((s) => s.clickMode);
   const setMode = useWorkspaceStore((s) => s.setClickMode);
   return (
-    <div className="segmented" role="group" aria-label="Click mode">
-      <button
-        type="button"
-        className={mode === "navigate" ? "on" : ""}
-        title={`Navigate: hover reads values; on 3D-ΔPDF a click moves the other two cuts. ${VIEW_GESTURES}`}
-        aria-pressed={mode === "navigate"}
-        onClick={() => setMode("navigate")}
-      >
-        Navigate
-      </button>
-      <button
-        type="button"
-        className={mode === "box" ? "on" : ""}
-        title="Box zoom: drag a box on a view to zoom into it, then back to Navigate (Esc or a second press cancels)"
-        aria-pressed={mode === "box"}
-        onClick={() => setMode(mode === "box" ? "navigate" : "box")}
-      >
-        Box zoom
-      </button>
-    </div>
+    <span className="ws-group click-mode">
+      <div className="segmented" role="group" aria-label="Click mode">
+        <button
+          type="button"
+          className={mode === "navigate" ? "on" : ""}
+          title={CLICK_MODE_TITLES.navigate}
+          aria-pressed={mode === "navigate"}
+          onClick={() => setMode("navigate")}
+        >
+          Navigate
+        </button>
+        <button
+          type="button"
+          className={mode === "box" ? "on" : ""}
+          title={CLICK_MODE_TITLES.box}
+          aria-pressed={mode === "box"}
+          onClick={() => setMode(mode === "box" ? "navigate" : "box")}
+        >
+          Box zoom
+        </button>
+      </div>
+      <HelpTip placement="below">
+        {VIEW_GESTURES.map((line) => (
+          <span key={line} className="helptip-line">{line}</span>
+        ))}
+      </HelpTip>
+    </span>
   );
 }
 
@@ -55,9 +63,9 @@ const SCALES: ScaleKind[] = ["asinh", "lin", "log"];
 export function ScaleControl({ value, onChange }: { value: ScaleKind; onChange: (s: ScaleKind) => void }) {
   return (
     <div className="segmented" role="group" aria-label="Scale">
-      {SCALES.map((s) => (
-        <button key={s} type="button" className={s === value ? "on" : ""} aria-pressed={s === value} onClick={() => onChange(s)}>
-          {s}
+      {SCALES.map((kind) => (
+        <button key={kind} type="button" className={kind === value ? "on" : ""} title={SCALE_TITLES[kind]} aria-pressed={kind === value} onClick={() => onChange(kind)}>
+          {kind}
         </button>
       ))}
     </div>
@@ -89,6 +97,7 @@ function LimitInput({
       inputMode="decimal"
       className="lv-num"
       aria-label={label}
+      title={label}
       value={draft ?? `${prefix ?? ""}${fmtLevel(value)}`}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={(e) => e.target.select()}
@@ -194,7 +203,7 @@ export function LevelsBar({
   return (
     <div className={`levels-bar${symmetric ? " levels-bar--sym" : ""}`}>
       {!symmetric && (
-        <LimitInput value={levels.lo} label="Colour minimum" onCommit={(v) => v < levels.hi && set("lo", v)} />
+        <LimitInput value={levels.lo} label="Low end of the colour scale" onCommit={(v) => v < levels.hi && set("lo", v)} />
       )}
       <div className="lv-track" ref={track}>
         <canvas ref={canvas} className="lv-hist" />
@@ -220,7 +229,7 @@ export function LevelsBar({
       <LimitInput
         value={hi}
         prefix={symmetric ? "±" : undefined}
-        label={symmetric ? "Colour limit ±" : "Colour maximum"}
+        label={symmetric ? "Colour limit ±" : "High end of the colour scale"}
         onCommit={(v) => (symmetric ? v !== 0 && set("hi", v) : v > levels.lo && set("hi", v))}
       />
     </div>
@@ -239,7 +248,7 @@ export function BrightnessKnob({
 }) {
   const b = brightnessOf(autoHi, hi);
   return (
-    <label className="brightness" title="Brightness: moves vmax in stops about Auto (right is brighter)">
+    <label className="brightness" title={BRIGHTNESS_TITLE}>
       <span className="field-label">Brightness</span>
       <input
         type="range"
@@ -254,16 +263,99 @@ export function BrightnessKnob({
   );
 }
 
-export function AutoButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+export function AutoButton({
+  active,
+  onClick,
+  title = AUTO_TITLES.sequential,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title?: string;
+}) {
   return (
     <button
       type="button"
       className={`btn btn-ghost btn-auto${active ? " on" : ""}`}
-      title="vmin 0, vmax at the 97th percentile and softening at the median of the positive values (as in the NeXus Viewer)"
+      title={title}
       aria-pressed={active}
       onClick={onClick}
     >
       Auto
     </button>
+  );
+}
+
+/**
+ * One display bar, in the same order on every page: [badge] colormap · vmin
+ * [histogram + colour bar] vmax · asinh / lin / log (sequential data) · Auto ·
+ * Brightness.  `dimRange` greys the range and Brightness out (a page's
+ * "each view on its own Auto").
+ */
+export interface DisplayBarProps {
+  badge?: ReactNode;
+  colormapLabel?: string;
+  colormap: string;
+  colormaps: readonly string[];
+  onColormap: (name: string) => void;
+  lut: Uint8ClampedArray;
+  lv: LevelsModel;
+  onLevels: (l: Levels) => void;
+  onAuto: () => void;
+  scale?: ScaleKind;
+  onScale?: (s: ScaleKind) => void;
+  symmetric?: boolean;
+  autoTitle?: string;
+  dimRange?: boolean;
+}
+
+export function DisplayBar({
+  badge,
+  colormapLabel = "Colormap",
+  colormap,
+  colormaps,
+  onColormap,
+  lut,
+  lv,
+  onLevels,
+  onAuto,
+  scale,
+  onScale,
+  symmetric = false,
+  autoTitle,
+  dimRange = false,
+}: DisplayBarProps) {
+  const dim = dimRange ? "ws-dim" : undefined;
+  const range = dimRange ? "ws-range ws-dim" : "ws-range";
+  return (
+    <div className="ws-display-group">
+      <span className="ws-group">
+        {badge}
+        <select aria-label={colormapLabel} title={colormapLabel} value={colormap} onChange={(e) => onColormap(e.target.value)}>
+          {colormaps.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      </span>
+      <div className={range}>
+        <LevelsBar
+          lut={lut}
+          levels={lv.levels}
+          domain={lv.domain}
+          hist={lv.hist}
+          symmetric={symmetric}
+          scale={scale}
+          onChange={onLevels}
+        />
+      </div>
+      {scale && onScale && <ScaleControl value={scale} onChange={onScale} />}
+      <AutoButton active={lv.isAuto} onClick={onAuto} title={autoTitle} />
+      <div className={dim}>
+        <BrightnessKnob
+          autoHi={lv.auto.hi}
+          hi={lv.levels.hi}
+          onChange={(hi) => onLevels(symmetric ? { lo: -hi, hi } : { lo: lv.levels.lo, hi })}
+        />
+      </div>
+    </div>
   );
 }

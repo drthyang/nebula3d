@@ -7,15 +7,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { useQueries } from "@tanstack/react-query";
+
+import { fetchSlice } from "../api/client";
 import { useBraggProfile, useDatasets, useMeta } from "../api/hooks";
-import type { BraggPeakWidth, VolumeMeta } from "../api/types";
+import type { BraggPeakWidth, Slice, VolumeMeta } from "../api/types";
 import { BraggPeakSlice } from "../components/BraggPeakSlice";
 import {
+  absoluteLevels,
+  BRAGG_AUTO_PERCENTILE,
   cursorFromTile,
+  fitWindowSamples,
   fittedEllipse,
   linkFromTile,
   peakFitHalf,
   peakHalfLimit,
+  relativeLevels,
   tileBounds,
   tileCursor,
   tileViewport,
@@ -23,10 +30,15 @@ import {
   type Hkl,
   type TileAxes,
 } from "../components/braggView";
-import { ClickModeControl } from "../components/DisplayBar";
-import { ColormapBar, EmptyState, IconAlert, IconLattice, Slider, Switch } from "../components/ui";
-import { HKL_GRID_TITLE } from "../components/UnitCellGrid";
+import { autoLevels, type Levels, type ScaleKind } from "../components/colorScale";
+import type { LayoutState } from "../components/layout";
+import { EmptyState, IconAlert, IconLattice, Switch } from "../components/ui";
+import { useLevels } from "../components/useLevels";
+import { useWorkspaceLayout, type LayoutDispatch } from "../components/useWorkspaceLayout";
+import { AUTO_TITLES } from "../components/viewerText";
 import type { Viewport } from "../components/viewport";
+import { LayoutControl, Workspace } from "../components/Workspace";
+import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader";
 import { COLORMAPS, SEQUENTIAL_NAMES } from "../colormaps/luts";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
@@ -46,9 +58,6 @@ function buildAxes(labels?: string[]): Axis[] {
     color: AXIS_COLORS[i],
   }));
 }
-const CMAPS = ["inferno", "magma", "viridis", "plasma", "turbo", "cividis"].filter(
-  (c) => c in COLORMAPS || SEQUENTIAL_NAMES.includes(c),
-);
 
 type SortKey = "q" | "width" | "intensity";
 const MAX_ROWS = 400; // cap rendered table rows; scatter + stats cover the full set
@@ -424,38 +433,59 @@ function PeakTable({
 // ---------------------------------------------------------------------------
 // Selected-peak detail — intensity slices + fit ellipses + readout
 // ---------------------------------------------------------------------------
-type Tile = TileAxes & { label: string; color: string; plane: string; xLabel: string; yLabel: string };
+type Tile = TileAxes & { id: string; label: string; color: string; plane: string; xLabel: string; yLabel: string; fixedLabel: string };
 const TILES: Tile[] = [
-  { label: "a*·b*", color: "#f1a73a", plane: "hk0", xa: 0, ya: 1, xLabel: "H", yLabel: "K" },
-  { label: "a*·c*", color: "#34c98e", plane: "h0l", xa: 0, ya: 2, xLabel: "H", yLabel: "L" },
-  { label: "b*·c*", color: "#74a8ff", plane: "0kl", xa: 1, ya: 2, xLabel: "K", yLabel: "L" },
+  { id: "hk0", label: "a*·b*", color: "#f1a73a", plane: "hk0", xa: 0, ya: 1, xLabel: "H", yLabel: "K", fixedLabel: "L" },
+  { id: "h0l", label: "a*·c*", color: "#34c98e", plane: "h0l", xa: 0, ya: 2, xLabel: "H", yLabel: "L", fixedLabel: "K" },
+  { id: "0kl", label: "b*·c*", color: "#74a8ff", plane: "0kl", xa: 1, ya: 2, xLabel: "K", yLabel: "L", fixedLabel: "H" },
 ];
+const TILE_IDS = TILES.map((t) => t.id);
 const NO_OFFSET: Hkl = [0, 0, 0];
+/** The coordinate a tile's plane holds fixed: the peak's third index. */
+const fixedValue = (c: Hkl, t: Tile) => c[3 - t.xa - t.ya];
+
+/** The three slices through a peak's centre, one per tile (pre-punch volume). */
+function usePeakSlices(volumeId: string | undefined, centre: Hkl | undefined) {
+  return useQueries({
+    queries: TILES.map((t) => {
+      const value = centre ? fixedValue(centre, t) : 0;
+      return {
+        queryKey: ["braggSlice", volumeId, t.plane, value],
+        queryFn: () => fetchSlice(volumeId as string, t.plane, value, true),
+        enabled: !!volumeId && !!centre,
+        staleTime: 5 * 60 * 1000,
+      };
+    }),
+  });
+}
 
 function SelectedPeak({
   peak,
   peaks,
   axes,
-  volumeId,
   meta,
-  colormap,
-  setColormap,
+  slices,
+  layout,
+  dispatchLayout,
+  lut,
+  levels,
+  scale,
+  soft,
 }: {
   peak: BraggPeakWidth;
   peaks: BraggPeakWidth[];
   axes: Axis[];
-  volumeId: string | undefined;
   meta: VolumeMeta | undefined;
-  colormap: string;
-  setColormap: (c: string) => void;
+  slices: { data?: Slice; isError: boolean; isFetching: boolean }[];
+  layout: LayoutState;
+  dispatchLayout: LayoutDispatch;
+  lut: Uint8ClampedArray;
+  levels: Levels;
+  scale: ScaleKind;
+  soft: number;
 }) {
-  // Brightness in stops (right is brighter), the same direction as the other viewer pages.
-  const [brightness, setBrightness] = useState(0);
-  const lut = COLORMAPS[colormap] ?? COLORMAPS.inferno;
   const centre = peak.center_hkl;
-  const [h, k, l] = centre;
   const gridlines = useDpdfStore((s) => s.gridlines);
-  const setGridlines = useDpdfStore((s) => s.setGridlines);
 
   // One linked view for the three tiles: the hkl point they centre on, as an
   // offset from the peak, and a zoom relative to the peak's fit window. Another
@@ -484,7 +514,7 @@ function SelectedPeak({
   };
   const floorEll = (xa: number, ya: number): Ellipse | null =>
     floorHkl[xa] != null && floorHkl[ya] != null ? { rx: floorHkl[xa]!, ry: floorHkl[ya]! } : null;
-  const fixed: Record<string, number> = { hk0: l, h0l: k, "0kl": h };
+  const r = (x: number) => (Math.abs(x - Math.round(x)) < 0.05 ? String(Math.round(x)) : x.toFixed(2));
 
   const glow = useGlow("bragg", "punch");
   return (
@@ -497,73 +527,56 @@ function SelectedPeak({
         |Q| {peak.q_abs.toFixed(3)} Å⁻¹ · I {peak.intensity != null ? Math.round(peak.intensity).toLocaleString() : "—"} · {peak.fit_kind || "fit"}
       </div>
 
-      <div className="bragg-view-row">
-        <ClickModeControl />
-        <Switch label="Unit cells" title={HKL_GRID_TITLE} checked={gridlines} onChange={setGridlines} />
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          title="Back to the window about the peak (double-click a tile, or 0)"
-          onClick={resetView}
-        >
-          Reset view
-        </button>
-      </div>
-      <div className="bragg-sliders">
-        <Slider
-          label="Brightness"
-          readout={`${brightness >= 0 ? "+" : "−"}${Math.abs(brightness).toFixed(1)}`}
-          min={-3}
-          max={3}
-          step={0.05}
-          value={brightness}
-          onChange={setBrightness}
-          grow
-        />
-      </div>
-
-      <div className="bragg-tiles">
-        {TILES.map((t) => (
-          <BraggPeakSlice
-            key={t.label}
-            volumeId={volumeId}
-            plane={t.plane}
-            value={fixed[t.plane]}
-            centre={[centre[t.xa], centre[t.ya]]}
-            viewport={tileViewport(centre, offset, half, t)}
-            onViewport={moveTile(t)}
-            onReset={resetView}
-            fit={tileViewport(centre, NO_OFFSET, fitHalf, t)}
-            bounds={ranges ? tileBounds(ranges, t) : undefined}
-            limit={limit}
-            cursor={cursor ? tileCursor(cursor, t) : null}
-            onCursor={(pt) => setCursor(pt ? cursorFromTile(centre, t, pt) : null)}
-            xLabel={t.xLabel}
-            yLabel={t.yLabel}
-            gridlines={gridlines}
-            lut={lut}
-            brightness={brightness}
-            fitted={fittedEllipse(peak, t.xa, t.ya)}
-            measured={ell(t.xa, t.ya, measuredHkl)}
-            floor={floorEll(t.xa, t.ya)}
-            axisLabel={t.label}
-            axisColor={t.color}
-          />
-        ))}
-      </div>
+      <Workspace
+        className="bragg-ws"
+        state={layout}
+        dispatch={dispatchLayout}
+        views={TILES.map((t, i) => {
+          const q = slices[i];
+          return {
+            id: t.id,
+            title: <span style={{ color: t.color }}>{t.label}</span>,
+            caption: `${t.fixedLabel} = ${r(fixedValue(centre, t))}`,
+            onResetView: resetView,
+            children: (
+              <>
+                <BraggPeakSlice
+                  slice={q?.data}
+                  failed={q?.isError}
+                  centre={[centre[t.xa], centre[t.ya]]}
+                  viewport={tileViewport(centre, offset, half, t)}
+                  onViewport={moveTile(t)}
+                  onReset={resetView}
+                  fit={tileViewport(centre, NO_OFFSET, fitHalf, t)}
+                  bounds={ranges ? tileBounds(ranges, t) : undefined}
+                  limit={limit}
+                  cursor={cursor ? tileCursor(cursor, t) : null}
+                  onCursor={(pt) => setCursor(pt ? cursorFromTile(centre, t, pt) : null)}
+                  xLabel={t.xLabel}
+                  yLabel={t.yLabel}
+                  gridlines={gridlines}
+                  lut={lut}
+                  levels={levels}
+                  scale={scale}
+                  soft={soft}
+                  fitted={fittedEllipse(peak, t.xa, t.ya)}
+                  measured={ell(t.xa, t.ya, measuredHkl)}
+                  floor={floorEll(t.xa, t.ya)}
+                />
+                {q?.isFetching && q.data && <span className="spin vf-spin" />}
+              </>
+            ),
+          };
+        })}
+      />
 
       <div className="bragg-leg-row">
         <span className="bragg-leg"><i className="bragg-ell-leg-fit" />fitted</span>
         <span className="bragg-leg"><i className="bragg-ell-leg-meas" />measured</span>
         <span className="bragg-leg"><i className="bragg-ell-leg-floor" />|Q|-floor</span>
-      </div>
-
-      <div className="bragg-cmap">
-        <span className="bragg-ctl-label">Colormap</span>
-        <select value={colormap} onChange={(e) => setColormap(e.target.value)}>
-          {CMAPS.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <ColormapBar lut={lut} />
+        <span className="bragg-leg bragg-hover">
+          {cursor ? `H ${cursor[0].toFixed(3)} · K ${cursor[1].toFixed(3)} · L ${cursor[2].toFixed(3)}` : ""}
+        </span>
       </div>
 
       <div className="bragg-readout">
@@ -590,6 +603,10 @@ export function BraggProfileViewer() {
   const datasetId = useDatasetStore((s) => s.datasetId);
   const colormap = useViewerStore((s) => s.colormap);
   const setColormap = useViewerStore((s) => s.setColormap);
+  const scale = useViewerStore((s) => s.braggScale);
+  const setScale = useViewerStore((s) => s.setBraggScale);
+  const relLevels = useViewerStore((s) => s.braggLevels);
+  const setRelLevels = useViewerStore((s) => s.setBraggLevels);
 
   const profileQ = useBraggProfile(datasetId ?? undefined);
   const dataset = datasets.find((d) => d.id === datasetId);
@@ -598,6 +615,7 @@ export function BraggProfileViewer() {
   const [selected, setSelected] = useState(0);
   const [sortKey, setSortKey] = useState<SortKey>("q");
   const [integerHklOnly, setIntegerHklOnly] = useState(true);
+  const [layout, dispatchLayout] = useWorkspaceLayout("bragg", TILE_IDS, { mode: "grid", primary: "hk0", lastMulti: "grid" });
 
   // Per-axis width frame: spherical (ρ, θ, φ) or reciprocal (a*, b*, c*).
   const axes = useMemo(() => buildAxes(profile?.width_labels), [profile?.width_labels]);
@@ -660,6 +678,30 @@ export function BraggProfileViewer() {
   // Keep selection in range when the dataset / profile changes.
   const selPeak = peaks[selected] ?? peaks[Math.floor(peaks.length / 2)];
 
+  // The tiles' one colour scale: Auto from the three fit windows about the
+  // peak (braggView.ts), the user's limits relative to it.
+  const slices = usePeakSlices(sliceVolumeId, selPeak?.center_hkl);
+  const fitHalf = selPeak ? peakFitHalf(selPeak.width_hkl) : 0;
+  const s0 = slices[0]?.data, s1 = slices[1]?.data, s2 = slices[2]?.data;
+  const centre = selPeak?.center_hkl;
+  const samples = useMemo(() => {
+    if (!centre || !s0 || !s1 || !s2) return null;
+    return [s0, s1, s2].map((sl, i) => fitWindowSamples(sl, centre[TILES[i].xa], centre[TILES[i].ya], fitHalf));
+  }, [centre, s0, s1, s2, fitHalf]);
+  const pooled = useMemo(() => (samples ? Float32Array.from(samples.flatMap((x) => Array.from(x))) : null), [samples]);
+  const autoHi = useMemo(
+    () => autoLevels(samples ?? [], { scale, percentile: BRAGG_AUTO_PERCENTILE }).hi,
+    [samples, scale],
+  );
+  const lv = useLevels({
+    samples,
+    histData: pooled,
+    scale,
+    percentile: BRAGG_AUTO_PERCENTILE,
+    manual: relLevels ? absoluteLevels(relLevels, autoHi) : null,
+  });
+  const lut = COLORMAPS[colormap] ?? COLORMAPS.inferno;
+
   const empty = (() => {
     if (datasetsQ.isLoading) return <EmptyState title="Loading datasets…" />;
     if (datasetsQ.isError) return <EmptyState error icon={<IconAlert />} title="Backend unreachable" hint="Start the API server and reload." />;
@@ -674,27 +716,37 @@ export function BraggProfileViewer() {
   })();
 
   return (
-    <div className="bragg-page">
-      <div className="bragg-card">
-        <div className="bragg-title-row">
-          <div className="bragg-chips">
-            {profile?.has_profile && (
-              <span className="bragg-toggle">
-                <Switch
-                  label="Integer HKL only"
-                  checked={integerHklOnly}
-                  onChange={(v) => { setIntegerHklOnly(v); setSelected(0); }}
-                />
-              </span>
-            )}
-            {profile?.has_profile && (
-              <span className="bragg-chip bragg-chip-fit">
-                <i /> {profile.fit_covariance ? "covariance fit" : "moment fit"}
-              </span>
-            )}
-          </div>
-        </div>
+    <div className="page-body qr-page bragg-page">
+      {/* ── Workspace header (shared order): click mode · unit cells │ peak filter ··· tile layout, then the display bar ── */}
+      <WorkspaceHeader
+        overlays={<UnitCellsSwitch kind="hkl" />}
+        nav={
+          <Switch
+            label="Integer HKL only"
+            title="Hide fractional-hkl entries (satellites, diffuse)"
+            checked={integerHklOnly}
+            disabled={!profile?.has_profile}
+            onChange={(v) => { setIntegerHklOnly(v); setSelected(0); }}
+          />
+        }
+        end={<LayoutControl state={layout} dispatch={dispatchLayout} />}
+        displays={[
+          {
+            colormap,
+            colormaps: SEQUENTIAL_NAMES,
+            onColormap: setColormap,
+            lut,
+            lv,
+            onLevels: (l) => setRelLevels(relativeLevels(l, autoHi)),
+            onAuto: () => setRelLevels(null),
+            scale,
+            onScale: setScale,
+            autoTitle: AUTO_TITLES.bragg,
+          },
+        ]}
+      />
 
+      <div className="bragg-card">
         {empty ?? (
           <>
             <div className="bragg-stats">
@@ -726,16 +778,27 @@ export function BraggProfileViewer() {
               </div>
             </div>
 
-            <div className="bragg-grid">
+            {/* the slices get the wide column: scatter and peak table on the left,
+                the selected peak and the width histograms on the right */}
+            <div className="bragg-main">
               <Scatter peaks={peaks} axes={axes} selected={selected} onSelect={setSelected} padFloorQ={padQ} />
-              <Histograms peaks={peaks} axes={axes} showMeasured />
-            </div>
-
-            <div className="bragg-grid">
-              <PeakTable peaks={peaks} axes={axes} order={order} selected={selected} sortKey={sortKey} onSort={setSortKey} onSelect={setSelected} />
               {selPeak && (
-                <SelectedPeak peak={selPeak} peaks={peaks} axes={axes} volumeId={sliceVolumeId} meta={meta.data} colormap={colormap} setColormap={setColormap} />
+                <SelectedPeak
+                  peak={selPeak}
+                  peaks={peaks}
+                  axes={axes}
+                  meta={meta.data}
+                  slices={slices}
+                  layout={layout}
+                  dispatchLayout={dispatchLayout}
+                  lut={lut}
+                  levels={lv.levels}
+                  scale={scale}
+                  soft={lv.soft}
+                />
               )}
+              <PeakTable peaks={peaks} axes={axes} order={order} selected={selected} sortKey={sortKey} onSort={setSortKey} onSelect={setSelected} />
+              <Histograms peaks={peaks} axes={axes} showMeasured />
             </div>
 
             <div className="bragg-meta">

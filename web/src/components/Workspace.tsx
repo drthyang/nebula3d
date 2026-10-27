@@ -9,11 +9,12 @@ import type { ReactNode } from "react";
 
 import type { LayoutMode, LayoutState } from "./layout";
 import type { LayoutDispatch } from "./useWorkspaceLayout";
+import { RESET_ZOOM_TITLE } from "./viewerText";
 
 export interface WorkspaceView {
   id: string;
   title: ReactNode;
-  badge: ReactNode;
+  badge?: ReactNode; // a short tag before the title (none: the title alone)
   badgeClass?: string;
   caption?: ReactNode;
   actions?: ReactNode; // extra header buttons, before the layout buttons
@@ -87,16 +88,18 @@ export function Workspace({
   state,
   dispatch,
   views,
+  className,
 }: {
   state: LayoutState;
   dispatch: LayoutDispatch;
   views: WorkspaceView[];
+  className?: string; // a page's own sizing (e.g. the Bragg peak's panel)
 }) {
   const ids = views.map((v) => v.id);
   const primary = ids.includes(state.primary) ? state.primary : ids[0];
   const { mode } = state;
   return (
-    <div className={`ws ws--${mode}`} data-n={views.length}>
+    <div className={`ws ws--${mode}${className ? ` ${className}` : ""}`} data-n={views.length}>
       {views.map((v) => {
         const isPrimary = v.id === primary;
         const thumb = mode === "focus" && !isPrimary;
@@ -128,13 +131,13 @@ export function Workspace({
                 if (!(e.target as HTMLElement).closest("button, input, select")) dispatch({ type: "max", id: v.id });
               }}
             >
-              <span className={`view-badge ${v.badgeClass ?? ""}`}>{v.badge}</span>
+              {v.badge != null && <span className={`view-badge ${v.badgeClass ?? ""}`}>{v.badge}</span>}
               <span className="view-title">{v.title}</span>
               <span className="view-caption">{v.caption}</span>
               <span className="view-actions">
                 {v.actions}
                 {v.onResetView && (
-                  <button type="button" className="icon-btn view-reset" title="Reset zoom (Shift+double-click the slice, or 0)" aria-label="Reset zoom" onClick={v.onResetView}>
+                  <button type="button" className="icon-btn view-reset" title={RESET_ZOOM_TITLE} aria-label="Reset zoom" onClick={v.onResetView}>
                     {ICONS.reset}
                   </button>
                 )}

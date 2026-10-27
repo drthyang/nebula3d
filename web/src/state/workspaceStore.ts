@@ -10,6 +10,9 @@
 // The box zoom is a one-shot tool, so no mode is remembered: a page always
 // opens in Navigate. Browsers that stored one of the old Navigate · Zoom · Move
 // modes have it dropped.
+//
+// On phones the header's display row folds behind a toggle (WorkspaceHeader);
+// whether it is open is one setting for every page, remembered per browser.
 
 import { create } from "zustand";
 
@@ -28,12 +31,35 @@ export function initialClickMode(): ClickMode {
   return "navigate";
 }
 
+/** Where the phone header's display row remembers being open ("1") or closed. */
+export const DISPLAY_OPEN_KEY = "nebula3d.displayRowOpen";
+
+/** Whether the phone display row opens unfolded: closed unless this browser left it open. */
+export function initialDisplayOpen(): boolean {
+  try {
+    return localStorage.getItem(DISPLAY_OPEN_KEY) === "1";
+  } catch {
+    return false; // storage unavailable
+  }
+}
+
 interface WorkspaceState {
   clickMode: ClickMode;
   setClickMode: (m: ClickMode) => void;
+  displayOpen: boolean;
+  setDisplayOpen: (open: boolean) => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   clickMode: initialClickMode(),
   setClickMode: (clickMode) => set({ clickMode }),
+  displayOpen: initialDisplayOpen(),
+  setDisplayOpen: (displayOpen) => {
+    try {
+      localStorage.setItem(DISPLAY_OPEN_KEY, displayOpen ? "1" : "0");
+    } catch {
+      /* storage unavailable: open for this visit only */
+    }
+    set({ displayOpen });
+  },
 }));

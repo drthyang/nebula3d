@@ -69,9 +69,6 @@ export function UnitCellGrid({ half, viewport, latX, latY, angle = 90 }: Props) 
   );
 }
 
-/** The tooltip of the "Unit cells" switch on the reciprocal-space views. */
-export const HKL_GRID_TITLE = "Dashed lines at integer h, k, l (r.l.u.); one setting with the real-space unit cells";
-
 /**
  * Dashed lines at integer h, k, l on an r.l.u. slice view (the "Unit cells"
  * switch on the reciprocal-space views): one r.l.u. apart along each displayed

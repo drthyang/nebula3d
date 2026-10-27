@@ -7,8 +7,14 @@ import { describe, expect, it } from "vitest";
 
 import type { BraggPeakWidth } from "../../api/types";
 import {
+  absoluteLevels,
+  BRAGG_AUTO_PERCENTILE,
   cursorFromTile,
   ellipseInView,
+  FIT_WINDOW_SAMPLES,
+  fitWindowSamples,
+  nearestIndex,
+  relativeLevels,
   fittedEllipse,
   linkFromTile,
   PEAK_ZOOM_OUT,
@@ -20,6 +26,7 @@ import {
   type Hkl,
   type TileAxes,
 } from "../braggView";
+import { autoLevels } from "../colorScale";
 import { pixelToDisplay, zoomAbout, panBy, type Viewport } from "../viewport";
 
 const AB: TileAxes = { xa: 0, ya: 1 };
@@ -197,5 +204,51 @@ describe("the fit ellipses stay registered to the data", () => {
 
   it("falls back to the fitted widths when the principal axes are missing", () => {
     expect(fittedEllipse(peak(), 0, 2)).toEqual({ rx: 0.03, ry: 0.04 });
+  });
+});
+
+describe("the tiles' one colour scale", () => {
+  // A synthetic slice: a Gaussian peak on a flat background over ±1 r.l.u.
+  const n = 81, step = 0.025;
+  const axis = Array.from({ length: n }, (_, i) => -1 + i * step);
+  const data = new Float32Array(n * n);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const x = axis[i] - 0.1, y = axis[j] + 0.05;
+    data[j * n + i] = 0.5 + 100 * Math.exp(-(x * x + y * y) / (2 * 0.04 ** 2));
+  }
+  const slice = { header: { nx: n, x_axis: axis, y_axis: axis }, data };
+
+  it("samples the fit window about the peak, and none of it outside the data", () => {
+    const s = fitWindowSamples(slice, 0.1, -0.05, 0.2);
+    expect(s.length).toBe(FIT_WINDOW_SAMPLES * FIT_WINDOW_SAMPLES);
+    expect(Math.max(...s)).toBeCloseTo(100.5, 0);
+    // a window half off the data keeps only the samples on it
+    const edge = fitWindowSamples(slice, 1, 0, 0.2);
+    expect(edge.length).toBeLessThan(FIT_WINDOW_SAMPLES * FIT_WINDOW_SAMPLES * 0.55);
+    expect(edge.length).toBeGreaterThan(0);
+  });
+
+  it("puts Auto's vmax where each tile's own limit was: the 99th percentile of the window's positive values", () => {
+    const s = fitWindowSamples(slice, 0.1, -0.05, 0.2);
+    const pos = Array.from(s).filter((v) => v > 0).sort((a, b) => a - b);
+    const oldRule = pos[Math.min(pos.length - 1, Math.floor(pos.length * 0.99))];
+    expect(autoLevels([s], { percentile: BRAGG_AUTO_PERCENTILE }).hi).toBe(oldRule);
+  });
+
+  it("keeps the limits relative to Auto, so Brightness carries from peak to peak", () => {
+    const autoA = 80, autoB = 8; // a strong and a weak peak
+    const brighter = { lo: 0, hi: autoA / 2 }; // one stop brighter on peak A
+    const rel = relativeLevels(brighter, autoA);
+    const onB = absoluteLevels(rel, autoB);
+    expect(onB.hi).toBeCloseTo(autoB / 2, 12); // still one stop brighter on B
+    expect(onB.lo).toBe(0);
+    expect(absoluteLevels(relativeLevels({ lo: 3, hi: 50 }, autoA), autoA)).toEqual({ lo: 3, hi: 50 });
+  });
+
+  it("finds the nearest sample on ascending and descending axes, and none outside", () => {
+    expect(nearestIndex([0, 1, 2, 3], 1.4)).toBe(1);
+    expect(nearestIndex([3, 2, 1, 0], 1.4)).toBe(2);
+    expect(nearestIndex([0, 1, 2, 3], 3.01)).toBe(-1);
+    expect(nearestIndex([0, 1, 2, 3], -0.01)).toBe(-1);
   });
 });

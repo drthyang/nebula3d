@@ -214,10 +214,11 @@ export function Switch({
   );
 }
 
-// A small "?" help icon that reveals a description bubble on hover / focus.
-export function HelpTip({ children }: { children: ReactNode }) {
+// A small "?" help icon that reveals a description bubble on hover / focus;
+// `below` opens it under the icon (for controls near the top of the page).
+export function HelpTip({ children, placement = "above" }: { children: ReactNode; placement?: "above" | "below" }) {
   return (
-    <span className="helptip" tabIndex={0}>
+    <span className={`helptip${placement === "below" ? " helptip--below" : ""}`} tabIndex={0}>
       <span className="helptip-icon" aria-hidden="true">
         ?
       </span>
@@ -231,14 +232,16 @@ export function HelpTip({ children }: { children: ReactNode }) {
 export function Segmented({
   options,
   value,
+  label,
   onChange,
 }: {
   options: readonly string[];
   value: string;
+  label?: string; // the group's name, also its tooltip
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="segmented" role="group">
+    <div className="segmented" role="group" aria-label={label} title={label}>
       {options.map((o) => (
         <button
           key={o}

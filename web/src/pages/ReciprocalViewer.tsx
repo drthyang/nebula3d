@@ -12,13 +12,6 @@ import { useDatasets, useMeta } from "../api/hooks";
 import type { Slice } from "../api/types";
 import { COLORMAPS, SEQUENTIAL_NAMES } from "../colormaps/luts";
 import { autoLevels, fmtLevel, type AutoLevels, type ScaleKind } from "../components/colorScale";
-import {
-  AutoButton,
-  BrightnessKnob,
-  ClickModeControl,
-  LevelsBar,
-  ScaleControl,
-} from "../components/DisplayBar";
 import { SliceCanvas } from "../components/SliceCanvas";
 import {
   EmptyState,
@@ -26,14 +19,14 @@ import {
   MetaStrip,
   Segmented,
   Slider,
-  Switch,
 } from "../components/ui";
-import { HKL_GRID_TITLE, HklGrid } from "../components/UnitCellGrid";
+import { HklGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
 import { clampHalf, extentBounds, fitViewport, sampleIndex, type SliceGeom } from "../components/viewport";
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
+import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader";
 import {
   AXIS_INDEX,
   AXIS_TO_PLANE,
@@ -89,7 +82,6 @@ export function ReciprocalViewer() {
   const setColormap = useViewerStore((s) => s.setColormap);
   // "Unit cells" is one setting across the pages: here the lines of integer h, k, l.
   const gridlines = useDpdfStore((s) => s.gridlines);
-  const setGridlines = useDpdfStore((s) => s.setGridlines);
   const [cursor, setCursor] = useState<[number, number] | null>(null);
 
   const dataset = datasets.find((d) => d.id === datasetId);
@@ -241,49 +233,48 @@ export function ReciprocalViewer() {
         <span className="qr-desc">Each stage strips one artifact, leaving the diffuse signal</span>
       </div>
 
-      {/* ── Workspace header: click mode · unit cells · plane · cut · layout, then the display bar ── */}
-      <div className="ws-head">
-        <div className="ws-row">
-          <ClickModeControl />
-          <Switch label="Unit cells" title={HKL_GRID_TITLE} checked={gridlines} onChange={setGridlines} />
-          <span className="ws-sep" />
-          <Segmented options={AXES} value={fixedAxis} onChange={(x) => setFixedAxis(x as FixedAxis)} />
-          <div className="ws-cut">
-            <Slider
-              grow
-              label={`Cut along ${fixedAxis}`}
-              readout={axisInfo ? undefined : "—"}
-              valueInput={
-                axisInfo
-                  ? { value, prefix: `${fixedAxis} =`, suffix: "r.l.u.", onCommit: commitCut }
-                  : undefined
-              }
-              min={0}
-              max={axisInfo ? axisInfo.n - 1 : 0}
-              value={idx}
-              disabled={!axisInfo}
-              onChange={setCutIndex}
-            />
-          </div>
-          <span className="ws-spacer" />
-          <LayoutControl state={layout} dispatch={dispatchLayout} />
-        </div>
-        <div className="ws-row ws-display">
-          <select aria-label="Colormap" value={colormap} onChange={(e) => setColormap(e.target.value)}>
-            {SEQUENTIAL_NAMES.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <div className={perPanel ? "ws-dim" : undefined}>
-            <LevelsBar lut={lut} levels={lv.levels} domain={lv.domain} hist={lv.hist} scale={scale} onChange={setLevels} />
-          </div>
-          <ScaleControl value={scale} onChange={setScale} />
-          <AutoButton active={lv.isAuto} onClick={() => setManual(null)} />
-          <div className={perPanel ? "ws-dim" : undefined}>
-            <BrightnessKnob autoHi={lv.auto.hi} hi={lv.levels.hi} onChange={(hi) => setLevels({ lo: lv.levels.lo, hi })} />
-          </div>
-          <span className="ws-spacer" />
-          <label className="ws-field">
+      {/* ── Workspace header (shared order): click mode · unit cells │ plane · cut ··· layout, then the display bar ── */}
+      <WorkspaceHeader
+        overlays={<UnitCellsSwitch kind="hkl" />}
+        nav={
+          <>
+            <Segmented label="Cut axis" options={AXES} value={fixedAxis} onChange={(x) => setFixedAxis(x as FixedAxis)} />
+            <div className="ws-cut">
+              <Slider
+                grow
+                label={`Cut ${fixedAxis}`}
+                readout={axisInfo ? undefined : "—"}
+                valueInput={
+                  axisInfo
+                    ? { value, prefix: `${fixedAxis} =`, suffix: "r.l.u.", onCommit: commitCut }
+                    : undefined
+                }
+                min={0}
+                max={axisInfo ? axisInfo.n - 1 : 0}
+                value={idx}
+                disabled={!axisInfo}
+                onChange={setCutIndex}
+              />
+            </div>
+          </>
+        }
+        end={<LayoutControl state={layout} dispatch={dispatchLayout} />}
+        displays={[
+          {
+            colormap,
+            colormaps: SEQUENTIAL_NAMES,
+            onColormap: setColormap,
+            lut,
+            lv,
+            onLevels: setLevels,
+            onAuto: () => setManual(null),
+            scale,
+            onScale: setScale,
+            dimRange: perPanel,
+          },
+        ]}
+        displayEnd={
+          <label className="ws-field" title="The stage whose centre cut sets the shared colour range">
             <span className="field-label">Scale from</span>
             <select value={perPanel ? "panel" : stageIds[refIdx] ?? scaleRef} onChange={(e) => setScaleRef(e.target.value)}>
               {stages.map((s) => (
@@ -292,8 +283,8 @@ export function ReciprocalViewer() {
               <option value="panel">Each view</option>
             </select>
           </label>
-        </div>
-      </div>
+        }
+      />
 
       {datasetsQ.isLoading && <EmptyState title="Loading datasets…" />}
       {datasetsQ.isError && (

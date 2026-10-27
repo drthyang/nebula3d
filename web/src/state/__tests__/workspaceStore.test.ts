@@ -49,3 +49,35 @@ describe("click mode", () => {
     expect(again.useWorkspaceStore.getState().clickMode).toBe("navigate");
   });
 });
+
+describe("the phone header's display row", () => {
+  beforeEach(() => vi.stubGlobal("localStorage", memoryStorage()));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("opens folded by default", async () => {
+    const { useWorkspaceStore } = await freshStore();
+    expect(useWorkspaceStore.getState().displayOpen).toBe(false);
+  });
+
+  it("is remembered per browser, open or closed", async () => {
+    const { useWorkspaceStore, DISPLAY_OPEN_KEY } = await freshStore();
+    useWorkspaceStore.getState().setDisplayOpen(true);
+    expect(localStorage.getItem(DISPLAY_OPEN_KEY)).toBe("1");
+    expect((await freshStore()).useWorkspaceStore.getState().displayOpen).toBe(true);
+    (await freshStore()).useWorkspaceStore.getState().setDisplayOpen(false);
+    expect((await freshStore()).useWorkspaceStore.getState().displayOpen).toBe(false);
+  });
+
+  it("still toggles, folded at first, without storage", async () => {
+    const throwing = {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+      removeItem: () => { throw new Error("blocked"); },
+    };
+    vi.stubGlobal("localStorage", throwing);
+    const { useWorkspaceStore } = await freshStore();
+    expect(useWorkspaceStore.getState().displayOpen).toBe(false);
+    useWorkspaceStore.getState().setDisplayOpen(true);
+    expect(useWorkspaceStore.getState().displayOpen).toBe(true);
+  });
+});

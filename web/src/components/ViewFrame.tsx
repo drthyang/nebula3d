@@ -386,6 +386,39 @@ function fmtHalf(h: number): string {
   return h >= 100 ? h.toFixed(0) : h >= 1 ? h.toFixed(1) : h.toPrecision(2);
 }
 
+// The overlay's labels sit on small dark plates, like the field-of-view chip,
+// so they read the same over a light colormap (RdBu_r's white) as over a dark
+// one; an outline round the glyphs instead turned "−20" into "=20" on white.
+const LABEL_CH = 6.1; // px per character of the overlay's 10 px monospace (0.6 em)
+const LABEL_H = 14;
+
+/** A tick or axis label on its plate, centred vertically on y. */
+function Label({ x, y, text, anchor = "start", className }: { x: number; y: number; text: string; anchor?: "start" | "middle" | "end"; className?: string }) {
+  const w = text.length * LABEL_CH + 6;
+  const x0 = anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w + 3 : x - 3;
+  return (
+    <g className={className}>
+      <rect className="vf-label-bg" x={x0} y={y - LABEL_H / 2} width={w} height={LABEL_H} rx={3} />
+      <text x={x} y={y} textAnchor={anchor} dominantBaseline="central">
+        {text}
+      </text>
+    </g>
+  );
+}
+
+/** A tick mark: white over a thin dark line, so it shows on white and on black. */
+function Tick({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
+  return (
+    <>
+      <line className="vf-tick-under" x1={x1} y1={y1} x2={x2} y2={y2} />
+      <line className="vf-tick" x1={x1} y1={y1} x2={x2} y2={y2} />
+    </>
+  );
+}
+
+/** A tick value, with a true minus sign. */
+const tickText = (t: number, step: number) => (Math.abs(t) < step * 1e-6 ? "0" : String(Number(t.toPrecision(4))).replace(/^-/, "−"));
+
 function Overlay({
   viewport: v,
   w,
@@ -414,23 +447,24 @@ function Overlay({
     const step = niceStep(hi - lo, Math.max(3, Math.round(len / (small ? 70 : 90))));
     for (let t = Math.ceil(lo / step) * step; t <= hi + step * 1e-6; t += step) {
       const f = (t * s - (c - half)) / (2 * half);
-      const label = Math.abs(t) < step * 1e-6 ? "0" : String(Number(t.toPrecision(4)));
+      const label = tickText(t, step);
       if (axis === "x") {
         const X = f * w;
         if (X < 14 || X > w - 14) continue;
         ticks.push(
           <g key={`x${t}`}>
-            <line x1={X} x2={X} y1={h} y2={h - 5} />
-            <text x={X} y={h - 8} textAnchor="middle">{label}</text>
+            <Tick x1={X} y1={h} x2={X} y2={h - 5} />
+            <Label x={X} y={h - 13} text={label} anchor="middle" />
           </g>,
         );
       } else {
         const Y = (1 - f) * h;
-        if (Y < 20 || Y > h - 20) continue;
+        // clear of the x labels' row along the bottom and the axis name at the top
+        if (Y < (small ? 12 : 26) || Y > h - 28) continue;
         ticks.push(
           <g key={`y${t}`}>
-            <line x1={0} x2={5} y1={Y} y2={Y} />
-            <text x={8} y={Y} dy="0.35em">{label}</text>
+            <Tick x1={0} y1={Y} x2={5} y2={Y} />
+            <Label x={9} y={Y} text={label} />
           </g>,
         );
       }
@@ -453,10 +487,8 @@ function Overlay({
       <g className="vf-ticks">{ticks}</g>
       {!small && (
         <>
-          <text className="vf-axis" x={w - 6} y={h - 21} textAnchor="end">
-            {axes.xLabel} ({axes.unit})
-          </text>
-          <text className="vf-axis" x={8} y={14}>{axes.yLabel}</text>
+          <Label className="vf-axis" x={w - 6} y={h - 30} text={`${axes.xLabel} (${axes.unit})`} anchor="end" />
+          <Label className="vf-axis" x={9} y={11} text={axes.yLabel} />
         </>
       )}
       {cross}

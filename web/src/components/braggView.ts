@@ -132,3 +132,63 @@ export function fittedEllipse(peak: BraggPeakWidth, ix: number, iy: number): Ell
   }
   return { rx: Math.abs(peak.width_hkl[ix]), ry: Math.abs(peak.width_hkl[iy]) };
 }
+
+// ---------------------------------------------------------------------------
+// The tiles' one colour scale (the shared DisplayBar): Auto from the fit
+// windows about the peak, not the views, so the colours hold still while the
+// tiles zoom and pan; vmax at the 99th percentile, the rule each tile used on
+// its own before.  The limits the user sets are kept relative to that Auto, so
+// Brightness carries from peak to peak as the old slider did.
+// ---------------------------------------------------------------------------
+
+/** Where Bragg's Auto puts vmax. */
+export const BRAGG_AUTO_PERCENTILE = 0.99;
+/** Samples per side of a fit window, for Auto and the colour bar's histogram. */
+export const FIT_WINDOW_SAMPLES = 70;
+
+/**
+ * Nearest sample index along an axis, or -1 outside its range (so a zoomed-out
+ * window renders "no data" there instead of smearing the edge voxel).
+ * Ascending or descending axes.
+ */
+export function nearestIndex(axis: readonly number[], v: number): number {
+  const n = axis.length;
+  if (n < 2) return 0;
+  const lo = Math.min(axis[0], axis[n - 1]);
+  const hi = Math.max(axis[0], axis[n - 1]);
+  if (v < lo || v > hi) return -1;
+  const t = ((v - axis[0]) / (axis[n - 1] - axis[0])) * (n - 1);
+  return Math.max(0, Math.min(n - 1, Math.round(t)));
+}
+
+/** A slice's values on an n×n grid over the square window ±half about (cx, cy), outside the data left out. */
+export function fitWindowSamples(
+  slice: { header: { nx: number; x_axis: number[]; y_axis: number[] }; data: ArrayLike<number> },
+  cx: number,
+  cy: number,
+  half: number,
+  n = FIT_WINDOW_SAMPLES,
+): Float32Array {
+  const { nx, x_axis: xs, y_axis: ys } = slice.header;
+  const ixs: number[] = [];
+  for (let i = 0; i < n; i++) ixs.push(nearestIndex(xs, cx - half + ((i + 0.5) / n) * 2 * half));
+  const out: number[] = [];
+  for (let j = 0; j < n; j++) {
+    const iy = nearestIndex(ys, cy - half + ((j + 0.5) / n) * 2 * half);
+    if (iy < 0) continue;
+    for (const ix of ixs) if (ix >= 0) out.push(slice.data[iy * nx + ix]);
+  }
+  return Float32Array.from(out);
+}
+
+/** Colour limits as fractions of Auto's vmax (what the Bragg page keeps). */
+export function relativeLevels(l: { lo: number; hi: number }, autoHi: number): { lo: number; hi: number } {
+  const a = autoHi > 0 ? autoHi : 1;
+  return { lo: l.lo / a, hi: l.hi / a };
+}
+
+/** Relative limits back to data units on a peak whose Auto vmax is `autoHi`. */
+export function absoluteLevels(r: { lo: number; hi: number }, autoHi: number): { lo: number; hi: number } {
+  const a = autoHi > 0 ? autoHi : 1;
+  return { lo: r.lo * a, hi: r.hi * a };
+}

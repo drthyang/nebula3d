@@ -944,11 +944,23 @@ input[type="range"]::-moz-range-track {
    multi-volume grid
    --------------------------------------------------------------------------- */
 
+/* files × planes over the full width of the page; the labels' column is narrow */
 .multi-grid {
   display: grid;
+  grid-template-columns: 64px repeat(3, minmax(0, 1fr));
   gap: 10px;
   align-items: center;
-  max-width: 860px;
+}
+@container main (max-width: 560px) {
+  .multi-grid {
+    grid-template-columns: 52px repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .multi-grid .temp-badge {
+    padding: 3px 6px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
 }
 .multi-grid .col-head {
   text-align: center;
@@ -1005,7 +1017,7 @@ input[type="range"]::-moz-range-track {
    design_handoff_bragg_profile_Bragg/).  Axis colours: a* (H) #f1a73a,
    b* (K) #74a8ff, c* (L) #34c98e.  (Star-slash inside a comment ends it.)
    --------------------------------------------------------------------------- */
-.bragg-page { display: flex; min-width: 0; }
+.bragg-page { min-width: 0; }
 .bragg-card {
   flex: 1;
   min-width: 0;
@@ -1018,31 +1030,6 @@ input[type="range"]::-moz-range-track {
   flex-direction: column;
   gap: 14px;
 }
-
-/* title row → just the chips (the page header carries the title) */
-.bragg-title-row { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
-.bragg-chips { display: flex; align-items: center; gap: 10px; flex: none; }
-.bragg-toggle { display: inline-flex; align-items: center; font-size: 12px; }
-.bragg-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  background: #11161d;
-  border: 1px solid #2a323d;
-  border-radius: 7px;
-  padding: 6px 11px;
-}
-.bragg-chip-key { font: 600 9px/1 system-ui; letter-spacing: 0.07em; text-transform: uppercase; color: #6c7686; }
-.bragg-chip-select select {
-  background: transparent;
-  border: none;
-  color: #e8ebf0;
-  font: 600 12px ui-monospace, monospace;
-  cursor: pointer;
-  outline: none;
-}
-.bragg-chip-fit { color: #5a8f72; border-color: #20402f; font: 600 12px system-ui; }
-.bragg-chip-fit i { width: 7px; height: 7px; border-radius: 50%; background: #34c98e; }
 
 /* stat strip */
 .bragg-stats {
@@ -1067,8 +1054,28 @@ input[type="range"]::-moz-range-track {
 .bragg-stat-med span { font: 700 9px/1 system-ui; margin-right: 3px; }
 
 /* shared panels */
-.bragg-grid { display: grid; grid-template-columns: 1.62fr 1fr; gap: 12px; align-items: stretch; }
-@container main (max-width: 860px) { .bragg-grid { grid-template-columns: 1fr; } }
+/* The dashboard under the shared header: scatter and peak table on the left,
+   the selected peak's slices (the wide column) and the width histograms on the
+   right; one column, slices second, when the page is narrow. */
+.bragg-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  grid-template-areas:
+    "scatter detail"
+    "table hist";
+  gap: 12px;
+  align-items: stretch;
+}
+.bragg-main > .bragg-scatter { grid-area: scatter; }
+.bragg-main > .bragg-detail { grid-area: detail; }
+.bragg-main > .bragg-table { grid-area: table; }
+.bragg-main > .bragg-hist { grid-area: hist; }
+@container main (max-width: 860px) {
+  .bragg-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "scatter" "detail" "table" "hist";
+  }
+}
 .bragg-panel {
   background: #15191f;
   border: 1px solid #252c36;
@@ -1115,11 +1122,11 @@ input[type="range"]::-moz-range-track {
 
 /* histograms */
 .bragg-hist { gap: 11px; }
-.bragg-hist-row { display: flex; flex-direction: column; gap: 5px; }
+.bragg-hist-row { display: flex; flex-direction: column; gap: 5px; flex: 1; }
 .bragg-hist-label { display: flex; align-items: baseline; justify-content: space-between; }
 .bragg-hist-label > span:first-child { font: 700 11px system-ui; }
 .bragg-hist-med { font: 500 10px ui-monospace, monospace; color: #7e8a9c; }
-.bragg-bars { position: relative; height: 54px; display: flex; align-items: flex-end; gap: 1.5px; border-bottom: 1px solid #2a323d; }
+.bragg-bars { position: relative; flex: 1; min-height: 54px; display: flex; align-items: flex-end; gap: 1.5px; border-bottom: 1px solid #2a323d; }
 .bragg-bar { flex: 1; min-height: 1px; border-radius: 1px 1px 0 0; }
 .bragg-bar-fit { position: absolute; top: 0; bottom: 0; width: 1.5px; background: rgba(232, 235, 240, 0.55); transform: translateX(-50%); }
 .bragg-bar-meas { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px dashed #8b94a3; transform: translateX(-50%); }
@@ -1150,30 +1157,26 @@ input[type="range"]::-moz-range-track {
 .bragg-detail { gap: 11px; }
 .bragg-sel-hkl { font: 600 12px ui-monospace, monospace; color: #cfe0ff; }
 .bragg-sel-meta { font: 500 11px ui-monospace, monospace; color: #8b94a3; margin-top: -6px; }
-.bragg-view-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
-.bragg-sliders { display: flex; gap: 16px; align-items: flex-end; }
-.bragg-sliders > * { flex: 1; min-width: 0; }
-.bragg-cmap { display: flex; align-items: center; gap: 10px; }
-.bragg-ctl-label { font: 600 9px system-ui; letter-spacing: 0.07em; text-transform: uppercase; color: #6c7686; flex: none; }
 
-.bragg-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.bragg-tile { display: flex; flex-direction: column; gap: 5px; }
-.bragg-tile-canvas { position: relative; aspect-ratio: 1; border: 1px solid #252c36; border-radius: 7px; overflow: hidden; background: #000004; }
-.bragg-tile-canvas canvas { width: 100%; height: 100%; display: block; image-rendering: auto; }
-.bragg-tile-canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.bragg-tile-empty { display: flex; align-items: center; justify-content: center; color: #56627a; font: 500 10px system-ui; }
-.bragg-tile-label { font: 600 10px system-ui; text-align: center; }
+/* The three slices: a workspace (grid · focus with thumbnails · single, as on
+   the other viewer pages) sized to the panel instead of the window. */
+.bragg-ws { gap: 8px; }
+.bragg-ws.ws--focus { height: auto; aspect-ratio: 3 / 2; }
+.bragg-ws.ws--single { height: auto; aspect-ratio: 1 / 1; max-height: calc(100dvh - 160px); }
+.bragg-ws .view { background: #0d1014; border-color: #252c36; }
+.bragg-ws .view-head { border-bottom-color: #232a33; }
+.bragg-ws .view-badge { font-size: 9px; }
+.bragg-raster { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: #000004; }
+.bragg-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .bragg-cross { stroke: rgba(255, 255, 255, 0.25); stroke-width: 1; }
 .bragg-ell-fit { fill: none; stroke: #7fd4ff; stroke-width: 2.2; }
 .bragg-ell-meas { fill: none; stroke: rgba(255, 255, 255, 0.85); stroke-width: 1.6; stroke-dasharray: 5 4; }
 .bragg-ell-floor { fill: none; stroke: rgba(205, 212, 223, 0.55); stroke-width: 1.4; stroke-dasharray: 4 4; }
-.bragg-leg-row { display: flex; gap: 12px; }
+.bragg-leg-row { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.bragg-hover { margin-left: auto; font-family: ui-monospace, monospace; color: #a8b1bf; }
 .bragg-ell-leg-fit { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 2.2px solid #7fd4ff; }
 .bragg-ell-leg-meas { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 1.6px dashed #fff; }
 .bragg-ell-leg-floor { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 1.4px dashed #cdd4df; }
-
-.bragg-cmap select { background: #1b2027; border: 1px solid #333d4a; border-radius: 7px; color: #e8ebf0; font: 500 11px system-ui; padding: 5px 9px; cursor: pointer; }
-.bragg-cmap .cmap-bar { flex: 1; min-width: 0; height: 14px; border-radius: 4px; display: block; }
 
 .bragg-readout { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 6px 12px; align-items: center; padding-top: 8px; border-top: 1px solid #232a33; }
 .bragg-readout > span { font: 600 11px ui-monospace, monospace; color: #cdd4df; text-align: right; }
@@ -1496,6 +1499,26 @@ input[type="range"]::-moz-range-track {
 .helptip:focus .helptip-bubble {
   opacity: 1;
   visibility: visible;
+}
+/* opening downwards, for a control near the top of the scrolling page */
+.helptip--below .helptip-bubble {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+.helptip--below .helptip-bubble::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--border-strong);
+}
+/* one gesture or fact per line */
+.helptip-line {
+  display: block;
+}
+/* the click modes' "?": the gestures, each on one line */
+.click-mode .helptip-bubble {
+  width: 300px;
+  max-width: min(300px, calc(100vw - 48px));
 }
 /* Configure help icons sit at the right edge of stage heads and control rows;
    open their bubbles leftward (anchored to the icon's right edge) so they stay
@@ -5022,10 +5045,6 @@ h6.md-h {
     padding: 14px;
     border-radius: 12px;
   }
-  .bragg-title-row {
-    justify-content: flex-start;
-  }
-  .bragg-chips,
   .bragg-panel-head,
   .bragg-legend {
     flex-wrap: wrap;
@@ -5108,8 +5127,57 @@ h6.md-h {
    The :is() carries (0,1,1) specificity, so it also beats the per-component
    `.x select` sizes declared earlier. */
 @media (max-width: 599px), (max-width: 1099px) and (max-height: 500px) {
+  /* the header's display row folds behind a toggle at the end of row 1
+     (WorkspaceHeader); closed, the toggle sums each bar up: swatch + scale.
+     `.ws-head` lifts these over the base rules, which come later in the file. */
+  .ws-head .ws-display-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    min-height: 36px;
+    padding: 4px 10px;
+    font: 600 13px var(--font-mono);
+    color: var(--text-2);
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .ws-head .ws-display-toggle:hover,
+  .ws-head .ws-display-toggle.open {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .ws-display-sum {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ws-display-sum .cmap-bar {
+    width: 36px;
+    height: 10px;
+    border-radius: 3px;
+    flex: none;
+  }
+  .ws-display-chevron {
+    flex: none;
+    transition: transform 120ms ease;
+  }
+  .ws-display-toggle.open .ws-display-chevron {
+    transform: rotate(180deg);
+  }
+  .ws-head .ws-display--folded {
+    display: none;
+  }
   :is(input[type="number"], input[type="text"], select, textarea) {
     font-size: 16px;
+  }
+  /* the colour limits keep "±2.32e+3" whole at that size */
+  .levels-bar .lv-num {
+    width: 100px;
+    padding-left: 6px;
+    padding-right: 6px;
   }
   .readout-edit input.value-input,
   .readout-edits .readout-edit input.value-input {
@@ -5231,6 +5299,11 @@ h6.md-h {
   padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
 }
+/* The display row's toggle: phones only (see "Phones" under Device layouts),
+   where the row folds behind it.  Elsewhere the row is always shown. */
+.ws-display-toggle {
+  display: none;
+}
 .ws-sep {
   width: 1px;
   height: 22px;
@@ -5243,6 +5316,18 @@ h6.md-h {
 .ws-cut {
   flex: 1 1 280px;
   min-width: 200px;
+}
+/* several cuts in one header (the multi-volume page): one group that wraps */
+.ws-cuts {
+  flex: 1 1 520px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.ws-cut--sm {
+  flex: 1 1 150px;
+  min-width: 140px;
 }
 .ws-group,
 .ws-field {
@@ -5601,18 +5686,24 @@ h6.md-h {
   pointer-events: none;
   overflow: visible;
 }
-.vf-ticks line {
-  stroke: rgba(255, 255, 255, 0.7);
+/* ticks and labels read on light and dark colormaps alike: white marks over a
+   thin dark line, labels on small dark plates (no outline round the glyphs) */
+.vf-ticks line.vf-tick {
+  stroke: rgba(255, 255, 255, 0.9);
   stroke-width: 1;
 }
-.vf-overlay text {
-  fill: #fff;
-  font: 10px var(--font-mono);
-  paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.75);
-  stroke-width: 2.5px;
+.vf-ticks line.vf-tick-under {
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 3;
 }
-.vf-overlay text.vf-axis {
+.vf-label-bg {
+  fill: rgba(11, 13, 16, 0.72);
+}
+.vf-overlay text {
+  fill: #e8ebf0;
+  font: 10px var(--font-mono);
+}
+.vf-overlay .vf-axis text {
   font-weight: 700;
   fill: var(--accent-hi);
 }
@@ -5906,6 +5997,8 @@ h6.md-h {
   .ws--focus[data-n],
   .ws--single[data-n] {
     height: auto;
+    aspect-ratio: auto;
+    max-height: none;
     grid-template: none / minmax(0, 1fr);
   }
   .ws > .view {
@@ -5930,6 +6023,24 @@ h6.md-h {
   }
   .lv-track {
     width: 130px;
+  }
+  /* header rows wrap here: a separator would start or end a line */
+  .ws-head .ws-sep {
+    display: none;
+  }
+  /* the colour range takes a line of its own and fits it: the bar gives way */
+  .ws-range {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .ws-range .levels-bar {
+    display: flex;
+    width: 100%;
+  }
+  .ws-range .lv-track {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 64px;
   }
 }
 
