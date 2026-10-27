@@ -5638,18 +5638,24 @@ h6.md-h {
   pointer-events: none;
   overflow: visible;
 }
-.vf-ticks line {
-  stroke: rgba(255, 255, 255, 0.7);
+/* ticks and labels read on light and dark colormaps alike: white marks over a
+   thin dark line, labels on small dark plates (no outline round the glyphs) */
+.vf-ticks line.vf-tick {
+  stroke: rgba(255, 255, 255, 0.9);
   stroke-width: 1;
 }
-.vf-overlay text {
-  fill: #fff;
-  font: 10px var(--font-mono);
-  paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.75);
-  stroke-width: 2.5px;
+.vf-ticks line.vf-tick-under {
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 3;
 }
-.vf-overlay text.vf-axis {
+.vf-label-bg {
+  fill: rgba(11, 13, 16, 0.72);
+}
+.vf-overlay text {
+  fill: #e8ebf0;
+  font: 10px var(--font-mono);
+}
+.vf-overlay .vf-axis text {
   font-weight: 700;
   fill: var(--accent-hi);
 }
