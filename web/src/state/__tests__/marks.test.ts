@@ -7,6 +7,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MarkRegion } from "../../components/regionMark";
+import { openView } from "../../llm/tools/openView";
+import { useDatasetStore } from "../datasetStore";
 import { useDpdfStore } from "../dpdfStore";
 import { readMark, readMarks, regionText, shortLabel, useMarkStore, visibleMarks, type Mark } from "../markStore";
 import { markPlaneLabel, placeMark, planMark, showMark, type MarkSpec, type MarkVolume, type ViewsNow } from "../marks";
@@ -197,6 +199,23 @@ describe("showing a mark", () => {
     expect(showMark(useMarkStore.getState().marks[0], "ds1")).toBe(true);
     expect(useMarkStore.getState().marks[0].hidden).toBeUndefined();
     expect(useMarkStore.getState().showAll).toBe(true);
+  });
+});
+
+describe("the transcript's Show on a mark", () => {
+  it("opens the mark by its id on the selected dataset, and nothing for a mark since removed", () => {
+    const s = spec("pdf", { shape: "points", points: [[2.5, 0, 0]] });
+    const plan = planMark(s, DPDF, NOW);
+    if (!plan.ok) throw new Error(plan.reason);
+    const mark = placeMark(s, plan, "ds1");
+    useDatasetStore.setState({ datasetId: "ds1" });
+    useNavStore.setState({ tab: "config" });
+    openView({ view: "mark", label: `${mark.id} · ${mark.label}`, mark: mark.id });
+    expect(useNavStore.getState().tab).toBe("dpdf");
+    useNavStore.setState({ tab: "config" });
+    useMarkStore.getState().remove(mark.id);
+    openView({ view: "mark", label: "gone", mark: mark.id });
+    expect(useNavStore.getState().tab).toBe("config");
   });
 });
 
