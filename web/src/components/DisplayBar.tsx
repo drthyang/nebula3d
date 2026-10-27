@@ -323,6 +323,7 @@ export function DisplayBar({
   dimRange?: boolean;
 }) {
   const dim = dimRange ? "ws-dim" : undefined;
+  const range = dimRange ? "ws-range ws-dim" : "ws-range";
   return (
     <div className="ws-display-group">
       <span className="ws-group">
@@ -333,7 +334,7 @@ export function DisplayBar({
           ))}
         </select>
       </span>
-      <div className={dim}>
+      <div className={range}>
         <LevelsBar
           lut={lut}
           levels={lv.levels}

@@ -5132,9 +5132,9 @@ h6.md-h {
   }
   /* the colour limits keep "±2.32e+3" whole at that size */
   .levels-bar .lv-num {
-    width: 112px;
-    padding-left: 8px;
-    padding-right: 8px;
+    width: 100px;
+    padding-left: 6px;
+    padding-right: 6px;
   }
   .readout-edit input.value-input,
   .readout-edits .readout-edit input.value-input {
@@ -5973,6 +5973,20 @@ h6.md-h {
   /* header rows wrap here: a separator would start or end a line */
   .ws-head .ws-sep {
     display: none;
+  }
+  /* the colour range takes a line of its own and fits it: the bar gives way */
+  .ws-range {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .ws-range .levels-bar {
+    display: flex;
+    width: 100%;
+  }
+  .ws-range .lv-track {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 64px;
   }
 }
 
