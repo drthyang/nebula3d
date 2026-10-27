@@ -12,13 +12,17 @@ through :func:`bincount`, which casts the indices to ``intp`` first (a no-op on
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 
-def bincount(x: ArrayLike, weights: ArrayLike | None = None, minlength: int = 0) -> NDArray:
+def bincount(x: ArrayLike, weights: ArrayLike | None = None, minlength: int = 0) -> NDArray[Any]:
     """``np.bincount(x, weights, minlength)`` with ``x`` cast to ``intp``."""
     index = np.asarray(x)
     if index.dtype != np.intp:
         index = index.astype(np.intp, copy=False)
-    return np.bincount(index, weights=weights, minlength=minlength)
+    if weights is None:
+        return np.bincount(index, minlength=minlength)
+    return np.bincount(index, weights=np.asarray(weights, dtype=np.float64), minlength=minlength)
