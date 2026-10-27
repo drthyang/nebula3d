@@ -1,5 +1,5 @@
 // The tools a local model is offered for a question. Every request carries the
-// definitions of the tools it offers, and all 26 come to about 7k tokens, more
+// definitions of the tools it offers, and all 27 come to about 7k tokens, more
 // than half of the first request: a local model reads them on every request,
 // and the more it is offered, the more it picks the wrong one. So it gets the
 // reading tools every question needs, and the ones the question is about: each

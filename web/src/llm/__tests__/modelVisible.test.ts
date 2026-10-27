@@ -14,7 +14,7 @@
 // and a frozen clock. No model is loaded, no backend or API is called, and no
 // measured data is used.
 //
-// Tool results sampled: all 25 tools in CHAT_TOOLS. None skipped. Covered in part:
+// Tool results sampled: all 27 tools in CHAT_TOOLS. None skipped. Covered in part:
 // - read_skill: one skill's body; not a reference (those are docs/algorithms
 //   pages, read as written).
 // - run_pipeline, tune_pipeline: the runs are stubs; what is sampled is the
@@ -29,7 +29,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { runAgent, type AgentStep } from "../agent";
-import { answerIssues, earlierSources, issuesPrompt } from "../answerChecks";
+import { answerIssues, earlierSources, issuesPrompt, marksMade } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
@@ -392,6 +392,22 @@ interface Sample {
   before?: () => void;
 }
 
+// Calls earlier in a reply that a mark rests on (mark_region's evidence), as the round keeps them.
+const PEAKS_STEP: AgentStep = {
+  id: "0:call_0",
+  name: "dpdf_peaks",
+  args: {},
+  status: "done",
+  result: JSON.stringify({ features: [{ sign: "+", length_A: 4, size_sigma: 40, n_vectors: 3, vectors_rlu: [[1, 0, 0]], vectors_A: [[4, 0, 0]] }] }),
+};
+const CUT_STEP: AgentStep = {
+  id: "0:call_0",
+  name: "measure_reciprocal_cut",
+  args: { plane: "hk0", value: 0 },
+  status: "done",
+  result: JSON.stringify({ cut: "H–K plane at L = 0", flatten: { after_floor_max_sigma: 1.1 } }),
+};
+
 const RUN_EVENTS: JobEvent[] = [
   { type: "progress", stage: "rings", status: "skip", message: "ring-removed output exists" },
   { type: "progress", stage: "punch", status: "start", message: "Bragg punch" },
@@ -511,10 +527,33 @@ const SAMPLES: Sample[] = [
     ctx: { userMessage: REGRID_ASKED },
   },
   { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 4 } },
+  {
+    name: "mark_region",
+    args: { where: "pdf", shape: "ellipsoid", center: [4, 0, 0], half_size: [0.8, 0.8, 0.8], label: "the strongest + pair, at a", evidence: ["dpdf_peaks.features.0"] },
+    note: "resting on a dpdf_peaks call earlier in the reply",
+    ctx: { replySteps: [PEAKS_STEP] },
+  },
+  {
+    name: "mark_region",
+    args: { where: "flatten", shape: "points", points: [[1.5, 0, 0], [2.5, 0, 0], [3.5, 0, 0]], label: "half-integer maxima along H", evidence: ["measure_reciprocal_cut"] },
+    note: "on the cleanup page, resting on a measure_reciprocal_cut call earlier in the reply; one point outside the volume",
+    ctx: { replySteps: [CUT_STEP] },
+  },
 ];
 
 // What the executor sends back for a call it cannot run.
 const ERRORS: Sample[] = [
+  {
+    name: "mark_region",
+    args: { where: "pdf", shape: "ellipsoid", center: [4, 0, 0], half_size: [0.8, 0.8, 0.8], label: "a feature", evidence: [] },
+    note: "a mark that cites no evidence",
+  },
+  {
+    name: "mark_region",
+    args: { where: "pdf", shape: "box", center: [20, 0, 0], half_size: [1, 1, 1], label: "a feature", evidence: ["dpdf_peaks"] },
+    note: "a mark outside the volume, its evidence in the reply",
+    ctx: { replySteps: [PEAKS_STEP] },
+  },
   { name: "delete_dataset", args: {}, note: "a tool that does not exist" },
   { name: "measure_reciprocal_cut", args: "{plane: hk0", note: "arguments that are not JSON" },
   { name: "measure_reciprocal_cut", args: { plane: "hk0", value: 7 }, note: "a cut outside the data" },
@@ -785,6 +824,11 @@ const BUNCHED = step("assess_stage", { stage: "punch" }, {
   },
 });
 const COVERED = step("qmax_coverage", {}, { verdict: "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 2.4e-4 });
+// Two marks made by mark_region, each named by its result's id.
+const markedAs = (id: string, label: string) =>
+  step("mark_region", { where: "flatten", shape: "ellipsoid", label, evidence: ["measure_reciprocal_cut"] }, { marked: id, label, where: "flatten", page: "Reciprocal cleanup" });
+const MARKED_M1 = markedAs("M1", "diffuse maximum");
+const MARKED_M2 = markedAs("M2", "its partners");
 
 const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: AgentStep[] }[] = [
   {
@@ -824,16 +868,27 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: Agen
     earlier: [RINGS],
   },
   {
+    what: "a mark no call made",
+    reply: "The diffuse maximum is marked as M1, and its partners as M2.",
+    steps: [MARKED_M1],
+  },
+  {
+    what: "a mark an earlier turn made, and one this reply made",
+    reply: "M2 marks the partners of the diffuse maximum, which M1 marks.",
+    steps: [MARKED_M2],
+    earlier: [MARKED_M1],
+  },
+  {
     what: "a question a result puts to the user, not asked, and its answer said as fact",
     reply: "The punch meets its goal. The 14 sharp peaks at H = n ± 1/3 are satellites of a modulation with k = (1/3, 0, 0).",
     steps: [BUNCHED],
   },
 ];
 
-/** A canned reply's issues: its number sources are its tools' results, and an earlier turn's while what each measured stands. */
+/** A canned reply's issues: its number sources are its tools' results, and an earlier turn's while what each measured stands; the marks it may name, its own and an earlier turn's. */
 function issuesOf({ reply, steps, earlier = [] }: (typeof REPLIES)[number]) {
   const { standing, stale } = earlierSources(earlier, steps);
-  return answerIssues(reply, steps, [...steps.map((s) => s.result ?? ""), ...standing].join("\n"), stale);
+  return answerIssues(reply, steps, [...steps.map((s) => s.result ?? ""), ...standing].join("\n"), stale, marksMade(earlier));
 }
 
 // A success the checks did not all measure: shown for arm C, whose wording of it names no stage to measure.
@@ -930,6 +985,7 @@ describe("5. the text sent back to the model", () => {
         [issues.staleNumbers.length > 0, /These numbers were measured before the last run recomputed the outputs they describe/],
         [issues.unasked.length > 0, /has a question for the user that the answer does not ask/],
         [issues.assumed.length > 0, /as fact what a result in this reply asks the user/],
+        [issues.unmadeMarks.length > 0, /(This mark id names|These mark ids name) no mark made in this conversation/],
       ];
       for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
     }

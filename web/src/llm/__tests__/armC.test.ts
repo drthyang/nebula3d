@@ -169,6 +169,8 @@ const ROUNDS: Call[][] = [
   [["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }], ["run_log", {}], ["run_verdict", {}]],
   [["tune_pipeline", { stages: ["flatten"], trials_per_stage: 2 }]],
   [["show_in_viewer", { view: "dpdf", plane: "xy", value: 4 }]],
+  // A mark resting on dpdf_peaks, measured after the rerun.
+  [["mark_region", { where: "pdf", shape: "ellipsoid", center: [4, 0, 0], half_size: [0.8, 0.8, 0.8], label: "the strongest + pair", evidence: ["dpdf_peaks"] }]],
   [["describe_dataset", {}]],
   [["describe_dataset", {}]], // the same call: pointed at the one before
   [["describe_dataset", {}]], // and again: two rounds with nothing new, asked to answer

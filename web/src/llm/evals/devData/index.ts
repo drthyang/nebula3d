@@ -40,12 +40,13 @@ import { queryClient } from "../../../api/queryClient";
 import type { Dataset, JobEvent } from "../../../api/types";
 import { useDatasetStore } from "../../../state/datasetStore";
 import { useDpdfStore } from "../../../state/dpdfStore";
+import { useMarkStore } from "../../../state/markStore";
 import { useNavStore } from "../../../state/navStore";
 import { enabledStages, usePipelineStore } from "../../../state/pipelineStore";
 import { useStructureStore } from "../../../state/structureStore";
 import { useViewerStore } from "../../../state/viewerStore";
 import { useWorkspaceStore } from "../../../state/workspaceStore";
-import { runAgent, type AgentResult } from "../../agent";
+import { runAgent, type AgentResult, type AgentStep } from "../../agent";
 import { useChatStore } from "../../chatStore";
 import { useHighlightStore } from "../../highlight";
 import { safe } from "../../context/loadContext";
@@ -103,7 +104,9 @@ export interface DevCase {
   dataset(): Promise<Dataset>;
   // `userMessage`: the user's latest message, as the agent loop hands it to
   // the tools (an action only the user asks for reads it: the regrid).
-  tool(name: string, args?: Record<string, unknown>, opts?: { userMessage?: string }): Promise<ToolRunResult>;
+  // `replySteps`: the reply's steps before the call, as the round hands them
+  // to the tools (a mark rests on one: mark_region).
+  tool(name: string, args?: Record<string, unknown>, opts?: { userMessage?: string; replySteps?: readonly AgentStep[] }): Promise<ToolRunResult>;
   replay(question: string, script: ScriptTurn[]): Promise<ReplayResult>;
 }
 
@@ -154,6 +157,7 @@ function resetApp(): void {
   reset(useViewerStore);
   reset(useDpdfStore);
   reset(useStructureStore);
+  reset(useMarkStore);
   reset(useWorkspaceStore);
   reset(useTuneStore);
   reset(useChatStore);
@@ -246,14 +250,20 @@ class Handle implements DevCase {
     return (await this.start()).dataset;
   }
 
-  async tool(name: string, args: Record<string, unknown> = {}, { userMessage }: { userMessage?: string } = {}): Promise<ToolRunResult> {
+  async tool(
+    name: string,
+    args: Record<string, unknown> = {},
+    { userMessage, replySteps }: { userMessage?: string; replySteps?: readonly AgentStep[] } = {},
+  ): Promise<ToolRunResult> {
     const ctx = await this.start();
     const tool = CHAT_TOOLS.find((t) => t.name === name);
     if (!tool) throw new Error(`no tool named ${name}`);
     try {
       // ctx is the handle's: a run refreshes its dataset for the calls after it.
-      // With a user's message, a copy of it that carries the message: this call's alone.
-      const out = await tool.run(args, userMessage === undefined ? ctx : { ...ctx, userMessage }, {});
+      // With a user's message or the reply's steps, a copy of it that carries
+      // them: this call's alone.
+      const own = userMessage === undefined && replySteps === undefined ? ctx : { ...ctx, ...(userMessage !== undefined ? { userMessage } : {}), ...(replySteps ? { replySteps } : {}) };
+      const out = await tool.run(args, own, {});
       return { ok: true, result: asRecord(out.result), summary: out.summary, outcomes: out.outcomes ?? [] };
     } catch (e) {
       const message = (e as Error).message;

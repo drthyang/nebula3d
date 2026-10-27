@@ -26,6 +26,7 @@ import type {
   VolumeTexture,
 } from "../../api/types";
 import { useDpdfStore } from "../../state/dpdfStore";
+import { useMarkStore } from "../../state/markStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
@@ -573,6 +574,7 @@ export function freshConsole(): void {
   usePipelineStore.setState(usePipelineStore.getInitialState(), true);
   useTuneStore.setState({ active: false, stages: [], error: null, finishedNote: null });
   useNavStore.setState({ tab: "reciprocal" });
-  useViewerStore.setState({ fixedAxis: "L", cutIndex: (NR - 1) / 2 });
-  useDpdfStore.setState({ cutX: (ND - 1) / 2, cutY: (ND - 1) / 2, cutZ: 32, limit: null });
+  useViewerStore.setState({ fixedAxis: "L", cutIndex: (NR - 1) / 2, views: {} });
+  useDpdfStore.setState({ cutX: (ND - 1) / 2, cutY: (ND - 1) / 2, cutZ: 32, limit: null, views: {} });
+  useMarkStore.setState({ marks: [], next: 1, showAll: true, layoutRequest: null });
 }

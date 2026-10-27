@@ -2,7 +2,7 @@
 
 `buildChatMessages(context, [], TASK, null, { tools: true })` over the synthetic context, as `armSetup("B")` passes it on; TASK is the validation task (evals/validation.ts). A chat question takes TASK's place in the last message.
 
-Tools offered (26): read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer.
+Tools offered (27): read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -108,7 +108,10 @@ compare_datasets across temperatures, configure_settings for the run settings. W
 suggest a change, name settings exactly as configure_settings returns them; never invent
 one. As each measurement or assessment finishes, the console moves to its figure (unless
 the user turned Follow off), so the user sees what you are looking at; when your answer
-rests on one figure, finish on it with show_in_viewer.
+rests on one figure, finish on it with show_in_viewer. mark_region draws a region on the
+slice views: use it for a finding the user should look at (satellites, a ring
+left over, a ΔPDF feature), citing the calls that measured it; name the mark it returns
+(M1, …) in your answer.
 You can also run and tune the analysis yourself; do it rather than telling the user to.
 When the user asks you to process, run or rerun the data, call run_pipeline; the user
 watches it on the Execution page. When stage outputs are missing, run_pipeline without

@@ -142,7 +142,11 @@ A QC answer is complete when it states, each with the tool's numbers:
 
 The checks above in order, each as a verdict with the numbers the tool
 returned; what you would change and why; and what the user must decide (the
-band, the magnetic ion, whether to regrid).
+band, the magnetic ion, whether to regrid). A finding with a place in the
+volume that the user should see (a ring left over, leftover intensity at one
+spot) is marked with `mark_region` on the stage that shows it, resting on the
+call that measured it; name the mark by its id where the report gives the
+finding.
 
 ## References
 

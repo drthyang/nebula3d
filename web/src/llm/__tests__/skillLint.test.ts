@@ -31,6 +31,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { JobEvent } from "../../api/types";
+import type { AgentStep } from "../agent";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
@@ -527,7 +528,16 @@ const RUN_EVENTS: JobEvent[] = [
 ];
 
 /** One or more calls of every tool, as modelVisible.test.ts samples them; assess_stage for each stage too. */
-const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => void; userMessage?: string }[] = [
+// A call earlier in the reply that a mark rests on (mark_region's evidence).
+const PEAKS_STEP: AgentStep = {
+  id: "0:call_0",
+  name: "dpdf_peaks",
+  args: {},
+  status: "done",
+  result: JSON.stringify({ features: [{ sign: "+", length_A: 4, vectors_A: [[4, 0, 0]] }] }),
+};
+
+const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => void; userMessage?: string; replySteps?: AgentStep[] }[] = [
   { name: "read_skill", args: { name: "reduction-qc" } },
   { name: "describe_dataset", args: {} },
   { name: "current_view", args: {} },
@@ -592,6 +602,11 @@ const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => voi
     before: () => api.regridDataset.mockImplementationOnce(async (id: string) => regridAnswer(id, { turned: true })),
   },
   { name: "show_in_viewer", args: { view: "dpdf", plane: "xy", value: 4 } },
+  {
+    name: "mark_region",
+    args: { where: "pdf", shape: "ellipsoid", center: [4, 0, 0], half_size: [0.8, 0.8, 0.8], label: "the strongest + pair", evidence: ["dpdf_peaks"] },
+    replySteps: [PEAKS_STEP],
+  },
 ];
 
 beforeAll(async () => {
@@ -599,7 +614,7 @@ beforeAll(async () => {
   for (const s of SAMPLES) {
     freshConsole();
     s.before?.();
-    const ctx: ToolContext = { dataset: DATASET, datasets: DATASETS, skillsRead: new Set<string>(SKILL_NAMES), userMessage: s.userMessage };
+    const ctx: ToolContext = { dataset: DATASET, datasets: DATASETS, skillsRead: new Set<string>(SKILL_NAMES), userMessage: s.userMessage, replySteps: s.replySteps };
     const run = await callTool(ctx, s.name, s.args);
     if (!run.ok) throw new Error(`${s.name} ${JSON.stringify(s.args)}: ${run.text}`);
     const text = run.full ?? run.text;

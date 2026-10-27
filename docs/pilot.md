@@ -12,7 +12,8 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 25 tools, which run in the browser against the same API the viewers use:
+calls 27 tools (26 with the skills off: no `read_skill`), which run in the
+browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
 - **Reading:** `describe_dataset`, `current_view`, `measure_reciprocal_cut`,
@@ -21,7 +22,8 @@ calls 25 tools, which run in the browser against the same API the viewers use:
   run's verdict as `{{achieved}}` would give it now, read before writing).
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
   `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
-- **Display:** `dpdf_contrast`.
+- **Display:** `dpdf_contrast`, and `mark_region`, which marks a region in the
+  slice views for you to look at (below).
 - **Acting:** `update_settings`, `run_pipeline`, `tune_pipeline`,
   `show_in_viewer`, and `regrid_refined_ub`, which writes the raw volume
   regridded onto its refined UB as a new dataset, only when the user's latest
@@ -100,6 +102,17 @@ Each is described under [How it works](#how-it-works).
   conditional or negated clause, a question, or one about asking or
   declaring is none). With the skills off the send-back names no tool,
   stage or skill (`answerChecks.ts`).
+- **A mark is named only once it is made.** An answer that names a marked
+  region by an id (M1, …) that no `mark_region` call in the conversation
+  returned goes back to the model once, then is noted under the reply
+  ("Names a mark that was never made: M3"). A call's id counts in its reply
+  and the later ones, a restored conversation's too; a call that failed
+  makes none. Only an id in the tool's form read as a mark counts: next to
+  a mark word ("marked as M2", "M1 marks the ring") or in the tool's
+  "M1 · label" form; not the M2 site, an irrep such as M2+, nor an id in a
+  clause that negates, asks or plans ("there is no M3"). It leans to a miss
+  over a false alarm: a bare "(M1)" beside a finding is not read
+  (`answerChecks.ts` `unmadeMarks`).
 - **Tuning cannot touch your results.** Each trial runs in its own folder,
   never in `processed/`; the model proposes settings only from a checked
   catalog, every trial is measured on three planes (a flatten's pedestal over
@@ -532,6 +545,29 @@ miss is a note.
     that stage on), `tune_pipeline` (below), and `show_in_viewer` (it acts on
     the view, as `dpdf_contrast` does). Neither run starts while another is
     going, and *Stop* cancels the one the model started.
+  - *Marking*: `mark_region` (THY-44) marks a finding in the slice views for
+    you to look at: a box or an ellipsoid (centre and half-widths) or up to 12
+    points (satellites at h ± q, say), in r.l.u. on a cleanup stage's output
+    (`raw`, `rings`, `punch`, `backfill`, `flatten`) or in Å along a, b, c on
+    the ΔPDF (`pdf`), with a short label. No mark without its evidence
+    (`llm/markEvidence.ts`): it cites the calls whose results show the region,
+    as an answer cites a number (`dpdf_peaks`, or `dpdf_peaks.features.0`), and
+    each must be a measuring tool's call (its facts' `measures`: not a skill,
+    the listing, the view, the settings, the log or the run's verdict) that ran
+    in this conversation, holds the field it names, and was not made stale by
+    a run that recomputed the marked stage; a session file's steps never
+    count. A region that is empty, outside the volume, or on a stage with no
+    output is refused too, with why, before anything moves. Otherwise the
+    console draws it and moves to it (`state/marks.ts`): the cleanup page cuts
+    across the region's thinnest axis in Å⁻¹ (or on the plane holding most of
+    its points), the 3D-ΔPDF cuts its three sections through it, and a view
+    zooms only where the region is too small to see or out of view. The
+    result says what was drawn: the views and cuts (on the cleanup page, every
+    stage's view on that plane), how many points each holds, what the volume
+    cut off, whether it zoomed, the evidence by step, and the mark's id
+    (M1, …), which the answer names; an answer that names an id no call
+    returned goes back ([Guardrails](#guardrails)). The same mark again is
+    the same mark.
 - **Report** (`report/`, `components/ReportView.tsx`) — a reply that assessed,
   tuned or ran the pipeline gets a *Report* button. The report is measured
   afresh when opened (`report/collect.ts` runs the agent's own tools:

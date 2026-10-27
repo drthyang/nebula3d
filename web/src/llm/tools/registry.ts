@@ -38,6 +38,7 @@ import { run_pipeline } from "./defs/run_pipeline";
 import { tune_pipeline } from "./defs/tune_pipeline";
 import { regrid_refined_ub } from "./defs/regrid_refined_ub";
 import { show_in_viewer } from "./defs/show_in_viewer";
+import { mark_region } from "./defs/mark_region";
 import { resolveFacts, type Facts } from "./facts";
 import type { AgentTool, Args, ChatTool } from "./types";
 
@@ -68,6 +69,7 @@ export const CHAT_TOOLS: ChatTool[] = [
   tune_pipeline,
   regrid_refined_ub,
   show_in_viewer,
+  mark_region,
 ];
 
 // The facts by tool name, indexed on the first lookup.

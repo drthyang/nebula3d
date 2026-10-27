@@ -237,6 +237,7 @@ describe("the switch", () => {
       "radial_profile",
       "line_profile",
       "consistency_details",
+      "mark_region",
     ]);
     expect(toolsWithSkills(off, false)).toEqual(off); // the same either way it is applied
   });

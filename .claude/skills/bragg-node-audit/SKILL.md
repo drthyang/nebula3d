@@ -109,7 +109,11 @@ all three.
 
 The audit in the order above. For each signal, the evidence and its likely
 cause, or that it was not tested; what to change and why; and what only the
-user can decide (the cell, the satellites, the sample's modulation).
+user can decide (the cell, the satellites, the sample's modulation). Mark a
+signal the user should look at (satellites, a leftover peak, intensity at a
+forbidden node) with `mark_region` on the stage that shows it, its positions
+as points, resting on the call that measured it; name the mark by its id
+beside the signal.
 
 ## References
 

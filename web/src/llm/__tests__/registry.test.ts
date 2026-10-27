@@ -59,6 +59,7 @@ describe("the registry", () => {
       "tune_pipeline",
       "regrid_refined_ub",
       "show_in_viewer",
+      "mark_region",
     ]);
   });
 });

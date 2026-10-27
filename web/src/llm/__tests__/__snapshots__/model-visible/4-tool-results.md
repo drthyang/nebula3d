@@ -6,7 +6,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-5724 characters sent.
+5976 characters sent.
 
 ```text
 Skill bragg-node-audit
@@ -110,7 +110,11 @@ all three.
 
 The audit in the order above. For each signal, the evidence and its likely
 cause, or that it was not tested; what to change and why; and what only the
-user can decide (the cell, the satellites, the sample's modulation).
+user can decide (the cell, the satellites, the sample's modulation). Mark a
+signal the user should look at (satellites, a leftover peak, intensity at a
+forbidden node) with `mark_region` on the stage that shows it, its positions
+as points, resting on the call that measured it; name the mark by its id
+beside the signal.
 
 ## References
 
@@ -1657,12 +1661,87 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## mark_region {"where":"pdf","shape":"ellipsoid","center":[4,0,0],"half_size":[0.8,0.8,0.8],"label":"the strongest + pair, at a","evidence":["dpdf_peaks.features.0"]} (resting on a dpdf_peaks call earlier in the reply)
+
+358 characters sent.
+
+```json
+{
+  "marked": "M1",
+  "label": "the strongest + pair, at a",
+  "where": "pdf",
+  "page": "3D-ΔPDF",
+  "region": {
+    "shape": "ellipsoid",
+    "center": [4, 0, 0],
+    "half_size": [0.8, 0.8, 0.8],
+    "unit": "Å"
+  },
+  "drawn_on": [
+    {
+      "view": "ΔPDF x–y section at z = 0 Å"
+    },
+    {
+      "view": "ΔPDF x–z section at y = 0 Å"
+    },
+    {
+      "view": "ΔPDF y–z section at x = 4 Å"
+    }
+  ],
+  "zoomed": true,
+  "evidence": ["dpdf_peaks.features.0 (step 1)"]
+}
+```
+
+## mark_region {"where":"flatten","shape":"points","points":[[1.5,0,0],[2.5,0,0],[3.5,0,0]],"label":"half-integer maxima along H","evidence":["measure_reciprocal_cut"]} (on the cleanup page, resting on a measure_reciprocal_cut call earlier in the reply; one point outside the volume)
+
+413 characters sent.
+
+```json
+{
+  "marked": "M1",
+  "label": "half-integer maxima along H",
+  "where": "flatten",
+  "page": "Reciprocal cleanup",
+  "region": {
+    "shape": "points",
+    "points": [
+      [1.5, 0, 0],
+      [2.5, 0, 0]
+    ],
+    "unit": "r.l.u."
+  },
+  "clipped": ["1 of 3 points are outside the volume and were left out"],
+  "drawn_on": [
+    {
+      "view": "H–K plane at L = 0",
+      "stages": ["raw", "rings", "punch", "backfill", "flatten"],
+      "points": 2
+    }
+  ],
+  "zoomed": false,
+  "evidence": ["measure_reciprocal_cut (step 1)"]
+}
+```
+
 # Calls the executor refuses
+
+## mark_region {"where":"pdf","shape":"ellipsoid","center":[4,0,0],"half_size":[0.8,0.8,0.8],"label":"a feature","evidence":[]} (a mark that cites no evidence)
+
+```text
+Error: not marked: a mark needs its evidence: name the tool calls whose results show the region, by the tool's name or as tool.field (dpdf_peaks.features.0)
+```
+
+## mark_region {"where":"pdf","shape":"box","center":[20,0,0],"half_size":[1,1,1],"label":"a feature","evidence":["dpdf_peaks"]} (a mark outside the volume, its evidence in the reply)
+
+```text
+Error: not marked: the box (x 19 to 21) is outside the volume: the volume spans x -12 to 12 Å, y -12 to 12 Å, z -12 to 12 Å
+```
 
 ## delete_dataset {} (a tool that does not exist)
 
 ```text
-Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer
+Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region
 ```
 
 ## measure_reciprocal_cut {plane: hk0 (arguments that are not JSON)

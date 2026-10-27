@@ -737,6 +737,23 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   ),
 
   show_in_viewer: obj({ opened: str }),
+
+  mark_region: obj({
+    marked: str,
+    already_marked: optional(lit(true)),
+    label: str,
+    where: oneOf("raw", "rings", "punch", "backfill", "flatten", "pdf"),
+    page: oneOf("Reciprocal cleanup", "3D-ΔPDF"),
+    region: union(
+      obj({ shape: oneOf("box", "ellipsoid"), center: v3, half_size: v3, unit: oneOf("r.l.u.", "Å") }),
+      obj({ shape: lit("points"), points: arr(v3), unit: oneOf("r.l.u.", "Å") }),
+    ),
+    clipped: optional(arr(str)),
+    drawn_on: arr(obj({ view: str, stages: optional(arr(oneOf("raw", "rings", "punch", "backfill", "flatten"))), points: optional(num) })),
+    not_on: optional(arr(str)),
+    zoomed: bool,
+    evidence: arr(str),
+  }),
 };
 
 /** The tools whose result is text, not an object: no contract. */

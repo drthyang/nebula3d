@@ -94,6 +94,7 @@ const BACKEND_CALLS: Record<string, Record<string, unknown>> = {
   consistency_details: {},
   compare_datasets: { kind: "dpdf", plane: "xy", value: 0 },
   show_in_viewer: { view: "cleanup", plane: "hk0", value: 0 },
+  mark_region: { where: "flatten", shape: "ellipsoid", center: [0.5, 0.5, 0], half_size: [0.2, 0.2, 0.2], label: "a diffuse maximum", evidence: ["measure_reciprocal_cut"] },
   run_pipeline: { from_stage: "pdf" },
   tune_pipeline: { stages: ["pdf"], trials_per_stage: 2 },
   regrid_refined_ub: {},
@@ -101,6 +102,11 @@ const BACKEND_CALLS: Record<string, Record<string, unknown>> = {
 
 // The user's latest message for a tool that runs only when it is asked for (its facts' askedFor).
 const ASKED: Record<string, string> = { regrid_refined_ub: "Regrid the volume onto the refined UB." };
+
+// The reply's steps before a call that rests on one (mark_region's evidence):
+// the cut measured earlier in this loop, before the run that recomputes the ΔPDF alone.
+const MEASURED = { id: "0:c", name: "measure_reciprocal_cut", args: { plane: "h0l", value: 0 }, status: "done" as const, result: JSON.stringify({ cut: "H–L plane at K = 0" }) };
+const REPLY: Record<string, (typeof MEASURED)[]> = { mark_region: [MEASURED] };
 
 describe("the tools, through the bridge", () => {
   it("runs every tool that reaches the backend on dev-control, and no bridge call fails", async () => {
@@ -111,7 +117,7 @@ describe("the tools, through the bridge", () => {
     const restore = contentTuner();
     try {
       for (const [name, args] of Object.entries(BACKEND_CALLS)) {
-        const r = await c.tool(name, args, { userMessage: ASKED[name] });
+        const r = await c.tool(name, args, { userMessage: ASKED[name], replySteps: REPLY[name] });
         expect(r.ok, `${name}: ${r.summary}`).toBe(true);
       }
     } finally {
