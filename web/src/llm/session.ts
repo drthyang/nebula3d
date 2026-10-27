@@ -5,6 +5,7 @@
 
 import { runAgent, toolStepsIn, type AgentStep } from "./agent";
 import { beginReply, endReply, recordUsage, type Usage } from "./usage";
+import { useMarkStore } from "../state/markStore";
 import { useChatStore } from "./chatStore";
 import type { ChatMessage } from "./provider/client";
 import { loadSettings } from "./settings";
@@ -121,4 +122,15 @@ export function endSteps(steps: AgentStep[], why: string): AgentStep[] {
 
 export function stopAssistant(): void {
   controller?.abort();
+}
+
+/**
+ * The chat's Clear: the conversation, and the regions it marked in the slice
+ * views (state/markStore.ts), every dataset's. A mark rests on the steps of
+ * the reply that made it, and the transcript's Show reopens it: with the
+ * transcript gone, its marks go too.
+ */
+export function clearConversation(): void {
+  useChatStore.getState().clear();
+  useMarkStore.getState().clearAll();
 }

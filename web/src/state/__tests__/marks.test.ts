@@ -266,6 +266,18 @@ describe("the mark store", () => {
     expect(useMarkStore.getState().marks.map((m) => m.datasetId)).toEqual(["ds2"]);
   });
 
+  it("clears every dataset's marks with the conversation, shows marks again, and numbers on", () => {
+    const a = add("ds1", "one");
+    add("ds2");
+    useMarkStore.getState().toggle(a.id);
+    useMarkStore.getState().setShowAll(false);
+    useMarkStore.getState().setLayoutRequest({ page: "cleanup", primary: "ringremoved" });
+    useMarkStore.getState().clearAll();
+    expect(useMarkStore.getState()).toMatchObject({ marks: [], showAll: true, revealed: null, layoutRequest: null });
+    // "M1" and "M2" stay the marks the cleared transcript named.
+    expect(add("ds1", "one").id).toBe("M3");
+  });
+
   it("adds the same mark once, and shows it again", () => {
     const a = add();
     useNavStore.setState({ tab: "config" });
