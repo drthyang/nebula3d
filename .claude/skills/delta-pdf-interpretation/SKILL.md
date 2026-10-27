@@ -100,7 +100,10 @@ z = 0 plane: rods in reciprocal space are planes in real space.
 4. Rule out the artifacts above, naming the check that rules out each.
 5. Relate the features to the structure: which average interatomic vector each
    sits on (a CIF in the 3D-ΔPDF page's structure overlay marks them).
-6. Report.
+6. **Show it.** For a feature the user should look at, `mark_region` on the
+   ΔPDF: an ellipsoid about the feature, in Å along a, b, c, resting on the
+   `dpdf_peaks` entry or the cut that measured it.
+7. Report.
 
 Judgment calls (to confirm with the user): the feature size below which nothing
 is interpreted; how far out in r the ΔPDF is trusted; an occupational or a
@@ -137,7 +140,7 @@ displacive reading when both fit; when to compare with a model of the disorder.
 
 Trust first (coverage, symmetry, round trip), then the features: vector, sign,
 size, and the likely pair and kind of correlation, each with the checks behind
-it; then what only the user can decide.
+it and the mark that shows it (by its id); then what only the user can decide.
 
 ## References
 
