@@ -45,6 +45,13 @@ describe("the grid", () => {
     expect(snapIndex(HKL, 2, 99)).toBe(80);
     expect(snapIndex(HKL, 2, -99)).toBe(0);
   });
+
+  it("puts the sample at the origin at exactly 0, on a grid whose step leaves float noise there", () => {
+    // −42 Å over 162 samples to 41.48 Å (a ΔPDF's grid): lo + 81·step is 7e-15 in floating point.
+    const g = { ranges: [[-42, 41.48148148148149], [-42, 41.48148148148149], [-42, 41.48148148148149]] as [[number, number], [number, number], [number, number]], shape: [162, 162, 162] as [number, number, number] };
+    expect(gridValue(g, 2, 81)).toBe(0);
+    expect(gridValue(g, 2, 82)).toBeCloseTo(0.5185, 4);
+  });
 });
 
 describe("regionProblem: an empty region is refused, with why", () => {
