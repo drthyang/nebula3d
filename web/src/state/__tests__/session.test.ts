@@ -9,6 +9,7 @@ import { useChatStore } from "../../llm/chatStore";
 import { rememberConfig } from "../configMemory";
 import { useDatasetStore } from "../datasetStore";
 import { usePipelineStore } from "../pipelineStore";
+import { useMarkStore, type Mark } from "../markStore";
 import { captureSession, parseSession, restoreSession, SESSION_VERSION, stagesToRecompute } from "../session";
 import { useStructureStore } from "../structureStore";
 
@@ -26,6 +27,7 @@ beforeEach(() => {
   useChatStore.setState({ turns: [], busy: false, live: null, error: null });
   useStructureStore.setState({ def: null });
   useDatasetStore.setState({ datasetId: undefined });
+  useMarkStore.setState({ marks: [], next: 1, showAll: true, layoutRequest: null });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -141,6 +143,55 @@ describe("a saved session", () => {
     expect(result.datasetFound).toBe(true);
     expect(usePipelineStore.getState().punchMinSig).toBe("7");
     expect(usePipelineStore.getState().terminal).toBeNull();
+  });
+});
+
+describe("the Pilot's marked regions in a session", () => {
+  const mark = (id: string, datasetId: string, hidden = false): Mark => ({
+    id,
+    datasetId,
+    where: "flatten",
+    region: { shape: "points", points: [[1.25, 0, 0], [0.75, 0, 0]] },
+    label: "satellites at H = 1 ± 0.25",
+    evidence: ["measure_reciprocal_cut"],
+    created: "2026-10-26T12:00:00.000Z",
+    view: {
+      page: "cleanup",
+      axis: "L",
+      value: 0,
+      frame: { target: { x0: 1.1, x1: 2, y0: 0, y1: 0 }, fit: { cx: 0, cy: 0, half: 6 }, data: { x0: -6, x1: 6, y0: -6, y1: 6 }, minHalf: 0.1, maxHalf: 7.5 },
+    },
+    ...(hidden ? { hidden: true as const } : {}),
+  });
+
+  it("saves the dataset's marks and brings them back, hidden ones hidden, numbered on after them", () => {
+    analysed();
+    useMarkStore.setState({ marks: [mark("M1", "S-60K"), mark("M2", "other"), mark("M3", "S-60K", true)], next: 4 });
+    const saved = JSON.stringify(captureSession(dataset("S-60K", OUTPUTS)));
+    expect((JSON.parse(saved) as { marks: Mark[] }).marks.map((m) => m.id)).toEqual(["M1", "M3"]);
+
+    useMarkStore.setState({ marks: [mark("M9", "S-60K")], next: 1, showAll: false });
+    const result = restoreSession(parseSession(saved), [dataset("S-60K", OUTPUTS)]);
+    expect(useMarkStore.getState().marks).toEqual([mark("M1", "S-60K"), mark("M3", "S-60K", true)]);
+    expect(useMarkStore.getState().next).toBe(4);
+    expect(useMarkStore.getState().showAll).toBe(true);
+    expect(result.restored).toContain("2 marked regions");
+  });
+
+  it("reads only well-formed marks from a file", () => {
+    const file = { format: "nebula3d-session", version: 2, dataset: { id: "S-60K" }, marks: [mark("M1", "S-60K"), { ...mark("M2", "S-60K"), region: { shape: "box", center: [0, 0, 0], half: [0, 0, 0] } }, "junk"] };
+    expect(parseSession(JSON.stringify(file)).marks.map((m) => m.id)).toEqual(["M1"]);
+  });
+
+  it("restores no marks from a file saved before them, and leaves them alone when its dataset is not here", () => {
+    useMarkStore.setState({ marks: [mark("M1", "S-60K")] });
+    const old = parseSession(JSON.stringify({ format: "nebula3d-session", version: 2, dataset: { id: "S-60K" } }));
+    expect(old.marks).toEqual([]);
+    const away = parseSession(JSON.stringify({ format: "nebula3d-session", version: 2, dataset: { id: "gone" }, marks: [mark("M5", "gone")] }));
+    restoreSession(away, [dataset("S-60K", ["raw"])]);
+    expect(useMarkStore.getState().marks.map((m) => m.id)).toEqual(["M1"]);
+    restoreSession(old, [dataset("S-60K", ["raw"])]);
+    expect(useMarkStore.getState().marks).toEqual([]);
   });
 });
 

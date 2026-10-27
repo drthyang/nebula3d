@@ -21,7 +21,7 @@ interface RunVerdict {
 
 export const run_verdict: ChatTool = {
   name: "run_verdict",
-  facts: { label: "Read the run's verdict", acts: null, reachesBackend: false, readsReply: true },
+  facts: { label: "Read the run's verdict", acts: null, reachesBackend: false, readsReply: true, measures: false },
   description:
     "The verdict on the run that {{achieved}} gives now, computed from this reply's checks: its words (null before any check), each stage's verdict, what needs attention, is not judged or not measured, and the data's problems no setting fixes. Read it before you write whether the run met its goal.",
   parameters: { type: "object", properties: {} },

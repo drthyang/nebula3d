@@ -32,6 +32,7 @@ import { useHighlightKeys } from "../llm/highlight";
 import { datasetName } from "../api/datasetName";
 import { staleOutputs } from "../api/stale";
 import { useChatStore } from "../llm/chatStore";
+import { useMarkStore } from "../state/markStore";
 import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
 
 const DATASET_STAGE_BADGES = [
@@ -1383,7 +1384,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     }
     const session = captureSession(now.find((d) => d.id === datasetId));
     downloadText(sessionFileName(session), "application/json", JSON.stringify(session, null, 1));
-    setSessionNote({ kind: "ok", text: `Saved ${sessionFileName(session)}: the settings, the last run, the NEBULA Pilot conversation and the outputs present (${session.outputs.length}). The outputs themselves stay here; restoring recomputes any that are gone.` });
+    const marks = session.marks.length ? `, its marked regions (${session.marks.length})` : "";
+    setSessionNote({ kind: "ok", text: `Saved ${sessionFileName(session)}: the settings, the last run, the NEBULA Pilot conversation${marks} and the outputs present (${session.outputs.length}). The outputs themselves stay here; restoring recomputes any that are gone.` });
   };
   const onRestoreSession = async (file: File) => {
     try {
@@ -1392,8 +1394,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       // is one to lose.
       const turns = useChatStore.getState().turns.length;
       const logged = usePipelineStore.getState().events.length;
-      if (turns || logged) {
-        const losing = [turns ? `the NEBULA Pilot conversation (${turns} message${turns === 1 ? "" : "s"})` : "", logged ? "the last run's log" : ""].filter(Boolean).join(" and ");
+      const marked = useMarkStore.getState().marks.length;
+      if (turns || logged || marked) {
+        const losing = [
+          turns ? `the NEBULA Pilot conversation (${turns} message${turns === 1 ? "" : "s"})` : "",
+          marked ? `the marked regions (${marked})` : "",
+          logged ? "the last run's log" : "",
+        ].filter(Boolean).join(", ").replace(/, ([^,]*)$/, " and $1");
         if (!window.confirm(`Restoring ${file.name} replaces ${losing} with the session's. Restore it?`)) return;
       }
       // The outputs as they are now, not as last fetched.

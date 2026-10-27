@@ -8,7 +8,7 @@ import { ToolArgError, type ChatTool } from "../types";
 // this reads one, or a document it cites, when the task calls for it.
 export const read_skill: ChatTool = {
   name: "read_skill",
-  facts: { label: "Read a skill", acts: null, reachesBackend: false, needsSkills: true },
+  facts: { label: "Read a skill", acts: null, reachesBackend: false, needsSkills: true, measures: false },
   description:
     "Read one of the user's skills: their method for a topic, with the steps, the checks and what to report. " +
     "Name it from the list in the system prompt. With reference, read one of the documents the skill cites (a long " +

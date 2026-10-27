@@ -7,8 +7,8 @@
 //  - what had completed: the stage outputs present when it was saved (with
 //    when each was written), and the last run's record (its stages, the
 //    settings it ran with, its log);
-//  - the analysis on top: the NEBULA Pilot conversation and the structure
-//    drawn over the ΔPDF;
+//  - the analysis on top: the NEBULA Pilot conversation, the regions it
+//    marked on the slice views and the structure drawn over the ΔPDF;
 //  - the NEBULA3D version that saved it.
 //
 // The outputs themselves are not in the file (a volume is hundreds of MB):
@@ -28,13 +28,16 @@ import { useChatStore } from "../llm/chatStore";
 import { CENTERINGS } from "../structure/symops";
 import { PERMUTATIONS } from "../structure/pairs";
 import { configOf } from "./configMemory";
+import { readMarks, useMarkStore, type Mark } from "./markStore";
 import { useDatasetStore } from "./datasetStore";
 import { enabledStages, formToParams, pipelineBusy, STAGE_LABELS, STAGES, usePipelineStore, type PipelineConfig, type RunRecord } from "./pipelineStore";
 import { useStructureStore, type StructureDef } from "./structureStore";
 
 export const SESSION_FORMAT = "nebula3d-session";
 // 2: the raw file's size and date, the outputs' dates, the app version.
-// Version 1 files still load (their input cannot be verified).
+// Version 1 files still load (their input cannot be verified). The marked
+// regions came later, as a key a file may lack (it then has none); a build
+// before them reads a file with them, without them.
 export const SESSION_VERSION = 2;
 export { APP_VERSION };
 
@@ -71,6 +74,7 @@ export interface Session {
   settings: Partial<PipelineConfig>;
   run: SessionRun | null;
   chat: unknown[]; // the conversation's turns, as the chat keeps them
+  marks: Mark[]; // the Pilot's marked regions on the dataset (state/markStore.ts); none in a file from before them
   structure: SessionStructure | null;
 }
 
@@ -110,6 +114,7 @@ export function captureSession(dataset: Dataset | undefined, now = new Date()): 
     // A run still going is saved as far as it got.
     run: p.events.length || p.terminal ? { record: p.lastRun, terminal: p.terminal, events: p.events, times: p.times } : null,
     chat: useChatStore.getState().turns,
+    marks: dataset ? useMarkStore.getState().marks.filter((m) => m.datasetId === dataset.id) : [],
     structure: st.def ? { def: st.def, show: st.show, perm: st.perm, origin: st.origin, hidden: st.hidden, depth: st.depth } : null,
   };
 }
@@ -233,6 +238,8 @@ export function parseSession(text: string): Session {
         }
       : null,
     chat: Array.isArray(v.chat) ? v.chat : [],
+    // Each mark rebuilt from the keys it has, and kept only when every part has its type.
+    marks: readMarks(v.marks),
     structure: readStructure(v.structure),
   };
 }
@@ -370,6 +377,12 @@ export function restoreSession(session: Session, datasets: readonly Dataset[], l
   useChatStore.getState().restoreTurns(session.chat);
   const n = useChatStore.getState().turns.length;
   restored.push(n ? `the NEBULA Pilot conversation (${n} message${n === 1 ? "" : "s"})` : "an empty NEBULA Pilot conversation");
+
+  // The marks go with the conversation that made them: replaced, as it is, by
+  // the session's on its dataset.
+  const marks = dataset ? session.marks.filter((m) => m.datasetId === dataset.id) : [];
+  useMarkStore.getState().restore(marks);
+  if (marks.length) restored.push(`${marks.length} marked region${marks.length === 1 ? "" : "s"}`);
 
   if (session.structure) {
     useStructureStore.setState(session.structure);

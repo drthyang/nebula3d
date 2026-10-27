@@ -3,7 +3,8 @@
 // may change; the questions a local model is offered it for; the verdicts it
 // settles; whether a reply that ran it gets a report; the cards it lights; the
 // skill it waits for, and whether it works only with the skills on; whether
-// its result reads the reply's own steps; its label in the transcript. One facts object per tool, declared on the tool in its
+// its result reads the reply's own steps; whether it measures the data (what
+// a marked region may rest on); its label in the transcript. One facts object per tool, declared on the tool in its
 // own module (tools/defs/<tool_name>.ts), so a tool's facts live beside its
 // implementation: adding or changing a tool is one edit, in one place. The
 // executor's repeat guard (round.ts), the local offer, the answer checks, the
@@ -124,6 +125,11 @@ export interface ToolFacts {
   // other call has run since. Left out: its result reads the console and the
   // outputs alone.
   readsReply?: true;
+  // It reads no measurement of the data: a skill, the dataset's listing, the
+  // console's view, the settings, the run log, the run's verdict. A region
+  // the assistant marks (state/marks.ts) never rests on it. Left out: a tool
+  // that only reads measures; one that acts never does.
+  measures?: false;
 }
 
 /** A tool's facts with every field resolved, as factsOf returns them. */
@@ -145,6 +151,7 @@ export interface Facts {
   needsSkills: boolean;
   askedFor: ((message: string) => boolean) | null;
   readsReply: boolean;
+  measures: boolean; // it reads the data: what a mark may rest on
 }
 
 const byArgs = <T>(fact: ByArgs<T> | undefined, fallback: T): ((args: Args) => T) =>
@@ -175,5 +182,6 @@ export function resolveFacts(name: string, declared?: ToolFacts): Facts {
     needsSkills: declared?.needsSkills ?? false,
     askedFor: declared?.askedFor ?? null,
     readsReply: declared?.readsReply ?? false,
+    measures: acts === null && declared?.measures !== false,
   };
 }

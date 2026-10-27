@@ -3,6 +3,8 @@
 // model connection, an optional connection-settings drawer, and the chat, where
 // the model answers from the dataset the pages show and acts on it: it
 // measures and assesses, opens the viewer, runs the pipeline, and tunes it.
+// The regions it marks on the slice views are listed above the chat
+// (MarksList), while the dataset has any.
 
 import { useMemo, useState } from "react";
 
@@ -16,6 +18,7 @@ import { useAssistant } from "../useAssistant";
 import { ChatView } from "./ChatView";
 import { ConnectionBar } from "./ConnectionBar";
 import { ConnectionSettings } from "./ConnectionSettings";
+import { MarksList } from "./MarksList";
 
 export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollapse: () => void }) {
   const datasetsQ = useDatasets();
@@ -86,6 +89,8 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
           hint="Run the pipeline for this dataset first — NEBULA Pilot reads its stage outputs."
         />
       )}
+
+      <MarksList datasetId={datasetId} />
 
       <ChatView
         assistant={contextQuery.data}

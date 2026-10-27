@@ -3,7 +3,8 @@
 // left edge to resize it, or collapse it to a slim rail.  On a portrait tablet
 // or a phone it is a bottom sheet under the page: drag its handle to resize
 // it, or collapse it to a slim bar.  Both sizes are remembered.  With Follow
-// on, the figure the Pilot is working on is scrolled fully into view beside it.
+// on, the figure the Pilot is working on is scrolled fully into view beside it,
+// and so is the view a marked region is outlined on when a mark is shown.
 // Its mode and size reach the app's grid through useDockLayout.ts.
 
 import { useEffect, type KeyboardEvent, type PointerEvent } from "react";
@@ -12,9 +13,57 @@ import { AssistantPanel } from "../llm";
 import { useHighlightStore } from "../llm/highlight";
 import { loadSettings } from "../llm/settings";
 import { clampDockWidth, defaultDockWidth, type DockMode } from "../state/dockLayout";
+import { useMarkStore } from "../state/markStore";
 import { appWidth, sidebarWidth, zoom } from "./dockRoom";
 import { useNavStore } from "../state/navStore";
 import { BrandGlyph } from "./ui";
+
+/**
+ * Scrolls a card fully into view in the page. A bottom sheet lowers (not
+ * below its minimum, and only for now) until the card fits above it: on a
+ * phone a square slice is taller than what a half-height sheet leaves of the
+ * page.
+ */
+function bringIntoView(el: HTMLElement): void {
+  const main = document.querySelector<HTMLElement>(".main");
+  if (!main) return;
+  const sheet = document.querySelector(".app.dock-sheet") ? document.querySelector<HTMLElement>(".ai-side") : null;
+  const short = el.getBoundingClientRect().height - main.clientHeight + 12;
+  if (sheet && short > 0) {
+    const fraction = (sheet.getBoundingClientRect().height - short) / window.innerHeight;
+    useNavStore.getState().setSheet(fraction);
+  }
+  const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  requestAnimationFrame(() => el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: still ? "auto" : "smooth" }));
+}
+
+/**
+ * When a mark is shown (state/marks.ts showMark), scrolls the view it is
+ * outlined on into sight, once its page has drawn it: the slices load first,
+ * so it looks for a few seconds.
+ */
+function useRevealMark(): void {
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsub = useMarkStore.subscribe((s, prev) => {
+      if (!s.revealed || s.revealed === prev.revealed) return;
+      const { id } = s.revealed;
+      clearTimeout(timer);
+      let tries = 0;
+      const look = () => {
+        const g = document.querySelector(`.main .view svg.region-marks g[data-mark="${CSS.escape(id)}"][data-primary]`);
+        const view = g?.closest<HTMLElement>(".view");
+        if (view) bringIntoView(view);
+        else if (++tries < 20) timer = setTimeout(look, 200);
+      };
+      timer = setTimeout(look, 260);
+    });
+    return () => {
+      unsub();
+      clearTimeout(timer);
+    };
+  }, []);
+}
 
 /** With Follow on, scrolls the card the Pilot lights up into view in the page. */
 function useFollowGlow(): void {
@@ -32,21 +81,7 @@ function useFollowGlow(): void {
       // After the page (or the glow) has rendered.
       timer = setTimeout(() => {
         const el = document.querySelector<HTMLElement>(".main .ai-glow, .main .ai-glow-within");
-        const main = document.querySelector<HTMLElement>(".main");
-        if (!el || !main) return;
-        // A bottom sheet lowers (not below its minimum, and only for now) until
-        // the figure fits above it: on a phone a square slice is taller than
-        // what a half-height sheet leaves of the page.
-        const sheet = document.querySelector(".app.dock-sheet") ? document.querySelector<HTMLElement>(".ai-side") : null;
-        const short = el.getBoundingClientRect().height - main.clientHeight + 12;
-        if (sheet && short > 0) {
-          const fraction = (sheet.getBoundingClientRect().height - short) / window.innerHeight;
-          useNavStore.getState().setSheet(fraction);
-        }
-        const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-        requestAnimationFrame(() =>
-          el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: still ? "auto" : "smooth" }),
-        );
+        if (el) bringIntoView(el);
       }, 260);
     };
     const unsubs = [useHighlightStore.subscribe(run), useNavStore.subscribe(run)];
@@ -61,6 +96,7 @@ function useFollowGlow(): void {
 export function PilotDock({ mode, open }: { mode: DockMode; open: boolean }) {
   const setOpen = useNavStore((s) => s.setDockOpen);
   useFollowGlow();
+  useRevealMark();
 
   if (!open) {
     return mode === "docked" ? (

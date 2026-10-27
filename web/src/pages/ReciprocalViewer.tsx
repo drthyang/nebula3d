@@ -20,6 +20,8 @@ import {
   Segmented,
   Slider,
 } from "../components/ui";
+import { RegionMarks, type MarkItem } from "../components/RegionMarks";
+import { sectionOf, type Section } from "../components/regionMark";
 import { HklGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
@@ -35,6 +37,7 @@ import {
 } from "../state/viewerStore";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
+import { isReciprocal, useMarkStore, visibleMarks, WHERE_OUTPUT, type Mark } from "../state/markStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
 
 const STAGE_ORDER = ["raw", "ringremoved", "braggpunched", "backfilled", "flattened"];
@@ -214,6 +217,36 @@ export function ReciprocalViewer() {
   const voxel = Math.min(step(xAxis) * geom.sx, step(yAxis) * geom.sy);
   const limit = (h: number) => clampHalf(h, fit.half, voxel);
 
+  // The Pilot's marks on this plane and cut (state/markStore.ts): each one's
+  // section by the cut's one-voxel slab, drawn on every stage's view and
+  // outlined, with its label, on the stage it was found in.
+  const allMarks = useMarkStore((s) => s.marks);
+  const showMarks = useMarkStore((s) => s.showAll);
+  const marked = useMemo(() => {
+    if (!axisInfo) return [];
+    const plane = { u: AXIS_INDEX[xAxis], v: AXIS_INDEX[yAxis], cut: AXIS_INDEX[fixedAxis] };
+    return visibleMarks({ marks: allMarks, showAll: showMarks }, datasetId)
+      .filter((m) => isReciprocal(m.where))
+      .flatMap((mark): { mark: Mark; section: Section }[] => {
+        const section = sectionOf(mark.region, plane, value, axisInfo.step / 2);
+        return section ? [{ mark, section }] : [];
+      });
+  }, [allMarks, showMarks, datasetId, axisInfo, xAxis, yAxis, fixedAxis, value]);
+  const marksOn = (stage: string): MarkItem[] =>
+    marked.map(({ mark, section }) => ({ id: mark.id, label: mark.label, section, primary: WHERE_OUTPUT[mark.where] === stage }));
+
+  // Showing a mark brings its stage forward in the focus and single layouts
+  // (state/marks.ts showMark asks; applied once the stages are listed).
+  const layoutRequest = useMarkStore((s) => s.layoutRequest);
+  const stageKey = stageIds.join(",");
+  useEffect(() => {
+    if (layoutRequest?.page !== "cleanup" || !stageKey) return;
+    if (layout.mode !== "grid" && stageKey.split(",").includes(layoutRequest.primary)) {
+      dispatchLayout({ type: "set", mode: layout.mode, id: layoutRequest.primary });
+    }
+    useMarkStore.getState().setLayoutRequest(null);
+  }, [layoutRequest, stageKey, layout.mode, dispatchLayout]);
+
   const valueAt = (s: Slice | undefined, p: [number, number]) => {
     if (!s) return undefined;
     const ij = sampleIndex(s.header, p[0], p[1], geom);
@@ -352,6 +385,9 @@ export function ReciprocalViewer() {
                     latCut={latCut}
                   />
                   {gridlines && <HklGrid viewport={viewport} geom={geom} lut={lut} />}
+                  {marked.length > 0 && (
+                    <RegionMarks items={marksOn(s.name)} geom={geom} viewport={viewport} lut={lut} extent={r.data.header} />
+                  )}
                   {r.isFetching && <span className="spin vf-spin" />}
                 </ViewFrame>
               ) : (
