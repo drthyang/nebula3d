@@ -11,13 +11,16 @@ import { ANSWER_REVISIONS, runAgent } from "../agent";
 import {
   answerIssues,
   assumedModulation,
+  citedMarks,
   contradictions,
   earlierSources,
   issuesNote,
   issuesPrompt,
+  marksMade,
   missingEvidence,
   questionsForUser,
   unaskedQuestions,
+  unmadeMarks,
   untracedNumbers,
   verdictsIn,
 } from "../answerChecks";
@@ -724,5 +727,137 @@ describe("the user's questions: asked, never answered for them (plan 4.15)", () 
     const still = await runAgent({ messages: question, tools: [punch], ctx, settings, signal: new AbortController().signal });
     expect(still.content).toBe("The punch meets its goal; nothing else to report.");
     expect(still.note).toBe(`Not asked of you, though a result asks it: ${QUESTION}`);
+  });
+});
+
+describe("the marks an answer names: only those a call made (THY-44)", () => {
+  // mark_region's result as the model reads it: the mark's id, and the rest of what it drew.
+  const marked = (id: string, extra: Record<string, unknown> = {}) =>
+    step("mark_region", { where: "flatten", shape: "ellipsoid", label: "diffuse maximum" }, { marked: id, label: "diffuse maximum", where: "flatten", ...extra });
+
+  it("takes each mark a mark_region call named, and nothing a failed call or another tool wrote", () => {
+    const steps = [
+      marked("M1"),
+      marked("M2", { already_marked: true }), // the same mark again names the one there
+      step("mark_region", {}, "Error: not marked: the region is outside the volume", "error"),
+      step("mark_region", {}, { marked: "X3" }),
+      step("assess_stage", { stage: "rings" }, { marked: "M9" }),
+      marked("M1"),
+    ];
+    expect(marksMade(steps)).toEqual(["M1", "M2"]);
+  });
+
+  it("reads an id as a mark's where the answer speaks of a mark", () => {
+    const named: [string, string[]][] = [
+      ["I marked the diffuse maximum as M1.", ["M1"]],
+      ["The satellites are marked as M2 and M3.", ["M2", "M3"]],
+      ["M4 marks the ring left over at 3.2 Å⁻¹.", ["M4"]],
+      ["See the marks M1, M2 and M5 on the cleanup page.", ["M1", "M2", "M5"]],
+      ["- M6 · ring left over", ["M6"]], // the tool's own form
+      ["I marked the ring left over on the punch stage as M7.", ["M7"]],
+      ["Both features are marked: M1 for the ring and M2 for the punch hole.", ["M1", "M2"]],
+      ["M1, the mark on the flatten stage, holds the ring.", ["M1"]],
+      ["Yes, I marked it as M2.", ["M2"]],
+      ["**Marked regions:** `M1` (the ring), `M2` (the satellites).", ["M1", "M2"]],
+    ];
+    for (const [text, ids] of named) expect(citedMarks(text), text).toEqual(ids);
+  });
+
+  it("reads no id where the answer does not speak of a mark, or names none as made", () => {
+    const none = [
+      // Not a mark's context, or not the tool's form.
+      "The ring left over (M1) is at 3.2 Å⁻¹.",
+      "Fe sits on the M1 and M2 octahedral sites.",
+      "As a benchmark, M2 is fine.",
+      "I marked M1.5 and TM1 and M1a and M0 and M01.",
+      "The remark about M3 stands.",
+      // A site or an irrep of the same form, beside a mark word.
+      "I marked the diffuse peaks near the M2 site.",
+      "I marked the reflections of the M2+ and mM3 irreps.",
+      // A clause that negates, asks, plans or weighs a condition.
+      "There is no mark M3 in this conversation.",
+      "Should I mark it as M3?",
+      "If you want, I can mark it as M3.",
+      "I will mark the ring next (M3).",
+      "It could be marked as M3.",
+    ];
+    for (const text of none) expect(citedMarks(text), text).toEqual([]);
+    // In one sentence, only the clause that names a mark as made counts.
+    expect(citedMarks("There is no M3; I marked the ring as M1.")).toEqual(["M1"]);
+    expect(citedMarks("Fe on the M2 site carries the moment, and I marked its satellites as M1.")).toEqual(["M1"]);
+  });
+
+  it("lets an answer name the marks this reply's calls made, or an earlier turn's, and no other", () => {
+    const text = "I marked the diffuse maximum as M1 and its partners as M2.";
+    expect(unmadeMarks(text, [marked("M1"), marked("M2")])).toEqual([]);
+    expect(unmadeMarks(text, [marked("M1")])).toEqual(["M2"]);
+    expect(unmadeMarks(text, [marked("M1")], new Set(["M2"]))).toEqual([]); // M2 made in an earlier turn
+    expect(unmadeMarks(text, [])).toEqual(["M1", "M2"]);
+    // A call that failed made no mark.
+    expect(unmadeMarks(text, [marked("M1"), step("mark_region", {}, "Error: not marked: no evidence", "error")])).toEqual(["M2"]);
+  });
+
+  it("is an issue of the answer: sent back to the model in either arm, then noted", () => {
+    const text = "The diffuse maximum is marked as M1, and its partners as M2 and M3.";
+    expect(answerIssues(text, [marked("M1"), marked("M2"), marked("M3")], "")).toBeNull();
+    const issues = answerIssues(text, [marked("M1")], "")!;
+    expect(issues.unmadeMarks).toEqual(["M2", "M3"]);
+    expect(issuesPrompt(issues)).toBe(
+      [
+        "Before this answer goes to the user, fix it:",
+        '- These mark ids name no mark that mark_region made in this conversation: M2, M3. Cite a mark only by the id its call returned ("marked" in the result); to show a region not yet marked, call mark_region first.',
+        "Then write the whole answer again.",
+      ].join("\n"),
+    );
+    const off = issuesPrompt(issues, { skills: false });
+    expect(off).toBe(
+      [
+        "Before this answer goes to the user, fix it:",
+        "- These mark ids name no mark made in this conversation: M2, M3. Cite a mark only by the id its call returned, or leave it out.",
+        "Then write the whole answer again.",
+      ].join("\n"),
+    );
+    expect(namedInOwnWords(off)).toEqual([]);
+    expect(quotations(off)).toEqual([]);
+    expect(issuesNote(issues)).toBe("Names marks that were never made: M2, M3.");
+    const one = answerIssues("I marked the ring as M4.", [], "", "", new Set(["M1"]))!;
+    expect(issuesPrompt(one)).toContain("- This mark id names no mark that mark_region made in this conversation: M4.");
+    expect(issuesNote(one)).toBe("Names a mark that was never made: M4.");
+  });
+
+  it("does not take an id a reference fills in, from the call that made it, for one made up", () => {
+    expect(answerIssues("I marked the diffuse maximum as {{mark_region.marked}}.", [marked("M1")], "")).toBeNull();
+  });
+
+  const markTool: AgentTool = {
+    name: "mark_region",
+    description: "marks a region",
+    parameters: { type: "object", properties: { label: { type: "string" } } },
+    run: async () => ({ result: { marked: "M1", label: "diffuse maximum", where: "flatten" }, summary: "M1 · diffuse maximum" }),
+  };
+  const markCall = { id: "m1", type: "function" as const, function: { name: "mark_region", arguments: '{"label":"diffuse maximum"}' } };
+  const where: ChatMessage[] = [{ role: "user", content: "Where is the diffuse maximum?" }];
+
+  it("runAgent sends an answer naming a mark no call made back once, and keeps the revision that names the one made", async () => {
+    const seen = script([
+      [{ toolCalls: [markCall] }],
+      [{ content: "The diffuse maximum is marked as M2." }],
+      [{ content: "The diffuse maximum is marked as M1." }],
+    ]);
+    const r = await runAgent({ messages: where, tools: [markTool], ctx, settings, signal: new AbortController().signal });
+    expect(r.content).toBe("The diffuse maximum is marked as M1.");
+    expect(r.note).toBeUndefined();
+    expect(String(seen[2][seen[2].length - 1].content)).toMatch(/This mark id names no mark that mark_region made in this conversation: M2\./);
+    // Still named after the one revision: a note under the reply.
+    script([[{ toolCalls: [markCall] }], [{ content: "The diffuse maximum is marked as M2." }], [{ content: "It is marked as M2." }]]);
+    const still = await runAgent({ messages: where, tools: [markTool], ctx, settings, signal: new AbortController().signal });
+    expect(still.note).toBe("Names a mark that was never made: M2.");
+  });
+
+  it("runAgent lets an answer name a mark an earlier turn made, and the one this reply's call made", async () => {
+    script([[{ toolCalls: [markCall] }], [{ content: "M1 marks the diffuse maximum, and M2, marked earlier, its partners." }]]);
+    const r = await runAgent({ messages: where, tools: [markTool], ctx: { ...ctx, marksEarlier: new Set(["M2"]) }, settings, signal: new AbortController().signal });
+    expect(r.note).toBeUndefined();
+    expect(client.streamChat).toHaveBeenCalledTimes(2); // nothing sent back
   });
 });

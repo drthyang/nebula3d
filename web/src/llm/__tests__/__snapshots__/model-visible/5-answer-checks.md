@@ -130,6 +130,40 @@ Before this answer goes to the user, fix it:
 Then write the whole answer again.
 ```
 
+## a mark no call made
+
+Tools run in the reply: mark_region {"where":"flatten","shape":"ellipsoid","label":"diffuse maximum","evidence":["measure_reciprocal_cut"]}.
+
+The answer:
+
+```text
+The diffuse maximum is marked as M1, and its partners as M2.
+```
+
+Sent back to the model:
+
+```text
+Before this answer goes to the user, fix it:
+- This mark id names no mark that mark_region made in this conversation: M2. Cite a mark only by the id its call returned ("marked" in the result); to show a region not yet marked, call mark_region first.
+Then write the whole answer again.
+```
+
+## a mark an earlier turn made, and one this reply made
+
+Tools run in an earlier turn: mark_region {"where":"flatten","shape":"ellipsoid","label":"diffuse maximum","evidence":["measure_reciprocal_cut"]}.
+
+Tools run in the reply: mark_region {"where":"flatten","shape":"ellipsoid","label":"its partners","evidence":["measure_reciprocal_cut"]}.
+
+The answer:
+
+```text
+M2 marks the partners of the diffuse maximum, which M1 marks.
+```
+
+Sent back to the model:
+
+Nothing: the answer goes to the user, its references filled in.
+
 ## a question a result puts to the user, not asked, and its answer said as fact
 
 Tools run in the reply: assess_stage {"stage":"punch"}.

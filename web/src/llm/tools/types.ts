@@ -52,6 +52,10 @@ export interface ToolContext {
   // this reply's own results, while what each measured stands (earlierSources,
   // answerChecks.ts).
   earlierSteps?: readonly AgentStep[];
+  // The marks the conversation's earlier turns made, by id (marksMade,
+  // answerChecks.ts): what an answer may name besides this reply's own marks.
+  // A restored turn's count: its marks came back with it.
+  marksEarlier?: ReadonlySet<string>;
   // This reply's steps before the call, oldest first, as the agent loop keeps
   // them: what the run's verdict ({{achieved}}, references.ts) is computed
   // from at this point (run_verdict reads it). The round sets it on every call

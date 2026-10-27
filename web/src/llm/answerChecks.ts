@@ -26,6 +26,9 @@
 //   sharp peaks off the lattice bunched at one commensurate fraction) has the
 //   answer ask it, naming the fraction or the modulation (`unasked`), and
 //   never say outright that the sample has that modulation (`assumed`).
+// - **Only marks that were made.** An answer names a marked region by the id
+//   mark_region returned for it in this conversation (`unmadeMarks`): an id
+//   no call made points the user at nothing.
 //
 // A failed check sends the answer back once, with what to fix; what still
 // fails is noted under the reply.  The text checks are heuristic by design:
@@ -405,6 +408,93 @@ export function assumedModulation(text: string): string[] {
     .map((c) => c.text);
 }
 
+// ------------------------------------------------------------------ the marks it names
+//
+// mark_region marks a region in the slice views and names the mark by an id:
+// "marked": "M1" in its result (a call that finds the same mark there already
+// names that one). An answer may name a mark that a call made in this reply
+// or an earlier turn (a restored turn's too: its marks came back with it), and
+// no other: an id the model made up points the user at nothing.
+//
+// Only an id in the tool's form counts (M and a number, a word of its own),
+// and only where the answer speaks of a mark: near a mark word ("marked as
+// M2", "the marks M1 and M3", "M1 marks the ring") or in the tool's own
+// "M1 · label" form. Not a site or an irrep of the same form (the M2 site,
+// M2+, mM3), and not in a clause that negates, asks, plans or weighs a
+// condition ("there is no M3", "I could mark it as M3"). Heuristic, as the
+// other text checks are, and leaning to a miss over a false alarm: a bare
+// "(M1)" beside a finding is not read as a mark.
+
+/** The marks the steps' mark_region calls made, by the id each result names, each once, in order. */
+export function marksMade(steps: readonly AgentStep[]): string[] {
+  const ids = steps.flatMap((s) => {
+    if (s.name !== "mark_region") return [];
+    const id = found(s)?.marked;
+    return typeof id === "string" && MARK_ID_FORM.test(id) ? [id] : [];
+  });
+  return unique(ids);
+}
+
+/** A mark's id as mark_region gives it. */
+const MARK_ID_FORM = /^M[1-9]\d*$/;
+/** That id in an answer: a word of its own, not a site, an irrep or a decimal (M2 site, M2+, M2−, mM3, M1.5). */
+const MARK_ID = /(?<![\p{L}\p{N}_])M[1-9]\d*(?![\p{L}\p{N}_]|[+−-]|\.\d|\s+sites?\b)/gu;
+/** A word that speaks of a mark: the noun or the verb. */
+const MARK_WORD = /\bmark(?:s|ed|ing)?\b/i;
+/** Words that join ids in a list ("M1, M2 and M3"), which no distance counts. */
+const JOINER = /^(?:and|or|&|\/)?$/i;
+/** How many words may stand between a mark word and an id after it ("marked the ring at 3.2 Å⁻¹, M1"), or before it ("M1 is the mark"). */
+const AFTER_MARK_WORD = 6;
+const BEFORE_MARK_WORD = 2;
+/** Clauses that name no mark as made: negated, a question, a condition, a plan, or what might be. */
+const NOT_A_CITATION: readonly Cue[] = ["conditional", "plan", "modal"];
+
+/** The mark ids an answer names as marks, each once, in order. */
+export function citedMarks(text: string): string[] {
+  const out: string[] = [];
+  for (const s of readAnswer(text, READING).sentences) {
+    const ids = [...s.text.matchAll(MARK_ID)];
+    if (!ids.length || s.question) continue;
+    // Each clause where it sits in the sentence: an id in one that names no mark as made is passed over.
+    let from = 0;
+    const passed = s.clauses.flatMap((c) => {
+      const at = s.text.indexOf(c.text, from);
+      if (at < 0) return [];
+      from = at + c.text.length;
+      return c.question || negated(c) || NOT_A_CITATION.some((k) => c.cues.has(k)) ? [[at, from] as const] : [];
+    });
+    // The sentence as words, each where it starts: a mark word, one holding an id, a joiner, or another word.
+    const words = [...s.text.matchAll(/\S+/g)].map((m) => ({ text: m[0], at: m.index }));
+    const wordAt = (index: number): number => words.reduce((found, w, i) => (w.at <= index ? i : found), 0);
+    const idWords = new Set(ids.map((m) => wordAt(m.index)));
+    const kinds = words.map((w, i) => {
+      if (idWords.has(i)) return { mark: false, counts: false };
+      if (MARK_WORD.test(w.text)) return { mark: true, counts: false };
+      return { mark: false, counts: !JOINER.test(w.text.replace(/[()[\].,;:!"“”'‘’]/g, "")) };
+    });
+    // The words that count between two (neither end).
+    const between = (a: number, b: number) => kinds.slice(Math.min(a, b) + 1, Math.max(a, b)).filter((k) => k.counts).length;
+    for (const m of ids) {
+      if (passed.some(([a, b]) => m.index >= a && m.index < b)) continue;
+      const i = wordAt(m.index);
+      // The tool's own form of a mark, its id and label: "M1 · a ring left over".
+      const chip = /^\s*·/.test(s.text.slice(m.index + m[0].length));
+      const after = kinds.some((k, j) => k.mark && j < i && between(j, i) <= AFTER_MARK_WORD);
+      const before = kinds.some((k, j) => k.mark && j > i && between(i, j) <= BEFORE_MARK_WORD);
+      // Named after a mark word, however far: "I marked the ring left over on the punch stage as M7".
+      const named = /\bas\s*\(?$/i.test(s.text.slice(0, m.index)) && kinds.some((k, j) => k.mark && j < i);
+      if ((chip || after || before || named) && !out.includes(m[0])) out.push(m[0]);
+    }
+  }
+  return out;
+}
+
+/** The mark ids an answer names as marks that no mark_region call made: in this reply (`steps`), or an earlier turn (`earlier`). */
+export function unmadeMarks(text: string, steps: readonly AgentStep[], earlier: Iterable<string> = []): string[] {
+  const made = new Set([...earlier, ...marksMade(steps)]);
+  return citedMarks(text).filter((id) => !made.has(id));
+}
+
 // ------------------------------------------------------------------ numbers
 //
 // Read by the reader (answerText/numbers.ts: writtenNumbers, sourceNumbers).
@@ -500,6 +590,9 @@ export interface AnswerIssues {
   // With such a question in the reply, the answer's clauses that say outright
   // the sample has the modulation it asks about: the answer's own words.
   assumed: string[];
+  // The mark ids the answer names as marks that no mark_region call in this
+  // conversation made (unmadeMarks), as written.
+  unmadeMarks: string[];
 }
 
 const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
@@ -509,8 +602,16 @@ const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
  * read with its references filled in from this reply's results, as the user
  * will read it. `stale`: what earlierSources took out of the sources, which
  * tells a number measured before a later run from one from nowhere.
+ * `marksEarlier`: the marks the conversation's earlier turns made
+ * (marksMade), which the answer may name besides this reply's.
  */
-export function answerIssues(text: string, steps: readonly AgentStep[], sources: string, stale = ""): AnswerIssues | null {
+export function answerIssues(
+  text: string,
+  steps: readonly AgentStep[],
+  sources: string,
+  stale = "",
+  marksEarlier: Iterable<string> = [],
+): AnswerIssues | null {
   if (!text.trim()) return null;
   const { text: filled, unknown } = fillReferences(text, steps);
   const { missing, stale: staleTopics } = evidenceGaps(filled, steps);
@@ -540,6 +641,7 @@ export function answerIssues(text: string, steps: readonly AgentStep[], sources:
     achieved: verdict?.achieved ?? null,
     unasked: questions.filter((q) => !asksIt(filled, q)),
     assumed: questions.length ? unique(assumedModulation(filled)) : [],
+    unmadeMarks: unmadeMarks(filled, steps, marksEarlier),
   };
   return issues.missing.length ||
     issues.stale.length ||
@@ -549,13 +651,17 @@ export function answerIssues(text: string, steps: readonly AgentStep[], sources:
     issues.unknownReferences.length ||
     issues.overall ||
     issues.unasked.length ||
-    issues.assumed.length
+    issues.assumed.length ||
+    issues.unmadeMarks.length
     ? issues
     : null;
 }
 
 const MAX_LISTED = 8;
 const listed = (xs: string[]): string => (xs.length > MAX_LISTED ? `${xs.slice(0, MAX_LISTED).join(", ")}, …` : xs.join(", "));
+
+/** The send-back's opening on mark ids no call made, in either arm. */
+const marksNamed = (ids: readonly string[]): string => (ids.length > 1 ? "These mark ids name" : "This mark id names");
 
 /** The send-back's line on numbers a later run made stale, in either arm: it names no tool, stage or skill. */
 const staleNumbersLine = (xs: string[]): string =>
@@ -593,6 +699,11 @@ export function issuesPrompt(issues: AnswerIssues, { skills = true }: { skills?:
   if (issues.assumed.length) {
     lines.push(
       `- ${issues.assumed.map(quoted).join(", ")}: ${issues.assumed.length > 1 ? "these say" : "this says"} the sample has the modulation a result in this reply asks the user about (ask_user). Only the user can say so: ask instead, and declare nothing.`,
+    );
+  }
+  if (issues.unmadeMarks.length) {
+    lines.push(
+      `- ${marksNamed(issues.unmadeMarks)} no mark that mark_region made in this conversation: ${listed(issues.unmadeMarks)}. Cite a mark only by the id its call returned ("marked" in the result); to show a region not yet marked, call mark_region first.`,
     );
   }
   lines.push("Then write the whole answer again.");
@@ -651,6 +762,9 @@ function withoutSkills(issues: AnswerIssues): string {
       `- ${issues.assumed.map(quoted).join(", ")}: ${issues.assumed.length > 1 ? "these say" : "this says"} as fact what a result in this reply asks the user. Only the user can say so: ask instead.`,
     );
   }
+  if (issues.unmadeMarks.length) {
+    lines.push(`- ${marksNamed(issues.unmadeMarks)} no mark made in this conversation: ${listed(issues.unmadeMarks)}. Cite a mark only by the id its call returned, or leave it out.`);
+  }
   lines.push("Then write the whole answer again.");
   return lines.join("\n");
 }
@@ -667,5 +781,6 @@ export function issuesNote(issues: AnswerIssues): string {
   if (issues.staleNumbers.length) parts.push(`Measured before the last run recomputed the outputs they describe: ${listed(issues.staleNumbers)}.`);
   for (const q of issues.unasked) parts.push(`Not asked of you, though a result asks it: ${q}`);
   if (issues.assumed.length) parts.push(`Says as fact what only you can say: ${listed(issues.assumed.map(quoted))}.`);
+  if (issues.unmadeMarks.length) parts.push(`Names ${issues.unmadeMarks.length > 1 ? "marks that were" : "a mark that was"} never made: ${listed(issues.unmadeMarks)}.`);
   return parts.join(" ");
 }

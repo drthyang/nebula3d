@@ -431,7 +431,7 @@ export async function runAgent({
       const answer = roundText.trim() ? roundText : rejected;
       const earlier = earlierSources(ctx?.earlierSteps ?? [], steps);
       const sources = numberSources(convo, arrived, steps.map(whole), tools, earlier.standing);
-      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources, earlier.stale) : null;
+      const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources, earlier.stale, ctx?.marksEarlier) : null;
       if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;

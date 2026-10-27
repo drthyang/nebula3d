@@ -4,6 +4,7 @@
 // keeps whatever was written so far.
 
 import { runAgent, toolStepsIn, type AgentStep } from "./agent";
+import { marksMade } from "./answerChecks";
 import { beginReply, endReply, recordUsage, type Usage } from "./usage";
 import { useChatStore } from "./chatStore";
 import type { ChatMessage } from "./provider/client";
@@ -21,10 +22,18 @@ let controller: AbortController | null = null;
  * (startReply, tools/round.ts). The earlier reads word the refusal, which asks
  * for the skill again; the earlier tool calls that ran are what an answer's
  * numbers may come from besides this reply's, while what each measured stands
- * (toolStepsIn, agent.ts; earlierSources, answerChecks.ts).
+ * (toolStepsIn, agent.ts; earlierSources, answerChecks.ts). The marks the
+ * earlier turns made, restored ones too, are what an answer may name besides
+ * this reply's (marksMade, unmadeMarks).
  */
 export function replyContext(ctx: ToolContext, turns: readonly { steps?: readonly AgentStep[] }[]): ToolContext {
-  return { ...ctx, skillsRead: new Set(), skillsReadEarlier: skillsReadIn(turns), earlierSteps: toolStepsIn(turns) };
+  return {
+    ...ctx,
+    skillsRead: new Set(),
+    skillsReadEarlier: skillsReadIn(turns),
+    earlierSteps: toolStepsIn(turns),
+    marksEarlier: new Set(marksMade(turns.flatMap((t) => t.steps ?? []))),
+  };
 }
 
 export async function askAssistant({

@@ -184,4 +184,18 @@ describe("replyContext", () => {
     expect(ctx.earlierSteps?.map((s) => s.result)).toEqual(["Skill reduction-qc", "r"]);
     expect([ctx.dataset, ctx.datasets]).toEqual([dataset, [dataset]]);
   });
+
+  it("gathers the marks the earlier turns made, a restored turn's too, for the answer checks", () => {
+    const marked = (id: string, extra: Partial<AgentStep> = {}) => ({ ...step("mark_region", {}, "done", JSON.stringify({ marked: id, label: "a ring left over" })), ...extra });
+    const turns = [
+      { steps: [marked("M1", { restored: true }), marked("M2")] },
+      { steps: [step("mark_region", {}, "error", "Error: not marked: no evidence"), step("assess_stage", { stage: "rings" }, "done", '{"marked":"M7"}')] },
+      { steps: [marked("M3")] },
+    ];
+    const ctx = replyContext(toolContext, turns);
+    expect(ctx.marksEarlier).toEqual(new Set(["M1", "M2", "M3"]));
+    // A restored step is no number source (toolStepsIn), though its mark stands.
+    expect(ctx.earlierSteps?.filter((s) => s.name === "mark_region")).toHaveLength(2);
+    expect(replyContext(toolContext, []).marksEarlier).toEqual(new Set());
+  });
 });

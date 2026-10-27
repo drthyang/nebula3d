@@ -29,7 +29,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { runAgent, type AgentStep } from "../agent";
-import { answerIssues, earlierSources, issuesPrompt } from "../answerChecks";
+import { answerIssues, earlierSources, issuesPrompt, marksMade } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
@@ -824,6 +824,11 @@ const BUNCHED = step("assess_stage", { stage: "punch" }, {
   },
 });
 const COVERED = step("qmax_coverage", {}, { verdict: "clean: the ΔPDF's ellipsoid window puts 2.4e-4 of its weight on unmeasured reciprocal space", window_weight_on_unmeasured: 2.4e-4 });
+// Two marks made by mark_region, each named by its result's id.
+const markedAs = (id: string, label: string) =>
+  step("mark_region", { where: "flatten", shape: "ellipsoid", label, evidence: ["measure_reciprocal_cut"] }, { marked: id, label, where: "flatten", page: "Reciprocal cleanup" });
+const MARKED_M1 = markedAs("M1", "diffuse maximum");
+const MARKED_M2 = markedAs("M2", "its partners");
 
 const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: AgentStep[] }[] = [
   {
@@ -863,16 +868,27 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: Agen
     earlier: [RINGS],
   },
   {
+    what: "a mark no call made",
+    reply: "The diffuse maximum is marked as M1, and its partners as M2.",
+    steps: [MARKED_M1],
+  },
+  {
+    what: "a mark an earlier turn made, and one this reply made",
+    reply: "M2 marks the partners of the diffuse maximum, which M1 marks.",
+    steps: [MARKED_M2],
+    earlier: [MARKED_M1],
+  },
+  {
     what: "a question a result puts to the user, not asked, and its answer said as fact",
     reply: "The punch meets its goal. The 14 sharp peaks at H = n ± 1/3 are satellites of a modulation with k = (1/3, 0, 0).",
     steps: [BUNCHED],
   },
 ];
 
-/** A canned reply's issues: its number sources are its tools' results, and an earlier turn's while what each measured stands. */
+/** A canned reply's issues: its number sources are its tools' results, and an earlier turn's while what each measured stands; the marks it may name, its own and an earlier turn's. */
 function issuesOf({ reply, steps, earlier = [] }: (typeof REPLIES)[number]) {
   const { standing, stale } = earlierSources(earlier, steps);
-  return answerIssues(reply, steps, [...steps.map((s) => s.result ?? ""), ...standing].join("\n"), stale);
+  return answerIssues(reply, steps, [...steps.map((s) => s.result ?? ""), ...standing].join("\n"), stale, marksMade(earlier));
 }
 
 // A success the checks did not all measure: shown for arm C, whose wording of it names no stage to measure.
@@ -969,6 +985,7 @@ describe("5. the text sent back to the model", () => {
         [issues.staleNumbers.length > 0, /These numbers were measured before the last run recomputed the outputs they describe/],
         [issues.unasked.length > 0, /has a question for the user that the answer does not ask/],
         [issues.assumed.length > 0, /as fact what a result in this reply asks the user/],
+        [issues.unmadeMarks.length > 0, /(This mark id names|These mark ids name) no mark made in this conversation/],
       ];
       for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
     }
