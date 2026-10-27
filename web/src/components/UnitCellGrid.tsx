@@ -10,7 +10,7 @@
 // viewBox with a non-scaling stroke, so it fills its parent responsively.
 
 import { gridColor } from "./gridColor";
-import { gridSegments } from "./oblique";
+import { gridSegments, hklGridStep } from "./oblique";
 import { useViewSize } from "./viewSize";
 import { visibleBounds, type SliceGeom, type Viewport } from "./viewport";
 
@@ -79,10 +79,26 @@ export function UnitCellGrid({ half, viewport, latX, latY, angle = 90, lut, dash
 
 /**
  * Dashed lines at integer h, k, l on an r.l.u. slice view (the "Unit cell"
- * switch on the reciprocal-space views): one r.l.u. apart along each displayed
- * axis, in the view's display units and at its axes angle — the geometry its
- * canvas and ticks use (viewport.ts hklGridSegments).
+ * switch on the reciprocal-space views), in the view's display units and at
+ * its axes angle — the geometry its canvas and ticks use.  The step follows
+ * the zoom, per axis: every 1, 2, 5 or 10 r.l.u., the smallest whose lines
+ * stay at least HKL_GRID_MIN_PX apart (hklGridStep).
  */
 export function HklGrid({ viewport, geom, lut }: { viewport: Viewport; geom: SliceGeom; lut: Uint8ClampedArray }) {
-  return <UnitCellGrid half={viewport.half} viewport={viewport} latX={geom.sx} latY={geom.sy} angle={geom.angle} lut={lut} dash={DASH_HKL} />;
+  const size = useViewSize();
+  const b = visibleBounds(viewport, size.w, size.h);
+  const pxPerUnit = size.w / (b.x1 - b.x0 || 1);
+  const stepX = hklGridStep(geom.sx, pxPerUnit, geom.angle);
+  const stepY = hklGridStep(geom.sy, pxPerUnit, geom.angle);
+  return (
+    <UnitCellGrid
+      half={viewport.half}
+      viewport={viewport}
+      latX={geom.sx * stepX}
+      latY={geom.sy * stepY}
+      angle={geom.angle}
+      lut={lut}
+      dash={DASH_HKL}
+    />
+  );
 }

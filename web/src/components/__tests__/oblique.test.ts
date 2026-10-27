@@ -10,6 +10,9 @@ import {
   latticeLabel,
   toDisplay,
   gridSegments,
+  HKL_GRID_MIN_PX,
+  HKL_GRID_STEPS,
+  hklGridStep,
   unitCellSegments,
 } from "../oblique";
 
@@ -127,5 +130,28 @@ describe("latticeLabel", () => {
       "a=4.00  b=4.00  c=6.00 Å · α=90.00  β=90.00  γ=120.00°",
     );
     expect(latticeLabel({ a: 4, b: 4, c: 6 })).toBe("a=4.00  b=4.00  c=6.00 Å");
+  });
+});
+
+describe("hklGridStep", () => {
+  it("draws every line while they stand far enough apart", () => {
+    expect(hklGridStep(1, 40)).toBe(1); // 40 px apart
+    expect(hklGridStep(1, HKL_GRID_MIN_PX)).toBe(1);
+  });
+
+  it("steps up 2, 5, 10 as the view zooms out", () => {
+    expect(hklGridStep(1, 20)).toBe(2); // 20 → 40 px
+    expect(hklGridStep(1, 8)).toBe(5); // 16 → 40 px
+    expect(hklGridStep(1, 4)).toBe(10); // 8, 20 → 40 px
+    expect(hklGridStep(1, 0.5)).toBe(10); // stays at the largest
+  });
+
+  it("measures the lines' true separation on oblique axes (lat·sin θ)", () => {
+    expect(hklGridStep(1, 45, 90)).toBe(1);
+    expect(hklGridStep(1, 45, 120)).toBe(2); // 45·sin 120° ≈ 39 px < 40
+  });
+
+  it("only ever returns one of the allowed steps", () => {
+    for (let px = 0.1; px < 100; px *= 1.3) expect(HKL_GRID_STEPS).toContain(hklGridStep(0.37, px, 60));
   });
 });

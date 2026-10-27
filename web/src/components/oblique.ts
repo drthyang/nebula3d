@@ -102,3 +102,19 @@ export function latticeLabel(lat: Lattice): string {
   if (alpha == null || beta == null || gamma == null) return len;
   return `${len} · α=${alpha.toFixed(2)}  β=${beta.toFixed(2)}  γ=${gamma.toFixed(2)}°`;
 }
+
+/** The steps (in r.l.u.) the h, k, l grid may take: every line, or every 2nd, 5th, 10th. */
+export const HKL_GRID_STEPS = [1, 2, 5, 10] as const;
+/** The closest two grid lines may come on screen (CSS px) before the grid steps up. */
+export const HKL_GRID_MIN_PX = 40;
+
+/**
+ * The grid step along one axis: the smallest of 1, 2, 5, 10 r.l.u. whose lines
+ * stand at least HKL_GRID_MIN_PX apart on screen.  `lat` is one r.l.u. in
+ * display units, `pxPerUnit` the view's scale, `angleDeg` the axes' angle (the
+ * lines' true separation is lat·sin θ).  Past 10 it stays 10.
+ */
+export function hklGridStep(lat: number, pxPerUnit: number, angleDeg = 90): number {
+  const gap = lat * axesTrig(angleDeg).sin * pxPerUnit;
+  return HKL_GRID_STEPS.find((s) => s * gap >= HKL_GRID_MIN_PX) ?? HKL_GRID_STEPS[HKL_GRID_STEPS.length - 1];
+}
