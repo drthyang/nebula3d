@@ -81,3 +81,29 @@ describe("the phone header's display row", () => {
     expect(useWorkspaceStore.getState().displayOpen).toBe(true);
   });
 });
+
+describe("the gesture card's first-run dot", () => {
+  beforeEach(() => vi.stubGlobal("localStorage", memoryStorage()));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shows until the card has been opened once in this browser", async () => {
+    const { useWorkspaceStore, GESTURE_HINT_SEEN_KEY } = await freshStore();
+    expect(useWorkspaceStore.getState().gestureHintSeen).toBe(false);
+    useWorkspaceStore.getState().markGestureHintSeen();
+    expect(useWorkspaceStore.getState().gestureHintSeen).toBe(true);
+    expect(localStorage.getItem(GESTURE_HINT_SEEN_KEY)).toBe("1");
+    expect((await freshStore()).useWorkspaceStore.getState().gestureHintSeen).toBe(true);
+  });
+
+  it("works without storage: shown at first, gone once opened this visit", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+      removeItem: () => { throw new Error("blocked"); },
+    });
+    const { useWorkspaceStore } = await freshStore();
+    expect(useWorkspaceStore.getState().gestureHintSeen).toBe(false);
+    useWorkspaceStore.getState().markGestureHintSeen();
+    expect(useWorkspaceStore.getState().gestureHintSeen).toBe(true);
+  });
+});

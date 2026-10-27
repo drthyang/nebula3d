@@ -13,6 +13,9 @@
 //
 // On phones the header's display row folds behind a toggle (WorkspaceHeader);
 // whether it is open is one setting for every page, remembered per browser.
+//
+// The gesture card (GestureHint.tsx) marks its "?" with a dot until it has
+// been opened once in this browser.
 
 import { create } from "zustand";
 
@@ -43,11 +46,25 @@ export function initialDisplayOpen(): boolean {
   }
 }
 
+/** Where this browser remembers that the gesture card has been opened ("1"). */
+export const GESTURE_HINT_SEEN_KEY = "nebula3d.gestureHintSeen";
+
+/** Whether the gesture card has been opened before in this browser (unknown → not yet). */
+export function initialGestureHintSeen(): boolean {
+  try {
+    return localStorage.getItem(GESTURE_HINT_SEEN_KEY) === "1";
+  } catch {
+    return false; // storage unavailable: the dot shows until the card is opened this visit
+  }
+}
+
 interface WorkspaceState {
   clickMode: ClickMode;
   setClickMode: (m: ClickMode) => void;
   displayOpen: boolean;
   setDisplayOpen: (open: boolean) => void;
+  gestureHintSeen: boolean;
+  markGestureHintSeen: () => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -61,5 +78,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       /* storage unavailable: open for this visit only */
     }
     set({ displayOpen });
+  },
+  gestureHintSeen: initialGestureHintSeen(),
+  markGestureHintSeen: () => {
+    try {
+      localStorage.setItem(GESTURE_HINT_SEEN_KEY, "1");
+    } catch {
+      /* storage unavailable: seen for this visit only */
+    }
+    set({ gestureHintSeen: true });
   },
 }));
