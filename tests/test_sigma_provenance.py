@@ -79,3 +79,27 @@ def test_the_punch_warns_in_its_log():
     punch_bragg(_vol(_normalized(), sigma=np.full((15, 15, 15), 0.01)), PunchParams(),
                 progress=lambda *a: events.append(a))
     assert not [e for e in events if e[3].startswith("⚠")]
+
+
+def test_a_mantid_file_without_errors_squared_gets_an_estimated_sigma(tmp_path):
+    # The NeXus Viewer's synthetic examples are SaveMD files with a signal and a
+    # mask but no errors_squared: σ is then √|I|, flagged as estimated, as the
+    # legacy layout takes it without /entry/sigma.
+    data = _normalized(9)
+    signal = data.transpose(2, 1, 0)  # (n_D2, n_D1, n_D0) with D0 = H, D1 = K, D2 = L
+    mask = np.zeros(signal.shape, dtype=np.int8)
+    mask[0, 0, 0] = 1
+    signal = signal.copy()
+    signal[1, 1, 1] = np.nan
+    with h5py.File(tmp_path / "example.nxs", "w") as f:
+        grp = f.create_group("MDHistoWorkspace/data")
+        for i, label in enumerate(("[H,0,0]", "[0,K,0]", "[0,0,L]")):
+            edges = grp.create_dataset(f"D{i}", data=np.linspace(-2.25, 2.25, 10))
+            edges.attrs["long_name"] = label
+        grp["signal"] = signal.astype(np.float32)
+        grp["mask"] = mask
+    vol = nebula3d.load(tmp_path / "example.nxs")
+    assert vol.sigma_estimated and sigma_note(vol) is not None
+    assert not vol.mask[0, 0, 0] and not vol.mask[1, 1, 1]  # masked, and NaN
+    assert vol.data[1, 1, 1] == 0.0 and vol.sigma[1, 1, 1] == 0.0
+    np.testing.assert_allclose(vol.sigma[vol.mask], np.sqrt(np.abs(vol.data[vol.mask])))
