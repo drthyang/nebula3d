@@ -49,3 +49,6 @@ export const DISPLAY_TOGGLE_TITLE = "Colour settings: colormap, range, scale, Au
 export function displaySummaryText(d: { symmetric?: boolean; scale?: ScaleKind; lv: { levels: { hi: number } } }): string {
   return d.symmetric ? `±${fmtLevel(Math.abs(d.lv.levels.hi))}` : (d.scale ?? "lin");
 }
+
+/** The readout hints' verb: a touch screen has no hover, a tap reads (ViewFrame). */
+export const readVerb = (touch: boolean): string => (touch ? "Tap" : "Hover");
