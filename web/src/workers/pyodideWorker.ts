@@ -7,7 +7,8 @@
 //  Main → Worker   { id: number, type: string, ...payload }
 //  Worker → Main   { id: number|null, type: string, ...payload }
 //
-//  id: null  — fire-and-forget events (boot_status, pipeline progress)
+//  id: null  — fire-and-forget events (boot_status, pipeline progress,
+//              gpu_status, memory: the WASM heap's size, see heapReport.ts)
 //  id: number — RPC responses (result / result_binary / error)
 //
 // Binary results (slice envelopes) are posted with an ArrayBuffer in the
@@ -17,6 +18,8 @@
 
 import { installGpuGlobal } from "../gpu";
 import type { NebulaGpu } from "../gpu";
+import { startHeapReporter, wasmHeapBytes } from "./heapReport";
+import type { HeapReporter } from "./heapReport";
 import { loadPyodideRuntime, resolveWheelUrl } from "./pyodideShared";
 import type { PyodideAPI, PyProxy } from "./pyodideShared";
 import { addRingPort, installRingPoolGlobal } from "./ringPoolClient";
@@ -55,6 +58,9 @@ export type WorkerRequest =
 // ---------------------------------------------------------------------------
 let py: PyodideAPI | null = null;
 let bridge: PyProxy | null = null;
+// The memory bar's source: this worker's WASM heap, sent as { id: null, type:
+// "memory", heapBytes, budget } whenever it grew (workers/heapReport.ts).
+let heap: HeapReporter | null = null;
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -84,6 +90,20 @@ async function boot(wheelBase: string, mobile: boolean): Promise<string> {
   bridge = py.pyimport("nebula3d.webbridge");
   // mobile → the tab-wide size gate for loaded volumes (see api/device.ts).
   (bridge.setup as (workdir: string, mobile: boolean) => unknown)("/work", mobile);
+
+  // The budgets the size gate plans with travel with every heap report, so
+  // the bar knows its ceiling (a phone's is the tab-wide budget).
+  let budget: unknown = null;
+  try {
+    budget = JSON.parse((bridge.memory_budget_json as () => string)());
+  } catch {
+    budget = null; // the bar falls back to the heap's own ceiling
+  }
+  heap?.stop();
+  heap = startHeapReporter(
+    () => wasmHeapBytes(py),
+    (heapBytes) => post({ id: null, type: "memory", heapBytes, budget }),
+  );
 
   postBoot("ready", "Ready — compute runs locally in your browser.", true);
   // Probe WebGPU in the background so the ΔPDF-engine status (and the
@@ -164,6 +184,9 @@ async function dispatch(req: WorkerRequest): Promise<void> {
           message: string,
         ): void => {
           post({ id: null, type: "progress", stage, status, fraction, message });
+          // A synchronous stage blocks this worker's timer: its progress
+          // events are when the heap is seen growing mid-run.
+          heap?.report();
         };
         // Run the enabled stages in one call (canonical order) so the pipeline
         // can resolve pass-through inputs across the whole selection; a disabled
@@ -218,6 +241,8 @@ async function dispatch(req: WorkerRequest): Promise<void> {
     }
   } catch (e) {
     replyError(e);
+  } finally {
+    heap?.report();
   }
 }
 

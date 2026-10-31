@@ -171,4 +171,27 @@ describe("ensureRingPool", () => {
     for (const w of workers) expect(w.terminated).toBe(true);
     expect(ringPool.ringPoolStatus().desired).toBe(0);
   });
+
+  it("passes each worker's heap reports to the memory bar, until the pool is torn down", async () => {
+    const memory = await import("../engineMemory"); // the instance ringPool imported
+    const MiB = 1024 ** 2;
+    const pw = pipelineWorker();
+    FakeWorker.instances = [];
+    ringPool.ensureRingPool(pw as unknown as Worker, "https://x/");
+    const [a, b, c] = FakeWorker.instances;
+    a.emit("message", { type: "memory", heapBytes: 200 * MiB });
+    b.emit("message", { type: "memory", heapBytes: 230 * MiB });
+    c.emit("message", { type: "memory", heapBytes: "lots" }); // not a size
+    a.emit("message", { type: "memory", heapBytes: 260 * MiB }); // a grew
+    expect(memory.getEngineMemory().ring).toEqual([260 * MiB, 230 * MiB]);
+
+    // a failed worker keeps its heap until it is terminated
+    b.emit("error", {});
+    expect(memory.getEngineMemory().ring).toEqual([260 * MiB, 230 * MiB]);
+
+    ringPool.disposeRingPool();
+    expect(memory.getEngineMemory().ring).toEqual([]);
+    a.emit("message", { type: "memory", heapBytes: 300 * MiB }); // a late report from a dead worker
+    expect(memory.getEngineMemory().ring).toEqual([]);
+  });
 });
