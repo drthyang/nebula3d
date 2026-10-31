@@ -16,6 +16,7 @@ import { ViewerImportBanner } from "./components/ViewerImportBanner";
 import { MemoryBar } from "./components/MemoryBar";
 import { PilotDock } from "./components/PilotDock";
 import { useDockLayout } from "./components/useDockLayout";
+import { useKeyboardFrame } from "./components/useKeyboardFrame";
 import { useAgentHighlights } from "./llm/highlight";
 import { useRememberedConfig } from "./state/configMemory";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
@@ -135,6 +136,7 @@ export function App() {
   // so it can open a viewer next to the conversation.
   const dockOpen = useNavStore((s) => s.dockOpen);
   const dock = useDockLayout();
+  useKeyboardFrame();
   useAgentHighlights();
   useRememberedConfig();
   const setDockOpen = useNavStore((s) => s.setDockOpen);

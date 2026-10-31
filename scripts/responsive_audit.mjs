@@ -123,7 +123,8 @@ function measure(touch) {
       continue;
     }
     const card = el.parentElement?.closest(CARD);
-    if (card) {
+    // a resize handle straddles its panel's edge on purpose
+    if (card && !el.matches(".ai-resize-x")) {
       const c = card.getBoundingClientRect();
       if ((r.right > c.right + 1 || r.left < c.left - 1) && !(clip && card.contains(clip))) {
         widest.push({ ...describe(el), right: r1(r.right), card: describe(card).sel, cardRight: r1(c.right), kind: "card" });
