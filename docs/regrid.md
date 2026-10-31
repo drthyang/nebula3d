@@ -67,7 +67,11 @@ regridded. The result is then symmetrised under the operations, so the copies of
 each peak stack on its node instead of forming a ring.
 
 Symmetrising an unsymmetrised dataset is optional and off by default.
-Symmetrising changes the data; regridding only resamples them.
+Symmetrising changes the data; regridding only resamples them. It is the
+pipeline's symmetry average, by the same function and the NeXus Viewer's rules
+([symmetry_average.md](algorithms/symmetry_average.md)): each voxel gets the
+equal-weight mean of the measured voxels among its equivalents, and σ that
+mean's, √(Σσ²)/n over the n measured members whose σ is known.
 
 ### What the new file records
 

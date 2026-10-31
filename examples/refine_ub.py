@@ -14,7 +14,9 @@ OPS_FROM at the export.
 
 With OUT the volume is regridded onto the refined UB (trilinear), optionally
 symmetrised under the operations (SYMMETRISE=1: a voxel measured at any
-equivalent position gets the mean of those that are), and written in the
+equivalent position gets the equal-weight mean of those that are, and σ that
+mean's; ``nebula3d.symmetry.symmetry_average``, as the pipeline's symmetry
+average and the NeXus Viewer's export do it), and written in the
 NeXus Viewer's layout (``/entry/{data, sigma, mask, h_axis, k_axis, l_axis,
 ub_matrix}``, the operations in ``symmetry_ops`` when symmetrised), which the
 pipeline reads with ``symmetry: auto``.
@@ -65,7 +67,7 @@ from nebula3d.analysis.ub_refine import (
     regrid,
 )
 from nebula3d.preprocessing.sampling import trim_coverage_edge
-from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops
+from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops, symmetry_average
 
 
 def env_float(name: str) -> float | None:
@@ -170,16 +172,8 @@ def main() -> None:
     new = regrid(vol, f.ub)
     symmetrise = os.environ.get("SYMMETRISE", "") == "1" and ops is not None
     if symmetrise:
-        sym = GridSymmetry.for_volume(new, ops)  # type: ignore[arg-type]
-        valid = new.mask & np.isfinite(new.data)
-        where = sym.orbit_any(valid)
-        new.data[~valid] = np.nan  # left out of the orbit means
-        sym.orbit_mean(new.data, where)
-        var = np.where(valid, new.sigma.astype(np.float64) ** 2, np.nan).astype(new.sigma.dtype)
-        sym.orbit_mean(var, where)  # the orbit's RMS σ: the mean's own is smaller
-        new.mask = where & np.isfinite(new.data)
-        new.data[~new.mask] = 0.0  # unmeasured as the loader leaves it
-        new.sigma = np.where(new.mask, np.sqrt(var), 0.0).astype(new.sigma.dtype)
+        # The equal-weight mean of each orbit's measured voxels, σ the mean's.
+        symmetry_average(new, GridSymmetry.for_volume(new, ops))  # type: ignore[arg-type]
     note = (f"refine_ub fit={fit} cell={cell} from {Path(volume).name}: "
             f"RMS {f.rms_start:.4f} -> {f.rms:.4f} 1/A over {f.n_used} peaks")
     write_entry(new, out, source=volume, ops_text=ops_text if symmetrise else None, note=note,

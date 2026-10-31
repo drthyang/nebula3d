@@ -80,7 +80,9 @@ NEBULA3D's "unknown") is not checked.
    the uncertainty of a mean of independent voxels; √|mean| for an orbit with
    none known. When the volume's σ was only estimated (√|I|, no σ came with
    the data), σ stays √|I| of the averaged values and stays flagged as
-   estimated.
+   estimated. This is NEBULA3D's one convention for a symmetrized volume: the
+   regrid's optional symmetrising ([regrid.md](../regrid.md)) and
+   `examples/refine_ub.py` call this same function, so they cannot diverge.
 
 The volume is processed a slab of H planes at a time, touching only each
 slab's representatives and their images, so the stage holds the volume and a
