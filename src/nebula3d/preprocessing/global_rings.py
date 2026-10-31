@@ -496,7 +496,7 @@ def _fit_one_shell(
     amplitude = np.minimum(amplitude, ceiling)
     model = amplitude * profile
 
-    pred_var = np.einsum("ij,jk,ik->i", basis, covariance, basis)
+    pred_var = _row_quadratic_form(basis, covariance)
     amp_sigma = np.sqrt(np.maximum(pred_var, 0.0) + residual_scale ** 2)
     model_sigma = amp_sigma * profile
     coverage = len(cell_amp) / n_cells
@@ -519,6 +519,29 @@ def _fit_one_shell(
         al_prior_q=al_line.q if al_line is not None else None,
     )
     return indices, model, model_sigma, summary
+
+
+#: Rows of the basis taken at a time in _row_quadratic_form: (rows × terms)
+#: float64 temporaries of a few MB, whatever the shell's voxel count.
+_QUAD_FORM_CHUNK = 1 << 16
+
+
+def _row_quadratic_form(
+    basis: NDArray[np.float64], covariance: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """``b_i · C · b_i`` for every row ``b_i`` of ``basis``, a chunk of rows at a time.
+
+    The three-operand ``np.einsum("ij,jk,ik->i", …)`` this replaces iterates
+    over rows × terms² elements at once, which passes the 2³¹ limit of the
+    browser's 32-bit WASM build on a large shell ("ValueError: iterator is too
+    large"). Row by row (B·C)∘B summed over the terms gives the same numbers
+    with rows × terms work and a bounded temporary.
+    """
+    out = np.empty(basis.shape[0], dtype=np.float64)
+    for start in range(0, basis.shape[0], _QUAD_FORM_CHUNK):
+        block = basis[start:start + _QUAD_FORM_CHUNK]
+        out[start:start + _QUAD_FORM_CHUNK] = np.einsum("ij,ij->i", block @ covariance, block)
+    return out
 
 
 def _directions_for_flat_indices(
