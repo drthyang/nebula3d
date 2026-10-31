@@ -103,8 +103,8 @@ export interface PipelineConfig {
   incidentBeamQC: string;
   incidentBeamMargin: string;
   incidentBeamFitCovariance: boolean; // fit a tilted ellipsoid to the direct beam
-  punchSliceZoom: number;
-  punchSliceContrast: number;
+  // The Configure preview's cut along each axis (r.l.u.): steers the preview
+  // only, never the run, and configure_settings leaves it out.
   punchCutH: number;
   punchCutK: number;
   punchCutL: number;
@@ -221,8 +221,6 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   incidentBeamQC: "",
   incidentBeamMargin: "",
   incidentBeamFitCovariance: false,
-  punchSliceZoom: 1,
-  punchSliceContrast: 1.35,
   punchCutH: 0,
   punchCutK: 0,
   punchCutL: 0,

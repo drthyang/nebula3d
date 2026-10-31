@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BraggProfile, Dataset, VolumeMeta, VolumeTexture } from "../../api/types";
+import { useAgentEdits } from "../../state/agentEdits";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useMarkStore } from "../../state/markStore";
 import { useNavStore } from "../../state/navStore";
@@ -344,6 +345,23 @@ describe("update_settings", () => {
     const r = await run("update_settings", { changes: { punchMinSig: 6 } });
     expect(JSON.parse(r.text)).toEqual({ changed: [], already_set: ["punchMinSig"], rerun_from: null });
     expect(r.summary).toBe("no change: punchMinSig already set");
+  });
+
+  it("tells the Configure page which fields it changed, and only when it changed them (state/agentEdits.ts)", async () => {
+    usePipelineStore.setState({ punchHGuard: "", punchFitUnconstrained: false });
+    useAgentEdits.setState({ last: null, shown: 0 });
+    await run("update_settings", { changes: { punchHGuard: 0.2, punchFitUnconstrained: true } });
+    const first = useAgentEdits.getState().last!;
+    expect([...first.fields].sort()).toEqual(["punchFitUnconstrained", "punchHGuard"]);
+    expect(first.seq).toBe(1);
+    // A setting already at the value, a refused value, and the user's own edit are no agent change to show.
+    await run("update_settings", { changes: { punchHGuard: 0.2 } });
+    await run("update_settings", { changes: { punchHGuard: 5 } });
+    usePipelineStore.getState().patch({ punchSearchFloor: "30" });
+    expect(useAgentEdits.getState().last).toBe(first);
+    // A partly new change names only what changed.
+    await run("update_settings", { changes: { punchHGuard: 0.2, punchMinSig: 7 } });
+    expect(useAgentEdits.getState().last).toEqual({ fields: ["punchMinSig"], seq: 2 });
   });
 
   it("refuses settings outside the catalog and values out of range", async () => {

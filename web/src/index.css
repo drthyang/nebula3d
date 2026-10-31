@@ -1345,42 +1345,6 @@ input[type="range"]::-moz-range-track {
   padding: 16px;
 }
 
-.config-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.config-section + .config-section {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-.config-section-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-.config-step-no {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--surface-3);
-  border: 1px solid var(--border-strong);
-  color: var(--text-2);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
 /* Card title row: 15px/700 title followed by a thin rule spanning the width —
    shared by the Data and 3D-ΔPDF Workflow cards. */
 .card-title-row {
@@ -1401,129 +1365,7 @@ input[type="range"]::-moz-range-track {
   height: 1px;
   background: var(--border-subtle);
 }
-.stage-card > .card-title-row {
-  padding: 14px 16px 0;
-}
 
-/* Floating per-stage number chip (1–5) in the workflow group heads. */
-.punch-group-no {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  color: var(--accent-hi);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  flex: none;
-}
-.config-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.config-section select,
-.config-section input[type="number"] {
-  width: 100%;
-  max-width: none;
-}
-.config-section select:disabled,
-.config-section input:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* ring-model illustration (pie = patches, ring = Fourier texture) */
-.ring-viz {
-  display: block;
-  width: 128px;
-  height: 128px;
-  margin: 0 auto;
-}
-.ring-viz-pie .even {
-  fill: var(--surface-2);
-}
-.ring-viz-pie .odd {
-  fill: var(--surface-3);
-}
-.ring-viz-pie path {
-  stroke: var(--bg);
-  stroke-width: 0.6;
-}
-.ring-viz-hub {
-  fill: var(--surface);
-  stroke: var(--border-strong);
-  stroke-width: 1;
-}
-.ring-viz-count {
-  fill: var(--text);
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 700;
-}
-/* parametric ring viz: faint radial underlay = continuous Ring(|Q|) */
-.pring-underlay {
-  stroke: var(--surface-3);
-  opacity: 0.5;
-}
-/* radial line-shape Ring(|Q|) curve */
-.rprof {
-  display: block;
-  width: 100%;
-  max-width: 190px;
-  margin: 0 auto;
-}
-.rprof-line {
-  stroke: var(--accent);
-  stroke-width: 1.6;
-}
-.rprof-fill {
-  fill: var(--accent);
-  opacity: 0.16;
-}
-.rprof-win {
-  fill: var(--amber);
-  opacity: 0.18;
-}
-.rprof-axis {
-  stroke: var(--border-strong);
-  stroke-width: 1;
-}
-.rprof-tick {
-  stroke: var(--text-3);
-  stroke-width: 1;
-}
-.rprof-lbl {
-  fill: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 8px;
-}
-.ring-viz-cap {
-  margin-top: 6px;
-  text-align: center;
-  font-size: 10.5px;
-  line-height: 1.4;
-  color: var(--text-3);
-}
-.ring-viz-cap b {
-  color: var(--text-2);
-  font-weight: 650;
-}
-
-/* sub-heading + 3-column grid used by the Bragg-punch parameter group */
-.config-sub-title {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  opacity: 0.85;
-}
 .config-note {
   margin: 2px 0 0;
   font-size: 11px;
@@ -1536,7 +1378,6 @@ input[type="range"]::-moz-range-track {
   gap: 10px;
 }
 /* header row with an inline help icon */
-.config-sub-row,
 .switch-row {
   display: flex;
   align-items: center;
@@ -1828,66 +1669,51 @@ input[type="range"]::-moz-range-track {
   right: 7px;
   transform: none;
 }
+/* a switch's ? sits just after its label, anywhere in a box: its bubble is
+   anchored to the switch's row instead (above it, from its left edge, as wide
+   as the row up to 320 px), so it never leaves the box at any width */
+.config-page .switch-row {
+  position: relative;
+}
+.config-page .switch-row .helptip {
+  position: static;
+}
+.config-page .switch-row .helptip-bubble {
+  left: 0;
+  right: auto;
+  transform: none;
+  width: min(320px, 100%);
+  max-width: none;
+}
+.config-page .switch-row .helptip-bubble::after {
+  display: none;
+}
+/* on a phone a stage's ? sits mid-row (the switch has no visible name):
+   its bubble is anchored to the head's right edge, no wider than the head */
+@media (max-width: 599px) {
+  .config-page .cfg-stage-head {
+    position: relative;
+  }
+  .config-page .cfg-stage-head .helptip {
+    position: static;
+  }
+  .config-page .cfg-stage-head .helptip-bubble {
+    left: auto;
+    right: 0;
+    transform: none;
+    width: min(340px, 100%);
+    max-width: none;
+  }
+  .config-page .cfg-stage-head .helptip-bubble::after {
+    display: none;
+  }
+}
 
 /* Bragg-punch footprint illustration (pie analogue for the punch stage) */
 :root {
   --punch-slice-size: 320px;
 }
-.punch-viz {
-  margin-top: 6px;
-  width: 100%;
-}
-.punch-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-.punch-tabs button {
-  flex: 1;
-  padding: 4px 0;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.punch-tabs button:hover {
-  color: var(--text-2);
-  border-color: var(--border-strong);
-}
-.punch-tabs button.on {
-  color: var(--accent-hi);
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-.punch-viz .punch-schematic {
-  display: block;
-  width: 100%;
-  max-width: 220px;
-  margin: 0 auto;
-}
-.punch-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-}
-.punch-preview-frame {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  line-height: 0;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  overflow: hidden;
-}
-.punch-preview-frame > div {
-  width: 100% !important;
-  height: 100% !important;
-}
+
 .punch-overlay {
   position: absolute;
   inset: 0;
@@ -1895,42 +1721,109 @@ input[type="range"]::-moz-range-track {
   height: 100%;
   pointer-events: none;
 }
-.punch-preview-meta,
-.punch-preview-empty {
-  max-width: 100%;
-  color: var(--text-3);
-  font-size: 11px;
-  line-height: 1.35;
-  text-align: center;
+
+/* Configure: the preview card (components/PunchPreview.tsx) — the viewer
+   pages' header, then one slice view whose plane its tabs pick, the punch
+   drawn over it, and the hover readout. */
+.cfg-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
 }
-.punch-preview-empty {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  min-height: 34px;
-  display: grid;
-  place-items: center;
-  margin: 6px auto 0;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
+.cfg-preview > .card-title-row {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+/* a card's one-line summary, after its title (under it on a phone) */
+.cfg-card-summary {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+@media (max-width: 599px) {
+  .cfg-card-summary {
+    order: 9;
+    flex-basis: 100%;
+  }
+}
+.cfg-preview .ws-head {
   background: var(--surface-2);
 }
-/* Stacked layout: parameter groups in a band across the top, the preview
-   (sliders + orthoslices) centred below. */
-.punch-workspace {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
+.cfg-preview-view .view-head {
+  height: auto;
+  min-height: 40px;
+  gap: 10px;
+  padding: 4px 4px 4px 6px;
 }
-/* Workflow stages: each stage is a floating header on the card background
-   followed by its box(es).  Boxes are the #15191f panels; the head floats. */
-.punch-controls {
+.cfg-preview-view .view-head .tabs {
+  flex: none;
+}
+.cfg-preview-view .view-head .tabs button {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 11px;
+}
+.cfg-preview-view .view-body {
+  flex: none;
+  height: clamp(320px, 58vh, 640px);
+}
+.cfg-preview-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.view-foot.cfg-preview-foot {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 14px;
+}
+.cfg-preview-foot .punch-legend {
+  margin-top: 0;
+  justify-content: flex-start;
+}
+.cfg-preview-cap {
+  font: 11px var(--font-mono);
+  color: var(--text-3);
+}
+.cfg-preview-cap b {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.ws-readout.cfg-preview-readout {
+  background: var(--surface-2);
+}
+
+/* Configure: the 3D-ΔPDF Workflow card — one section per stage, in the order
+   the stages run, each with the same head (number · title · one plain line ·
+   ? · Enable stage), its boxes of settings, and an Advanced fold
+   (pages/configSections.ts). */
+.cfg-workflow {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
+  padding: 14px 16px 16px;
+}
+.cfg-workflow > .card-title-row {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.cfg-stages {
+  container: cfg-stages / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   min-width: 0;
 }
 .cfg-stage {
+  container: cfg-stage / inline-size;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1939,20 +1832,49 @@ input[type="range"]::-moz-range-track {
 .cfg-stage--off .cfg-box {
   opacity: 0.45;
 }
-/* floating stage header (number chip + title + help + enable toggle) */
 .cfg-stage-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 10px;
+  min-height: 24px;
 }
-.cfg-stage-head .helptip {
+.cfg-stage-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-hi);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+}
+.cfg-stage-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+}
+.cfg-stage-summary {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.cfg-stage-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   margin-left: auto;
-}
-.cfg-stage-toggle {
-  margin-left: auto;
-}
-.cfg-stage-head .helptip ~ .cfg-stage-toggle {
-  margin-left: 0;
 }
 .cfg-stage-toggle .switch {
   flex-direction: row-reverse;
@@ -1966,13 +1888,20 @@ input[type="range"]::-moz-range-track {
   text-transform: uppercase;
   color: var(--text-3);
 }
-/* a stage's boxes share a 3-column grid; stages 3–5 sit one-per-column */
-.cfg-stage-grid,
-.cfg-stage-row {
+/* the punch's boxes: two to a row, four on a wide card, one on a narrow one */
+.cfg-stage-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-items: stretch;
+}
+/* backfill, background correction and the 3D-ΔPDF: side by side on a wide
+   card, else one under the other */
+.cfg-stage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px 14px;
+  align-items: start;
 }
 .cfg-box {
   display: flex;
@@ -1984,21 +1913,43 @@ input[type="range"]::-moz-range-track {
   border-radius: var(--radius-sm);
   background: var(--surface-2);
 }
-.cfg-box .config-grid,
-.cfg-box .config-grid-3 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+/* a box's settings: as many columns as fit, each at a readable width */
+.cfg-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px 14px;
+  align-items: end;
+}
+.cfg-fields > :is(.switch-row, .cfg-qband, .cfg-fields-wide) {
+  grid-column: 1 / -1;
 }
 .cfg-box .config-grid-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+/* a label that does not fit its column wraps instead of running into the next */
+.cfg-box .field-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .cfg-box :is(select, input[type="number"], input[type="text"]) {
   max-width: 100%;
   min-width: 0;
 }
-.cfg-box .config-grid > :only-child {
-  grid-column: 1 / -1;
+/* a free-text value (the modulation's k vectors) takes its box's width */
+.cfg-box .field > input[type="text"] {
+  width: 100%;
 }
-/* per-box sub-eyebrow (e.g. Detection / Bragg footprint / Direct beam) */
+.cfg-qband {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+.cfg-qband .btn {
+  flex: none;
+}
+/* a box's head: its name, its unit, its ? */
 .cfg-box-head {
   display: flex;
   align-items: center;
@@ -2009,99 +1960,12 @@ input[type="range"]::-moz-range-track {
 }
 .cfg-box-eyebrow {
   font-size: 9.5px;
-  font-weight: 600;
+  font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-3);
-}
-.cfg-box-eyebrow--sub {
   color: var(--accent-hi);
 }
-/* left 1/3: the model on its own row, its parameters two-up below; an odd
-   last parameter takes the full row */
-.cfg-box:has(> .ring-removal-controls) {
-  container-type: inline-size;
-}
-.ring-removal-controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 10px;
-}
-.ring-removal-controls > :first-child,
-.ring-removal-controls > :last-child:nth-child(even) {
-  grid-column: 1 / -1;
-}
-@container (max-width: 299px) {
-  .ring-removal-controls {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-/* right 2/3: the texture schematic beside its equations, which wrap below it
-   when the box is too narrow for both */
-.cfg-stage-grid > .ring-removal-figure {
-  grid-column: span 2;
-}
-.ring-removal-figure {
-  display: flex;
-  flex-flow: row wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 14px 36px;
-}
-.ring-removal-viz {
-  flex: none;
-  width: 168px;
-}
-/* closed-form ring model, mirroring the fitted computation */
-.ring-eqn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  overflow-x: auto;
-  font-family: "Cambria Math", "STIX Two Math", "Palatino Linotype", Georgia, serif;
-}
-.ring-eqn .eq {
-  font-size: 15px;
-  color: var(--text);
-  white-space: nowrap;
-  text-align: center;
-}
-.ring-eqn .eq.sub {
-  font-size: 13px;
-  color: var(--text-2);
-}
-.ring-eqn i {
-  font-style: italic;
-}
-.ring-eqn .op {
-  font-style: normal;
-}
-.ring-eqn sub,
-.ring-eqn sup {
-  font-style: normal;
-  font-family: var(--font-mono);
-  font-size: 0.66em;
-}
-.punch-group-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.punch-group-title {
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-2);
-}
-/* Bragg footprint / Direct beam are sub-sections of the Punch (2) stage —
-   tinted blue like a sub-eyebrow rather than a top-level stage title. */
-.punch-group-title--sub {
-  color: var(--accent-hi);
-}
-.punch-group-unit {
+.cfg-box-unit {
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--surface-3);
@@ -2110,86 +1974,179 @@ input[type="range"]::-moz-range-track {
   font-size: 9.5px;
   line-height: 1.55;
 }
-.punch-group-head .helptip {
-  margin-left: auto;
-}
-/* divider above the covariance toggle that closes the footprint group */
-.punch-group .switch-row {
-  margin-top: 1px;
-  padding-top: 11px;
-  border-top: 1px solid var(--border);
-}
-.punch-preview-controls {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.punch-preview-pane {
-  width: 100%;
-}
-.punch-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  width: 100%;
-}
-.punch-preview-panel {
-  min-width: 0;
-  width: 100%;
-}
-.punch-preview-panel-head {
-  display: flex;
-  justify-content: space-between;
+/* a stage's advanced settings, folded away */
+.cfg-advanced > summary {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 7px;
-  color: var(--text-2);
-  font-size: 11px;
-  font-weight: 650;
-}
-.punch-preview-panel-head span:last-child {
+  padding: 2px 0;
+  font-size: 11.5px;
+  font-weight: 600;
   color: var(--text-3);
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.12s;
+}
+.cfg-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+.cfg-advanced > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.12s;
+}
+.cfg-advanced[open] > summary::before {
+  transform: rotate(45deg);
+}
+.cfg-advanced > summary:hover,
+.cfg-advanced[open] > summary {
+  color: var(--text-2);
+}
+.cfg-advanced > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.cfg-advanced-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+  font: 600 10px var(--font-mono);
+}
+.cfg-advanced-body {
+  margin-top: 8px;
+}
+/* a setting the agent just changed (state/agentEdits.ts): its field flashes
+   twice in the agent's highlight colour, then rests. Two names alternate so a
+   second change to the same field flashes again. */
+.cfg-flash {
+  border-radius: var(--radius-sm);
+  animation: cfg-flash-a 1.2s ease-out 2;
+}
+.cfg-flash.cfg-flash-1 {
+  animation-name: cfg-flash-b;
+}
+@keyframes cfg-flash-a {
+  0% {
+    outline: 2px solid rgba(116, 168, 255, 0.95);
+    outline-offset: 3px;
+    box-shadow: 0 0 18px 3px rgba(79, 143, 247, 0.45);
+  }
+  100% {
+    outline: 2px solid rgba(116, 168, 255, 0);
+    outline-offset: 3px;
+    box-shadow: 0 0 18px 3px rgba(79, 143, 247, 0);
+  }
+}
+@keyframes cfg-flash-b {
+  0% {
+    outline: 2px solid rgba(116, 168, 255, 0.95);
+    outline-offset: 3px;
+    box-shadow: 0 0 18px 3px rgba(79, 143, 247, 0.45);
+  }
+  100% {
+    outline: 2px solid rgba(116, 168, 255, 0);
+    outline-offset: 3px;
+    box-shadow: 0 0 18px 3px rgba(79, 143, 247, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* one slow fade instead of two pulses */
+  .cfg-flash {
+    animation-duration: 2.4s;
+    animation-iteration-count: 1;
+  }
+}
+/* the ring removal's ?: the selected model's formula and its terms */
+.helptip--wide .helptip-bubble {
+  width: 340px;
+  max-width: min(340px, calc(100vw - 40px));
+}
+.ring-help {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ring-help-lead {
+  display: block;
+  margin-bottom: 4px;
+}
+.ring-help-model {
+  display: block;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+}
+.ring-help-eq {
+  display: block;
+  padding: 3px 0;
+  font-family: "Cambria Math", "STIX Two Math", "Palatino Linotype", Georgia, serif;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.ring-help-eq sub,
+.ring-help-eq sup {
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-size: 0.66em;
+  font-style: normal;
 }
-.punch-preview-panel .field {
-  margin-bottom: 8px;
+.ring-help-term {
+  display: block;
 }
-.punch-preview-panel .field-row {
-  gap: 6px;
+.ring-help-sym {
+  font-family: var(--font-mono);
+  color: var(--text);
 }
-.punch-preview-panel .field-label,
-.punch-preview-panel .readout {
-  font-size: 9.5px;
+@container cfg-stages (min-width: 1280px) {
+  .cfg-stage-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
-.punch-preview-panel .punch-legend {
-  gap: 7px;
-  margin-top: 5px;
-  font-size: 9.5px;
+@container cfg-stages (min-width: 1100px) {
+  .cfg-stage-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
-.punch-grid {
-  stroke: var(--border);
-  stroke-width: 0.7;
+@container cfg-stages (max-width: 599px) {
+  .cfg-stage-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
+/* a narrow stage (a phone, or one of three side by side): the one plain line
+   goes under the title, the switch stays at the right of the title's row */
+@container cfg-stage (max-width: 640px) {
+  .cfg-stage-summary {
+    order: 9;
+    flex-basis: 100%;
+  }
+}
+/* narrower still: the switch keeps its name for screen readers only */
+@container cfg-stage (max-width: 400px) {
+  .cfg-stage-toggle .switch-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
 .punch-fp {
   fill: var(--accent-soft);
   stroke: var(--accent);
   stroke-width: 1;
 }
-.punch-fp-tilted {
-  stroke-width: 1.25;
-}
-.punch-margin {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 0.8;
-  stroke-dasharray: 2 2;
-  opacity: 0.5;
-}
-.punch-tail {
-  fill: var(--accent);
-  opacity: 0.12;
-}
+
 .punch-ib {
   fill: var(--amber-soft);
   stroke: var(--amber);
@@ -2210,12 +2167,7 @@ input[type="range"]::-moz-range-track {
   opacity: 0.9;
   paint-order: stroke;
 }
-.punch-axis {
-  fill: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-style: italic;
-}
+
 .punch-legend {
   display: flex;
   flex-wrap: wrap;
@@ -2256,16 +2208,6 @@ input[type="range"]::-moz-range-track {
   margin-left: auto;
   font-family: var(--font-mono);
   color: var(--text-2);
-}
-.config-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-.config-actions .btn-primary {
-  flex: 1;
 }
 
 .exec-col {
@@ -2618,93 +2560,6 @@ input[type="range"]::-moz-range-track {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-.stage-card {
-  min-width: 0;
-}
-.stage-card .card-head h3 {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.stage-card .card-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(210px, 280px);
-  gap: 12px 16px;
-  align-items: start;
-}
-.stage-card .card-body > .config-grid,
-.stage-card .card-body > .config-grid-3,
-.stage-card .card-body > .config-sub-row,
-.stage-card .card-body > .switch-row,
-.stage-card .card-body > .field {
-  grid-column: 1;
-}
-.stage-card .card-body > .punch-workspace {
-  grid-column: 1 / -1;
-}
-.stage-card .card-body > .stage-visual {
-  grid-column: 2;
-  grid-row: 1 / span 10;
-  align-self: center;
-}
-.stage-visual {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-}
-.stage-card-compact .card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.punch-stage-card .card-body {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch; /* fill the card width (overrides .stage-card start) */
-  gap: 12px;
-}
-.punch-stage-card .card-body > .config-grid,
-.punch-stage-card .card-body > .config-grid-3,
-.punch-stage-card .card-body > .config-sub-row {
-  width: 100%;
-}
-.punch-stage-card .card-body > .config-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-/* the |Q| band slider spans its preview-controls row above the slices */
-.pdf-preview-controls {
-  display: flex;
-}
-@container main (max-width: 870px) {
-  .stage-card .card-body {
-    grid-template-columns: 1fr;
-  }
-  .stage-card .card-body > .config-grid,
-  .stage-card .card-body > .config-grid-3,
-  .stage-card .card-body > .config-sub-row,
-  .stage-card .card-body > .switch-row,
-  .stage-card .card-body > .field,
-  .stage-card .card-body > .punch-workspace,
-  .stage-card .card-body > .stage-visual {
-    grid-column: 1;
-    grid-row: auto;
-  }
-  .punch-controls {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .punch-preview-controls {
-    grid-template-columns: 1fr;
-    display: flex;
-  }
-}
-@container main (max-width: 600px) {
-  .punch-controls {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* execution page: glowing-orb hero above the stepper + log console */
@@ -5052,78 +4907,6 @@ h6.md-h {
   margin-bottom: 0 !important;
 }
 
-/* ===========================================================================
-   Device layouts
-   ---------------------------------------------------------------------------
-   Tiers follow the CSS viewport (Apple "points") of the target screens:
-
-     phone         ≤ 599 px        iPhone 18 Pro 402 × 874 · 18 Pro Max 440 × 956
-     phone, land   ≤ 1099 × ≤ 500  iPhone 18 Pro 874 × 402 · 18 Pro Max 956 × 440
-     tablet        600–1099 px     iPad Pro 11″ portrait 834 · 13″ portrait 1032
-     tablet, land  1100–1439 px    iPad Pro 11″ landscape 1210 · 13″ landscape 1376
-     laptop        1440–1799 px    MacBook Pro 14″ 1512 × 982 · 16″ 1728 × 1117
-     desktop       1800–2399 px    4K at 200 % (macOS default, 1920 × 1080)
-     wide          2400–3199 px    4K at 150 % (2560 × 1440)
-     ultra         ≥ 3200 px       4K at 100 % (3840 × 2160) — scaled up
-
-   Below 1100 px the sidebar collapses into a compact top bar.  Touch sizing
-   keys off (pointer: coarse) rather than width, so an iPad gets finger-sized
-   controls in either orientation.  The Configure workflow grid follows its own
-   container width (container queries), so it also adapts when the 4K layout
-   puts the controls and the preview side by side.
-   =========================================================================== */
-
-/* — Configure workflow: columns follow the space the controls actually get — */
-.punch-controls {
-  container: cfg-controls / inline-size;
-}
-.punch-preview-pane {
-  container: cfg-preview / inline-size;
-}
-@container cfg-controls (max-width: 1049px) {
-  .cfg-stage-grid,
-  .cfg-stage-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  /* an odd box out (direct beam, the ΔPDF transform) spans the row */
-  .cfg-stage-grid > :last-child:nth-child(odd),
-  .cfg-stage-row > :last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
-  /* two columns: the ring figure sits beside the ring controls */
-  .cfg-stage-grid > .ring-removal-figure {
-    grid-column: auto;
-  }
-}
-@container cfg-controls (max-width: 559px) {
-  .cfg-stage-grid,
-  .cfg-stage-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-/* Punch "Detection" (method · min σ · mode): two selects and an input do not
-   fit three-up in a narrow box, so the mode select takes its own row. */
-.cfg-box:has(> .punch-basis) {
-  container-type: inline-size;
-}
-@container (max-width: 419px) {
-  .cfg-box .punch-basis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .cfg-box .punch-basis > :last-child {
-    grid-column: 1 / -1;
-  }
-}
-@container cfg-preview (max-width: 559px) {
-  .punch-preview-grid,
-  .punch-preview-controls {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .punch-preview-controls {
-    display: grid;
-  }
-}
-
 /* — tablet, landscape (iPad Pro 11″ / 13″ landscape) — */
 @media (min-width: 1100px) and (max-width: 1439px) {
   :root {
@@ -5185,21 +4968,26 @@ h6.md-h {
   }
 }
 
-/* — wide (4K at 150 %, 1440p-class): Configure becomes a cockpit — workflow
-     controls on the left, the live punch / |Q|-band preview pinned beside them — */
+/* — wide (4K at 150 %, 1440p-class): Configure becomes a cockpit — the
+     preview pinned on the left, the stage settings beside it — */
 @media (min-width: 2400px) {
   :root {
     --sidebar-w: 256px;
     --main-pad-top: 30px;
     --main-pad-x: 44px;
   }
-  .punch-workspace {
+  /* Configure becomes a cockpit: the preview pinned on the left while the
+     stage settings scroll beside it */
+  .config-page {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
     gap: 24px;
     align-items: start;
   }
-  .punch-preview-pane {
+  .config-page > .data-card {
+    grid-column: 1 / -1;
+  }
+  .config-page > .cfg-preview {
     position: sticky;
     top: 0;
   }
@@ -5449,11 +5237,17 @@ h6.md-h {
   .card-body {
     padding: 13px;
   }
-  .stage-card > .card-title-row {
-    padding: 13px 13px 0;
-  }
-  .data-card {
+
+  .data-card,
+  .cfg-preview,
+  .cfg-workflow {
     padding: 13px;
+  }
+  /* the one view stays about square, with room left to scroll the page */
+  .cfg-preview-view .view-body {
+    height: auto;
+    aspect-ratio: 1 / 1;
+    max-height: 72vh;
   }
   .cfg-box {
     padding: 12px;
@@ -5710,9 +5504,7 @@ h6.md-h {
   .bragg-trow {
     height: 38px;
   }
-  .punch-tabs button {
-    padding: 8px 0;
-  }
+
   .ai-chip,
   .ai-vision-chip,
   .ai-provider-tab {

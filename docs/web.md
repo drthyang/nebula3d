@@ -264,7 +264,7 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 
 | View | Replaces | What |
 | --- | --- | --- |
-| **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset and tune the key parameters per stage — ring removal (the *Model*, pooled 3D sectors by default; azimuthal patches and Fourier order for the per-plane models), punch (the *Footprint*: own width by default, profile-matched or an ellipsoid in the spherical ρ/θ/φ or reciprocal a*/b*/c* frame), backfill, background correction (the `flatten` stage: the radial background subtracted), ΔPDF, consistency — then run all stages with a live stepper and log. Existing outputs are skipped unless *force* is on. A stage's *Enable stage* switch turns it off: the run sends the switch (`params.rings_enabled`, `punch_enabled`, `backfill_enabled`; the background correction's `flatten_enabled`), the stage is not run, and the stage after it reads what came before it, never an output an earlier run left, whose file stays as it was (see [the complete pipeline](pipeline.md#the-complete-pipeline)). With *force* off, the stages after it keep the outputs that exist. The punch's *Modulation k*, *Form*, *Order m* and *± width* declare the sample's modulation, a fact about the sample that the off-lattice search leaves alone; the note under them is the backend's description of what they protect ([modulation.md](modulation.md#the-console-and-nebula-pilot)). The form is remembered per dataset in the browser, with the selected dataset: another temperature of the same sample starts from the form as it stands, another sample from the defaults (`state/configMemory.ts`). **Save session** writes the analysis to a file (`*.nebula-session.json`, `state/session.ts`): the dataset and its raw file (name, size, date), the form, the stage outputs present (and when each was written), the last run (its stages, settings and log), the NEBULA Pilot conversation and the regions it marked, the structure overlay and the version. **Restore session…** (it asks first when it would replace a conversation or a run's log) brings it back on its dataset (in another browser too) and lists the outputs that are no longer there or were written again since, with **Recompute them**, which runs those stages with the settings of the last run when it made them (otherwise with the restored form, and says so); it is not offered when the raw file is not the session's (another size), and warns when the file is dated otherwise or the version differs. The pipeline is deterministic, so with the same input and settings they come back the same (bit-identical in the native console on the demo; the browser build computes in float32). The volumes themselves are not in the file. Default landing view. |
+| **Configure / Run pipeline** | `run_pipeline.py` | Pick a dataset, check the input in the preview and tune the key parameters per stage — ring removal (the *Model*, pooled 3D sectors by default; azimuthal patches and Fourier order for the per-plane models), punch (the *Footprint*: own width by default, profile-matched or an ellipsoid in the spherical ρ/θ/φ or reciprocal a*/b*/c* frame), backfill, background correction (the `flatten` stage: the radial background subtracted), ΔPDF, consistency — then run all stages with a live stepper and log. The page is three cards: *Data* (the folder, the dataset, the outputs on disk and *Run pipeline*), the **Preview** and the **3D-ΔPDF Workflow**. The preview shows the raw volume (the ring-removed one when there is no raw file) on one plane at a time — a\*–b\*, a\*–c\* or b\*–c\*, in tabs (arrow keys move between them; the browser remembers the tab) — with the punch drawn over it: the Bragg footprint's resolution floor, with its margin, at each node of the punch cell, the direct beam at the origin, an example search punch off the lattice, and the ΔPDF's \|Q\| band. It is a slice view of the [viewer workspace](#viewer-workspace), with its header (click modes, gesture card, *Unit cell*, the cut), zoom and pan, display bar and hover readout; each plane keeps its own zoom. The workflow card has one section per stage, in the order they run, each with the same head — number, title, one plain line saying what the stage does, the details behind **?**, and *Enable stage* — and the stage's less-used settings folded under *Advanced* (closed at first, remembered by the browser; closed, it counts the settings in it that differ from their defaults). When NEBULA Pilot changes a setting (`update_settings`, or the settings a tuning run keeps), the fold that holds it opens, for the visit only, and the changed field flashes twice; the user's own edits and a restored session never open a fold (`state/agentEdits.ts`). The ring removal's **?** gives the selected model's formula and what each term is, with the form's values in it. The punch's settings are four boxes: *Detection*, *Sample* (the punch cell and the modulation), *Bragg footprint* and *Direct beam*; the \|Q\| band is set in the 3D-ΔPDF section (`pages/configSections.ts` lists which settings each section shows and folds away). Existing outputs are skipped unless *force* is on. A stage's *Enable stage* switch turns it off: the run sends the switch (`params.rings_enabled`, `punch_enabled`, `backfill_enabled`; the background correction's `flatten_enabled`), the stage is not run, and the stage after it reads what came before it, never an output an earlier run left, whose file stays as it was (see [the complete pipeline](pipeline.md#the-complete-pipeline)). With *force* off, the stages after it keep the outputs that exist. The punch's *Modulation k*, *Form*, *Order m* and *± width* declare the sample's modulation, a fact about the sample that the off-lattice search leaves alone; the note under them is the backend's description of what they protect ([modulation.md](modulation.md#the-console-and-nebula-pilot)). The form is remembered per dataset in the browser, with the selected dataset: another temperature of the same sample starts from the form as it stands, another sample from the defaults (`state/configMemory.ts`). **Save session** writes the analysis to a file (`*.nebula-session.json`, `state/session.ts`): the dataset and its raw file (name, size, date), the form, the stage outputs present (and when each was written), the last run (its stages, settings and log), the NEBULA Pilot conversation and the regions it marked, the structure overlay and the version. **Restore session…** (it asks first when it would replace a conversation or a run's log) brings it back on its dataset (in another browser too) and lists the outputs that are no longer there or were written again since, with **Recompute them**, which runs those stages with the settings of the last run when it made them (otherwise with the restored form, and says so); it is not offered when the raw file is not the session's (another size), and warns when the file is dated otherwise or the version differs. The pipeline is deterministic, so with the same input and settings they come back the same (bit-identical in the native console on the demo; the browser build computes in float32). The volumes themselves are not in the file. Default landing view. |
 | **Reciprocal cleanup** | `explore_slice.py` | One view per HKLVolume stage (raw / ring-removed / punched / backfilled / background-corrected) on one H/K/L plane and cut, in the [viewer workspace](#viewer-workspace). All views share **one colour range**, set from a reference stage (the output stage by default, or *Each view* to scale each stage on its own), and one linked zoom and crosshair; hovering reads every stage's value at the same (K, L). The cut readout is an **editable box** — type `0.3333` and it snaps to the nearest plane. |
 | **Bragg profile** | — | Width diagnostics of the punch's fitted Bragg peaks: widths against \|Q\|, their distribution per axis, a sortable peak table and the selected peak's intensity in three slices through its centre (a\*·b\*, a\*·c\*, b\*·c\*) with the fitted, measured and \|Q\|-floor ellipses. The three tiles are one linked view about the peak, zoomed and panned as in the [viewer workspace](#viewer-workspace): zooming or panning one moves the other two through the same hkl point. They open (and reset, by double-click, 0 or a view's *Reset zoom*) at 8× the peak's widest fitted width (0.25–1.2 r.l.u., so the peak's surroundings are in view) and zoom out to 10× that; the ellipses are drawn with the slices' own pixel mapping, so they stay on the data at any zoom. The page has the workspace header: *Unit cell* draws integer h, k, l, *Integer HKL only* filters the peaks, the layout switch shows the three slices as a grid, one large with two thumbnails, or one alone; the display bar sets their one colour range. The dashboard gives the slices the wide column: scatter and peak table on the left, the selected peak and the width histograms on the right (one column on a narrow page, the slices second). |
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. In *Navigate* mode a click on one view moves the other two cuts through the point. |
@@ -274,8 +274,8 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 
 ### Viewer workspace
 
-The slice views (Reciprocal cleanup, Bragg profile, 3D-ΔPDF, Q–R) share one
-workspace, after the [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/)'s,
+The slice views (Reciprocal cleanup, Bragg profile, 3D-ΔPDF, Q–R, and the
+Configure page's preview) share one workspace, after the [NeXus Viewer](https://drthyang.github.io/neutron-nexus-viewer/)'s,
 so the two apps work the same way; the multi-volume grid has the same header
 and zooms and pans by the same rules.
 
@@ -348,7 +348,8 @@ and zooms and pans by the same rules.
   image's background (white on the sequential maps' dark low end, near-black
   on the diverging maps' light centre) — multiples of a, b, c on
   the real-space views, and integer h, k, l on the r.l.u. views (Reciprocal
-  cleanup, the Q–R page's Q views, the Bragg peak tiles), drawn at the slice's
+  cleanup, the Q–R page's Q views, the Bragg peak tiles, the Configure
+  preview), drawn at the slice's
   own scale and angle, so they stay on the data while it zooms and pans.
 - **Display bar** (`DisplayBar`, the same order on every page): colormap, then
   the colour range — vmin, the colour bar with the reference data's histogram
@@ -364,12 +365,17 @@ and zooms and pans by the same rules.
   takes the 99th percentile of the three windows about the peak (not the
   view, so the colours hold while zooming), its scale is its own (lin by
   default), and limits are kept relative to each peak's Auto, so Brightness
-  carries from peak to peak. *Brightness* moves vmax in stops about Auto:
+  carries from peak to peak. On the Configure preview Auto pools the three
+  planes' cuts through the origin, so its tabs share one scale that holds
+  still while a cut moves. *Brightness* moves vmax in stops about Auto:
   right is brighter. Typed or dragged limits hold until *Auto* or a dataset
   change.
 - **Shared settings**: the reciprocal plane, cut, colour range, scale and zoom
   are shared by Reciprocal cleanup and Q–R; the ΔPDF colour range, colormap
-  and zoom by 3D-ΔPDF and Q–R; *Unit cell* by every page.
+  and zoom by 3D-ΔPDF and Q–R; *Unit cell* by every page. The Configure
+  preview takes the reciprocal pages' colormap and scale, and keeps its own
+  colour limits and zoom: the raw volume it shows spans other values than the
+  cleaned stage the cleanup page scales from.
 - **Marked regions** (`components/RegionMarks.tsx`, `state/markStore.ts`): the
   regions NEBULA Pilot marks for you to look at (`mark_region`,
   [pilot.md](pilot.md#tools)) are drawn on Reciprocal cleanup, 3D-ΔPDF and
@@ -423,18 +429,21 @@ live at the end of `web/src/index.css`, under "Device layouts".
 | --- | --- | --- |
 | iPhone 18 Pro / Pro Max, portrait | 402 × 874 / 440 × 956 | The sidebar becomes a top bar: brand and dataset picker, then the views as a row of pills that scrolls sideways. Viewer panels stack one per row. Form text is 16 px, so Safari does not zoom in when a field gets focus. The API status, memory bar and version move to the end of each page. |
 | iPhone 18 Pro / Pro Max, landscape | 874 × 402 / 956 × 440 | The top bar is a single row. Panels go three to a row. Padding clears the Dynamic Island and the home indicator (`viewport-fit=cover`). |
-| iPad Pro 11″ / 13″, portrait | 834 × 1210 / 1032 × 1376 | Top bar with the full row of views. Panels go three to a row, or two to a row when there are 2 or 4. Configure's workflow boxes go two to a row. |
+| iPad Pro 11″ / 13″, portrait | 834 × 1210 / 1032 × 1376 | Top bar with the full row of views. Panels go three to a row, or two to a row when there are 2 or 4. Configure's punch boxes go two to a row. |
 | iPad Pro 11″ / 13″, landscape | 1210 × 834 / 1376 × 1032 | Sidebar, narrowed to 208 px. |
 | MacBook Pro 14″ / 16″ | 1512 × 982 / 1728 × 1117 | The baseline desktop layout. On short windows (≤ 920 px tall, e.g. the 14″) there is less vertical padding, so viewer panels start higher. |
 | 4K at 200 % (1920 × 1080) | ≥ 1800 wide | Wider sidebar and gutters. The Bragg scatter plot, peak table and run log get taller. |
-| 4K at 150 % (2560 × 1440) | ≥ 2400 wide | Configure shows the workflow controls and the live punch / \|Q\|-band preview side by side, with the preview pinned while you scroll. |
+| 4K at 150 % (2560 × 1440) | ≥ 2400 wide | Configure shows the preview and the stage settings side by side, with the preview pinned while you scroll. |
 | 4K at 100 % (3840 × 2160) | ≥ 3200 wide | The whole console is scaled up 1.25–1.5× (CSS `zoom`), so it looks like the 150 % layout rather than tiny text. Browser zoom turns this off. |
 
 Narrower portrait tablets (600–799 px, e.g. iPad mini or Split View) show two
 panels to a row. On any touch screen (`pointer: coarse`), slider thumbs,
-switches, buttons and help icons are enlarged to finger size. The Configure workflow grid uses
-container queries, so its column count follows the width it actually gets,
-including the narrower column in the 4K side-by-side layout.
+switches, buttons and help icons are enlarged to finger size. The Configure stage sections use
+container queries, so their columns follow the width they actually get,
+including the narrower column in the 4K side-by-side layout: the punch's boxes
+go one, two or four to a row, backfill, background correction and 3D-ΔPDF sit
+side by side on a wide card, and on a narrow one a stage's one-line summary
+moves under its title.
 
 ### Memory bar
 
