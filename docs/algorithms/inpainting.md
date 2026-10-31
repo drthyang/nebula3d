@@ -138,8 +138,10 @@ RBF and biharmonic relaxation — was removed, together with the older ring-shel
 fill (`backfill_ring_shells`) that used it. TV assumes a piecewise-constant image
 and leaves staircase artefacts in structured diffuse scattering, and every
 symmetry copy of a punched Bragg node is itself punched, so there is nothing
-valid to copy. Coverage gaps are best filled by symmetrising the data (e.g. in
-Mantid) before it reaches the pipeline; what symmetry cannot reach stays
+valid to copy. Coverage gaps are best filled by symmetrising the data: the
+pipeline's own [symmetry average](symmetry_average.md) (stage 0, off by
+default) does it by the NeXus Viewer's rules, or the viewer (or Mantid) does it
+before the data reach the pipeline; what symmetry cannot reach stays
 unmeasured (see *What is filled* above).
 
 ---

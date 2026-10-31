@@ -119,11 +119,13 @@ extrema come in groups, the copies of one correlation, ordered by each
 group's strongest extremum. The limit counts groups, not extrema.
 
 **Which symmetry.** A NeXus Viewer export declares the point group its data
-were symmetrised with (`symmetry`, `symmetry_ops`; see `nebula3d.symmetry`).
-The ΔPDF file does not record it, and neither do the stage files the pipeline
-writes. So the server reads it from the dataset's raw input, where the
-pipeline reads it too (`PipelineParams.symmetry = "auto"`) and where the
-volume meta reports it. With operations declared, two extrema of one sign are
+were symmetrised with (`symmetry`, `symmetry_ops`; see `nebula3d.symmetry`),
+and so does the pipeline's symmetry average ([its output](symmetry_average.md#the-output)),
+and every stage output after either. The ΔPDF file does not record it, so the
+server reads it from the volume the ΔPDF was made from (the source its file
+records), else from the dataset's raw input
+(`nebula3d.server.datasets.symmetry_declared_by`), where the pipeline reads it
+too (`PipelineParams.symmetry = "auto"`) and where the volume meta reports it. With operations declared, two extrema of one sign are
 one group when one lies within one voxel of an image of the other. Their sizes
 are not compared, because on data that were not symmetrised the copies
 differ.

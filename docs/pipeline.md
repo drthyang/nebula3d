@@ -10,12 +10,13 @@ visual QA, and the Python API. The browser console runs the same pipeline
 The workflow removes powder rings, punches sharp Bragg and satellite peaks, fills
 the punched holes, flattens the isotropic background, Fourier-transforms the
 cleaned volume into a real-space 3D-ΔPDF, and ends with a back-FFT consistency
-check.
+check. An optional first stage symmetrizes a volume that is not symmetrized.
 
 ```text
-Symmetrised HKL volume (NeXus Viewer export or Mantid)
+HKL volume (NeXus Viewer export, Mantid, or NEBULA3D's own)
         |
         v
+  0. symmetry average (optional)    nebula3d.pipeline.symmetrize
   1. powder-ring subtraction        examples/remove_rings_3d.py
   2. Bragg/satellite punch          examples/punch_bragg_3d.py
   3. Bragg-hole backfill            examples/backfill_bragg_3d.py
@@ -66,6 +67,11 @@ and the punch make each decision once per symmetry orbit, the ring removal, the
 backfill and the flatten average their output over each orbit, and the 3D-ΔPDF
 transforms the symmetric result. On a measured symmetrised volume the 3D-ΔPDF's
 equivalent partners then agree to rounding, where they had differed visibly.
+Each stage output declares the symmetry its data carry in turn, so a partial
+re-run reads it from its own input.
+
+A volume that is not symmetrized can be symmetrized here: switch on the
+symmetry average (stage 0 below) with the sample's Laue class.
 
 ## The complete pipeline
 
@@ -129,6 +135,36 @@ Useful overrides:
 
 Run these from the repository root when you want to inspect or tune individual
 stages.
+
+### 0. Symmetry Average (optional)
+
+Off by default. Switched on with the sample's Laue class, it averages the raw
+volume over the class before the ring removal, by the NeXus Viewer's rules:
+every voxel takes the equal-weight mean of the measured voxels among its
+symmetry equivalents, so the coverage gaps fill from their equivalents. Its
+output, `<stem>_symmetrized.h5`, declares the operations as the viewer's export
+does, and the stages after it read them there.
+
+```python
+from nebula3d.pipeline import PipelineParams, SymmetryAverageParams, run_pipeline
+
+p = PipelineParams(symmetry_average_enabled=True,
+                   symmetry_average=SymmetryAverageParams(laue="6/mmm"))
+run_pipeline("data/raw/your_volume.nxs", p, proc_dir="data/processed")
+```
+
+`laue` is a preset (1, -1, 2/m (b unique), 2/m (c unique), mmm, 4/m, 4/mmm,
+-3, -3m1, -31m, 6/m, 6/mmm, m-3, m-3m; trigonal and hexagonal classes on
+hexagonal axes) or generators in the viewer's syntax (`h+k,-h,l; -k,-h,-l;
+-h,-k,-l`). The run refuses a class it cannot apply: no class given,
+operations that do not map the grid onto itself, or operations that change
+the cell's metric by more than 2 % (no symmetries of this lattice). An input
+that declares a symmetry already (a NeXus Viewer export) passes through
+unless `reaverage=True`. The raw coverage edge is trimmed before the average.
+The log gives the operations, the metric change ("metric (UB) kept to …"),
+the voxels filled, and R_int of the measured equivalents. The algorithm, its
+checks and the cross-check against the viewer:
+[symmetry_average.md](algorithms/symmetry_average.md).
 
 ### 1. Remove Powder Rings
 
