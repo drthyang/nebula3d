@@ -180,6 +180,20 @@ export const REGRID_REFUSED = "A regrid writes a new dataset, which only the use
  */
 export const regridRefusal = (): string => `${REGRID_REFUSED}: nothing was written. Ask the user, and regrid once they ask for it.`;
 
+// The symmetry average (pipeline stage 0): whether to average the volume over
+// the sample's Laue class, and over which, is the user's to set, on the
+// Configure page. update_settings never sets them, whatever the user's latest
+// message says: the model may suggest a class, with its evidence (the cell's
+// metric, how well the equivalents agree), and the user applies it.
+export const SYMMETRY_AVERAGE_SETTINGS = ["symmetryAverageEnabled", "symmetryLaue", "symmetryReaverage"] as const;
+
+/** What a refusal of a change to the symmetry average says (findings.ts reads it). */
+export const SYMMETRY_AVERAGE_REFUSED = "is the user's to set, on the Configure page";
+
+/** update_settings' refusal of a change to the symmetry average's `key`; like sampleFactRefusal it names no skill, stage or tool. */
+export const symmetryAverageRefusal = (key: string): string =>
+  `${key} ${SYMMETRY_AVERAGE_REFUSED}: suggest a Laue class to the user, with your evidence, and let them set it.`;
+
 /** What a refusal of a change to a fact about the sample says, whatever the fact (findings.ts reads it). */
 export const SAMPLE_FACT_REFUSED = "is a fact about the sample, which only the user sets";
 

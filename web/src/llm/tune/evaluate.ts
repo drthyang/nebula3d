@@ -6,7 +6,7 @@
 
 import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy, fetchShellFloors } from "../../api/client";
 import type { Dataset } from "../../api/types";
-import { dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
+import { declaringMeta, dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
 import { offLatticeBunching } from "../metrics/bunching";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
@@ -104,11 +104,11 @@ function worstSymmetryOp(
 export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise<StageEvaluation> {
   if (stage === "pdf") {
     const dId = dpdfVolumeId(dataset);
-    const rawId = hklVolumeId(dataset);
     const [check, dmeta, rawMeta, ...sections] = await Promise.all([
       safe(fetchConsistencyCheck(dataset.id)),
       dId ? safe(fetchDpdfMeta(dId)) : Promise.resolve(null),
-      rawId ? safe(fetchMeta(rawId)) : Promise.resolve(null),
+      // the point group the data were declared symmetrised with
+      declaringMeta(dataset, "delta_pdf"),
       ...DPDF_CUTS.map((dpdf) => loadPipelineContext(dataset, { recip: null, dpdf, records: false })),
     ]);
     // The x–y section through the origin against its images under the
