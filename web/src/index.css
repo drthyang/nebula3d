@@ -126,6 +126,7 @@ button {
   gap: 18px;
   min-height: 0;
   overflow-y: auto;
+  position: relative; /* clip its absolutely placed descendants too (see .main) */
 }
 
 .brand {
@@ -456,6 +457,10 @@ button {
   flex-direction: column;
   min-width: 0;
   overflow-y: auto;
+  /* The containing block of its absolutely placed descendants (the switches'
+     hidden checkboxes, help bubbles): without it they hang off the body, past
+     this scroll box, and stretch the document so the whole app scrolls. */
+  position: relative;
   /* the page layouts answer to this width, not the window's: with NEBULA
      Pilot docked beside it, the page reflows */
   container: main / inline-size;
@@ -821,6 +826,7 @@ input[type="range"]::-moz-range-track {
 
 /* switch */
 .switch {
+  position: relative; /* holds its hidden checkbox */
   display: flex;
   align-items: center;
   gap: 8px;
