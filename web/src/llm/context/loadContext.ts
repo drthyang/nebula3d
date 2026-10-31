@@ -15,7 +15,7 @@ import {
   fetchProtectedLabels,
   fetchSlice,
 } from "../../api/client";
-import type { Dataset, FlattenSettings } from "../../api/types";
+import type { Dataset, FlattenSettings, VolumeMeta } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { buildPipelineContext, type PipelineContext, type StageSlices } from "./pipelineContext";
 import { datasetName } from "../../api/datasetName";
@@ -56,6 +56,24 @@ export const hklVolumeId = (dataset: Dataset): string | undefined =>
 
 export const dpdfVolumeId = (dataset: Dataset): string | undefined =>
   dataset.stages.find((s) => s.kind === "delta_pdf" && s.exists)?.volume_id;
+
+/**
+ * The meta that declares the point group the data at `stage`'s output were
+ * symmetrised with: that output's own, or for "delta_pdf" the output it was
+ * made from (its recorded source). A stage output declares the symmetry its
+ * data carry when the run applied one (the symmetry average's, and every
+ * stage after it). Else the raw volume's: a NeXus Viewer export declares its
+ * own, and outputs written before stages declared it declare none. null when
+ * none is read.
+ */
+export async function declaringMeta(dataset: Dataset, stage: string): Promise<VolumeMeta | null> {
+  const name = stage === "delta_pdf" ? dataset.stages.find((s) => s.name === "delta_pdf")?.source : stage;
+  const id = name && name !== "raw" ? stageVolumeId(dataset, name) : undefined;
+  const own = id ? await safe(fetchMeta(id)) : null;
+  if (own?.symmetry_ops?.length) return own;
+  const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
+  return (rawId ? await safe(fetchMeta(rawId)) : null) ?? own;
+}
 
 // The short name the assistant uses; with `all`, two datasets at one
 // temperature are told apart (see api/datasetName).

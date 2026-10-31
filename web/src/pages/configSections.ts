@@ -10,13 +10,14 @@
 import type { AdvancedStage } from "../state/configViewStore";
 import type { PipelineConfig } from "../state/pipelineStore";
 
-export type SectionStage = "rings" | "punch" | "backfill" | "flatten" | "pdf";
+export type SectionStage = "symmetry_average" | "rings" | "punch" | "backfill" | "flatten" | "pdf";
 
 /** The sections in pipeline order. */
-export const SECTION_ORDER: readonly SectionStage[] = ["rings", "punch", "backfill", "flatten", "pdf"];
+export const SECTION_ORDER: readonly SectionStage[] = ["symmetry_average", "rings", "punch", "backfill", "flatten", "pdf"];
 
 /** Each section's one plain line, under its title. */
 export const SECTION_SUMMARY: Record<SectionStage, string> = {
+  symmetry_average: "Fills coverage gaps from symmetry equivalents",
   rings: "Removes powder rings, such as the sample can's",
   punch: "Cuts out the Bragg peaks and the direct beam",
   backfill: "Fills the punched holes from the diffuse around them",
@@ -26,6 +27,7 @@ export const SECTION_SUMMARY: Record<SectionStage, string> = {
 
 /** Each section's Enable stage switch. */
 export const SECTION_SWITCH: Record<SectionStage, keyof PipelineConfig> = {
+  symmetry_average: "symmetryAverageEnabled",
   rings: "ringsEnabled",
   punch: "punchEnabled",
   backfill: "backfillEnabled",
@@ -39,6 +41,8 @@ type ModelOf = Pick<PipelineConfig, "ringModel" | "punchFrame">;
 /** The settings a section shows up front, for the current ring model and punch frame. */
 export function basicFields(stage: SectionStage, s: ModelOf): Key[] {
   switch (stage) {
+    case "symmetry_average":
+      return ["symmetryLaue"];
     case "rings":
       return s.ringModel === "global_v2"
         ? ["ringModel", "ringGlobalMaterial", "ringGlobalSubtraction"]
@@ -70,6 +74,8 @@ export function basicFields(stage: SectionStage, s: ModelOf): Key[] {
 /** The settings a section folds away under "Advanced", for the current ring model. */
 export function advancedFields(stage: SectionStage, s: ModelOf): Key[] {
   switch (stage) {
+    case "symmetry_average":
+      return ["symmetryReaverage", "symmetryAllowMetricChange"];
     case "rings":
       switch (s.ringModel) {
         case "global_v2":

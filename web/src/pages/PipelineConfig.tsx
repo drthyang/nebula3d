@@ -15,7 +15,7 @@ import {
   type BootStatus,
 } from "../api/pyodideEngine";
 import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
-import type { Lattice } from "../api/types";
+import type { Lattice, VolumeMeta } from "../api/types";
 import { PunchPreview } from "../components/PunchPreview";
 import { RingModelHelp } from "../components/RingModelHelp";
 import type { HklAxis, PunchGeom } from "../components/punchGeometry";
@@ -23,6 +23,7 @@ import { boxQMax, metricFromUb, reciprocalMetric } from "../components/reciproca
 import { Field, HelpTip, RangeSlider, Switch } from "../components/ui";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { declaresNone, modulationRequest } from "../state/modulation";
+import { formatOp, gridProblem, LAUE_PRESETS, laueGroup, laueSpecOf, METRIC_TOLERANCE, metricChange, presetNamed, ubUnknown, type LaueGroup } from "../state/laue";
 import { useAgentEdits, type AgentEdit } from "../state/agentEdits";
 import { advancedShown, useConfigViewStore, type AdvancedStage } from "../state/configViewStore";
 import {
@@ -40,8 +41,11 @@ import { useMarkStore } from "../state/markStore";
 import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
 import { advancedFields, changedFields, foldsHolding, SECTION_SUMMARY, type SectionStage } from "./configSections";
 
+// The outputs on disk, in pipeline order. The symmetrized volume is the
+// optional stage 0's: shown when the stage is on, or its output exists.
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
+  { key: "symmetrized", label: "Symmetrized", group: "Input" },
   { key: "ringremoved", label: "Ring removed", group: "Cleanup" },
   { key: "braggpunched", label: "Bragg punched", group: "Cleanup" },
   { key: "backfilled", label: "Backfilled", group: "Cleanup" },
@@ -145,6 +149,28 @@ function AdvancedFold({ stage, changed, children }: { stage: AdvancedStage; chan
 
 /** Class names joined, the empty ones left out. */
 const cls = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(" ");
+
+// The symmetry average's Laue class as the run will read it (state/laue.ts):
+// the closed group, and the backend's two checks on the raw volume, its UB's
+// metric and its grid.
+interface LaueReading {
+  group: LaueGroup | null;
+  error: string | null; // not a class the run can read
+  metric: number | null; // the metric change; null without a UB
+  grid: string | null; // why the operations do not map the grid, or null
+}
+
+function readLaue(spec: string, meta: VolumeMeta | undefined): LaueReading {
+  if (!spec.trim()) return { group: null, error: null, metric: null, grid: null };
+  try {
+    const group = laueGroup(spec);
+    const metric = meta?.ub_matrix && !ubUnknown(meta.ub_matrix) ? metricChange(group.ops, meta.ub_matrix) : null;
+    const grid = meta ? gridProblem(group.ops, { shape: meta.shape, ranges: [meta.h_range, meta.k_range, meta.l_range] }) : null;
+    return { group, error: null, metric, grid };
+  } catch (e) {
+    return { group: null, error: (e as Error).message, metric: null, grid: null };
+  }
+}
 
 const SUPERCELL_TITLE =
   "Supercell factor along this axis that the volume is indexed on (e.g. 2 for a " +
@@ -288,6 +314,10 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
 
   const s = usePipelineStore(
     useShallow((st) => ({
+      symmetryAverageEnabled: st.symmetryAverageEnabled,
+      symmetryLaue: st.symmetryLaue,
+      symmetryReaverage: st.symmetryReaverage,
+      symmetryAllowMetricChange: st.symmetryAllowMetricChange,
       ringsEnabled: st.ringsEnabled,
       punchEnabled: st.punchEnabled,
       backfillEnabled: st.backfillEnabled,
@@ -374,6 +404,16 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   // Two class names that alternate, so the same field changed again flashes again.
   const flash = (key: keyof PipelineConfig) =>
     flashEdit?.fields.includes(key) ? `cfg-flash cfg-flash-${flashEdit.seq % 2}` : undefined;
+  // A stage section another page asked to show (the Execution page's
+  // "Symmetrize here"): brought into view once, its first field flashed.
+  const focusStage = useConfigViewStore((st) => st.focusStage);
+  const [focusFlash, setFocusFlash] = useState(0);
+  useEffect(() => {
+    if (!focusStage) return;
+    useConfigViewStore.getState().setFocusStage(null);
+    document.getElementById(`cfg-stage-${focusStage}`)?.closest("section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFocusFlash((n) => n + 1);
+  }, [focusStage]);
   const run = usePipelineStore((st) => st.run);
 
   const punchFrame = s.punchFrame === "q" ? "q" : "spherical";
@@ -429,12 +469,54 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     staleTime: Infinity,
   });
   const rawEdges = rawCoverageQ.data;
+  // The symmetry average (stage 0), read against the raw volume: the class the
+  // run will take and its checks, what the file declares (symmetrized already:
+  // the stage passes it through) and what is declared for it ("Use it").
+  const rawMeta = punchPreviewStage?.name === "raw" ? punchMetaQ.data : undefined;
+  const laue = useMemo(() => readLaue(s.symmetryLaue, rawMeta), [s.symmetryLaue, rawMeta]);
+  const declaredOrder = rawMeta?.symmetry_ops?.length ?? 0;
+  const passesThrough = declaredOrder > 1 && !s.symmetryReaverage;
+  const metricOff = (laue.metric ?? 0) > METRIC_TOLERANCE;
+  const laueRefused = !laue.group || laue.group.ops.length < 2 || laue.grid !== null || (metricOff && !s.symmetryAllowMetricChange);
+  const symmetrizes = s.symmetryAverageEnabled && !passesThrough && !laueRefused;
+  const laueHint = rawMeta?.declared_for ?? null;
+  const hintSpec = laueHint ? laueSpecOf(laueHint.symmetry, laueHint.symmetry_ops) : null;
+  const lauePreset = presetNamed(s.symmetryLaue);
+  const laueNote: { text: string; error: boolean; warn?: boolean } = (() => {
+    if (declaredOrder > 1 && !s.symmetryReaverage)
+      return {
+        text: `The volume declares ${rawMeta?.symmetry || "a symmetry"} (${declaredOrder} operations): it is symmetrized already, so the stage passes it through.`,
+        error: false,
+      };
+    if (laue.error) return { text: `Not a class the run can read: ${laue.error}`, error: true };
+    if (!laue.group)
+      return s.symmetryAverageEnabled
+        ? { text: "Choose the sample's Laue class: the run refuses without one.", error: true }
+        : { text: "Averages each voxel with its symmetry equivalents, by the NeXus Viewer's rules.", error: false };
+    const n = laue.group.ops.length;
+    if (n < 2) return { text: "The identity alone averages nothing: choose the sample's Laue class.", error: true };
+    if (laue.grid) return { text: `The run will refuse: ${laue.grid}. Re-bin the volume, or choose a class that fits its grid.`, error: true };
+    if (laue.metric !== null && laue.metric > METRIC_TOLERANCE)
+      return s.symmetryAllowMetricChange
+        ? {
+            text: `⚠ These operations change the cell metric by up to ${(100 * laue.metric).toFixed(0)}%, more than 2%: they are not symmetries of this lattice. Proceed despite the metric change is on, so the run averages over them anyway and records a warning.`,
+            error: false,
+            warn: true,
+          }
+        : {
+            text: `The run will refuse: these operations change the cell metric by up to ${(100 * laue.metric).toFixed(0)}%, more than 2%, so they are not symmetries of this lattice. Check the class and its setting, or see Advanced.`,
+            error: true,
+          };
+    const metric = laue.metric === null ? (rawMeta ? "No UB: the metric is not checked." : "") : `Metric (UB) kept to ${(100 * laue.metric).toFixed(2)}%.`;
+    return { text: `${n} operations, pooled with equal weight. ${metric}`.trim(), error: false };
+  })();
   // What the sample's modulation as the form declares it protects, from the
   // backend (POST /api/modulation/check): on the punch cell, under the
   // symmetry the volume declares. In the browser build only once the engine
   // is up: typing must not boot it.
   const modulation = modulationRequest(s);
-  const modulationSymmetry = punchMetaQ.data?.symmetry_ops ?? null;
+  // With the symmetry average on, the punch sees the stage's group.
+  const modulationSymmetry = symmetrizes && laue.group ? laue.group.ops.map((m) => m.map((row) => [...row])) : (punchMetaQ.data?.symmetry_ops ?? null);
   const modulationCheckQ = useQuery({
     queryKey: ["modulation-check", JSON.stringify(modulation ?? null), punchGeom.supercell.join(","), JSON.stringify(modulationSymmetry)],
     queryFn: () => checkModulation({ modulation, cell: punchGeom.supercell, symmetry_ops: modulationSymmetry }),
@@ -615,7 +697,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     ...stage,
     exists: selectedDataset?.stages.some((s) => s.name === stage.key && s.exists) ?? false,
     staleAfter: stale.get(stage.key),
-  }));
+  })).filter((stage) => stage.key !== "symmetrized" || stage.exists || s.symmetryAverageEnabled);
   const badgeLabel = (key: string) => DATASET_STAGE_BADGES.find((b) => b.key === key)?.label ?? key;
   const rootStatus = rootError
     ? rootError
@@ -871,10 +953,107 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       <section className="card cfg-workflow" aria-labelledby="cfg-workflow-title">
         <div className="card-title-row">
           <h3 id="cfg-workflow-title">3D-ΔPDF Workflow</h3>
-          <span className="cfg-card-summary">The five stages, in the order they run</span>
+          <span className="cfg-card-summary">The stages, in the order they run</span>
           <span className="card-title-rule" />
         </div>
         <div className="cfg-stages">
+          <StageSection
+            stage="symmetry_average"
+            enabled={s.symmetryAverageEnabled}
+            onToggle={(v) => patch({ symmetryAverageEnabled: v })}
+            glow={false}
+            help={
+              <>
+                Optional, and off by default. Averages the raw volume over the sample&apos;s Laue class before the ring
+                removal, by the NeXus Viewer&apos;s rules: every voxel takes the equal-weight mean of the measured voxels
+                among its symmetry equivalents, so coverage gaps fill from their equivalents. The operations must map
+                the grid onto itself, and change the cell&apos;s metric (from the UB) by no more than 2%; otherwise the run
+                refuses (Proceed despite the metric change, under Advanced, averages anyway and records a warning). The
+                coverage edge is always trimmed first. The output declares the operations, and the stages after it
+                treat equivalent voxels alike. A volume that declares a symmetry (a NeXus Viewer export) is symmetrized
+                already and passes through. Which class the sample has is yours to say: the NEBULA Pilot may suggest
+                one, but does not set it.
+              </>
+            }
+            advanced={
+              <AdvancedFold stage="symmetry_average" changed={changed("symmetry_average")}>
+                <div className="cfg-fields">
+                  <div className="switch-row">
+                    <Switch
+                      label="Average again"
+                      checked={s.symmetryReaverage}
+                      title="A volume that declares a symmetry (a NeXus Viewer export) was averaged already and passes through; this averages it again, over the class above. The unsymmetrized volume is the better input."
+                      onChange={(v) => patch({ symmetryReaverage: v })}
+                    />
+                  </div>
+                  <div className="switch-row">
+                    <Switch
+                      label="Proceed despite the metric change"
+                      checked={s.symmetryAllowMetricChange}
+                      title="Operations that change the cell's metric (from the UB) by more than 2% are not symmetries of this lattice, and the run refuses them. On, it averages over them anyway, pooling voxels at different |Q|, and records a warning in the log and in the stage's output."
+                      onChange={(v) => patch({ symmetryAllowMetricChange: v })}
+                    />
+                  </div>
+                </div>
+              </AdvancedFold>
+            }
+          >
+            <div className="cfg-box">
+              <div className="cfg-fields">
+                <Field className={focusFlash ? `cfg-flash cfg-flash-${focusFlash % 2}` : flash("symmetryLaue")} label="Laue class">
+                  <select
+                    value={lauePreset ? lauePreset[0] : s.symmetryLaue.trim() ? "custom" : ""}
+                    title="The sample's Laue class: trigonal and hexagonal classes are on hexagonal axes"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "custom") patch({ symmetryLaue: lauePreset ? lauePreset[1] : s.symmetryLaue });
+                      else patch({ symmetryLaue: v });
+                    }}
+                  >
+                    <option value="">Choose…</option>
+                    {LAUE_PRESETS.filter(([name]) => name !== "1").map(([name]) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                    <option value="custom">Custom generators</option>
+                  </select>
+                </Field>
+                <Field label="Generators" grow>
+                  <input
+                    type="text"
+                    spellCheck={false}
+                    value={lauePreset ? lauePreset[1] : s.symmetryLaue}
+                    placeholder="h+k,-h,l; -k,-h,-l; -h,-k,-l"
+                    title='Operations on reflections, like coordinate triplets ("h+k,-h,l"; real-space "x-y,x,z" too), separated by ";". They are closed into a group.'
+                    onChange={(e) => patch({ symmetryLaue: e.target.value })}
+                  />
+                </Field>
+              </div>
+              <p
+                className={cls("config-note", laueNote.error && s.symmetryAverageEnabled && "config-note--error", laueNote.warn && "config-note--warn")}
+                role="status"
+              >
+                {laueNote.text}
+                {laueHint && hintSpec !== s.symmetryLaue.trim() && declaredOrder < 2 && (
+                  <>
+                    {" "}
+                    {laueHint.symmetry} is declared for this volume by {laueHint.from}.{" "}
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => patch({ symmetryLaue: hintSpec ?? "" })}>
+                      Use it
+                    </button>
+                  </>
+                )}
+              </p>
+              {laue.group && laue.group.ops.length > 1 && (
+                <details className="cfg-ops">
+                  <summary>{laue.group.ops.length} operations</summary>
+                  <code>{laue.group.ops.map(formatOp).join("   ")}</code>
+                </details>
+              )}
+            </div>
+          </StageSection>
+
           <StageSection
             stage="rings"
             enabled={s.ringsEnabled}

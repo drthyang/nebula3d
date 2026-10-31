@@ -1421,17 +1421,21 @@ References of this skill (read one with read_skill and `reference`):
 
 ## configure_settings {}
 
-1404 characters sent.
+1545 characters sent.
 
 ```json
 {
   "settings": {
+    "symmetryAverageEnabled": false,
     "ringsEnabled": true,
     "punchEnabled": true,
     "backfillEnabled": true,
     "flatten": true,
     "pdfEnabled": true,
     "force": false,
+    "symmetryLaue": "(none chosen: the user's to set)",
+    "symmetryReaverage": false,
+    "symmetryAllowMetricChange": false,
     "ringModel": "pooled",
     "ringRadialMode": "rolling",
     "ringNPatches": "(default)",

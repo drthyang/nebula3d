@@ -10,6 +10,10 @@ import type { ChatTool } from "../types";
 // Settings that only steer the Configure page's previews, not the run.
 const UI_ONLY = /^punch(Slice|Cut)/;
 
+// A blank that is no default: the symmetry average's Laue class is the
+// sample's, and none is chosen until the user chooses one.
+const BLANK: Record<string, string> = { symmetryLaue: "(none chosen: the user's to set)" };
+
 // The facts held in several fields, and those fields.
 const COMPOSITE = SAMPLE_PARAMS.filter((p) => p.fields.length > 1);
 const HELD = new Set<string>(COMPOSITE.flatMap((p) => p.fields));
@@ -34,7 +38,7 @@ export const configure_settings: ChatTool = {
         if (p) settings[p.key] = value === "default" ? "(default)" : value;
         continue;
       }
-      settings[k] = v === "" ? "(default)" : v;
+      settings[k] = v === "" ? (BLANK[k] ?? "(default)") : v;
     }
     return { result: { settings }, summary: `${Object.keys(settings).length} settings` };
   },

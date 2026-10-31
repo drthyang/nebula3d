@@ -538,3 +538,46 @@ def test_the_api_and_the_bridge_return_the_same_fields(tmp_path, right_ub):
     if not right_ub:  # and a refusal: the file exists now on both sides
         server, bridge = both()
         assert server == bridge and server["refusal"]["code"] == TARGET_EXISTS
+
+
+def test_symmetrising_a_regrid_gives_the_sigma_of_the_mean_as_the_stage_does():
+    """The regrid's symmetrising and the pipeline's symmetry average are one
+    function (nebula3d.symmetry.symmetry_average): on the same volume they
+    give the same data, mask and σ, bit for bit; and σ is the mean's,
+    √(Σσ²)/n over an orbit's measured members, not their RMS."""
+    from nebula3d.symmetry import symmetry_average
+
+    rng = np.random.default_rng(5)
+    shape = (9, 9, 5)
+    vol = HKLVolume.from_arrays(rng.uniform(1.0, 9.0, shape), (-0.4, 0.4), (-0.4, 0.4),
+                                (-0.2, 0.2), sigma=rng.uniform(0.1, 0.5, shape), ub_matrix=UB)
+    vol.mask = rng.random(shape) > 0.4
+    vol.data[~vol.mask] = 0.0
+    vol.sigma[~vol.mask] = 0.0
+    sym = GridSymmetry.for_volume(vol, SIX_MMM)
+    before = HKLVolume(data=vol.data.copy(), sigma=vol.sigma.copy(), mask=vol.mask.copy(),
+                       h_axis=vol.h_axis, k_axis=vol.k_axis, l_axis=vol.l_axis, ub_matrix=UB)
+    regridded = HKLVolume(data=vol.data.copy(), sigma=vol.sigma.copy(), mask=vol.mask.copy(),
+                          h_axis=vol.h_axis, k_axis=vol.k_axis, l_axis=vol.l_axis, ub_matrix=UB)
+    ub_regrid._symmetrise(regridded, sym)
+    symmetry_average(vol, sym)
+    for a, b in ((regridded.data, vol.data), (regridded.sigma, vol.sigma),
+                 (regridded.mask, vol.mask)):
+        assert np.array_equal(a, b)
+
+    # An orbit with several measured members: σ = √(Σσ²)/n, below their RMS.
+    checked = 0
+    for x in zip(*np.nonzero(before.mask)):
+        members = set()
+        for r, t in sym.index_ops:
+            y = tuple(int(v) for v in r @ np.asarray(x) + t)
+            if all(0 <= y[a] < shape[a] for a in range(3)):
+                members.add(y)
+        sigmas = np.array([before.sigma[y] for y in members if before.mask[y]])
+        if sigmas.size < 3:
+            continue
+        mean_sigma = np.sqrt(np.sum(sigmas ** 2)) / sigmas.size
+        assert regridded.sigma[x] == pytest.approx(mean_sigma, rel=1e-12)
+        assert regridded.sigma[x] < np.sqrt(np.mean(sigmas ** 2))
+        checked += 1
+    assert checked > 10

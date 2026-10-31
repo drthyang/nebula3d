@@ -47,7 +47,7 @@ from nebula3d.analysis.ub_refine import (
     regrid,
 )
 from nebula3d.core import HKLVolume
-from nebula3d.symmetry import GridSymmetry, _triplet
+from nebula3d.symmetry import GridSymmetry, _triplet, symmetry_average
 
 #: The new file is ``<stem>_regridded.nxs`` beside the raw ``<stem>.nxs``, and
 #: ``<stem>_regridded_sym.nxs`` when it is symmetrised (see :func:`regrid_target`).
@@ -354,22 +354,13 @@ def _symmetrised_reason(source: Path, ops: Ops, broken: float, named: str | None
 
 
 def _symmetrise(vol: HKLVolume, sym: GridSymmetry) -> None:
-    """Symmetrise *vol* in place, as examples/refine_ub.py does: a voxel
-    measured at any equivalent position gets the mean of those that are, and
-    σ the orbit's RMS σ (the mean's own would be smaller)."""
-    valid = vol.mask & np.isfinite(vol.data)
-    where = sym.orbit_any(valid)
-    vol.data[~valid] = np.nan  # left out of the orbit means
-    sym.orbit_mean(vol.data, where)
-    var = None
-    if not vol.sigma_estimated:
-        var = np.where(valid, np.square(vol.sigma), np.nan).astype(vol.sigma.dtype)
-        sym.orbit_mean(var, where)
-    del valid
-    vol.mask = where & np.isfinite(vol.data)
-    vol.data[~vol.mask] = 0.0  # unmeasured as the loader leaves it
-    sigma = np.sqrt(np.abs(vol.data)) if var is None else np.sqrt(var)
-    vol.sigma = np.where(vol.mask, sigma, 0.0).astype(vol.sigma.dtype)
+    """Symmetrise *vol* in place, as the pipeline's symmetry average does and
+    by the same function (:func:`nebula3d.symmetry.symmetry_average`, the
+    NeXus Viewer's rules): a voxel measured at any equivalent position gets the
+    equal-weight mean of those that are, and σ that mean's, √(Σσ²)/n over the
+    n measured members whose σ is known (√|mean| when none is; √|I| when σ
+    was only estimated)."""
+    symmetry_average(vol, sym)
 
 
 def _provenance(source: Path, refined_on: Path, check: UBCheck, *,

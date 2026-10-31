@@ -131,3 +131,47 @@ describe("loadPipelineContext", () => {
     expect(api.fetchProtectedLabels).not.toHaveBeenCalled();
   });
 });
+
+describe("the meta that declares the data's point group (declaringMeta)", () => {
+  const OPS = [
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+    [
+      [-1, 0, 0],
+      [0, -1, 0],
+      [0, 0, -1],
+    ],
+  ];
+  const meta = (id: string, symmetry: string | null): VolumeMeta =>
+    ({ id, stage: id.split(".")[1], symmetry, symmetry_ops: symmetry ? OPS : null }) as unknown as VolumeMeta;
+  const chain: Dataset = {
+    ...dataset,
+    stages: [
+      { name: "raw", exists: true, kind: "hkl", volume_id: "demo.raw" },
+      { name: "symmetrized", exists: true, kind: "hkl", volume_id: "demo.symmetrized" },
+      { name: "flattened", exists: true, kind: "hkl", volume_id: "demo.flattened" },
+      { name: "delta_pdf", exists: true, kind: "delta_pdf", volume_id: "demo.delta_pdf", source: "flattened" },
+    ],
+  };
+
+  it("is the ΔPDF's source when it declares one (the symmetry average and every stage after it do)", async () => {
+    const { declaringMeta } = await import("../context/loadContext");
+    api.fetchMeta.mockImplementation(async (id: string) => meta(id, id === "demo.raw" ? null : "-1"));
+    expect((await declaringMeta(chain, "delta_pdf"))?.id).toBe("demo.flattened");
+    expect((await declaringMeta(chain, "flattened"))?.id).toBe("demo.flattened");
+  });
+
+  it("is the raw volume's when the output declares none (written before outputs declared it)", async () => {
+    const { declaringMeta } = await import("../context/loadContext");
+    api.fetchMeta.mockImplementation(async (id: string) => meta(id, id === "demo.raw" ? "-1" : null));
+    expect((await declaringMeta(chain, "delta_pdf"))?.id).toBe("demo.raw");
+    api.fetchMeta.mockImplementation(async (id: string) => {
+      if (id === "demo.flattened") throw new Error("gone");
+      return meta(id, null);
+    });
+    expect((await declaringMeta(chain, "delta_pdf"))?.id).toBe("demo.raw");
+  });
+});

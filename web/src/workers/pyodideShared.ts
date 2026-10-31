@@ -8,6 +8,12 @@
 export const PYODIDE_VERSION = "0.27.7";
 export const PYODIDE_INDEX = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 
+// nebula3d.pipeline.STAGES, in its order (the symmetry average, stage 0,
+// first): the pipeline worker runs only the stages listed here, so a stage
+// missing would be dropped from every in-browser run without a word.
+// pyodideShared.test.ts keeps it equal to the store's STAGES.
+export const RUN_STAGES = ["symmetry_average", "rings", "punch", "backfill", "flatten", "pdf", "pdf_check"] as const;
+
 // Minimal typings for the Pyodide API both workers use (the CDN module ships
 // no TypeScript types).
 export interface PyBufferView {

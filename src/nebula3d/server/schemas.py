@@ -130,6 +130,11 @@ class VolumeMetaOut(BaseModel):
     # The point group the file declares its data were symmetrised with.
     symmetry: str | None = None
     symmetry_ops: list[list[list[int]]] | None = None
+    # The Laue class declared *for* a file that declares none itself (by a
+    # symmetrized export beside it naming it as its source, or a regrid's
+    # record): {"symmetry", "symmetry_ops", "from"}, what the symmetry
+    # average (stage 0) can take for it; None otherwise.
+    declared_for: dict[str, Any] | None = None
     # "measured": σ came with the data; "estimated": √|I|, and sigma_note says
     # when that leaves a significance in σ meaningless (normalized values).
     sigma: str = "measured"
@@ -492,6 +497,16 @@ class StageParamsIn(BaseModel):
     rings_enabled: bool | None = None
     punch_enabled: bool | None = None
     backfill_enabled: bool | None = None
+    # Stage 0, the symmetry average (PipelineParams.symmetry_average): off
+    # unless switched on (None: off).  Its Laue class, the sample's to
+    # declare: a preset name ("6/mmm") or generators ("h+k,-h,l; -h,-k,-l");
+    # whether an input that declares a symmetry already is averaged again; and
+    # whether to proceed when the operations change the cell's metric by more
+    # than 2 % (refused otherwise; the run then records a warning).
+    symmetry_average_enabled: bool | None = None
+    symmetry_average_laue: str | None = None
+    symmetry_average_reaverage: bool | None = None
+    symmetry_average_allow_metric_change: bool | None = None
     # Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
     edge_trim: int | None = None
     rings_n_patches: int | None = None

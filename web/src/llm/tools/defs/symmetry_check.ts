@@ -3,8 +3,8 @@
 // those that move c included, on the sections each maps onto sections
 // (metrics/symmetry.ts, operationSymmetry).
 
-import { fetchDpdfSlice, fetchMeta } from "../../../api/client";
-import { dpdfVolumeId, hklVolumeId, safe, stageVolumeId } from "../../context/loadContext";
+import { fetchDpdfSlice } from "../../../api/client";
+import { declaringMeta, dpdfVolumeId } from "../../context/loadContext";
 import { evidence } from "../../inference";
 import {
   inPlaneOperations,
@@ -82,13 +82,13 @@ export const symmetry_check: ChatTool = {
     const z = args.z === undefined ? 0 : num(args, "z");
     const meta = await dpdfMeta(dataset);
     const id = dpdfVolumeId(dataset)!;
-    // The point group the raw file declares its data were symmetrised with; none read: not known.
-    const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
+    // The point group the data were declared symmetrised with (by the volume
+    // the ΔPDF was made from, else the raw file); none read: not known.
     const [xy, xz, yz, rawMeta] = await Promise.all([
       fetchDpdfSlice(id, "xy", z),
       fetchDpdfSlice(id, "xz", 0),
       fetchDpdfSlice(id, "yz", 0),
-      rawId ? safe(fetchMeta(rawId)) : Promise.resolve(null),
+      declaringMeta(dataset, "delta_pdf"),
     ]);
     const label = rawMeta?.symmetry ?? null;
     const declaredOps = rawMeta?.symmetry_ops ?? null;

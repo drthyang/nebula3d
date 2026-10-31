@@ -174,8 +174,10 @@ def load_mantid_nxs(
                                       keep_masked=extra is not None)
         instrument = (path.stem if extra is None
                       else _as_text(extra.attrs.get("instrument", "")))
-        estimated = (extra is not None
-                     and _as_text(extra.attrs.get("sigma", "")) == SIGMA_ESTIMATED)
+        # σ is √|I| when the file holds none (no errors_squared) or says so.
+        estimated = ("errors_squared" not in data_grp
+                     or (extra is not None
+                         and _as_text(extra.attrs.get("sigma", "")) == SIGMA_ESTIMATED))
 
     return HKLVolume(
         data=data,
@@ -622,14 +624,19 @@ def _assemble(
 
     σ = sqrt(max(σ², 0)) is taken in float64 before the cast; for a file
     NEBULA3D wrote that gives back the stored σ exactly (σ² of a float32 is
-    exact in float64, and sqrt(fl(σ²)) = σ in binary floating point).  With
+    exact in float64, and sqrt(fl(σ²)) = σ in binary floating point).  A file
+    without ``errors_squared`` (the NeXus Viewer's synthetic examples) gets
+    σ = √|I|, the estimate the legacy layout takes without ``sigma``.  With
     *keep_masked* (a NEBULA3D file) the values under the mask are kept as
     stored; otherwise NaN or masked voxels are zeroed and set invalid.
     """
     perm = (axes["H"][0], axes["K"][0], axes["L"][0])
 
     sig = _read_canonical(data_grp["signal"], perm, dtype)
-    sigma = _read_canonical(data_grp["errors_squared"], perm, dtype, _sqrt_nonneg)
+    if "errors_squared" in data_grp:
+        sigma = _read_canonical(data_grp["errors_squared"], perm, dtype, _sqrt_nonneg)
+    else:
+        sigma = np.sqrt(np.abs(sig))
     valid = _read_canonical(data_grp["mask"], perm, np.bool_, _unmasked)
     if keep_masked:
         return sig, sigma, valid

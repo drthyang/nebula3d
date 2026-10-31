@@ -1372,6 +1372,36 @@ input[type="range"]::-moz-range-track {
   line-height: 1.4;
   color: var(--text-3);
 }
+/* a setting the run will refuse (the symmetry average's Laue class) */
+.config-note--error {
+  color: var(--red);
+}
+/* one it will run with a warning (proceeding despite the metric change) */
+.config-note--warn {
+  color: var(--amber);
+}
+.config-note .btn-sm {
+  vertical-align: baseline;
+}
+/* the symmetry average's closed group, folded */
+.cfg-ops {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.cfg-ops summary {
+  cursor: pointer;
+  width: max-content;
+}
+.cfg-ops code {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  word-spacing: 0.3em;
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+}
 .config-grid-3 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -2770,6 +2800,9 @@ input[type="range"]::-moz-range-track {
 .exec-banner.error .exec-banner-title { color: #e8645a; }
 .exec-banner.cancelled .exec-banner-title { color: #cdd4df; }
 .exec-banner-body { font: 400 12px/1.5 system-ui; color: #a8b1bf; }
+/* a failure the page can act on (the 3D-ΔPDF's window: "Symmetrize here") */
+.exec-banner-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
+.exec-banner-hint { font: 400 11.5px/1.4 system-ui; color: #8b94a3; }
 
 /* body grid: stages | log */
 .exec-body {

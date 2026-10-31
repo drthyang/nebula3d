@@ -236,6 +236,10 @@ export interface VolumeMeta {
   // The point group the file declares its data were symmetrised with.
   symmetry?: string | null;
   symmetry_ops?: number[][][] | null;
+  // The Laue class declared *for* a file that declares none itself: by a
+  // symmetrized NeXus Viewer export beside it naming it as its source, or a
+  // regrid's record. What "Symmetrize here" takes for the symmetry average.
+  declared_for?: { symmetry: string; symmetry_ops: number[][][]; from: string } | null;
   // "measured": σ came with the data; "estimated": √|I|. sigma_note says when
   // that leaves a significance in σ meaningless (normalized values).
   sigma?: "measured" | "estimated";
@@ -584,6 +588,15 @@ export interface StageParamsIn {
   rings_enabled?: boolean;
   punch_enabled?: boolean;
   backfill_enabled?: boolean;
+  // Stage 0, the symmetry average (omitted: off): its Laue class, the
+  // sample's to declare (a preset name or generators), and whether an input
+  // that declares a symmetry already is averaged again.
+  symmetry_average_enabled?: boolean;
+  symmetry_average_laue?: string;
+  symmetry_average_reaverage?: boolean;
+  // Proceed when the operations change the cell's metric by more than 2 %
+  // (refused otherwise); the run then records a warning.
+  symmetry_average_allow_metric_change?: boolean;
   // Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
   edge_trim?: number;
   rings_n_patches?: number;

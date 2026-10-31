@@ -372,6 +372,54 @@ describe("update_settings", () => {
     expect(usePipelineStore.getState().punchMinSig).toBe("");
   });
 
+  // The symmetry average (pipeline stage 0): the sample's Laue class, and
+  // whether to average at all, are the user's to set on the Configure page.
+  // update_settings refuses them whatever the user said; the model suggests.
+  describe("the symmetry average, which the user sets", () => {
+    const refusal = (key: string) => `${key} is the user's to set, on the Configure page: suggest a Laue class to the user, with your evidence, and let them set it.`;
+    const OFF = { symmetryAverageEnabled: false, symmetryLaue: "", symmetryReaverage: false, symmetryAllowMetricChange: false, punchMinSig: "" };
+    beforeEach(() => usePipelineStore.setState(OFF));
+
+    it("refuses the Laue class and the switch, even when the user names them", async () => {
+      for (const said of [undefined, "Set the Laue class to 6/mmm and switch the symmetry average on."]) {
+        const r = await callTool({ ...ctx, userMessage: said }, "update_settings", { changes: { symmetryLaue: "6/mmm", symmetryAverageEnabled: true } });
+        expect(r.ok).toBe(false);
+        expect(r.text).toBe(`Error: ${refusal("symmetryLaue")} ${refusal("symmetryAverageEnabled")}`);
+        expect(usePipelineStore.getState()).toMatchObject(OFF);
+      }
+    });
+
+    it("refuses to proceed despite a metric change, whatever the user said", async () => {
+      const said = "Proceed despite the metric change: average over 6/mmm anyway.";
+      const r = await callTool({ ...ctx, userMessage: said }, "update_settings", { changes: { symmetryAllowMetricChange: true } });
+      expect(r.ok).toBe(false);
+      expect(r.text).toBe(`Error: ${refusal("symmetryAllowMetricChange")}`);
+      expect(usePipelineStore.getState()).toMatchObject(OFF);
+    });
+
+    it("makes the call's other changes, and says what it refused", async () => {
+      const r = await run("update_settings", { changes: { punchMinSig: 6, symmetryReaverage: true } });
+      expect(r.ok, r.text).toBe(true);
+      expect(usePipelineStore.getState()).toMatchObject({ punchMinSig: "6", symmetryReaverage: false });
+      expect(JSON.parse(r.text)).toEqual({
+        changed: [{ setting: "punchMinSig", from: 5, to: 6 }],
+        refused: [{ setting: "symmetryReaverage", why: refusal("symmetryReaverage") }],
+        rerun_from: "punch",
+      });
+      expect(r.summary).toBe("punchMinSig 5 → 6; refused, the user's to set: symmetryReaverage");
+    });
+
+    it("shows a blank Laue class as none chosen, not as a default", async () => {
+      const shown = (JSON.parse((await run("configure_settings", {})).text) as { settings: Record<string, unknown> }).settings;
+      expect(shown).toMatchObject({
+        symmetryAverageEnabled: false,
+        symmetryLaue: "(none chosen: the user's to set)",
+        symmetryReaverage: false,
+        symmetryAllowMetricChange: false,
+      });
+    });
+  });
+
   // The facts about the sample (tune/catalog.ts, SAMPLE_PARAMS) change only
   // when the user's latest message names them: the agent loop hands it to
   // the tools as the context's userMessage.

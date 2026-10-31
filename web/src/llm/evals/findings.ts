@@ -13,7 +13,7 @@
 // logic (the transcript, a case's checks).
 
 import { seen, type Readable } from "../readings";
-import { REGRID_REFUSED, SAMPLE_FACT_REFUSED } from "../tune/catalog";
+import { REGRID_REFUSED, SAMPLE_FACT_REFUSED, SYMMETRY_AVERAGE_REFUSED } from "../tune/catalog";
 import { offerChanges } from "./offers";
 import {
   findIn,
@@ -192,9 +192,12 @@ function surfaced(rec: RunRecord, value: number, tol: number, reading: (d: Decis
 
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
-/** A call a guardrail refused, which is no tool failing: until its stage's skill is read, a fact about the sample the user did not name, or a regrid the user did not ask for. */
+/** A call a guardrail refused, which is no tool failing: until its stage's skill is read, a fact about the sample the user did not name, a regrid the user did not ask for, or the symmetry average, which the user sets. */
 const refusedByAGuardrail = (summary: string): boolean =>
-  /refused until its skill is read/.test(summary) || summary.includes(SAMPLE_FACT_REFUSED) || summary.includes(REGRID_REFUSED);
+  /refused until its skill is read/.test(summary) ||
+  summary.includes(SAMPLE_FACT_REFUSED) ||
+  summary.includes(REGRID_REFUSED) ||
+  summary.includes(SYMMETRY_AVERAGE_REFUSED);
 
 // What a failed scoring criterion most likely means, for the reviewer to confirm.
 const CRITERION: Record<string, [FindingKind, string]> = {

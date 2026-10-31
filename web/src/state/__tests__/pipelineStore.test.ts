@@ -58,6 +58,24 @@ describe("formToParams", () => {
     });
   });
 
+  it("sends the symmetry average only switched on, with its Laue class", () => {
+    const off = formToParams(form({ symmetryAverageEnabled: false, symmetryLaue: "6/mmm", symmetryReaverage: true }));
+    expect(Object.keys(off).filter((k) => k.startsWith("symmetry"))).toEqual([]);
+    expect(formToParams(form({ symmetryAverageEnabled: true, symmetryLaue: " 6/mmm ", symmetryReaverage: false }))).toMatchObject({
+      symmetry_average_enabled: true,
+      symmetry_average_laue: "6/mmm",
+    });
+    const blank = formToParams(form({ symmetryAverageEnabled: true, symmetryLaue: "", symmetryReaverage: true }));
+    expect(blank).toMatchObject({ symmetry_average_enabled: true, symmetry_average_reaverage: true });
+    expect("symmetry_average_laue" in blank).toBe(false);
+    // Proceeding despite the metric change: sent only when on, and only with the stage on.
+    expect("symmetry_average_allow_metric_change" in blank).toBe(false);
+    const proceed = formToParams(form({ symmetryAverageEnabled: true, symmetryLaue: "6/mmm", symmetryAllowMetricChange: true }));
+    expect(proceed).toMatchObject({ symmetry_average_allow_metric_change: true });
+    const stageOff = formToParams(form({ symmetryAverageEnabled: false, symmetryAllowMetricChange: true }));
+    expect("symmetry_average_allow_metric_change" in stageOff).toBe(false);
+  });
+
   // The sample's modulation goes as `modulation`, never as the legacy H
   // fractions (which the backend still reads from an older console).
   it("sends the sample's modulation as declared, nothing for a blank k, and never the legacy H planes", () => {
@@ -85,6 +103,15 @@ describe("the run", () => {
     expect(sent().stages).not.toContain(stage);
     expect(sent().stages).toContain("pdf");
     expect(sent().flatten_enabled).toBe(true);
+  });
+
+  it("runs the symmetry average first when it is on, and not at all off", async () => {
+    usePipelineStore.setState({ symmetryAverageEnabled: true, symmetryLaue: "m-3m" });
+    await usePipelineStore.getState().run();
+    expect(sent().stages?.[0]).toBe("symmetry_average");
+    expect(sent().params).toMatchObject({ symmetry_average_enabled: true, symmetry_average_laue: "m-3m" });
+    usePipelineStore.setState({ symmetryAverageEnabled: false, symmetryLaue: "" });
+    expect(enabledStages(form())).not.toContain("symmetry_average");
   });
 
   it("sends the switches with a run of chosen stages too (the Pilot's and the tuning's)", async () => {

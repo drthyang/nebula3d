@@ -7,7 +7,8 @@
 // date without changing what it holds.
 //
 // Each cleanup output is made from the nearest output upstream of it that
-// exists. The ΔPDF is made from the flattened volume with the background
+// exists (the symmetry average's, the first, only when that stage was on). The
+// ΔPDF is made from the flattened volume with the background
 // correction on and from the backfilled one with it off; its file records
 // which (`source`, from a server that says): the outputs past that one are
 // not its inputs, so a flattened volume left from before does not make a
@@ -16,7 +17,7 @@
 import type { StageStatus } from "./types";
 
 // The cleanup chain, upstream first; the ΔPDF is made from the last of them.
-export const OUTPUT_ORDER = ["ringremoved", "braggpunched", "backfilled", "flattened", "delta_pdf"] as const;
+export const OUTPUT_ORDER = ["symmetrized", "ringremoved", "braggpunched", "backfilled", "flattened", "delta_pdf"] as const;
 
 /**
  * Each stale output, with the output upstream of it that makes it so: one

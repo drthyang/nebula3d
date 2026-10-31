@@ -11,17 +11,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import type { Tab } from "../state/navStore";
+import { fetchMeta } from "../api/client";
 import { useDatasets } from "../api/hooks";
+import { queryClient } from "../api/queryClient";
 import { staleOutputs } from "../api/stale";
 import type { JobEvent } from "../api/types";
 import { useDatasetStore } from "../state/datasetStore";
+import { useConfigViewStore } from "../state/configViewStore";
+import { laueSpecOf } from "../state/laue";
 import { STAGES, STAGE_LABELS, usePipelineStore } from "../state/pipelineStore";
 import { PYODIDE_MODE } from "../api/pyodideEngine";
 import { litStage, useHighlightKeys } from "../llm/highlight";
-import { logClass, runOutputs, runPhase, stageInfo as infoOf, stageStates, warns, type Phase } from "./executionLog";
+import { logClass, runOutputs, runPhase, stageInfo as infoOf, stageStates, warns, windowSupportFailed, type Phase } from "./executionLog";
 
 // The output a stage writes (the consistency check's is the ΔPDF's).
 const STAGE_OUTPUT: Record<string, string> = {
+  symmetry_average: "symmetrized",
   rings: "ringremoved",
   punch: "braggpunched",
   backfill: "backfilled",
@@ -86,7 +91,7 @@ function condense(events: JobEvent[], times: number[]): { ev: JobEvent; t: numbe
 
 export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const lit = useHighlightKeys();
-  const { events, times, terminal, running, reconnecting, flatten, jobId, lastRun } = usePipelineStore(
+  const { events, times, terminal, running, reconnecting, flatten, symmetrize, jobId, lastRun } = usePipelineStore(
     useShallow((s) => ({
       reconnecting: s.reconnecting,
       events: s.events,
@@ -94,6 +99,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
       terminal: s.terminal,
       running: s.running,
       flatten: s.flatten,
+      symmetrize: s.symmetryAverageEnabled,
       jobId: s.jobId,
       lastRun: s.lastRun,
     })),
@@ -125,8 +131,13 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
     if (running) logRef.current?.scrollTo(0, logRef.current.scrollHeight);
   }, [condensed, running]);
 
-  // The flatten is shown as the run had it (the form may have changed since).
-  const visibleStages = STAGES.filter((s) => (lastRun?.flattenEnabled ?? flatten) || s !== "flatten");
+  // The flatten is shown as the run had it (the form may have changed since);
+  // the symmetry average, off by default, only when the run had it.
+  const visibleStages = STAGES.filter(
+    (s) =>
+      ((lastRun?.flattenEnabled ?? flatten) || s !== "flatten") &&
+      (s !== "symmetry_average" || (lastRun ? lastRun.stages.includes(s) : symmetrize)),
+  );
 
   // Latest status / fraction / message + first & last timestamp per stage.
   const stageInfo = infoOf(events, times);
@@ -195,6 +206,28 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
     idle: { text: "No run", icon: "▷" },
   };
   const lastError = [...events].reverse().find((e) => e.status === "error")?.message;
+  // The coverage left the ΔPDF's window no room at Q = 0: the symmetry
+  // average fills the gaps from their equivalents. "Symmetrize here" switches
+  // it on with the class already chosen, else the one declared for the volume
+  // (a symmetrized export beside it, a regrid's record), else leaves the
+  // choice to the user; turns Force on, since every stage after it reads its
+  // output; and opens the Configure page on it.
+  const offerSymmetrize = phase === "error" && windowSupportFailed(lastError);
+  const symmetrizeHere = async () => {
+    const st = usePipelineStore.getState();
+    let laue = st.symmetryLaue.trim();
+    const rawId = dataset?.stages.find((x) => x.name === "raw" && x.exists)?.volume_id;
+    if (!laue && rawId) {
+      const meta = await queryClient
+        .fetchQuery({ queryKey: ["meta", rawId, "config-punch"], queryFn: () => fetchMeta(rawId) })
+        .catch(() => null);
+      const hint = meta?.declared_for;
+      if (hint) laue = laueSpecOf(hint.symmetry, hint.symmetry_ops);
+    }
+    st.patch({ symmetryAverageEnabled: true, force: true, ...(laue ? { symmetryLaue: laue } : {}) });
+    useConfigViewStore.getState().setFocusStage("symmetry_average");
+    onNavigate("config");
+  };
 
   let timingV = "—";
   let timingL = "no active run";
@@ -437,6 +470,17 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
             <span className="exec-banner-body">
               {lastError ?? "The run stopped with an error — see the event log below for details."}
             </span>
+            {offerSymmetrize && (
+              <span className="exec-banner-actions">
+                <button type="button" className="exec-btn exec-btn-primary" onClick={() => void symmetrizeHere()}>
+                  Symmetrize here
+                </button>
+                <span className="exec-banner-hint">
+                  Switches the symmetry average on, with the Laue class chosen or declared for this volume, and opens it on
+                  the Configure page.
+                </span>
+              </span>
+            )}
           </div>
         </div>
       )}

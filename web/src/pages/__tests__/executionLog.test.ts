@@ -4,7 +4,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { logClass, runOutputs, runPhase, stageInfo, stageStates, warns, type Phase } from "../executionLog";
+import deltaPdfSource from "../../../../src/nebula3d/analysis/delta_pdf.py?raw";
+
+import { logClass, runOutputs, runPhase, stageInfo, stageStates, WINDOW_SUPPORT_MARK, windowSupportFailed, warns, type Phase } from "../executionLog";
 
 const NOTICE =
   "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.";
@@ -142,3 +144,51 @@ describe("the outputs a run's stages are read against", () => {
     expect(["backfill", "flatten", "pdf", "pdf_check"].map((st) => r.states[st])).toEqual(["notrun", "notrun", "notrun", "notrun"]);
   });
 });
+
+describe("the 3D-ΔPDF's window failure", () => {
+  it("is told by the backend's message, as the server and the browser give it", () => {
+    expect(windowSupportFailed(`${WINDOW_SUPPORT_MARK}. Unmeasured voxels open to the box edge reach the origin.`)).toBe(true);
+    const traceback = `Traceback (most recent call last):\n  File "<exec>", line 1\nnebula3d.analysis.delta_pdf.WindowSupportError: ${WINDOW_SUPPORT_MARK}. …`;
+    expect(windowSupportFailed(traceback)).toBe(true);
+    expect(windowSupportFailed("The 3D-ΔPDF takes the centre voxel of each axis (index n // 2) as Q = 0")).toBe(false);
+    expect(windowSupportFailed(undefined)).toBe(false);
+  });
+
+  it("is the message the backend writes (nebula3d/analysis/delta_pdf.py), which names the remedy", () => {
+    const flat = deltaPdfSource.replace(/"\s*\n\s*"/g, "");
+    expect(flat).toContain(`"${WINDOW_SUPPORT_MARK}.`);
+    expect(flat).toContain("Symmetrize here");
+  });
+});
+
+describe("a stage that adds a note after its done line", () => {
+  // The ring removal and the flatten say they averaged over the symmetry after
+  // their done line. A run that fails later must not mark them failed.
+  const ev = (stage: string, status: string, message = "") => ({ type: "progress", stage, status, message });
+  const events = [
+    ev("symmetry_average", "done", "averaged over m-3m"),
+    ev("rings", "start"),
+    ev("rings", "done", "pooled ring removal fitted"),
+    ev("rings", "progress", "ring removal averaged over 48 symmetry operations"),
+    ev("punch", "done", "punched"),
+    ev("pdf", "start"),
+    ev("pdf", "error", "WindowSupportError: No measured region around Q = 0"),
+  ];
+  const run = ["symmetry_average", "rings", "punch", "pdf", "pdf_check"];
+
+  it("is done, and the run failed at the stage that failed", () => {
+    const info = stageInfo(events, events.map((_, i) => i));
+    expect(info.rings.endedAs).toBe("done");
+    expect(info.rings.message).toBe("ring removal averaged over 48 symmetry operations");
+    const r = stageStates({ visible: run, info, phase: "error", runStages: run, hasOutput: () => true });
+    expect(r.states).toMatchObject({ symmetry_average: "done", rings: "done", punch: "done", pdf: "failed", pdf_check: "pending" });
+    expect(r.doneCount).toBe(3);
+  });
+
+  it("is failed when an error of its own comes after its done line", () => {
+    const own = [...events.slice(0, 4), ev("rings", "error", "the symmetry did not map the grid")];
+    const r = stageStates({ visible: run, info: stageInfo(own, own.map((_, i) => i)), phase: "error", runStages: run, hasOutput: () => true });
+    expect(r.states.rings).toBe("failed");
+  });
+});
+

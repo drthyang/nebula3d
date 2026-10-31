@@ -4,7 +4,9 @@
 // (tune/catalog.ts: namesSampleFact): a change to one it does not name is
 // refused, and the rest of the call runs. A fact may hold more than one of the
 // page's fields (the sample's modulation holds four): the model reads and
-// writes it as one setting (SampleParam).
+// writes it as one setting (SampleParam). The symmetry average's settings, the
+// sample's Laue class above all, it never changes: it refuses them, and the
+// model suggests a class to the user instead (SYMMETRY_AVERAGE_SETTINGS).
 
 import { noteAgentEdit } from "../../../state/agentEdits";
 import { usePipelineStore, type PipelineConfig } from "../../../state/pipelineStore";
@@ -15,6 +17,8 @@ import {
   namesSampleFact,
   SAMPLE_PARAMS,
   sampleFactRefusal,
+  SYMMETRY_AVERAGE_SETTINGS,
+  symmetryAverageRefusal,
   toFormValue,
   TUNE_PARAMS,
   TUNE_STAGES,
@@ -49,6 +53,7 @@ const SETTABLE: Settable[] = [
   ...SAMPLE_PARAMS,
 ];
 const findSettable = (key: string): Settable | undefined => SETTABLE.find((p) => p.key === key);
+const userSets = (key: string): boolean => (SYMMETRY_AVERAGE_SETTINGS as readonly string[]).includes(key);
 
 // The stage of each setting, for the skill gate (skills.ts).
 const SETTING_STAGE = new Map(SETTABLE.map((p) => [p.key, p.stage]));
@@ -80,7 +85,8 @@ export const update_settings: ChatTool = {
     `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
     `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${p.allowed}; ${p.help})`).join(" ")} ` +
     "A change to one of them is refused unless the user's latest message names it. " +
-    "The magnetic ion and |Q| band stay with the user. " +
+    `The magnetic ion and |Q| band stay with the user, and so does the symmetry average (${SYMMETRY_AVERAGE_SETTINGS.join(", ")}): ` +
+    "suggest a Laue class with your evidence instead, for the user to set. " +
     "Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings " +
     "the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings " +
     "already at the value are left as they are. Returns each change and the stage to rerun from.",
@@ -98,14 +104,16 @@ export const update_settings: ChatTool = {
       throw new ToolArgError("changes must be an object of setting → value");
     }
     for (const key of Object.keys(changes)) {
-      if (!findSettable(key)) throw new ToolArgError(`${key} cannot be changed; these can: ${SETTABLE.map((q) => q.key).join(", ")}`);
+      if (!findSettable(key) && !userSets(key)) throw new ToolArgError(`${key} cannot be changed; these can: ${SETTABLE.map((q) => q.key).join(", ")}`);
     }
     // A fact about the sample the user's latest message does not name is
-    // refused, whatever its value; the other changes go ahead. A call whose
-    // every change is refused fails, so the model reads the refusal as one.
-    const refused = Object.keys(changes).filter((key) => isSampleFact(key) && !namesSampleFact(ctx.userMessage ?? "", key));
+    // refused, whatever its value, and the symmetry average's settings always;
+    // the other changes go ahead. A call whose every change is refused fails,
+    // so the model reads the refusal as one.
+    const refused = Object.keys(changes).filter((key) => userSets(key) || (isSampleFact(key) && !namesSampleFact(ctx.userMessage ?? "", key)));
+    const why = (key: string): string => (userSets(key) ? symmetryAverageRefusal(key) : sampleFactRefusal(key));
     const asked = Object.entries(changes).filter(([key]) => !refused.includes(key));
-    if (!asked.length) throw new Error(refused.map(sampleFactRefusal).join(" "));
+    if (!asked.length) throw new Error(refused.map(why).join(" "));
     // Each setting's fields as the change asks for them, checked.
     const wanted = new Map<string, Partial<PipelineConfig>>();
     for (const [key, value] of asked) {
@@ -145,10 +153,16 @@ export const update_settings: ChatTool = {
       result: {
         changed,
         ...(unchanged.length ? { already_set: unchanged } : {}),
-        ...(refused.length ? { refused: refused.map((key) => ({ setting: key, why: sampleFactRefusal(key) })) } : {}),
+        ...(refused.length ? { refused: refused.map((key) => ({ setting: key, why: why(key) })) } : {}),
         rerun_from: rerunFrom ?? null,
       },
-      summary: refused.length ? `${done}; refused, a fact about the sample: ${refused.join(", ")}` : done,
+      summary: refused.length
+        ? [
+            done,
+            ...(refused.some((k) => !userSets(k)) ? [`refused, a fact about the sample: ${refused.filter((k) => !userSets(k)).join(", ")}`] : []),
+            ...(refused.some(userSets) ? [`refused, the user's to set: ${refused.filter(userSets).join(", ")}`] : []),
+          ].join("; ")
+        : done,
     };
   },
 };

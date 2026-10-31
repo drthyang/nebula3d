@@ -163,7 +163,8 @@ describe("the input and outputs it was saved with", () => {
     const r = restoreFresh(text, dataset(["raw"], { raw: { size: 5_787_854, mtime: 1_760_900_000 } }));
     expect(r.inputChanged).toBe(false);
     expect(r.warnings.join(" ")).toMatch(/S\.nxs was modified after the session was saved/);
-    expect(r.recompute).toEqual([...STAGES]);
+    // Every stage the run had: all but the symmetry average, off by default.
+    expect(r.recompute).toEqual(STAGES.filter((s) => s !== "symmetry_average"));
   });
 
   it("takes outputs written again after the save for not the session's, and recomputes them", async () => {
