@@ -43,23 +43,34 @@ def trim_coverage_edge(vol: HKLVolume, voxels: int = 1, *,
     unmeasured one can be orders of magnitude above the interior, while one
     voxel further in they already match it.  Trimmed voxels become unmeasured
     exactly as the loader leaves them: masked, with data and sigma zeroed.
-    The volume's own faces are not an edge.  Returns the number of voxels
-    trimmed.
+    Returns the number of voxels trimmed.
+
+    The NeXus Viewer's rule (its mask's "Edge erosion r", ``js/mask.js``
+    ``edgeMask``), voxel for voxel: a voxel is unmeasured when it is masked
+    or its value is not finite; every measured voxel within *voxels* voxels
+    of an unmeasured one (Chebyshev distance, the (2r + 1)³ box) is trimmed;
+    the volume's own faces are not an edge (tests/test_edge_trim.py pins it
+    against the viewer's own code).
 
     With the *symmetry* the data were symmetrised with, a voxel is trimmed
-    when any equivalent voxel is.  The 3×3×3 neighbourhood is not invariant
-    under operations that mix the grid axes (on a hexagonal 6/m grid a
-    sizeable share of the trimmed voxels kept a measured partner), and an
-    equivalent voxel can see the coverage edge where this one meets the
-    volume's face.
+    when any equivalent voxel is.  The viewer has no such case (it erodes
+    only the volume it is about to average); here an input that declares a
+    symmetry stays symmetric: the box is not invariant under operations that
+    mix the grid axes (on a hexagonal 6/m grid a sizeable share of the
+    trimmed voxels kept a measured partner), and an equivalent voxel can see
+    the coverage edge where this one meets the volume's face.
     """
-    if voxels <= 0 or vol.mask.all():
+    if voxels <= 0:
         return 0
-    edge = ndimage.binary_dilation(~vol.mask, structure=np.ones((3, 3, 3), dtype=bool),
+    measured = vol.mask & np.isfinite(vol.data)
+    if measured.all():
+        return 0
+    edge = ndimage.binary_dilation(~measured, structure=np.ones((3, 3, 3), dtype=bool),
                                    iterations=int(voxels))
-    edge &= vol.mask
+    edge &= measured
     if symmetry is not None:
-        edge = symmetry.orbit_any(edge) & vol.mask
+        edge = symmetry.orbit_any(edge) & measured
+    del measured
     vol.mask[edge] = False
     vol.data[edge] = 0.0
     vol.sigma[edge] = 0.0
