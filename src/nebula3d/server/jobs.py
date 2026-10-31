@@ -203,3 +203,16 @@ class JobManager:
         with job._lock:
             job.status = "cancelled"
         return True
+
+    def live_pids(self) -> list[int]:
+        """Process ids of the runs still running (for ``GET /api/memory``)."""
+        with self._lock:
+            jobs = list(self._jobs.values())
+        pids: list[int] = []
+        for job in jobs:
+            proc = job._process
+            if job.status != "running" or proc is None or proc.pid is None:
+                continue
+            if proc.is_alive():
+                pids.append(proc.pid)
+        return pids

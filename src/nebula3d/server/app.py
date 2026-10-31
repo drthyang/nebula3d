@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -14,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from nebula3d import __version__
 from nebula3d.server.config import ServerConfig, config_from_env
 from nebula3d.server.jobs import JobManager
+from nebula3d.server.memory import memory_snapshot
 from nebula3d.server.routers import bragg as bragg_router
 from nebula3d.server.routers import consistency as consistency_router
 from nebula3d.server.routers import datasets as datasets_router
@@ -23,6 +25,7 @@ from nebula3d.server.routers import pipeline as pipeline_router
 from nebula3d.server.routers import rings as rings_router
 from nebula3d.server.routers import slices as slices_router
 from nebula3d.server.routers import tuning as tuning_router
+from nebula3d.server.schemas import MemoryOut
 
 #: Vite dev-server origins allowed during local development.
 DEV_ORIGINS = [
@@ -66,6 +69,12 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return {"status": "ok"}
+
+    # The console's memory bar: the server and its running pipeline processes
+    # against the machine's RAM (server.memory; stdlib only, Linux and macOS).
+    @app.get("/api/memory", response_model=MemoryOut)
+    def memory() -> dict:
+        return memory_snapshot(os.getpid(), app.state.jobs.live_pids())
 
     # Serve the built SPA when present (production / installed wheel).  Mounted
     # last so it never shadows the /api routes.
