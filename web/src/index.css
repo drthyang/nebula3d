@@ -2289,6 +2289,7 @@ input[type="range"]::-moz-range-track {
 }
 .data-card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
@@ -2357,12 +2358,16 @@ input[type="range"]::-moz-range-track {
    a line that is solid where both neighbours exist.  Available is the quiet
    default (a filled node, no word); only stale or missing say so. */
 .stage-track-wrap {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 520px;
+  /* room for every stage's name on one row; when the buttons beside it leave
+     less, they wrap below the track (.data-card-head wraps) */
+  min-width: min(520px, 100%);
 }
 .stage-track {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* one column per stage, however many there are (7 with Symmetrized) */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2446,6 +2451,7 @@ input[type="range"]::-moz-range-track {
 /* On a narrow card the track runs down: node, then name and flag on its row. */
 @container main (max-width: 560px) {
   .stage-track {
+    grid-auto-flow: row;
     grid-template-columns: 1fr;
     row-gap: 10px;
   }
@@ -5770,12 +5776,17 @@ h6.md-h {
   display: grid;
   gap: 10px;
 }
+/* Six views (Reciprocal cleanup with the Symmetrized stage) read 3 × 2, in
+   pipeline order row by row: Raw · Symmetrized · Ring-removed, then
+   Bragg-punched · Backfilled · Background-corrected. */
+.ws--grid[data-n="6"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ws--grid[data-n="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .ws--grid[data-n="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .ws--grid[data-n="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ws--grid[data-n="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 /* Focus: the large view on the left; with four others they sit 2 × 2 beside it
-   (each about half its size), with two or three they stack in one column. */
+   (each about half its size), with five 2 × 3, with two or three they stack in
+   one column. */
 .ws--focus {
   height: clamp(480px, calc(100dvh - 300px), 900px);
   grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
@@ -5788,6 +5799,12 @@ h6.md-h {
   grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 .ws--focus[data-n="5"] > :not(.primary) { grid-column: auto; }
+/* Six views: the five others 2 × 3 beside the large one. */
+.ws--focus[data-n="6"] {
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+.ws--focus[data-n="6"] > :not(.primary) { grid-column: auto; }
 .ws--focus[data-n="3"],
 .ws--focus[data-n="2"] {
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
@@ -6305,6 +6322,7 @@ h6.md-h {
 /* A narrower page (a smaller screen, or NEBULA Pilot docked beside it): five
    views in one row get too small to read; wrap them. */
 @container main (max-width: 1050px) {
+  .ws--grid[data-n="6"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ws--grid[data-n="5"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ws--grid[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
