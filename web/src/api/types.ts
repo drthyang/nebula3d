@@ -725,3 +725,21 @@ export interface JobEvent {
   // the validation frozen at 812e686 does.
   end?: true;
 }
+
+// GET /api/memory (nebula3d.server.memory): the native server's processes
+// against the machine's memory, for the console's memory bar.
+export interface ProcessMemory {
+  role: string; // "server" | "run" (a pipeline job's worker process)
+  pid: number;
+  bytes: number;
+  peak_bytes: number | null;
+}
+
+export interface ServerMemory {
+  measured: boolean; // false where the platform can't be read (no bar)
+  kind: "rss" | "footprint" | null; // Linux RSS, or macOS's physical footprint
+  used_bytes: number | null;
+  ceiling_bytes: number | null; // the RAM, or the container's lower limit
+  ceiling_source: "ram" | "container" | null;
+  processes: ProcessMemory[];
+}

@@ -21,11 +21,15 @@
 // Main-thread protocol (ringPool.ts ↔ this worker):
 //   in :  { type: "boot", wheelUrl } | { type: "port" } (+ transferred port)
 //   out:  { type: "ready" } | { type: "boot_error", message }
+//   out:  { type: "memory", heapBytes }   — this worker's WASM heap grew
+//                                           (heapReport.ts; the memory bar)
 //
 // The wheel URL is resolved ONCE by the pipeline worker's boot and passed
 // through — never re-resolved here — so a deploy landing mid-boot can never
 // mix nebula3d versions between the pipeline and ring workers.
 
+import { startHeapReporter, wasmHeapBytes } from "./heapReport";
+import type { HeapReporter } from "./heapReport";
 import { loadPyodideRuntime } from "./pyodideShared";
 import type { PyProxy } from "./pyodideShared";
 
@@ -37,6 +41,9 @@ const postMain: PostFn = (
 let ringworker: PyProxy | null = null;
 let port: MessagePort | null = null;
 let booted = false;
+// This worker's WASM heap for the memory bar, sent to the main thread as
+// { type: "memory", heapBytes } whenever it grew (heapReport.ts).
+let heap: HeapReporter | null = null;
 
 function announceReadyIfWired(): void {
   if (booted && port) {
@@ -59,6 +66,10 @@ async function boot(wheelUrl: string): Promise<void> {
     py.globals.delete("_nebula3d_wheel_url");
     ringworker = py.pyimport("nebula3d.ringworker");
     booted = true;
+    heap = startHeapReporter(
+      () => wasmHeapBytes(py),
+      (heapBytes) => postMain({ type: "memory", heapBytes }),
+    );
     announceReadyIfWired();
   } catch (e) {
     postMain({ type: "boot_error", message: (e as Error).message ?? String(e) });
@@ -160,6 +171,8 @@ function onPortMessage(ev: MessageEvent<ContextMsg | PlaneMsg>): void {
       type: "plane_result", epoch: msg.epoch, ip: msg.ip, ok: false,
       message: (e as Error).message ?? String(e),
     });
+  } finally {
+    heap?.report(); // sends only when the plane grew the heap
   }
 }
 

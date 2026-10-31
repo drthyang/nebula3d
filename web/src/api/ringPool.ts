@@ -14,6 +14,7 @@
 // pipeline worker, which owns the other end of every port anyway).
 
 import { isMobileDevice } from "./device";
+import { setRingHeaps } from "./engineMemory";
 
 const SETTING_KEY = "nebula3d.ringWorkers";
 const MAX_WORKERS = 8;
@@ -28,6 +29,13 @@ interface PoolWorker {
   worker: Worker;
   ready: boolean;
   failed: boolean;
+  // The worker's WASM heap as it last reported it (the memory bar); a failed
+  // worker keeps its heap until it is terminated, so it stays counted.
+  heapBytes: number | null;
+}
+
+function publishHeaps(): void {
+  setRingHeaps(poolWorkers.flatMap((w) => (w.heapBytes === null ? [] : [w.heapBytes])));
 }
 
 let poolWorkers: PoolWorker[] = [];
@@ -96,17 +104,20 @@ export function ensureRingPool(pipelineWorker: Worker, wheelUrl: string): void {
       new URL("../workers/ringWorker.ts", import.meta.url),
       { type: "module" },
     );
-    const pw: PoolWorker = { worker, ready: false, failed: false };
+    const pw: PoolWorker = { worker, ready: false, failed: false, heapBytes: null };
     poolWorkers.push(pw);
 
     worker.addEventListener("message", (ev: MessageEvent) => {
-      const msg = ev.data as { type: string; message?: string };
+      const msg = ev.data as { type: string; message?: string; heapBytes?: number };
       if (msg.type === "ready") {
         pw.ready = true;
         notify();
       } else if (msg.type === "boot_error") {
         pw.failed = true;
         notify();
+      } else if (msg.type === "memory" && typeof msg.heapBytes === "number") {
+        pw.heapBytes = msg.heapBytes;
+        publishHeaps(); // a worker torn down meanwhile is no longer in the pool
       }
     });
     worker.addEventListener("error", () => {
@@ -128,4 +139,5 @@ export function disposeRingPool(): void {
   poolWorkers = [];
   wiredTo = null;
   notify();
+  publishHeaps(); // their heaps went with them
 }

@@ -139,7 +139,9 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   recompute for a smaller peak (broadcast |Q| grids, per-plane ring
   coordinates, in-place flatten, dropped sigma before the FFTs), plus streaming
   consistency metrics and per-plane deapodization that replaced the old
-  whole-volume temporaries at the peak stage.
+  whole-volume temporaries at the peak stage. The sidebar's
+  [memory bar](#memory-bar) shows the heap's high-water mark against this
+  ceiling as a session goes.
 
   Measured as the WASM heap's high-water mark under Pyodide 0.27.7 (float32,
   low-memory; it includes the runtime and allocator fragmentation), a full run
@@ -419,7 +421,7 @@ live at the end of `web/src/index.css`, under "Device layouts".
 
 | Screen | Viewport | Layout |
 | --- | --- | --- |
-| iPhone 18 Pro / Pro Max, portrait | 402 × 874 / 440 × 956 | The sidebar becomes a top bar: brand and dataset picker, then the views as a row of pills that scrolls sideways. Viewer panels stack one per row. Form text is 16 px, so Safari does not zoom in when a field gets focus. The API status and version move to the end of each page. |
+| iPhone 18 Pro / Pro Max, portrait | 402 × 874 / 440 × 956 | The sidebar becomes a top bar: brand and dataset picker, then the views as a row of pills that scrolls sideways. Viewer panels stack one per row. Form text is 16 px, so Safari does not zoom in when a field gets focus. The API status, memory bar and version move to the end of each page. |
 | iPhone 18 Pro / Pro Max, landscape | 874 × 402 / 956 × 440 | The top bar is a single row. Panels go three to a row. Padding clears the Dynamic Island and the home indicator (`viewport-fit=cover`). |
 | iPad Pro 11″ / 13″, portrait | 834 × 1210 / 1032 × 1376 | Top bar with the full row of views. Panels go three to a row, or two to a row when there are 2 or 4. Configure's workflow boxes go two to a row. |
 | iPad Pro 11″ / 13″, landscape | 1210 × 834 / 1376 × 1032 | Sidebar, narrowed to 208 px. |
@@ -433,6 +435,52 @@ panels to a row. On any touch screen (`pointer: coarse`), slider thumbs,
 switches, buttons and help icons are enlarged to finger size. The Configure workflow grid uses
 container queries, so its column count follows the width it actually gets,
 including the narrower column in the 4K side-by-side layout.
+
+### Memory bar
+
+Under the API status at the foot of the sidebar (at the end of each page in
+the top-bar layout): memory used against a ceiling, the share in percent,
+amber from 75 % and red from 90 %. Its tooltip says what is measured. It
+shows nothing until there is a measurement (`web/src/components/MemoryBar.tsx`,
+`memoryView.ts`).
+
+- **In-browser build: the pipeline worker's WASM heap against Pyodide's
+  4 GiB ceiling**, the heap a run fails in. Pyodide grows the heap as Python
+  allocates and never shrinks it, so the bar shows the heap's **high-water
+  mark**, not what Python holds now: memory freed during a run is reused but
+  stays counted. On a desktop, 75 % of 4 GiB is about where the size gate's
+  3.2 GB budget for a run's peak ends. Each ring worker has a heap of its own,
+  listed in the tooltip, not added to the bar. Every worker reports its own
+  heap whenever it changed (`web/src/workers/heapReport.ts`): on a 2 s timer,
+  with each progress event of a run (a synchronous stage blocks the timer),
+  after each call to the worker and after each ring plane. Nothing polls the
+  worker, so no request waits behind a long stage. The size is read off the
+  Emscripten module (`pyodide._module`: its `wasmMemory`, else a heap view's
+  buffer).
+- **On a phone or tablet: every worker's heap against the tab-wide budget**
+  of the size gate (1.3 GB, `webbridge.memory_budget_json`, read once at
+  boot). The OS stops the whole tab, and the tab holds more than its heaps
+  (the runtime's compiled code, the loaded and written files, the page), which
+  the page cannot measure. So the share there is a lower bound and reads
+  `≥ n %`, marked "heaps only". After a run on the 161³ demo the heap is
+  about 0.3 GiB, while the whole tab measured about 1.1 GB for that run (the
+  phone budget notes in `nebula3d.webbridge`).
+- **Native server: nebula3d's processes against the machine's RAM**
+  ([`GET /api/memory`](#endpoints-native-api)): the server and each running
+  pipeline process (jobs run in a process of their own), as resident memory
+  (RSS) on Linux or the physical footprint on macOS (Activity Monitor's
+  *Memory*, which counts compressed pages that RSS leaves out). The ring
+  stage's helper processes are not counted. The ceiling is the RAM, or the
+  container's memory limit when that is lower. It is not a hard limit: past it
+  the system swaps. Asked every 15 s, every 3 s while a run goes and after
+  each stage it finishes. Other platforms (Windows) measure nothing and show
+  no bar. psutil is not a dependency: this reads `/proc` and libproc's
+  `proc_pid_rusage` directly.
+
+The bar only reports. A pre-run warning would have to compare the run's
+estimated peak with the heap's free room, and the free room inside a
+high-water heap cannot be measured from JavaScript; the size gate already
+refuses a volume whose estimated peak exceeds the budget when it is loaded.
 
 ## NEBULA Pilot (AI assistant)
 
@@ -492,6 +540,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | GET, PUT | `/api/data-root` | the data root the server reads, and changing it |
 | POST | `/api/data-root/browse` | pick the data root in a native folder dialog |
 | GET | `/api/health` | liveness |
+| GET | `/api/memory` | the [memory bar](#memory-bar)'s measurement: `{measured, kind, used_bytes, ceiling_bytes, ceiling_source, processes: [{role, pid, bytes, peak_bytes}]}`, the server and each running pipeline process (`role` `"server"` / `"run"`) against the RAM (`ceiling_source` `"ram"`, or `"container"` for a lower cgroup v2 limit). `kind` is `"rss"` on Linux, `"footprint"` on macOS; elsewhere `measured` is false (`nebula3d.server.memory`, standard library only) |
 | POST | `/api/pipeline/run` | start a job; returns `{id, status, ...}`. `stages` are the stages to run: one left out is a partial re-run, the stages after it reading its output on disk. `params.rings_enabled`, `punch_enabled` or `backfill_enabled` false (the flatten's: `flatten_enabled`) switches a stage off: it is not run, and its input passes through to the next stage. With `tuning: {run_id, trial}` the job is one tuning trial: it runs only that stage, into the trial's folder |
 | POST | `/api/tuning/runs` | `{dataset_id, first_stage}` → a tuning-run folder, `{run_id, dataset_id}` |
 | POST | `/api/tuning/runs/{run_id}/promote` | `{trial}` → copy the trial into the run's chain, drop the stage's trials |
