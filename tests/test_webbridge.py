@@ -1000,6 +1000,14 @@ def test_the_bridge_handles_every_worker_message_type():
     assert set(_bridge_module().WORKER_TYPES) == set(types)
 
 
+def test_the_bridge_runs_every_stage_of_the_pipeline():
+    # A stage missing from its list would be dropped from the replays' runs,
+    # as one missing from the worker's is from the browser's.
+    from nebula3d.pipeline import STAGES
+
+    assert tuple(_bridge_module().STAGES) == STAGES
+
+
 def test_the_stdio_bridge_answers_every_message_type(tmp_path):
     from nebula3d.demo import demo_volume
 

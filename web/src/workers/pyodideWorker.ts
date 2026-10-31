@@ -20,11 +20,10 @@ import { installGpuGlobal } from "../gpu";
 import type { NebulaGpu } from "../gpu";
 import { startHeapReporter, wasmHeapBytes } from "./heapReport";
 import type { HeapReporter } from "./heapReport";
-import { loadPyodideRuntime, resolveWheelUrl } from "./pyodideShared";
+import { loadPyodideRuntime, resolveWheelUrl, RUN_STAGES } from "./pyodideShared";
 import type { PyodideAPI, PyProxy } from "./pyodideShared";
 import { addRingPort, installRingPoolGlobal } from "./ringPoolClient";
 
-const STAGES = ["rings", "punch", "backfill", "flatten", "pdf", "pdf_check"] as const;
 
 // Typed postMessage bypassing the DOM Window vs DedicatedWorkerGlobalScope mismatch.
 type PostFn = (data: unknown, transfer?: Transferable[]) => void;
@@ -194,8 +193,8 @@ async function dispatch(req: WorkerRequest): Promise<void> {
         // run_async is a Python coroutine — Pyodide surfaces it as a thenable,
         // so awaiting it here lets the ring stage fan out over the worker pool
         // (self.nebulaRingPool) while this dispatch stays suspended.
-        const selected = stages ?? STAGES;
-        const stagesCsv = STAGES.filter((st) => selected.includes(st)).join(",");
+        const selected = stages ?? RUN_STAGES;
+        const stagesCsv = RUN_STAGES.filter((st) => selected.includes(st)).join(",");
         const json = await (bridge!.run_async as (...a: unknown[]) => Promise<string>)(
           stagesCsv,
           paramsJson,

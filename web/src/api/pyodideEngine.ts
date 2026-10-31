@@ -20,6 +20,7 @@
 //
 // See docs/web.md ("In-browser run" / "Architecture") for context.
 
+import { RUN_STAGES } from "../workers/pyodideShared";
 import { isMobileDevice } from "./device";
 import { clearMainHeap, setMainHeap } from "./engineMemory";
 import { disposeRingPool, ensureRingPool } from "./ringPool";
@@ -50,10 +51,9 @@ export { ringPoolStatus, subscribeRingPool } from "./ringPool";
 
 export const PYODIDE_MODE = import.meta.env.VITE_DATA_MODE === "pyodide";
 
-// Pipeline stages — exposed so callers can iterate them for display purposes.
-export const ENGINE_STAGES = [
-  "rings", "punch", "backfill", "flatten", "pdf", "pdf_check",
-] as const;
+// Pipeline stages — exposed so callers can iterate them for display purposes
+// (nebula3d.pipeline.STAGES; the symmetry average, stage 0, first).
+export const ENGINE_STAGES = RUN_STAGES;
 
 // ---------------------------------------------------------------------------
 // Boot status (observable — drives the boot progress panel in the Configure UI)

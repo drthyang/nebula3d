@@ -65,8 +65,9 @@ if TYPE_CHECKING:
 WORKER_TYPES = ("boot", "load_file", "load_demo", "run_pipeline", "json_call", "slice_call")
 #: This adapter's own messages.
 CONTROL_TYPES = ("dev_case", "dev_snapshot", "terminate")
-#: The pipeline's stages in canonical order, as the pipeline worker orders a run's.
-STAGES = ("rings", "punch", "backfill", "flatten", "pdf", "pdf_check")
+#: The pipeline's stages in canonical order, as the pipeline worker orders a run's
+#: (nebula3d.pipeline.STAGES; the symmetry average, stage 0, first).
+STAGES = ("symmetry_average", "rings", "punch", "backfill", "flatten", "pdf", "pdf_check")
 #: The demo grid the pipeline worker loads (161³ over ±4 r.l.u.).
 DEMO_N = 161
 
