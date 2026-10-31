@@ -1,7 +1,8 @@
 // The header every viewer page shares, after the NeXus Viewer's workspace
 // header, so the controls sit in one order with one name each on every page:
 //
-//   row 1 — Navigate · Box zoom (?) · overlays (Unit cell, Structure, …)
+//   row 1 — Navigate · Box zoom (?) · overlays (Unit cell, Structure, …;
+//           the Configure preview names Unit cell "HKL grid")
 //           │ the page's own navigation (plane, cuts, filters)  ···  layout
 //   row 2 — the display bar(s) (DisplayBar)  ···  the page's display extras
 //
@@ -21,11 +22,15 @@ import { ClickModeControl, DisplayBar, type DisplayBarProps } from "./DisplayBar
 import { ColormapBar, Switch } from "./ui";
 import { DISPLAY_TOGGLE_TITLE, displaySummaryText, UNIT_CELL_TITLES } from "./viewerText";
 
-/** The "Unit cell" switch: one setting for every page. */
-export function UnitCellsSwitch({ kind }: { kind: keyof typeof UNIT_CELL_TITLES }) {
+/**
+ * The "Unit cell" switch: one setting for every page. `label` renames it
+ * where another name says better what it draws (the Configure preview's
+ * "HKL grid"); the setting stays the same one.
+ */
+export function UnitCellsSwitch({ kind, label = "Unit cell" }: { kind: keyof typeof UNIT_CELL_TITLES; label?: string }) {
   const gridlines = useDpdfStore((s) => s.gridlines);
   const setGridlines = useDpdfStore((s) => s.setGridlines);
-  return <Switch label="Unit cell" title={UNIT_CELL_TITLES[kind]} checked={gridlines} onChange={setGridlines} />;
+  return <Switch label={label} title={UNIT_CELL_TITLES[kind]} checked={gridlines} onChange={setGridlines} />;
 }
 
 /** The phone toggle for the display row (hidden by CSS on wider screens). */

@@ -6,7 +6,8 @@
 // It is a slice view like those of the viewer pages, on their frame and header:
 // zoom, pan and reset as on every view (ViewFrame: Ctrl/⌘ + wheel or a pinch,
 // a Shift / middle / two-finger drag, a double-click), Box zoom and the gesture
-// card, the Unit cell lines at integer h, k, l, and the display bar for the
+// card, the HKL grid (the other pages' Unit cell switch, one setting: dashed
+// lines at integer h, k, l), and the display bar for the
 // colour range (WorkspaceHeader, DisplayBar). Each plane keeps its own zoom.
 // The three share one colour scale: Auto pools their cuts through the origin,
 // so it holds still while a cut moves and when the tab changes. The colormap
@@ -53,7 +54,7 @@ import { useLevels } from "./useLevels";
 import { ViewFrame } from "./ViewFrame";
 import { useViewSize } from "./viewSize";
 import { clampHalf, displayToPixel, extentBounds, fitViewport, sampleIndex, type SliceGeom, type Viewport } from "./viewport";
-import { RESET_ZOOM_TITLE } from "./viewerText";
+import { HKL_GRID_LABEL, RESET_ZOOM_TITLE } from "./viewerText";
 import { UnitCellsSwitch, WorkspaceHeader } from "./WorkspaceHeader";
 
 const TABS = PUNCH_PLANES.map((p) => ({ id: p.id, label: p.title, title: `The ${p.title} plane, cut along ${p.cutLabel}` }));
@@ -189,7 +190,7 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
   const setColormap = useViewerStore((s) => s.setColormap);
   const scale = useViewerStore((s) => s.scale);
   const setScale = useViewerStore((s) => s.setScale);
-  // "Unit cell" is one setting across the pages: here the lines of integer h, k, l.
+  // "HKL grid" here, "Unit cell" on the other pages: one setting, the lines of integer h, k, l.
   const gridlines = useDpdfStore((s) => s.gridlines);
   const [cursor, setCursor] = useState<[number, number] | null>(null);
   const idBase = useId();
@@ -318,7 +319,7 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
       </div>
 
       <WorkspaceHeader
-        overlays={<UnitCellsSwitch kind="hkl" />}
+        overlays={<UnitCellsSwitch kind="hkl" label={HKL_GRID_LABEL} />}
         nav={
           <div className="ws-cut">
             <Slider
