@@ -564,6 +564,36 @@ def test_inspect_input_still_rejects_oversized_volume(tmp_path):
     report = json.loads(webbridge.inspect_input("huge.h5", str(path)))
     assert report["ok"] is False
     assert "native build" in report["message"]
+    # QUICKSTART's route: nebula3d is not on PyPI, so it installs from a clone.
+    assert 'pip install -e ".[web]"' in report["message"]
+    assert "git clone https://github.com/drthyang/nebula3d" in report["message"]
+    assert 'pip install "nebula3d' not in report["message"]
+
+
+def test_inspect_dataset_json_is_the_load_gate_for_a_volume_already_here(tmp_path):
+    """The console asks before a run (web/src/api/browserLimit.ts): the same
+    report as the gate at load, for a dataset in the workspace that never
+    passed it, such as a regridded volume."""
+    work = tmp_path / "work"
+    webbridge.setup(workdir=str(work))
+    huge = _shape_only_volume(work / "raw" / "regridded.nxs", (501, 501, 501))
+    small = _shape_only_volume(work / "raw" / "small.nxs", (101, 101, 101))
+    try:
+        report = json.loads(webbridge.inspect_dataset_json("regridded"))
+        assert report == json.loads(webbridge.inspect_input("regridded.nxs", huge))
+        assert report["ok"] is False and report["n_voxels"] == 501**3
+        assert report["est_peak_mb"] * 1e6 > webbridge._BROWSER_PEAK_BUDGET_BYTES
+        assert json.loads(webbridge.inspect_dataset_json("small"))["ok"] is True
+
+        # A phone's gate is the tab-wide one, as at load.
+        webbridge.setup(workdir=str(work), mobile=True)
+        phone = json.loads(webbridge.inspect_dataset_json("small"))
+        assert phone == json.loads(webbridge.inspect_input("small.nxs", small))
+        assert phone["device"] == "mobile"
+    finally:
+        webbridge.setup(workdir=str(work))
+    with pytest.raises(KeyError):
+        webbridge.inspect_dataset_json("not-here")
 
 
 def _shape_only_volume(path, shape):

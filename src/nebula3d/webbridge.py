@@ -79,6 +79,7 @@ __all__ = [
     "setup",
     "memory_budget_json",
     "inspect_input",
+    "inspect_dataset_json",
     "load_input",
     "select_input",
     "make_demo_input",
@@ -330,9 +331,34 @@ def inspect_input(name: str, tmp_path: str) -> str:
     n_voxels, est_peak_mb, ok, message, precision, ceiling_voxels, device}``;
     the engine refuses to load when ``ok`` is false, surfacing *message* instead
     of letting the reduction crash with an opaque numpy ``MemoryError`` — or, on
-    a phone, the OS killing the tab and the browser reloading the page.
+    a phone, the OS killing the tab and the browser reloading the page.  The
+    console turns a refusal into its run-it-locally card (the engine passes
+    this report on: web/src/api/browserLimit.ts).
     """
-    shape, n = _peek_voxel_count(Path(tmp_path))
+    return _json(_gate_report(name, Path(tmp_path)))
+
+
+def inspect_dataset_json(dataset_id: str) -> str:
+    """The size gate's report (:func:`inspect_input`) for a dataset already in
+    the workspace, so the console can say before a run that it will not fit.
+
+    The gate runs at load, but a volume made here never passed it: a regridded
+    one (:func:`dataset_regrid_json`) can be larger than the volume it came
+    from.  Metadata only, as at load.  The same JSON as :func:`inspect_input`;
+    ``ok`` true and ``n_voxels`` 0 when the workspace holds no raw volume for
+    the dataset (nothing to estimate).
+    """
+    cfg = _require_cfg()
+    ds = _ds.find_dataset(cfg, dataset_id)
+    if ds is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    path = ds.raw_path
+    return _json(_gate_report(path.name, path if path.is_file() else None))
+
+
+def _gate_report(name: str, path: Path | None) -> dict[str, object]:
+    """The size gate's verdict on the volume at *path* (None: no volume)."""
+    shape, n = _peek_voxel_count(path) if path is not None else ((), 0)
     est_peak, budget_voxels = _size_gate(n)
     ok = n == 0 or n <= budget_voxels
 
@@ -340,10 +366,13 @@ def inspect_input(name: str, tmp_path: str) -> str:
     if not ok:
         dims = "×".join(str(s) for s in shape)
         head = f"“{Path(name).name}” is {dims} ({n / 1e6:.1f} M voxels). "
+        # QUICKSTART.md's native route: nebula3d is not on PyPI, so from a clone.
         native = (
             "run the native build, which has no memory limit and opens the same "
-            "interface:\n"
-            '    pip install "nebula3d[web]"  &&  nebula3d-web'
+            "interface (QUICKSTART.md, “Native — no size limit”):\n"
+            "    git clone https://github.com/drthyang/nebula3d && cd nebula3d\n"
+            '    pip install -e ".[web]"  &&  make web-install  &&  make ui\n'
+            "    nebula3d-web"
         )
         if _S.mobile:
             desktop = _BROWSER_PEAK_BUDGET_BYTES // _PIPELINE_PEAK_BYTES_PER_VOXEL
@@ -363,7 +392,7 @@ def inspect_input(name: str, tmp_path: str) -> str:
                 f"float32 compute mode). For full-resolution data this large, "
                 + native
             )
-    return _json({
+    return {
         "shape": list(shape),
         "n_voxels": n,
         "est_peak_mb": est_peak / 1e6,
@@ -374,7 +403,7 @@ def inspect_input(name: str, tmp_path: str) -> str:
         "precision": _BROWSER_PRECISION,
         "ceiling_voxels": int(budget_voxels),
         "device": "mobile" if _S.mobile else "desktop",
-    })
+    }
 
 
 def load_input(name: str, tmp_path: str) -> str:
