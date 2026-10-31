@@ -224,3 +224,21 @@ const NOTHING_KNOWN: Omit<BrowserLimit, "kind" | "detail"> = {
   shape: null,
   device: null,
 };
+
+/**
+ * Before a run: the size gate's estimate for the selected dataset (the engine
+ * asks the bridge, engine.inspectDataset), as a limit when it is over the
+ * budget. Advisory: no dataset, an answer that is not a report, or a failed
+ * question (an older wheel without the call) says nothing.
+ */
+export async function checkBeforeRun(
+  datasetId: string | null | undefined,
+  inspect: (datasetId: string) => Promise<GateReport | null>,
+): Promise<BrowserLimit | null> {
+  if (!datasetId) return null;
+  try {
+    return limitFromReport(await inspect(datasetId));
+  } catch {
+    return null;
+  }
+}

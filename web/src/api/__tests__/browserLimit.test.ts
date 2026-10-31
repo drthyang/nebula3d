@@ -2,10 +2,11 @@
 // every message it must know, the ones it must leave alone, and the numbers it
 // reads off them for the run-it-locally card.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   BrowserLimitError,
+  checkBeforeRun,
   classifyBrowserLimit,
   errorDetail,
   limitFromReport,
@@ -237,5 +238,29 @@ describe("parseGateReport", () => {
     expect(parseGateReport("ok")).toBeNull();
     expect(parseGateReport({ ok: false })).toBeNull();
     expect(parseGateReport({ ...REPORT, est_peak_mb: Number.NaN })).toBeNull();
+  });
+});
+
+describe("checkBeforeRun (the estimate before a run)", () => {
+  it("is the gate's limit when the selected dataset's estimate is over the budget", async () => {
+    const inspect = vi.fn(async () => REPORT);
+    expect(await checkBeforeRun("regridded", inspect)).toMatchObject({ kind: "gate", needBytes: 5.03e9, shape: [501, 501, 501] });
+    expect(inspect).toHaveBeenCalledWith("regridded");
+  });
+
+  it("is nothing when the volume fits", async () => {
+    expect(await checkBeforeRun("small", async () => ({ ...REPORT, ok: true, message: "" }))).toBeNull();
+  });
+
+  it("asks nothing without a dataset", async () => {
+    const inspect = vi.fn(async () => REPORT);
+    expect(await checkBeforeRun(null, inspect)).toBeNull();
+    expect(await checkBeforeRun("", inspect)).toBeNull();
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it("says nothing when the question fails or the answer is not a report (an older wheel)", async () => {
+    expect(await checkBeforeRun("big", async () => Promise.reject(new Error("AttributeError: inspect_dataset_json")))).toBeNull();
+    expect(await checkBeforeRun("big", async () => null)).toBeNull();
   });
 });
