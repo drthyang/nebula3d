@@ -546,7 +546,7 @@ export function ConsistencyViewer() {
         </div>
       </div>
 
-      {/* ── Workspace header (shared order): click mode · unit cells · structure │ orientation ··· layout, then Q and R display ── */}
+      {/* ── Workspace header (shared order): Box zoom (?) · unit cells · structure │ orientation ··· layout, then Q and R display ── */}
       <WorkspaceHeader
         overlays={
           <>

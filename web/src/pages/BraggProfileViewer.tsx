@@ -718,7 +718,7 @@ export function BraggProfileViewer() {
 
   return (
     <div className="page-body qr-page bragg-page">
-      {/* ── Workspace header (shared order): click mode · unit cells │ peak filter ··· tile layout, then the display bar ── */}
+      {/* ── Workspace header (shared order): Box zoom (?) · unit cells │ peak filter ··· tile layout, then the display bar ── */}
       <WorkspaceHeader
         overlays={<UnitCellsSwitch kind="hkl" />}
         nav={

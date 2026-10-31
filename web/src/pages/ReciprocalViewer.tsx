@@ -268,7 +268,7 @@ export function ReciprocalViewer() {
         <span className="qr-desc">Each stage strips one artifact, leaving the diffuse signal</span>
       </div>
 
-      {/* ── Workspace header (shared order): click mode · unit cells │ plane · cut ··· layout, then the display bar ── */}
+      {/* ── Workspace header (shared order): Box zoom (?) · unit cells │ plane · cut ··· layout, then the display bar ── */}
       <WorkspaceHeader
         overlays={<UnitCellsSwitch kind="hkl" />}
         nav={

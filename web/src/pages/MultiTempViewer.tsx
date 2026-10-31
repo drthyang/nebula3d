@@ -180,7 +180,7 @@ export function MultiTempViewer() {
 
   return (
     <div className="page-body qr-page">
-      {/* ── Workspace header (shared order): click mode · unit cells │ cuts ··· reset, then the display bar ── */}
+      {/* ── Workspace header (shared order): Box zoom (?) · unit cells │ cuts ··· reset, then the display bar ── */}
       <WorkspaceHeader
         overlays={<UnitCellsSwitch kind="cell" />}
         nav={

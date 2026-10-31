@@ -26,6 +26,11 @@ describe("viewer tooltips", () => {
   it("no longer mention the gestures THY-38 removed", () => {
     for (const s of all) expect(s).not.toMatch(/Shift\+double-click|Alt-click|zoom in 2×|Move mode/);
   });
+
+  it("no longer mention the Navigate mode, which is gone", () => {
+    for (const s of all) expect(s).not.toMatch(/Navigate/);
+    expect(text.BOX_ZOOM_TITLE).toMatch(/^Box zoom: /);
+  });
 });
 
 describe("the grid switch's names", () => {
