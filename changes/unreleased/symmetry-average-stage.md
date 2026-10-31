@@ -10,8 +10,21 @@
   `<stem>_symmetrized.h5`, which declares its operations as the viewer's export
   does; the stages after it treat equivalent voxels alike and declare the
   symmetry in their own outputs too. Off by default; an input symmetrized
-  already passes through. The 3D-ΔPDF's "no measured region around Q = 0"
-  message now points to it ("Symmetrize here").
+  already passes through.
+- **Configure page:** the stage's section (stage 0) with the Laue class picker
+  and an editable generators field, the run's reading of it ("24 operations,
+  pooled with equal weight. Metric (UB) kept to 0.00%", or why it would refuse),
+  the class declared for the volume by the viewer's export beside it (**Use
+  it**), and *Average again* under Advanced. The outputs on disk and the
+  Reciprocal cleanup page show the symmetrized volume.
+- **"Symmetrize here":** when the 3D-ΔPDF stops because the coverage gaps reach
+  Q = 0 (its message now names this remedy), the Execution page offers to
+  switch the symmetry average on, with the class chosen or declared for the
+  volume, and opens it on the Configure page.
+- **NEBULA Pilot** reads the stage's settings but never sets them: the Laue
+  class is the user's, and the Pilot suggests one instead. Its symmetry check,
+  grain check and the tuning's 3D-ΔPDF evaluation read the point group from the
+  volume the data came from.
 - A Mantid SaveMD file without `errors_squared` (the NeXus Viewer's synthetic
   examples) loads, with σ = √|I| flagged as estimated, instead of stopping
   with a KeyError.

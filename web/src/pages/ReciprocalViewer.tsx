@@ -40,9 +40,11 @@ import { useDpdfStore } from "../state/dpdfStore";
 import { isReciprocal, useMarkStore, visibleMarks, WHERE_OUTPUT, type Mark } from "../state/markStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
 
-const STAGE_ORDER = ["raw", "ringremoved", "braggpunched", "backfilled", "flattened"];
+// The symmetrized volume (the optional stage 0's) is listed when it exists.
+const STAGE_ORDER = ["raw", "symmetrized", "ringremoved", "braggpunched", "backfilled", "flattened"];
 const STAGE_LABELS: Record<string, string> = {
   raw: "Raw",
+  symmetrized: "Symmetrized",
   ringremoved: "Ring-removed",
   braggpunched: "Bragg-punched",
   backfilled: "Backfilled",
