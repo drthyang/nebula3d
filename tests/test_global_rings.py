@@ -127,3 +127,18 @@ def test_diagnose_only_fits_but_does_not_modify_intensity():
     assert np.any(result.ring_mean > 0)
     assert np.count_nonzero(result.subtracted) == 0
     assert np.array_equal(result.cleaned.data, vol.data)
+
+
+def test_row_quadratic_form_matches_the_three_operand_einsum(monkeypatch):
+    """The chunked b·C·b (WASM's iterator stays under 2**31) gives the old einsum's numbers."""
+    from nebula3d.preprocessing import global_rings as gr
+
+    rng = np.random.default_rng(3)
+    basis = rng.normal(size=(1001, 9))
+    a = rng.normal(size=(9, 9))
+    covariance = a @ a.T
+    expected = np.einsum("ij,jk,ik->i", basis, covariance, basis)
+    monkeypatch.setattr(gr, "_QUAD_FORM_CHUNK", 64)  # 16 chunks, the last one short
+    got = gr._row_quadratic_form(basis, covariance)
+    np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(gr._row_quadratic_form(basis[:0], covariance), np.empty(0))
