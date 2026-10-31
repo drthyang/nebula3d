@@ -55,11 +55,11 @@ function MemoryMeter({ view }: { view: MemoryView }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.min(100, view.percent)}
-      aria-valuetext={`${view.amount} (${view.percent}%), ${view.note}`}
+      aria-valuetext={`${view.amount} (${view.percentText}), ${view.note}`}
     >
       <div className="mem-head">
         <span className="mem-title">{view.title}</span>
-        <span className="mem-pct">{view.percent}%</span>
+        <span className="mem-pct">{view.percentText}</span>
       </div>
       <div className="mem-track" aria-hidden="true">
         <div className="mem-fill" style={{ width: `${view.fraction * 100}%` }} />

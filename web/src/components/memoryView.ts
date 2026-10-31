@@ -5,7 +5,8 @@
 // - In-browser build: the pipeline worker's WASM heap against Pyodide's 4 GiB
 //   ceiling (the heap a run fails in). It only grows, so it is a high-water
 //   mark. On a phone or tablet, every worker's heap against the tab-wide
-//   budget the size gate plans with (the OS's own limit is not published).
+//   budget the size gate plans with (the OS's own limit is not published);
+//   the tab holds more than its heaps, so there the share is a lower bound.
 // - Native server: nebula3d's processes (the server and its running pipeline
 //   processes) against the machine's RAM, as GET /api/memory reports them.
 
@@ -26,8 +27,9 @@ export interface MemoryView {
   ceiling: number; // bytes
   fraction: number; // used / ceiling, clamped to [0, 1] (the bar's fill)
   percent: number; // used / ceiling in percent, rounded; past 100 natively when swapping
+  percentText: string; // "31%", or "<1%" for a use that rounds to nothing
   level: MemoryLevel;
-  amount: string; // "1.23 / 4 GiB"
+  amount: string; // "1.23 / 4 GiB", "312 MiB / 64 GiB"
   note: string; // what kind of number it is, in a word or two
   tooltip: string;
 }
@@ -55,25 +57,42 @@ export function formatBytes(bytes: number): string {
   return `${trim(gib, gibDigits(gib))} GiB`;
 }
 
-/** Used over ceiling in the ceiling's unit: "1.23 / 4 GiB", "512 / 900 MiB". */
+/**
+ * Used over ceiling: in the ceiling's unit ("1.23 / 4 GiB", "512 / 900 MiB"),
+ * but a use under 1 GiB against a GiB ceiling in MiB ("312 MiB / 64 GiB"),
+ * where "0.3 / 64 GiB" would say little.
+ */
 export function formatAmount(used: number, ceiling: number): string {
-  if (!(ceiling >= GiB)) {
-    return `${Math.round(Math.max(0, used) / MiB)} / ${Math.round(Math.max(0, ceiling) / MiB)} MiB`;
-  }
+  const mib = (b: number): number => Math.round(Math.max(0, b) / MiB);
+  if (!(ceiling >= GiB)) return `${mib(used)} / ${mib(ceiling)} MiB`;
   const digits = gibDigits(ceiling / GiB);
-  return `${(used / GiB).toFixed(digits)} / ${trim(ceiling / GiB, digits)} GiB`;
+  const ceil = `${trim(ceiling / GiB, digits)} GiB`;
+  if (!(used >= GiB)) return `${mib(used)} MiB / ${ceil}`;
+  return `${(used / GiB).toFixed(digits)} / ${ceil}`;
 }
 
 const pct = (x: number): string => `${Math.round(x * 100)}%`;
 
-function view(title: string, used: number, ceiling: number, note: string, tooltip: string[]): MemoryView {
+// `lowerBound`: what is measured is only part of what counts against the
+// ceiling (a phone's tab holds more than its heaps), so the share reads "≥".
+function view(
+  title: string,
+  used: number,
+  ceiling: number,
+  note: string,
+  tooltip: string[],
+  lowerBound = false,
+): MemoryView {
   const share = used / ceiling;
+  const percent = Math.round(share * 100);
+  const text = percent === 0 && used > 0 ? "<1%" : `${percent}%`;
   return {
     title,
     used,
     ceiling,
     fraction: Math.min(1, Math.max(0, share)),
-    percent: Math.round(share * 100),
+    percent,
+    percentText: lowerBound ? `≥${text === "<1%" ? "0%" : text}` : text,
     level: memoryLevel(share),
     amount: formatAmount(used, ceiling),
     note,
@@ -94,16 +113,28 @@ export function engineMemoryView(m: EngineMemory, heapCeiling: number = WASM_HEA
   const highWater =
     "High-water mark: a heap grows as Python allocates and never shrinks, so memory freed during a run stays counted.";
 
+  // A phone or tablet: the OS stops the whole tab, so the ceiling is the size
+  // gate's tab-wide budget. The tab holds more than the heaps (the runtime's
+  // compiled code, the loaded and written files, the page itself), which
+  // can't be measured from here: the share shown is a lower bound.
   const tab = m.budget?.device === "mobile" ? m.budget.tab_budget_bytes : null;
   if (tab !== null && tab > 0) {
     const used = m.main + ringTotal;
-    return view("Engine memory", used, tab, "high-water", [
-      `In-browser engine: its workers' WASM heaps, ${formatBytes(used)} of the ${formatBytes(tab)} this page budgets on a phone or tablet.`,
-      "The OS reloads the page once the tab passes a limit it doesn't publish: the budget is a target with margin, not that limit, and the tab's JavaScript memory is not counted.",
-      ...(ringLine ? [ringLine] : []),
-      highWater,
-      THRESHOLDS,
-    ]);
+    return view(
+      "Engine memory",
+      used,
+      tab,
+      "heaps only",
+      [
+        `In-browser engine on a phone or tablet: its workers' WASM heaps, ${formatBytes(used)}, against the ${formatBytes(tab)} this page budgets for the whole tab.`,
+        "The tab uses more than its heaps (the runtime's compiled code, loaded files, the page), so its real share is higher than shown.",
+        "The OS reloads the page past a limit it doesn't publish: the budget is a target with margin, not that limit.",
+        ...(ringLine ? [ringLine] : []),
+        highWater,
+        THRESHOLDS,
+      ],
+      true,
+    );
   }
 
   const budget = m.budget?.heap_budget_bytes;
@@ -125,8 +156,9 @@ export function serverMemoryView(m: ServerMemory): MemoryView | null {
       : "Resident memory (RSS), as Linux counts it.";
   const procs = m.processes.map((p) => {
     const name = p.role === "server" ? "Server" : "Run";
-    const peak = p.peak_bytes !== null && p.peak_bytes > p.bytes ? ` (peak ${formatBytes(p.peak_bytes)})` : "";
-    return `${name}: ${formatBytes(p.bytes)}${peak}`;
+    const now = formatBytes(p.bytes);
+    const peak = p.peak_bytes !== null && p.peak_bytes > p.bytes ? formatBytes(p.peak_bytes) : now;
+    return `${name}: ${now}${peak !== now ? ` (peak ${peak})` : ""}`;
   });
   return view("Server memory", m.used_bytes, m.ceiling_bytes, m.kind === "footprint" ? "footprint" : "RSS", [
     `nebula3d's processes: ${formatBytes(m.used_bytes)} of ${ceilingName}, ${formatBytes(m.ceiling_bytes)}.`,
