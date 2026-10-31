@@ -28,6 +28,7 @@ import pytest
 
 from nebula3d import pipeline
 from nebula3d.analysis.delta_pdf import (
+    WindowSupportError,
     _apodization_window,
     _fft_core_forward,
     _finish_forward,
@@ -248,6 +249,19 @@ def test_constant_intensity_transforms_to_nothing_with_the_ellipsoid():
 # ---------------------------------------------------------------------------
 # exact inverse, float32 and the WebGPU glue
 # ---------------------------------------------------------------------------
+def test_a_coverage_gap_through_q0_refuses_with_a_message_the_user_can_act_on():
+    """An unmeasured plane through Q = 0 that reaches the box faces (an
+    unsymmetrized volume's gap) leaves the window no room: the error says why
+    and what to change, rather than a bare internal message."""
+    vol = _ortho_volume()
+    support = np.ones(vol.data.shape, dtype=bool)
+    support[:, vol.data.shape[1] // 2, :] = False
+    with pytest.raises(WindowSupportError, match="Taper to the measured coverage") as err:
+        compute_delta_pdf(vol, apodization="gaussian", support=support, window_shape="ellipsoid")
+    assert isinstance(err.value, ValueError)  # callers catching ValueError still do
+    assert "Q = 0" in str(err.value) and "symmetriz" in str(err.value)
+
+
 @pytest.mark.parametrize("apodization", ["gaussian", "hann", "none"])
 @pytest.mark.parametrize("deapodize", [True, False])
 def test_inverse_divides_out_the_ellipsoid(apodization, deapodize):

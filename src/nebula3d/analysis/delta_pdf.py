@@ -514,6 +514,22 @@ def compute_delta_pdf(
 FFT_ORIGIN_TOL = 1e-3
 
 
+class WindowSupportError(ValueError):
+    """The measured coverage leaves the apodization window no room around Q = 0."""
+
+
+#: What the user sees when the coverage gaps reach Q = 0 (WindowSupportError).
+WINDOW_SUPPORT_MESSAGE = (
+    "No measured region around Q = 0 for the 3D-ΔPDF window. Unmeasured voxels "
+    "open to the box edge reach the origin, so a window shrunk to the coverage has "
+    "no room left. This usually means the volume still has gaps through Q = 0, for "
+    "example a volume that is not symmetrized. Symmetrize or fill the volume before "
+    "the transform, or turn off \"Taper to the measured coverage\" (3D-ΔPDF stage, "
+    "Advanced): the window then tapers to the box faces, and the unmeasured voxels "
+    "count as zero intensity instead of ΔI = 0."
+)
+
+
 class FFTOriginError(ValueError):
     """The grid does not hold Q = 0 on the voxel the transform takes as it."""
 
@@ -1255,7 +1271,7 @@ def _fit_to_support(
                 scale = float(s)
                 break
     if scale <= 0.0:
-        raise ValueError("the support leaves no region around Q = 0 for the window")
+        raise WindowSupportError(WINDOW_SUPPORT_MESSAGE)
     if scale >= 1.0:
         return ell
     return dataclasses.replace(ell, form=ell.form / scale**2, scale=scale)
