@@ -16,6 +16,7 @@ import { ViewerImportBanner } from "./components/ViewerImportBanner";
 import { MemoryBar } from "./components/MemoryBar";
 import { PilotDock } from "./components/PilotDock";
 import { useDockLayout } from "./components/useDockLayout";
+import { TouchTitles } from "./components/TouchTitles";
 import { useKeyboardFrame } from "./components/useKeyboardFrame";
 import { useAgentHighlights } from "./llm/highlight";
 import { useRememberedConfig } from "./state/configMemory";
@@ -259,6 +260,7 @@ export function App() {
       </main>
 
       <PilotDock mode={dock.mode} open={dockOpen} />
+      <TouchTitles />
     </div>
   );
 }

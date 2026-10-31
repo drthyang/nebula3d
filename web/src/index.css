@@ -6550,6 +6550,21 @@ html.kb-open .ai-side {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
   }
+  /* a press held on a control shows its title (TouchTitles.tsx), not the
+     system's callout or a text selection */
+  :is(button, label, summary, [title]) {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .touch-title {
+    z-index: 70;
+    width: auto;
+    max-width: min(320px, calc(100vw - 16px));
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text);
+  }
 
   /* buttons, chips, pills: a 44 px row */
   :is(.btn, .exec-btn, .nav button, .ws-tool, .ai-chip, .ai-vision-chip, .ai-provider-tab,

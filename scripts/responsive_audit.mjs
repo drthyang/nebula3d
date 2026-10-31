@@ -19,7 +19,8 @@
 //   - offscreen: controls placed outside the viewport horizontally, or, inside
 //              a fixed layer (the drawer, a popover), vertically
 //   - titles:  (touch only) elements whose information is only in a `title`
-//              tooltip: no visible text or aria-label says it
+//              tooltip: no visible text or aria-label says it; "(held: shown)"
+//              when the console's press-and-hold path to titles is active
 //   - taps:    (touch only) controls whose hit area, padding and positioned
 //              ::before/::after included, is under 44 × 44 CSS px
 // and writes <out-dir>/audit.json, <out-dir>/audit.md and one screenshot per state.
@@ -249,6 +250,8 @@ function measure(touch) {
     taps,
     titles,
     marks: marks.n ? marks : null,
+    // TouchTitles.tsx: a press held on a control (or a field's focus) shows its title
+    titlePath: document.documentElement.hasAttribute("data-touch-titles"),
   };
 }
 
@@ -339,7 +342,7 @@ const uniq = (rows, key) => {
       const mainX = rows.filter((r) => r.mainOverflowX > 1).map((r) => r.page);
       const n = (k, key) => uniq(rows.flatMap((r) => r[k]), key).length;
       lines.push(
-        `| ${vp.name} | ${drawer} | ${scrolls.join(", ") || "–"} | ${wider.join(", ") || "–"} | ${mainX.join(", ") || "–"} | ${n("widest", (x) => x.sel)} | ${n("clipped", (x) => x.sel)} | ${n("offscreen", (x) => x.sel)} | ${vp.touch ? n("taps", (x) => x.sel) : "n/a"} | ${vp.touch ? n("titles", (x) => x.sel) : "n/a"} |`,
+        `| ${vp.name} | ${drawer} | ${scrolls.join(", ") || "–"} | ${wider.join(", ") || "–"} | ${mainX.join(", ") || "–"} | ${n("widest", (x) => x.sel)} | ${n("clipped", (x) => x.sel)} | ${n("offscreen", (x) => x.sel)} | ${vp.touch ? n("taps", (x) => x.sel) : "n/a"} | ${vp.touch ? n("titles", (x) => x.sel) + (rows.every((r) => r.titlePath) ? " (held: shown)" : "") : "n/a"} |`,
       );
     }
   }
