@@ -349,9 +349,10 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
   const gridlines = useDpdfStore((s) => s.gridlines);
   const [cursor, setCursor] = useState<{ plane: PunchPlane; p: [number, number] } | null>(null);
   const idBase = useId();
-  // Wide enough, the three planes side by side; else the tab's plane alone.
+  // Wide enough, the three planes side by side; else the tab's plane alone
+  // (and with no volume to show, one view says so rather than three).
   const cardRef = useRef<HTMLElement>(null);
-  const wide = useSideBySide(cardRef);
+  const wide = useSideBySide(cardRef) && Boolean(inputId);
 
   const frames = useMemo(() => PUNCH_PLANES.map((spec) => planeFrame(meta, spec)), [meta]);
   const tabFrame = frames.find((f) => f.spec.id === tab) ?? frames[0];
