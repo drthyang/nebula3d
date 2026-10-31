@@ -9,7 +9,7 @@
 
 import { compareLaueClasses } from "../../../api/client";
 import type { LaueCandidate, LaueComparison, LaueReading, LaueVerdict } from "../../../api/types";
-import { labelOf } from "../../../state/laueCompare";
+import { labelOf, laueCompareParams } from "../../../state/laueCompare";
 import { formToParams, usePipelineStore } from "../../../state/pipelineStore";
 import { hklVolumeId, stageVolumeId } from "../../context/loadContext";
 import { evidence, remedy } from "../../inference";
@@ -83,7 +83,7 @@ export const compare_laue_classes: ChatTool = {
     const s = usePipelineStore.getState();
     // The form's custom class (generators no preset has) is compared too.
     const extra = labelOf(s.symmetryLaue) === "custom" ? [s.symmetryLaue.trim()] : [];
-    const out = await compareLaueClasses(rawId, formToParams(s), extra, (p) =>
+    const out = await compareLaueClasses(rawId, laueCompareParams(formToParams(s)), extra, (p) =>
       io.progress?.(`${Math.round(100 * (p.fraction ?? 0))}% · ${p.message}`),
     );
     const result = laueResult(out);

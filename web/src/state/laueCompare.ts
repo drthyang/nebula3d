@@ -7,7 +7,7 @@
 // (nebula3d.analysis.laue_compare, docs/algorithms/laue_compare.md); this only
 // words them.
 
-import type { LaueCandidate, LaueComparison, LaueReading, LaueVerdict } from "../api/types";
+import type { LaueCandidate, LaueComparison, LaueReading, LaueVerdict, StageParamsIn } from "../api/types";
 import { laueGroup, presetNamed } from "./laue";
 
 /**
@@ -57,6 +57,24 @@ export interface LaueRow {
   suggested: boolean;
   current: boolean; // the class the form holds now
 }
+
+/** Whether a run setting is one the comparison reads: the edge trim, the punch cell, the punch footprint's frame, radii and margin, the direct beam's. */
+const READS = (key: string): boolean =>
+  key === "edge_trim" ||
+  key.startsWith("punch_supercell_") ||
+  key === "punch_frame" ||
+  key.startsWith("punch_spherical_radius_") ||
+  key.startsWith("punch_q_radius_") ||
+  key === "punch_margin" ||
+  key.startsWith("incident_beam_q_");
+
+/**
+ * The run's settings the comparison reads, and only those: another setting
+ * the backend would refuse (a band, a modulation) then cannot stop it, and a
+ * change to one it does not read leaves an earlier result standing.
+ */
+export const laueCompareParams = (params: StageParamsIn): StageParamsIn =>
+  Object.fromEntries(Object.entries(params).filter(([k]) => READS(k))) as StageParamsIn;
 
 /** R_int as the table writes it: three decimals, two figures below 0.01. */
 export function formatRint(x: number | null | undefined): string {

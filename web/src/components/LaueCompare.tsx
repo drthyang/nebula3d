@@ -13,6 +13,7 @@ import type { LaueComparison, LaueProgress, StageParamsIn } from "../api/types";
 import {
   diffuseLine,
   formatRint,
+  laueCompareParams,
   laueRows,
   LAUE_RULE_DELTA,
   LAUE_RULE_Z,
@@ -23,15 +24,10 @@ import {
 } from "../state/laueCompare";
 import { HelpTip } from "./ui";
 
-/** The settings the comparison reads, as the run would send them: what makes an earlier result another's. */
+/** The settings the comparison reads (laueCompareParams), and the volume: what makes an earlier result another's. */
 function settingsKey(volumeId: string, params: StageParamsIn, extra: readonly string[]): string {
-  const p = params as Record<string, unknown>;
-  const used = Object.keys(p)
-    .filter((k) => k === "edge_trim" || k.startsWith("punch_supercell") || k === "punch_frame" || k.startsWith("punch_spherical") ||
-      k.startsWith("punch_q_radius") || k === "punch_margin" || k.startsWith("incident_beam_q"))
-    .sort()
-    .map((k) => [k, p[k]]);
-  return JSON.stringify([volumeId, used, extra]);
+  const read = laueCompareParams(params) as Record<string, unknown>;
+  return JSON.stringify([volumeId, Object.keys(read).sort().map((k) => [k, read[k]]), extra]);
 }
 
 // The last comparison of each volume in this session, so leaving the page and
@@ -103,7 +99,7 @@ export function LaueCompare({
     setError(null);
     setProgress({ fraction: 0, message: "starting" });
     try {
-      const result = await compareLaueClasses(asked, params, [...extra], (p) => setProgress(p));
+      const result = await compareLaueClasses(asked, laueCompareParams(params), [...extra], (p) => setProgress(p));
       const entry = { key: settingsKey(asked, params, extra), result };
       lastByVolume.set(asked, entry);
       if (asked === volumeId) setLast(entry);

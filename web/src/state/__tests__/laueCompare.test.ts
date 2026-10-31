@@ -10,7 +10,7 @@ import { DEFAULT_EDGE_TRIM, edgeTrimLayers, formToParams, usePipelineStore } fro
 import braggOverDiffuse from "./__fixtures__/laue-compare-bragg-over-diffuse.json";
 import hex6m from "./__fixtures__/laue-compare-hex-6m.json";
 import noise from "./__fixtures__/laue-compare-noise.json";
-import { diffuseLine, formatRint, labelOf, laueRows, refusalText, specOf, verdictLine } from "../laueCompare";
+import { diffuseLine, formatRint, labelOf, laueCompareParams, laueRows, refusalText, specOf, verdictLine } from "../laueCompare";
 
 const HEX = hex6m as unknown as LaueComparison;
 const FLAG = braggOverDiffuse as unknown as LaueComparison;
@@ -72,6 +72,21 @@ describe("the comparison's rows", () => {
     expect(formatRint(0.0654)).toBe("0.065");
     expect(formatRint(0.00123)).toBe("0.0012");
     expect(formatRint(null)).toBe("–");
+  });
+});
+
+describe("the settings the comparison sends", () => {
+  it("are the edge trim and the punch cell and footprint, nothing a run's other stages read", () => {
+    const base = usePipelineStore.getState();
+    const params = formToParams({ ...base, edgeTrim: "2", punchSupercellH: "2", punchRho: "0.12", punchMargin: "0.03", incidentBeamQA: "0.2", pdfQMin: "9", pdfQMax: "1", modulationK: "nonsense", ringModel: "patched" });
+    expect(laueCompareParams(params)).toEqual({
+      edge_trim: 2,
+      punch_supercell_h: 2,
+      punch_frame: "spherical",
+      punch_spherical_radius_rho: 0.12,
+      punch_margin: 0.03,
+      incident_beam_q_radius_a: 0.2,
+    });
   });
 });
 
