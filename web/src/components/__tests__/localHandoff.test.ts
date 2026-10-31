@@ -101,7 +101,7 @@ describe("the local route", () => {
       "mkdir -p ~/nebula3d-data/raw",
       "nebula3d-web --data-root ~/nebula3d-data",
     ]);
-    expect(localCommands("/data/scans").at(-1)).toBe("nebula3d-web --data-root /data/scans");
+    expect(localCommands("/data/scans")[5]).toBe("nebula3d-web --data-root /data/scans");
     expect(QUICKSTART_URL).toBe("https://github.com/drthyang/nebula3d/blob/main/QUICKSTART.md#native--no-size-limit");
   });
 
