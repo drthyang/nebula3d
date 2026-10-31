@@ -215,9 +215,9 @@ export function Switch({
 }
 
 // A small "?" help icon that reveals a description bubble on hover / focus.
-export function HelpTip({ children }: { children: ReactNode }) {
+export function HelpTip({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className="helptip" tabIndex={0}>
+    <span className={`helptip${className ? ` ${className}` : ""}`} tabIndex={0}>
       <span className="helptip-icon" aria-hidden="true">
         ?
       </span>

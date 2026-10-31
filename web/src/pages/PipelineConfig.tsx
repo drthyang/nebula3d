@@ -17,6 +17,7 @@ import {
 import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
 import type { Lattice } from "../api/types";
 import { PunchPreview } from "../components/PunchPreview";
+import { RingModelHelp } from "../components/RingModelHelp";
 import type { HklAxis, PunchGeom } from "../components/punchGeometry";
 import { boxQMax, metricFromUb, reciprocalMetric } from "../components/reciprocal";
 import { Field, HelpTip, RangeSlider, Switch } from "../components/ui";
@@ -64,6 +65,7 @@ function StageSection({
   onToggle,
   glow,
   help,
+  helpWide = false,
   advanced,
   children,
 }: {
@@ -72,6 +74,7 @@ function StageSection({
   onToggle: (b: boolean) => void;
   glow: boolean; // the agent is on this stage
   help: ReactNode;
+  helpWide?: boolean; // a wider bubble (the ring model's formulas)
   advanced?: ReactNode;
   children: ReactNode;
 }) {
@@ -85,7 +88,7 @@ function StageSection({
         </h4>
         <span className="cfg-stage-summary">{SECTION_SUMMARY[stage]}</span>
         <span className="cfg-stage-end">
-          <HelpTip>{help}</HelpTip>
+          <HelpTip className={helpWide ? "helptip--wide" : undefined}>{help}</HelpTip>
           <span className="cfg-stage-toggle">
             <Switch label="Enable stage" checked={enabled} onChange={onToggle} />
           </span>
@@ -848,13 +851,16 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             enabled={s.ringsEnabled}
             onToggle={(v) => patch({ ringsEnabled: v })}
             glow={lit.includes("rings")}
+            helpWide
             help={
-              <>
-                Pooled reads each ring&apos;s radial profile in small solid-angle cells — azimuthal sectors pooled
-                across neighbouring planes — so it follows rings whose |Q| position and width wander with direction.
-                Global 3D infers powder shells with a fixed line shape and a spherical-harmonic texture. The per-plane
-                patched and parametric models remain available for comparison.
-              </>
+              <RingModelHelp
+                model={s.ringModel}
+                sectors={s.ringPooledSectors}
+                window={s.ringPooledWindow}
+                fourier={s.ringNFourier}
+                patches={s.ringNPatches}
+                lmax={s.ringGlobalLmax}
+              />
             }
             advanced={
               <AdvancedFold stage="rings" changed={changed("rings")}>

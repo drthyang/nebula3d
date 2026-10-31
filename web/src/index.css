@@ -1950,6 +1950,49 @@ input[type="range"]::-moz-range-track {
 .cfg-advanced-body {
   margin-top: 8px;
 }
+/* the ring removal's ?: the selected model's formula and its terms */
+.helptip--wide .helptip-bubble {
+  width: 340px;
+  max-width: min(340px, calc(100vw - 40px));
+}
+.ring-help {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ring-help-lead {
+  display: block;
+  margin-bottom: 4px;
+}
+.ring-help-model {
+  display: block;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+}
+.ring-help-eq {
+  display: block;
+  padding: 3px 0;
+  font-family: "Cambria Math", "STIX Two Math", "Palatino Linotype", Georgia, serif;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.ring-help-eq sub,
+.ring-help-eq sup {
+  font-family: var(--font-mono);
+  font-size: 0.66em;
+  font-style: normal;
+}
+.ring-help-term {
+  display: block;
+}
+.ring-help-sym {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
 @container cfg-stages (min-width: 1280px) {
   .cfg-stage-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
