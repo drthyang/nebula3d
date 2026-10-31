@@ -44,6 +44,23 @@ class DataRootOut(BaseModel):
     n_datasets: int
 
 
+class ProcessMemoryOut(BaseModel):
+    role: str  # "server" | "run" (a pipeline job's worker process)
+    pid: int
+    bytes: int
+    peak_bytes: int | None = None
+
+
+class MemoryOut(BaseModel):
+    """nebula3d's processes against the machine's memory (server.memory)."""
+    measured: bool
+    kind: str | None = None  # "rss" (Linux) | "footprint" (macOS)
+    used_bytes: int | None = None
+    ceiling_bytes: int | None = None
+    ceiling_source: str | None = None  # "ram" | "container"
+    processes: list[ProcessMemoryOut] = []
+
+
 class RegridIn(BaseModel):
     """Regrid a dataset onto its refined UB (see analysis.ub_regrid)."""
     cell: list[int] = [1, 1, 1]  # the Bragg nodes' spacing, (2, 2, 2) on a doubled cell

@@ -77,6 +77,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "setup",
+    "memory_budget_json",
     "inspect_input",
     "load_input",
     "select_input",
@@ -299,6 +300,24 @@ def _size_gate(n_voxels: int) -> tuple[int, int]:
         est = n_voxels * _PIPELINE_PEAK_BYTES_PER_VOXEL
         ceiling = _BROWSER_PEAK_BUDGET_BYTES // _PIPELINE_PEAK_BYTES_PER_VOXEL
     return est, ceiling
+
+
+def memory_budget_json() -> str:
+    """The budgets the size gate plans with, for the console's memory bar.
+
+    JSON ``{device, heap_budget_bytes, tab_budget_bytes}``.  On a desktop the
+    bar shows the pipeline worker's WASM heap against Pyodide's 4 GB ceiling,
+    and ``heap_budget_bytes`` is what the gate budgets a run's peak at.  On a
+    phone / tablet it shows every worker's heap against ``tab_budget_bytes``,
+    the tab-wide budget of :func:`inspect_input` (a target with margin, not the
+    OS's limit, which is not published); ``null`` on a desktop.  The pipeline
+    worker reads it once at boot (no RPC); nothing here is measured.
+    """
+    return _json({
+        "device": "mobile" if _S.mobile else "desktop",
+        "heap_budget_bytes": _BROWSER_PEAK_BUDGET_BYTES,
+        "tab_budget_bytes": _PHONE_TAB_BUDGET_BYTES if _S.mobile else None,
+    })
 
 
 def inspect_input(name: str, tmp_path: str) -> str:

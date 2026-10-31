@@ -605,6 +605,25 @@ def test_inspect_input_phone_gate_is_tab_wide(tmp_path):
     assert report["ceiling_voxels"] == 80_000_000
 
 
+def test_memory_budget_follows_the_device_class(tmp_path):
+    """The memory bar's budgets are the size gate's own: the heap budget on a
+    desktop, the tab-wide budget on a phone / tablet."""
+    try:
+        webbridge.setup(workdir=str(tmp_path / "work"), mobile=True)
+        budget = json.loads(webbridge.memory_budget_json())
+        assert budget == {
+            "device": "mobile",
+            "heap_budget_bytes": webbridge._BROWSER_PEAK_BUDGET_BYTES,
+            "tab_budget_bytes": webbridge._PHONE_TAB_BUDGET_BYTES,
+        }
+    finally:
+        webbridge.setup(workdir=str(tmp_path / "work"))
+    budget = json.loads(webbridge.memory_budget_json())
+    assert budget["device"] == "desktop" and budget["tab_budget_bytes"] is None
+    # the heap budget leaves room under Pyodide's 4 GiB ceiling
+    assert budget["heap_budget_bytes"] < 4 * 2**30
+
+
 # ---------------------------------------------------------------------------
 # run_async — the parallel-rings orchestration seam
 # ---------------------------------------------------------------------------

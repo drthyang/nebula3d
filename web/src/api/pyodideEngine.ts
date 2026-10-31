@@ -21,6 +21,7 @@
 // See docs/web.md ("In-browser run" / "Architecture") for context.
 
 import { isMobileDevice } from "./device";
+import { clearMainHeap, setMainHeap } from "./engineMemory";
 import { disposeRingPool, ensureRingPool } from "./ringPool";
 import type {
   BraggProfile,
@@ -153,6 +154,7 @@ function getOrCreateWorker(): Worker {
       workerInstance = null;
       bootPromise = null;
       disposeRingPool();
+      clearMainHeap(); // its heap went with it
     });
   }
   return workerInstance;
@@ -194,6 +196,9 @@ function handleWorkerMessage(ev: MessageEvent): void {
         maxBufferMB: msg.maxBufferMB as number,
       };
       for (const fn of gpuListeners) fn(gpuStatus);
+    } else if (msg.type === "memory") {
+      // The worker's WASM heap grew (workers/heapReport.ts): the memory bar.
+      setMainHeap(msg.heapBytes as number, msg.budget);
     }
     return;
   }
@@ -265,6 +270,7 @@ export function cancelPipeline(): void {
     workerInstance = null;
   }
   disposeRingPool();
+  clearMainHeap();
   bootPromise = null;
   rejectAllPending("Pipeline cancelled");
   setBoot({ phase: "idle", message: "not started", ready: false });

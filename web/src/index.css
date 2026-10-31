@@ -286,6 +286,72 @@ button {
 .api-dot.down {
   background: var(--red);
 }
+/* Memory bar (components/MemoryBar.tsx): used / ceiling, amber from 75 %, red
+   from 90 %; the tooltip (title) says what is measured. */
+.mem {
+  --mem-color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  border-radius: 4px;
+  cursor: default;
+}
+.mem--warn {
+  --mem-color: var(--amber);
+}
+.mem--high {
+  --mem-color: var(--red);
+}
+.mem-head,
+.mem-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.mem-title {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.mem-pct {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.mem--warn .mem-pct,
+.mem--high .mem-pct {
+  color: var(--mem-color);
+}
+.mem-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.mem-fill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--mem-color);
+  transition: width 0.4s ease, background-color 0.2s ease;
+}
+.mem-amount {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.mem-note {
+  font-size: 10.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
 :is(.sidebar-foot, .main-foot) .ver {
   display: inline-flex;
   align-items: center;
@@ -4922,6 +4988,9 @@ h6.md-h {
     border-top: 1px solid var(--border);
     font-size: 11.5px;
     color: var(--text-3);
+  }
+  .main-foot .mem {
+    flex: 0 1 210px;
   }
   .exec-log {
     max-height: 60vh;
