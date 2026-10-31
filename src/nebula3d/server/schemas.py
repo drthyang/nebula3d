@@ -492,6 +492,13 @@ class StageParamsIn(BaseModel):
     rings_enabled: bool | None = None
     punch_enabled: bool | None = None
     backfill_enabled: bool | None = None
+    # Stage 0, the symmetry average (PipelineParams.symmetry_average): off
+    # unless switched on (None: off).  Its Laue class, the sample's to
+    # declare: a preset name ("6/mmm") or generators ("h+k,-h,l; -h,-k,-l");
+    # and whether an input that declares a symmetry already is averaged again.
+    symmetry_average_enabled: bool | None = None
+    symmetry_average_laue: str | None = None
+    symmetry_average_reaverage: bool | None = None
     # Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
     edge_trim: int | None = None
     rings_n_patches: int | None = None

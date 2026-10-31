@@ -24,6 +24,7 @@ from nebula3d.server.config import ServerConfig
 
 # Stage name -> PipelinePaths attribute.  "raw" is handled separately.
 _STAGE_ATTRS = {
+    "symmetrized": "symmetrized",
     "ringremoved": "ringremoved",
     "braggpunched": "braggpunched",
     "backfilled": "backfilled",
@@ -34,9 +35,14 @@ _STAGE_ATTRS = {
 # delta_pdf is a real-space ΔPDF (different .h5 schema); the rest are HKLVolumes.
 _DELTA_PDF_STAGES = {"delta_pdf"}
 
+# Stages a run makes only when asked (the symmetry average, off by default):
+# listed only once their output exists, so a dataset that never used one does
+# not carry it as a step never taken.
+_OPTIONAL_STAGES = {"symmetrized"}
+
 #: HKLVolume-valued stages, in pipeline order (for the reciprocal-space viewer).
 HKL_STAGES: tuple[str, ...] = (
-    "raw", "ringremoved", "braggpunched", "backfilled", "flattened",
+    "raw", "symmetrized", "ringremoved", "braggpunched", "backfilled", "flattened",
 )
 
 _TEMP_RE = re.compile(r"(\d+)\s*K", re.IGNORECASE)
@@ -174,6 +180,9 @@ def discover_datasets(cfg: ServerConfig) -> list[Dataset]:
         for p in sorted(cfg.processed_dir.glob("*_ringremoved*.h5")):
             base = p.name.split("_ringremoved")[0]
             stems.setdefault(base, cfg.raw_dir / f"{base}.nxs")
+        for p in sorted(cfg.processed_dir.glob("*_symmetrized.h5")):
+            base = p.name[: -len("_symmetrized.h5")]
+            stems.setdefault(base, cfg.raw_dir / f"{base}.nxs")
         # Also seed from standalone *_delta_pdf.h5 files (e.g. short names from
         # old scripts) — but only when no known stem already subsumes them.  Such
         # a file is attached to its real dataset by _find_delta_pdf (exact path or
@@ -199,6 +208,8 @@ def discover_datasets(cfg: ServerConfig) -> list[Dataset]:
                 kind = "delta_pdf"
             else:
                 kind = "hkl"
+            if name in _OPTIONAL_STAGES and not path.exists():
+                continue
             stages.append(StageStatus(name, path.exists(), path, kind))
         datasets.append(Dataset(
             id=_slug(stem), stem=stem, temperature=_detect_temp(stem),
@@ -221,6 +232,8 @@ def _tuning_view(cfg: ServerConfig, base: Dataset, run: tuning.Run,
     stages = [StageStatus("raw", base.raw_path.exists(), base.raw_path, "hkl")]
     for name, attr in _STAGE_ATTRS.items():
         path = artifacts[attr]
+        if name in _OPTIONAL_STAGES and not path.exists():
+            continue
         stages.append(StageStatus(name, path.exists(), path,
                                   "delta_pdf" if name in _DELTA_PDF_STAGES else "hkl"))
     tag = f"tuned {run.label_time}" + (f" · trial {trial}" if trial else "")
@@ -289,9 +302,41 @@ def punched_stage_of(cfg: ServerConfig, volume_id: str) -> tuple[str, StageStatu
 
 def raw_input_of(cfg: ServerConfig, volume_id: str) -> Path | None:
     """The raw input of the dataset a stage ``"<dataset_id>.<stage>"`` belongs
-    to, when it is on disk: the file that declares the point group the data
-    were symmetrised with (the pipeline reads it there, ``PipelineParams.symmetry
-    = "auto"``; the stages it writes declare none)."""
+    to, when it is on disk."""
     ds = find_dataset(cfg, volume_id.rpartition(".")[0])
     raw = next((s for s in ds.stages if s.name == "raw"), None) if ds is not None else None
     return raw.path if raw is not None and raw.exists else None
+
+
+def symmetry_declared_by(cfg: ServerConfig, volume_id: str) -> Path | None:
+    """The file that declares the point group the data of a stage
+    ``"<dataset_id>.<stage>"`` were symmetrised with.
+
+    A stage output declares the symmetry its data carry when the run applied
+    one (the symmetry average's output, and every stage after it; the
+    pipeline reads it there, ``PipelineParams.symmetry = "auto"``): for a
+    ΔPDF, the output it was made from (the source its file records); for an
+    HKL stage, its own file.  Else the dataset's raw input, which declares
+    the symmetry of a NeXus Viewer export, as for outputs written before
+    stages declared it.  None without a raw input when nothing declares one.
+    """
+    from nebula3d.symmetry import read_symmetry_ops  # noqa: PLC0415
+
+    dataset_id, _, name = volume_id.rpartition(".")
+    ds = find_dataset(cfg, dataset_id)
+    if ds is None:
+        return None
+    stage = next((s for s in ds.stages if s.name == name), None)
+    own: Path | None = None
+    if stage is not None and stage.exists and stage.name != "raw":
+        source = output_source(ds, stage) if stage.kind == "delta_pdf" else stage.name
+        made_from = next((s for s in ds.stages if s.name == source), None)
+        if made_from is not None and made_from.exists and made_from.kind == "hkl":
+            own = made_from.path
+    if own is not None:
+        try:
+            if read_symmetry_ops(own) is not None:
+                return own
+        except (OSError, ValueError):
+            pass
+    return raw_input_of(cfg, volume_id)

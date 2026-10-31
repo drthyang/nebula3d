@@ -223,9 +223,9 @@ def dpdf_features(path: Path, min_sigma: float = 5.0, limit: int = 12, *,
     vector in Å along a, b, c and in lattice units.
 
     *declared_by* is the file that declares the point group the data were
-    symmetrised with: the dataset's raw input
-    (:func:`nebula3d.server.datasets.raw_input_of`), whose ``symmetry`` and
-    ``symmetry_ops`` the volume meta reports too. With operations declared
+    symmetrised with: the volume the ΔPDF was made from, or the dataset's raw
+    input (:func:`nebula3d.server.datasets.symmetry_declared_by`), whose
+    ``symmetry`` and ``symmetry_ops`` the volume meta reports too. With operations declared
     there, the extrema are grouped by them, in the cell this ΔPDF records;
     without, by sign, length and size. ``grouped_by`` says which."""
     from nebula3d.analysis.dpdf_features import strongest_features

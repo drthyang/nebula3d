@@ -397,9 +397,10 @@ def test_flatten_disabled_never_reads_a_flattened_volume_left_on_disk(
 #: The level of the volume each stub stage writes (the raw input's is 1), so
 #: the level a stage is given says which volume it read.
 _LEVEL = {"raw": 1, "rings": 10, "punch": 20, "backfill": 30, "flatten": 40}
-#: Each cleanup stage's output in PipelinePaths.
-_OUTPUT = {"rings": "ringremoved", "punch": "braggpunched",
-           "backfill": "backfilled", "flatten": "flattened"}
+#: Each cleanup stage's output in PipelinePaths (the symmetry average, off by
+#: default, never runs here).
+_OUTPUT = {"symmetry_average": "symmetrized", "rings": "ringremoved",
+           "punch": "braggpunched", "backfill": "backfilled", "flatten": "flattened"}
 #: The stage after each switch's, and what it reads with that one off.
 _NEXT = {"rings": ("punch", "raw"), "punch": ("backfill", "rings"),
          "backfill": ("flatten", "punch")}

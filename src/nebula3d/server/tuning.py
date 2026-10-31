@@ -182,7 +182,9 @@ def artifact_paths(cfg: ServerConfig, run: Run, trial: str | None = None) -> dic
     """
     from nebula3d.server.datasets import _find_delta_pdf  # noqa: PLC0415 - import cycle
 
-    out: dict[str, Path] = {}
+    # The symmetry average is never tuned: the view takes processed/'s.
+    out: dict[str, Path] = {
+        "symmetrized": pipeline_paths(run.raw_path, proc_dir=cfg.processed_dir).symmetrized}
     for attr, stage in ARTIFACT_STAGE.items():
         folder = _artifact_dir(cfg, run, stage, trial)
         if folder is None:
@@ -218,6 +220,8 @@ def trial_target(cfg: ServerConfig, run_id: str, trial: str) -> tuple[Run, Path,
         for s in _STAGE_OUTPUT
         if _stage_index(s) < _stage_index(stage)
     }
+    # The symmetry average (never tuned) is upstream of every trial.
+    inputs["symmetry_average"] = paths["symmetrized"]
     return run, folder, inputs
 
 

@@ -519,14 +519,19 @@ class WindowSupportError(ValueError):
 
 
 #: What the user sees when the coverage gaps reach Q = 0 (WindowSupportError).
+#: The web page offers "Symmetrize here" beside it, which switches the symmetry
+#: average on (stage 0, ``PipelineParams.symmetry_average``) with the Laue class
+#: the file declares or the user chooses.
 WINDOW_SUPPORT_MESSAGE = (
     "No measured region around Q = 0 for the 3D-ΔPDF window. Unmeasured voxels "
     "open to the box edge reach the origin, so a window shrunk to the coverage has "
     "no room left. This usually means the volume still has gaps through Q = 0, for "
-    "example a volume that is not symmetrized. Symmetrize or fill the volume before "
-    "the transform, or turn off \"Taper to the measured coverage\" (3D-ΔPDF stage, "
-    "Advanced): the window then tapers to the box faces, and the unmeasured voxels "
-    "count as zero intensity instead of ΔI = 0."
+    "example a volume that is not symmetrized. Symmetrize here: switch on the "
+    "symmetry average (stage 0) with the sample's Laue class, and the gaps fill from "
+    "their symmetry equivalents. Or fill the volume before the transform, or turn off "
+    "\"Taper to the measured coverage\" (3D-ΔPDF stage, Advanced): the window then "
+    "tapers to the box faces, and the unmeasured voxels count as zero intensity "
+    "instead of ΔI = 0."
 )
 
 
