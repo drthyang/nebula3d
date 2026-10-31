@@ -1376,6 +1376,10 @@ input[type="range"]::-moz-range-track {
 .config-note--error {
   color: var(--red);
 }
+/* one it will run with a warning (proceeding despite the metric change) */
+.config-note--warn {
+  color: var(--amber);
+}
 .config-note .btn-sm {
   vertical-align: baseline;
 }

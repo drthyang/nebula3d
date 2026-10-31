@@ -185,7 +185,7 @@ export const regridRefusal = (): string => `${REGRID_REFUSED}: nothing was writt
 // Configure page. update_settings never sets them, whatever the user's latest
 // message says: the model may suggest a class, with its evidence (the cell's
 // metric, how well the equivalents agree), and the user applies it.
-export const SYMMETRY_AVERAGE_SETTINGS = ["symmetryAverageEnabled", "symmetryLaue", "symmetryReaverage"] as const;
+export const SYMMETRY_AVERAGE_SETTINGS = ["symmetryAverageEnabled", "symmetryLaue", "symmetryReaverage", "symmetryAllowMetricChange"] as const;
 
 /** What a refusal of a change to the symmetry average says (findings.ts reads it). */
 export const SYMMETRY_AVERAGE_REFUSED = "is the user's to set, on the Configure page";

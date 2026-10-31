@@ -85,8 +85,8 @@ export const update_settings: ChatTool = {
     `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
     `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${p.allowed}; ${p.help})`).join(" ")} ` +
     "A change to one of them is refused unless the user's latest message names it. " +
-    "The magnetic ion and |Q| band stay with the user, and so does the symmetry average (symmetryAverageEnabled, " +
-    "symmetryLaue, symmetryReaverage): suggest a Laue class with your evidence instead, for the user to set. " +
+    `The magnetic ion and |Q| band stay with the user, and so does the symmetry average (${SYMMETRY_AVERAGE_SETTINGS.join(", ")}): ` +
+    "suggest a Laue class with your evidence instead, for the user to set. " +
     "Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings " +
     "the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings " +
     "already at the value are left as they are. Returns each change and the stage to rerun from.",

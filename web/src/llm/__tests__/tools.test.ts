@@ -377,7 +377,7 @@ describe("update_settings", () => {
   // update_settings refuses them whatever the user said; the model suggests.
   describe("the symmetry average, which the user sets", () => {
     const refusal = (key: string) => `${key} is the user's to set, on the Configure page: suggest a Laue class to the user, with your evidence, and let them set it.`;
-    const OFF = { symmetryAverageEnabled: false, symmetryLaue: "", symmetryReaverage: false, punchMinSig: "" };
+    const OFF = { symmetryAverageEnabled: false, symmetryLaue: "", symmetryReaverage: false, symmetryAllowMetricChange: false, punchMinSig: "" };
     beforeEach(() => usePipelineStore.setState(OFF));
 
     it("refuses the Laue class and the switch, even when the user names them", async () => {
@@ -387,6 +387,14 @@ describe("update_settings", () => {
         expect(r.text).toBe(`Error: ${refusal("symmetryLaue")} ${refusal("symmetryAverageEnabled")}`);
         expect(usePipelineStore.getState()).toMatchObject(OFF);
       }
+    });
+
+    it("refuses to proceed despite a metric change, whatever the user said", async () => {
+      const said = "Proceed despite the metric change: average over 6/mmm anyway.";
+      const r = await callTool({ ...ctx, userMessage: said }, "update_settings", { changes: { symmetryAllowMetricChange: true } });
+      expect(r.ok).toBe(false);
+      expect(r.text).toBe(`Error: ${refusal("symmetryAllowMetricChange")}`);
+      expect(usePipelineStore.getState()).toMatchObject(OFF);
     });
 
     it("makes the call's other changes, and says what it refused", async () => {
@@ -403,7 +411,12 @@ describe("update_settings", () => {
 
     it("shows a blank Laue class as none chosen, not as a default", async () => {
       const shown = (JSON.parse((await run("configure_settings", {})).text) as { settings: Record<string, unknown> }).settings;
-      expect(shown).toMatchObject({ symmetryAverageEnabled: false, symmetryLaue: "(none chosen: the user's to set)", symmetryReaverage: false });
+      expect(shown).toMatchObject({
+        symmetryAverageEnabled: false,
+        symmetryLaue: "(none chosen: the user's to set)",
+        symmetryReaverage: false,
+        symmetryAllowMetricChange: false,
+      });
     });
   });
 

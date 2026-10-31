@@ -317,6 +317,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       symmetryAverageEnabled: st.symmetryAverageEnabled,
       symmetryLaue: st.symmetryLaue,
       symmetryReaverage: st.symmetryReaverage,
+      symmetryAllowMetricChange: st.symmetryAllowMetricChange,
       ringsEnabled: st.ringsEnabled,
       punchEnabled: st.punchEnabled,
       backfillEnabled: st.backfillEnabled,
@@ -475,12 +476,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   const laue = useMemo(() => readLaue(s.symmetryLaue, rawMeta), [s.symmetryLaue, rawMeta]);
   const declaredOrder = rawMeta?.symmetry_ops?.length ?? 0;
   const passesThrough = declaredOrder > 1 && !s.symmetryReaverage;
-  const laueRefused = !laue.group || laue.group.ops.length < 2 || laue.grid !== null || (laue.metric ?? 0) > METRIC_TOLERANCE;
+  const metricOff = (laue.metric ?? 0) > METRIC_TOLERANCE;
+  const laueRefused = !laue.group || laue.group.ops.length < 2 || laue.grid !== null || (metricOff && !s.symmetryAllowMetricChange);
   const symmetrizes = s.symmetryAverageEnabled && !passesThrough && !laueRefused;
   const laueHint = rawMeta?.declared_for ?? null;
   const hintSpec = laueHint ? laueSpecOf(laueHint.symmetry, laueHint.symmetry_ops) : null;
   const lauePreset = presetNamed(s.symmetryLaue);
-  const laueNote: { text: string; error: boolean } = (() => {
+  const laueNote: { text: string; error: boolean; warn?: boolean } = (() => {
     if (declaredOrder > 1 && !s.symmetryReaverage)
       return {
         text: `The volume declares ${rawMeta?.symmetry || "a symmetry"} (${declaredOrder} operations): it is symmetrized already, so the stage passes it through.`,
@@ -495,10 +497,16 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     if (n < 2) return { text: "The identity alone averages nothing: choose the sample's Laue class.", error: true };
     if (laue.grid) return { text: `The run will refuse: ${laue.grid}. Re-bin the volume, or choose a class that fits its grid.`, error: true };
     if (laue.metric !== null && laue.metric > METRIC_TOLERANCE)
-      return {
-        text: `The run will refuse: these operations change the cell metric by up to ${(100 * laue.metric).toFixed(0)}%, more than 2%, so they are not symmetries of this lattice. Check the class and its setting.`,
-        error: true,
-      };
+      return s.symmetryAllowMetricChange
+        ? {
+            text: `⚠ These operations change the cell metric by up to ${(100 * laue.metric).toFixed(0)}%, more than 2%: they are not symmetries of this lattice. Proceed despite the metric change is on, so the run averages over them anyway and records a warning.`,
+            error: false,
+            warn: true,
+          }
+        : {
+            text: `The run will refuse: these operations change the cell metric by up to ${(100 * laue.metric).toFixed(0)}%, more than 2%, so they are not symmetries of this lattice. Check the class and its setting, or see Advanced.`,
+            error: true,
+          };
     const metric = laue.metric === null ? (rawMeta ? "No UB: the metric is not checked." : "") : `Metric (UB) kept to ${(100 * laue.metric).toFixed(2)}%.`;
     return { text: `${n} operations, pooled with equal weight. ${metric}`.trim(), error: false };
   })();
@@ -960,7 +968,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 removal, by the NeXus Viewer&apos;s rules: every voxel takes the equal-weight mean of the measured voxels
                 among its symmetry equivalents, so coverage gaps fill from their equivalents. The operations must map
                 the grid onto itself, and change the cell&apos;s metric (from the UB) by no more than 2%; otherwise the run
-                refuses. The coverage edge is trimmed first. The output declares the operations, and the stages after it
+                refuses (Proceed despite the metric change, under Advanced, averages anyway and records a warning). The
+                coverage edge is always trimmed first. The output declares the operations, and the stages after it
                 treat equivalent voxels alike. A volume that declares a symmetry (a NeXus Viewer export) is symmetrized
                 already and passes through. Which class the sample has is yours to say: the NEBULA Pilot may suggest
                 one, but does not set it.
@@ -975,6 +984,14 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       checked={s.symmetryReaverage}
                       title="A volume that declares a symmetry (a NeXus Viewer export) was averaged already and passes through; this averages it again, over the class above. The unsymmetrized volume is the better input."
                       onChange={(v) => patch({ symmetryReaverage: v })}
+                    />
+                  </div>
+                  <div className="switch-row">
+                    <Switch
+                      label="Proceed despite the metric change"
+                      checked={s.symmetryAllowMetricChange}
+                      title="Operations that change the cell's metric (from the UB) by more than 2% are not symmetries of this lattice, and the run refuses them. On, it averages over them anyway, pooling voxels at different |Q|, and records a warning in the log and in the stage's output."
+                      onChange={(v) => patch({ symmetryAllowMetricChange: v })}
                     />
                   </div>
                 </div>
@@ -1013,7 +1030,10 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   />
                 </Field>
               </div>
-              <p className={cls("config-note", laueNote.error && s.symmetryAverageEnabled && "config-note--error")} role="status">
+              <p
+                className={cls("config-note", laueNote.error && s.symmetryAverageEnabled && "config-note--error", laueNote.warn && "config-note--warn")}
+                role="status"
+              >
                 {laueNote.text}
                 {laueHint && hintSpec !== s.symmetryLaue.trim() && declaredOrder < 2 && (
                   <>

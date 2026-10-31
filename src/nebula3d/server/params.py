@@ -76,6 +76,10 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     if sp.symmetry_average_reaverage is not None:
         p.symmetry_average = dataclasses.replace(
             p.symmetry_average, reaverage=bool(sp.symmetry_average_reaverage))
+    if sp.symmetry_average_allow_metric_change is not None:
+        p.symmetry_average = dataclasses.replace(
+            p.symmetry_average,
+            allow_metric_change=bool(sp.symmetry_average_allow_metric_change))
     if p.symmetry_average_enabled and p.symmetry_average.laue:
         # A Laue class the viewer would not read fails now, before any work
         # (one left blank may still be right: an input symmetrized already).

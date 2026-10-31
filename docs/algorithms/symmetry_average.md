@@ -55,9 +55,19 @@ max |RᵀG\*R − G\*| / max |G\*| with G\* = UBᵀ·UB (`metric_change`, the
 viewer's `metricChange`). It is 0 for a true symmetry of the cell and small
 but not 0 for a pseudo-symmetric one. Above 2 % the operations are not
 symmetries of this lattice: averaging over them would pool voxels at
-different |Q|. The viewer warns there; the stage refuses. The log reports the
-change ("metric (UB) kept to 0.01%"). A volume without a UB (the identity,
-NEBULA3D's "unknown") is not checked.
+different |Q|. The viewer warns there; the stage refuses, and says how to
+proceed anyway. The log reports the change ("metric (UB) kept to 0.01%"). A
+volume without a UB (the identity, NEBULA3D's "unknown") is not checked.
+
+**Proceeding anyway.** `allow_metric_change` (the page's *Proceed despite the
+metric change*, under the stage's *Advanced*) averages over such operations
+anyway, for a cell the user knows better than its UB. The run then warns, in a
+⚠ line of the log and in the stage's done line ("⚠ metric (UB) changed by up
+to 35%, averaged anyway as asked"), and its record keeps the warning
+(`metric_warning`). An output made that way is not reused by a run that does
+not allow it: that run refuses, as it would have made none. It is the user's
+to switch on; NEBULA Pilot's `update_settings` refuses it, as it refuses the
+Laue class.
 
 ## The average
 
@@ -100,10 +110,12 @@ operations the sample lacks.
 
 ### Order with the coverage-edge trim
 
-The raw input's coverage edge is trimmed first (`edge_trim`, the
-[edge trim](inpainting.md)), then averaged. Measured voxels next to unmeasured
-space are barely normalised and can be orders of magnitude above the interior;
-trimmed first, they are pooled into no orbit. The viewer's equivalent is its
+The raw input's coverage edge is always trimmed first (`edge_trim`, the
+[edge trim](inpainting.md)), then averaged; this order is the rule, not a
+setting. Measured voxels next to unmeasured space are barely normalised and can
+be orders of magnitude above the interior; trimmed first, they are pooled into
+no orbit, where trimmed after the average they would already have been pooled
+into the orbits of interior voxels. The viewer's equivalent is its
 coverage-edge erosion mask, which is applied before its average and has the
 same definition (Chebyshev distance ≤ r from an unmeasured voxel, the box
 faces not an edge). The averaged volume is not trimmed again. Trimming also

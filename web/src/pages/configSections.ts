@@ -75,7 +75,7 @@ export function basicFields(stage: SectionStage, s: ModelOf): Key[] {
 export function advancedFields(stage: SectionStage, s: ModelOf): Key[] {
   switch (stage) {
     case "symmetry_average":
-      return ["symmetryReaverage"];
+      return ["symmetryReaverage", "symmetryAllowMetricChange"];
     case "rings":
       switch (s.ringModel) {
         case "global_v2":

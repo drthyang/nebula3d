@@ -655,6 +655,11 @@ class SymmetryAverageParams:
     # An input that declares a symmetry (a NeXus Viewer export) was averaged
     # already, and passes through unless this asks to average it again.
     reaverage: bool = False
+    # Operations that change the cell's metric by more than 2 % are no
+    # symmetries of the lattice, and the stage refuses them; this averages over
+    # them anyway ("Proceed despite the metric change"), with a warning in the
+    # log and in the stage's record.  The user's to set, never the Pilot's.
+    allow_metric_change: bool = False
 
 
 @dataclass
@@ -1005,12 +1010,14 @@ def symmetrize(vol: HKLVolume, params: SymmetryAverageParams | None = None, *,
     does not map the grid onto itself, or the operations change the cell's
     metric by more than :data:`~nebula3d.symmetry.METRIC_TOLERANCE` (2 %, the
     viewer's warning: they are then no symmetries of this lattice, and the
-    average would pool voxels at different |Q|).  Without a UB (the identity,
+    average would pool voxels at different |Q|) — unless
+    ``allow_metric_change`` asks to proceed anyway, which the log and the
+    record (``metric_warning``) then say.  Without a UB (the identity,
     NEBULA3D's "unknown") the metric is not checked.  What was done is attached
     as ``vol._symmetry_average`` (the stage writes it into its output).
     """
-    group = group if group is not None else symmetry_average_group(
-        params or SymmetryAverageParams())
+    params = params or SymmetryAverageParams()
+    group = group if group is not None else symmetry_average_group(params)
     _emit(progress, "symmetry_average", "start", 0.0,
           f"symmetry average over {group.label} ({group.order} operations)")
     try:
@@ -1025,13 +1032,22 @@ def symmetrize(vol: HKLVolume, params: SymmetryAverageParams | None = None, *,
             "choose a Laue class whose operations fit its grid.") from exc
     ub = np.asarray(vol.ub_matrix, dtype=np.float64)
     change = None if np.array_equal(ub, np.eye(3)) else metric_change(group.ops, ub)
+    warning = None
     if change is not None and change > METRIC_TOLERANCE:
-        raise SymmetryAverageError(
-            f"The {group.label} operations change this cell's metric by up to "
-            f"{100 * change:.0f}% (more than {100 * METRIC_TOLERANCE:g}%): they are not "
-            "symmetries of this lattice, and averaging over them would pool voxels at "
-            "different |Q|. Check the Laue class and its setting (the trigonal and "
-            "hexagonal classes are on hexagonal axes).")
+        if not params.allow_metric_change:
+            raise SymmetryAverageError(
+                f"The {group.label} operations change this cell's metric by up to "
+                f"{100 * change:.0f}% (more than {100 * METRIC_TOLERANCE:g}%): they are not "
+                "symmetries of this lattice, and averaging over them would pool voxels at "
+                "different |Q|. Check the Laue class and its setting (the trigonal and "
+                "hexagonal classes are on hexagonal axes), or, to average over them anyway, "
+                "switch on \"Proceed despite the metric change\" (the symmetry average's "
+                "Advanced settings).")
+        warning = (f"the {group.label} operations change this cell's metric by up to "
+                   f"{100 * change:.0f}% (more than {100 * METRIC_TOLERANCE:g}%): they are not "
+                   "symmetries of this lattice, and voxels at different |Q| were pooled; "
+                   "averaged anyway, as \"Proceed despite the metric change\" asked")
+        _emit(progress, "symmetry_average", "progress", None, f"⚠ {warning}")
     stats = symmetry_average(vol, sym)
     record: dict[str, Any] = {
         "laue": group.label, "generators": group.generators, "order": group.order,
@@ -1040,9 +1056,13 @@ def symmetrize(vol: HKLVolume, params: SymmetryAverageParams | None = None, *,
         "orbits": stats.orbits, "r_int": stats.r_int,
         "sigma_defaulted": stats.sigma_defaulted,
     }
+    if warning is not None:
+        record["metric_warning"] = warning[0].upper() + warning[1:] + "."
     setattr(vol, "_symmetry_average", record)
     metric = ("metric not checked: no UB" if change is None
-              else f"metric (UB) kept to {100 * change:.2f}%")
+              else f"metric (UB) kept to {100 * change:.2f}%" if warning is None
+              else f"⚠ metric (UB) changed by up to {100 * change:.0f}%, averaged anyway "
+                   "as asked")
     agree = ("" if stats.r_int is None
              else f"; measured equivalents agreed to R_int = {stats.r_int:.3f}")
     _emit(progress, "symmetry_average", "done", 1.0,
@@ -1130,11 +1150,13 @@ def read_symmetry_average(path: str | Path) -> dict[str, Any] | None:
 
 
 def _symmetrized_is_current(path: Path, input_path: Path, group: LaueGroup,
-                            edge_trim: int) -> bool:
+                            edge_trim: int, allow_metric_change: bool = False) -> bool:
     """Whether the symmetry average's output *path* was made from *input_path*
     (not older than it) over *group* with this *edge_trim*: its record and
     declared operations say, so an output made over another Laue class is
-    made again rather than reused."""
+    made again rather than reused.  One made despite a metric change (its
+    record's ``metric_warning``) is not current for a run that does not allow
+    one: that run refuses, as it would have made none."""
     if not path.exists():
         return False
     try:
@@ -1146,6 +1168,8 @@ def _symmetrized_is_current(path: Path, input_path: Path, group: LaueGroup,
     if record is None or record.get("source_file") != input_path.name:
         return False
     if record.get("edge_trim") != int(edge_trim):
+        return False
+    if record.get("metric_warning") and not allow_metric_change:
         return False
     try:
         ops = read_symmetry_ops(path)
@@ -3004,7 +3028,7 @@ def run_pipeline(
     if runs("symmetry_average"):
         group = symmetry_average_group(p.symmetry_average)
         current = _symmetrized_is_current(paths.symmetrized, paths.input, group,
-                                          p.edge_trim)
+                                          p.edge_trim, p.symmetry_average.allow_metric_change)
         if current and not forced("symmetry_average"):
             _emit(progress, "symmetry_average", "skip", None,
                   f"{paths.symmetrized.name} exists")

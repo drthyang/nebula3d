@@ -594,6 +594,9 @@ export interface StageParamsIn {
   symmetry_average_enabled?: boolean;
   symmetry_average_laue?: string;
   symmetry_average_reaverage?: boolean;
+  // Proceed when the operations change the cell's metric by more than 2 %
+  // (refused otherwise); the run then records a warning.
+  symmetry_average_allow_metric_change?: boolean;
   // Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
   edge_trim?: number;
   rings_n_patches?: number;

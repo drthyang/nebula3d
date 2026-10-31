@@ -158,9 +158,11 @@ run_pipeline("data/raw/your_volume.nxs", p, proc_dir="data/processed")
 hexagonal axes) or generators in the viewer's syntax (`h+k,-h,l; -k,-h,-l;
 -h,-k,-l`). The run refuses a class it cannot apply: no class given,
 operations that do not map the grid onto itself, or operations that change
-the cell's metric by more than 2 % (no symmetries of this lattice). An input
-that declares a symmetry already (a NeXus Viewer export) passes through
-unless `reaverage=True`. The raw coverage edge is trimmed before the average.
+the cell's metric by more than 2 % (no symmetries of this lattice; with
+`allow_metric_change=True` it averages over them anyway and records a
+warning). An input that declares a symmetry already (a NeXus Viewer export)
+passes through unless `reaverage=True`. The raw coverage edge is always
+trimmed before the average.
 The log gives the operations, the metric change ("metric (UB) kept to …"),
 the voxels filled, and R_int of the measured equivalents. The algorithm, its
 checks and the cross-check against the viewer:

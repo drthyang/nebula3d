@@ -197,10 +197,47 @@ def test_operations_that_are_no_symmetry_of_the_cell_are_refused(tmp_path):
     path = tmp_path / "cubic.nxs"
     nebula3d.save(_cubic_with_gap(), path)
     with pytest.raises(pipeline.SymmetryAverageError,
-                       match=r"change this cell's metric by up to \d+% \(more than 2%\)"):
+                       match=r"change this cell's metric by up to \d+% \(more than 2%\)") as err:
         pipeline.run_pipeline(path, _symmetrized("6/mmm"), proc_dir=tmp_path,
                               stages=("symmetry_average",))
+    assert 'switch on "Proceed despite the metric change"' in str(err.value)
     assert not (tmp_path / "cubic_symmetrized.h5").exists()
+
+
+def test_proceeding_despite_the_metric_change_averages_and_records_the_warning(tmp_path):
+    """"Proceed despite the metric change" averages over operations the
+    metric check refuses, and says so in the log (a ⚠ line, and the done line
+    the Execution page shows) and in the stage's record; a run without it
+    then refuses again rather than reusing that output."""
+    path = tmp_path / "cubic.nxs"
+    nebula3d.save(_cubic_with_gap(), path)
+    run = dict(proc_dir=tmp_path, stages=("symmetry_average",))
+    events: list[tuple] = []
+    paths = pipeline.run_pipeline(path, _symmetrized("6/mmm", allow_metric_change=True),
+                                  progress=lambda *a: events.append(a), **run)
+    assert paths.symmetrized.exists()
+    warned = [e[3] for e in events if e[0] == "symmetry_average" and e[3].startswith("⚠")]
+    assert len(warned) == 1 and "change this cell's metric by up to 100%" in warned[0]
+    assert "averaged anyway" in warned[0]
+    done = next(e[3] for e in events if e[0] == "symmetry_average" and e[1] == "done")
+    assert "⚠ metric (UB) changed by up to 100%, averaged anyway as asked" in done
+    record = pipeline.read_symmetry_average(paths.symmetrized)
+    assert record["metric_change"] == pytest.approx(1.0)
+    assert record["metric_warning"].startswith("The 6/mmm operations change this cell's metric")
+    assert len(read_symmetry_ops(paths.symmetrized)) == 24  # declared as averaged
+    # Allowed again: the output stands.  Not allowed: refused, nothing reused.
+    events.clear()
+    pipeline.run_pipeline(path, _symmetrized("6/mmm", allow_metric_change=True),
+                          progress=lambda *a: events.append(a), **run)
+    assert ("symmetry_average", "skip", None, f"{paths.symmetrized.name} exists") in events
+    with pytest.raises(pipeline.SymmetryAverageError, match="Proceed despite the metric change"):
+        pipeline.run_pipeline(path, _symmetrized("6/mmm"), **run)
+
+
+def test_a_symmetric_cell_records_no_metric_warning(tmp_path, gap_input):
+    paths = pipeline.run_pipeline(gap_input, _symmetrized("m-3m", allow_metric_change=True),
+                                  proc_dir=tmp_path, stages=("symmetry_average",))
+    assert "metric_warning" not in pipeline.read_symmetry_average(paths.symmetrized)
 
 
 def test_a_pseudo_symmetric_cell_within_two_percent_is_averaged_and_reported(tmp_path):
@@ -241,6 +278,10 @@ def test_build_params_refuses_a_laue_class_the_viewer_would_not_read():
 
     p = build_params(req(symmetry_average_enabled=True, symmetry_average_laue=" 6/mmm "))
     assert p.symmetry_average_enabled and p.symmetry_average.laue == "6/mmm"
+    assert not p.symmetry_average.allow_metric_change  # refused unless asked
+    assert build_params(req(symmetry_average_enabled=True, symmetry_average_laue="6/mmm",
+                            symmetry_average_allow_metric_change=True)
+                        ).symmetry_average.allow_metric_change
     assert build_params(req(symmetry_average_laue="")).symmetry_average.laue is None
     with pytest.raises(ValueError, match="not a Laue class"):
         build_params(req(symmetry_average_enabled=True, symmetry_average_laue="6/mm"))

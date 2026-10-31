@@ -56,9 +56,12 @@ export interface PipelineConfig {
   force: boolean;
   // The symmetry average's Laue class, the sample's to declare (state/laue.ts):
   // a preset name ("6/mmm") or generators ("h+k,-h,l; -h,-k,-l"); blank = none
-  // chosen. And whether an input that declares a symmetry is averaged again.
+  // chosen. Whether an input that declares a symmetry is averaged again; and
+  // whether the run proceeds when the operations change the cell's metric by
+  // more than 2 % ("Proceed despite the metric change": refused otherwise).
   symmetryLaue: string;
   symmetryReaverage: boolean;
+  symmetryAllowMetricChange: boolean;
   ringModel: string; // "pooled" | "global_v2" | "patched" | "parametric"
   ringRadialMode: string; // parametric: "rolling" | "peaks"
   ringNPatches: string;
@@ -189,6 +192,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   force: false,
   symmetryLaue: "",
   symmetryReaverage: false,
+  symmetryAllowMetricChange: false,
   ringModel: "pooled",
   ringRadialMode: "rolling",
   ringNPatches: "",
@@ -490,6 +494,7 @@ export function formToParams(s: PipelineConfig): StageParamsIn {
     params.symmetry_average_enabled = true;
     if (s.symmetryLaue.trim()) params.symmetry_average_laue = s.symmetryLaue.trim();
     if (s.symmetryReaverage) params.symmetry_average_reaverage = true;
+    if (s.symmetryAllowMetricChange) params.symmetry_average_allow_metric_change = true;
   }
   if (s.ringModel) params.rings_model = s.ringModel;
   if (s.ringNPatches) params.rings_n_patches = Number(s.ringNPatches);
