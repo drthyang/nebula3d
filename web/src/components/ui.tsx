@@ -9,13 +9,15 @@ export function Field({
   label,
   children,
   grow = false,
+  className,
 }: {
   label: ReactNode;
   children: ReactNode;
   grow?: boolean;
+  className?: string; // extra classes (e.g. the Configure page's flash of an agent's change)
 }) {
   return (
-    <div className={`field${grow ? " grow" : ""}`}>
+    <div className={`field${grow ? " grow" : ""}${className ? ` ${className}` : ""}`}>
       <span className="field-label">{label}</span>
       {children}
     </div>
@@ -215,9 +217,9 @@ export function Switch({
 }
 
 // A small "?" help icon that reveals a description bubble on hover / focus.
-export function HelpTip({ children }: { children: ReactNode }) {
+export function HelpTip({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className="helptip" tabIndex={0}>
+    <span className={`helptip${className ? ` ${className}` : ""}`} tabIndex={0}>
       <span className="helptip-icon" aria-hidden="true">
         ?
       </span>

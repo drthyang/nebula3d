@@ -226,11 +226,12 @@ describe("values from a file that could hold anything", () => {
 
   it("applies a setting only when the form has it as its own, with the form's type", async () => {
     const stop = rememberConfig();
-    restoreSession(parseSession(file({ settings: { toString: 5, constructor: "x", hasOwnProperty: 1, punchSupercellH: 5, force: "yes", punchSliceZoom: "2", punchMinSig: "7", flatten: false } })), [dataset(["raw"])]);
+    restoreSession(parseSession(file({ settings: { toString: 5, constructor: "x", hasOwnProperty: 1, punchSupercellH: 5, force: "yes", punchCutH: "2", punchSliceZoom: 2, punchMinSig: "7", flatten: false } })), [dataset(["raw"])]);
     const p = usePipelineStore.getState() as unknown as Record<string, unknown>;
     expect(Object.prototype.hasOwnProperty.call(p, "toString")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(p, "hasOwnProperty")).toBe(false);
-    expect([p.punchSupercellH, p.force, p.punchSliceZoom]).toEqual(["", false, 1]); // wrong types: kept as they were
+    expect([p.punchSupercellH, p.force, p.punchCutH]).toEqual(["", false, 0]); // wrong types: kept as they were
+    expect(Object.prototype.hasOwnProperty.call(p, "punchSliceZoom")).toBe(false); // a setting the form no longer has (the old preview zoom)
     expect([p.punchMinSig, p.flatten]).toEqual(["7", false]); // right types: applied
     expect(JSON.parse(storage.get("nebula3d.configByDataset.v1")!).S.punchSupercellH).toBe("");
     // A run afterwards does not fail.

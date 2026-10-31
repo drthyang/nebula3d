@@ -31,6 +31,9 @@ export interface MemoryView {
   level: MemoryLevel;
   amount: string; // "1.23 / 4 GiB", "312 MiB / 64 GiB"
   note: string; // what kind of number it is, in a word or two
+  // What is measured, one sentence or two a line: the "?" card shows the
+  // lines, the title tooltip the same lines joined (one explanation, two ways).
+  lines: string[];
   tooltip: string;
 }
 
@@ -96,8 +99,43 @@ function view(
     level: memoryLevel(share),
     amount: formatAmount(used, ceiling),
     note,
+    lines: tooltip,
     tooltip: tooltip.join("\n"),
   };
+}
+
+export interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * Where the "?" card goes, as CSS `left` / `top` of a fixed box: above the "?"
+ * when it fits (the bar sits at the foot of the sidebar or the page), else
+ * below, else on the roomier side; its left edge near the "?", kept `margin`
+ * inside the window. `anchor` and `viewport` are in screen pixels; under the
+ * console's CSS `zoom` (the 4K tier) a fixed box's offsets are zoomed too, so
+ * the result is divided back by `zoom`.
+ */
+export function placeCard(
+  anchor: Rect,
+  card: { width: number; height: number },
+  viewport: { width: number; height: number },
+  zoom = 1,
+  gap = 8,
+  margin = 8,
+): { left: number; top: number; above: boolean } {
+  const roomAbove = anchor.top - gap - margin;
+  const roomBelow = viewport.height - anchor.bottom - gap - margin;
+  const above = card.height <= roomAbove || (card.height > roomBelow && roomAbove >= roomBelow);
+  const rawTop = above ? anchor.top - gap - card.height : anchor.bottom + gap;
+  const top = Math.min(Math.max(margin, rawTop), Math.max(margin, viewport.height - card.height - margin));
+  const rawLeft = anchor.left - 12;
+  const left = Math.min(Math.max(margin, rawLeft), Math.max(margin, viewport.width - card.width - margin));
+  const z = zoom > 0 ? zoom : 1;
+  return { left: left / z, top: top / z, above };
 }
 
 const THRESHOLDS = `Amber from ${pct(WARN_AT)}, red from ${pct(HIGH_AT)}.`;

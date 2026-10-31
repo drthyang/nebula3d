@@ -16,6 +16,7 @@ import { create } from "zustand";
 import { fetchDataset, promoteTrial, startTuningRun } from "../../api/client";
 import { queryClient } from "../../api/queryClient";
 import type { Dataset, TuningRun } from "../../api/types";
+import { noteAgentEdit } from "../../state/agentEdits";
 import { pipelineBusy, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { completeChat, type ChatMessage, type TokenUsage, type UsageReport } from "../provider/client";
 import { baseTokens, estimateTokens, PROSE_CHARS_PER_TOKEN } from "../provider/tokens";
@@ -326,6 +327,8 @@ async function tuneStage(
     // Keep the best trial's output in the run's chain and its settings in Configure.
     const chosen = best === 1 ? {} : accepted[best - 2].patch;
     pipeline().patch({ ...base, ...chosen });
+    // The page shows the settings the tuning kept (state/agentEdits.ts): UI only.
+    noteAgentEdit((Object.keys(chosen) as (keyof PipelineConfig)[]).filter((k) => chosen[k] !== base[k]));
     setStage(stage, { status: "applying", best, why });
     await keep(stage, best, run, signal);
     setStage(stage, { status: "done", best, why });
