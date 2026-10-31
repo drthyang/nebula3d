@@ -47,25 +47,34 @@ export interface StageInfo {
   message?: string;
   firstT: number;
   lastT: number;
+  // How the stage ended, once it said so (done: computed, skip: reused).
+  // A stage can add a note after that (the ring removal and the flatten say
+  // they averaged over the symmetry after their done line): still ended.
+  endedAs?: "done" | "skip";
 }
 
-/** Each stage's latest status, fraction and message, and its first and last times. */
+/** Each stage's latest status, fraction and message, how it ended, and its first and last times. */
 export function stageInfo(events: readonly JobEvent[], times: readonly number[]): Record<string, StageInfo> {
   const out: Record<string, StageInfo> = {};
   events.forEach((ev, i) => {
     if (!ev.stage || !ev.status) return;
+    const ended = ev.status === "done" || ev.status === "skip" ? (ev.status as "done" | "skip") : undefined;
     const cur = out[ev.stage];
     if (!cur) {
-      out[ev.stage] = { status: ev.status, fraction: ev.fraction ?? null, message: ev.message, firstT: times[i], lastT: times[i] };
+      out[ev.stage] = { status: ev.status, fraction: ev.fraction ?? null, message: ev.message, firstT: times[i], lastT: times[i], ...(ended ? { endedAs: ended } : {}) };
     } else {
       cur.status = ev.status;
       cur.fraction = ev.fraction ?? null;
       cur.message = ev.message ?? cur.message;
       cur.lastT = times[i];
+      if (ended) cur.endedAs = ended;
     }
   });
   return out;
 }
+
+/** A stage's status as its state reads it: an error, else how it ended once it said so, else its latest. */
+const statusOf = (s: StageInfo | undefined): string | undefined => (s ? (s.status === "error" ? "error" : (s.endedAs ?? s.status)) : undefined);
 
 /**
  * The run's phase. Only a run in progress is "running": a run that is not, and
@@ -127,20 +136,21 @@ export function stageStates({
   let activeFrac: number | null = null;
   for (const stage of visible) {
     const s = info[stage];
+    const status = statusOf(s);
     if (!inRun.includes(stage)) {
-      const before = inRun.find((r) => ORDER.indexOf(r) < ORDER.indexOf(stage) && info[r]?.status === "done");
+      const before = inRun.find((r) => ORDER.indexOf(r) < ORDER.indexOf(stage) && statusOf(info[r]) === "done");
       if (before && hasOutput(stage)) {
         states[stage] = "stale";
         staleAfter[stage] = before;
       } else states[stage] = "notrun";
       continue;
     }
-    if ((s?.status === "skip" || (s?.status === "done" && listingAfterRun && phase === "done")) && isStale(stage)) states[stage] = "stale";
+    if ((status === "skip" || (status === "done" && listingAfterRun && phase === "done")) && isStale(stage)) states[stage] = "stale";
     else if (!s) states[stage] = phase === "lost" ? "unknown" : "pending";
-    else if (s.status === "done" || s.status === "skip") {
+    else if (status === "done" || status === "skip") {
       states[stage] = "done";
       doneCount += 1;
-    } else if (s.status === "error") states[stage] = "failed";
+    } else if (status === "error") states[stage] = "failed";
     else if (phase === "cancelled") states[stage] = "cancelled";
     else if (phase === "lost") states[stage] = "unknown";
     else if (phase === "error") states[stage] = "failed";

@@ -161,3 +161,34 @@ describe("the 3D-ΔPDF's window failure", () => {
   });
 });
 
+describe("a stage that adds a note after its done line", () => {
+  // The ring removal and the flatten say they averaged over the symmetry after
+  // their done line. A run that fails later must not mark them failed.
+  const ev = (stage: string, status: string, message = "") => ({ type: "progress", stage, status, message });
+  const events = [
+    ev("symmetry_average", "done", "averaged over m-3m"),
+    ev("rings", "start"),
+    ev("rings", "done", "pooled ring removal fitted"),
+    ev("rings", "progress", "ring removal averaged over 48 symmetry operations"),
+    ev("punch", "done", "punched"),
+    ev("pdf", "start"),
+    ev("pdf", "error", "WindowSupportError: No measured region around Q = 0"),
+  ];
+  const run = ["symmetry_average", "rings", "punch", "pdf", "pdf_check"];
+
+  it("is done, and the run failed at the stage that failed", () => {
+    const info = stageInfo(events, events.map((_, i) => i));
+    expect(info.rings.endedAs).toBe("done");
+    expect(info.rings.message).toBe("ring removal averaged over 48 symmetry operations");
+    const r = stageStates({ visible: run, info, phase: "error", runStages: run, hasOutput: () => true });
+    expect(r.states).toMatchObject({ symmetry_average: "done", rings: "done", punch: "done", pdf: "failed", pdf_check: "pending" });
+    expect(r.doneCount).toBe(3);
+  });
+
+  it("is failed when an error of its own comes after its done line", () => {
+    const own = [...events.slice(0, 4), ev("rings", "error", "the symmetry did not map the grid")];
+    const r = stageStates({ visible: run, info: stageInfo(own, own.map((_, i) => i)), phase: "error", runStages: run, hasOutput: () => true });
+    expect(r.states.rings).toBe("failed");
+  });
+});
+
