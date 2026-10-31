@@ -1320,18 +1320,6 @@ input[type="range"]::-moz-range-track {
   cursor: not-allowed;
 }
 
-.ring-viz-cap {
-  margin-top: 6px;
-  text-align: center;
-  font-size: 10.5px;
-  line-height: 1.4;
-  color: var(--text-3);
-}
-.ring-viz-cap b {
-  color: var(--text-2);
-  font-weight: 650;
-}
-
 /* sub-heading + 3-column grid used by the Bragg-punch parameter group */
 .config-sub-title {
   font-size: 10px;
@@ -1650,61 +1638,7 @@ input[type="range"]::-moz-range-track {
 :root {
   --punch-slice-size: 320px;
 }
-.punch-viz {
-  margin-top: 6px;
-  width: 100%;
-}
-.punch-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 6px;
-}
-.punch-tabs button {
-  flex: 1;
-  padding: 4px 0;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.punch-tabs button:hover {
-  color: var(--text-2);
-  border-color: var(--border-strong);
-}
-.punch-tabs button.on {
-  color: var(--accent-hi);
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-.punch-viz .punch-schematic {
-  display: block;
-  width: 100%;
-  max-width: 220px;
-  margin: 0 auto;
-}
-.punch-preview {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-}
-.punch-preview-frame {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  line-height: 0;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  overflow: hidden;
-}
-.punch-preview-frame > div {
-  width: 100% !important;
-  height: 100% !important;
-}
+
 .punch-overlay {
   position: absolute;
   inset: 0;
@@ -1712,25 +1646,80 @@ input[type="range"]::-moz-range-track {
   height: 100%;
   pointer-events: none;
 }
-.punch-preview-meta,
-.punch-preview-empty {
-  max-width: 100%;
-  color: var(--text-3);
-  font-size: 11px;
-  line-height: 1.35;
-  text-align: center;
+
+/* Configure: the preview card (components/PunchPreview.tsx) — the viewer
+   pages' header, then one slice view whose plane its tabs pick, the punch
+   drawn over it, and the hover readout. */
+.cfg-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
 }
-.punch-preview-empty {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  min-height: 34px;
-  display: grid;
-  place-items: center;
-  margin: 6px auto 0;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
+.cfg-preview > .card-title-row {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+/* a card's one-line summary, after its title */
+.cfg-card-summary {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.cfg-preview .ws-head {
   background: var(--surface-2);
 }
+.cfg-preview-view .view-head {
+  height: auto;
+  min-height: 40px;
+  gap: 10px;
+  padding: 4px 4px 4px 6px;
+}
+.cfg-preview-view .view-head .tabs {
+  flex: none;
+}
+.cfg-preview-view .view-head .tabs button {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 11px;
+}
+.cfg-preview-view .view-body {
+  flex: none;
+  height: clamp(320px, 58vh, 640px);
+}
+.cfg-preview-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.view-foot.cfg-preview-foot {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 14px;
+}
+.cfg-preview-foot .punch-legend {
+  margin-top: 0;
+  justify-content: flex-start;
+}
+.cfg-preview-cap {
+  font: 11px var(--font-mono);
+  color: var(--text-3);
+}
+.cfg-preview-cap b {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.ws-readout.cfg-preview-readout {
+  background: var(--surface-2);
+}
+
 /* Stacked layout: parameter groups in a band across the top, the preview
    (sliders + orthoslices) centred below. */
 .punch-workspace {
@@ -1853,11 +1842,7 @@ input[type="range"]::-moz-range-track {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.punch-group-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+
 .punch-group-title {
   font-size: 10.5px;
   font-weight: 650;
@@ -1879,86 +1864,20 @@ input[type="range"]::-moz-range-track {
   font-size: 9.5px;
   line-height: 1.55;
 }
-.punch-group-head .helptip {
-  margin-left: auto;
-}
+
 /* divider above the covariance toggle that closes the footprint group */
 .punch-group .switch-row {
   margin-top: 1px;
   padding-top: 11px;
   border-top: 1px solid var(--border);
 }
-.punch-preview-controls {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-.punch-preview-pane {
-  width: 100%;
-}
-.punch-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  width: 100%;
-}
-.punch-preview-panel {
-  min-width: 0;
-  width: 100%;
-}
-.punch-preview-panel-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 7px;
-  color: var(--text-2);
-  font-size: 11px;
-  font-weight: 650;
-}
-.punch-preview-panel-head span:last-child {
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  font-weight: 500;
-}
-.punch-preview-panel .field {
-  margin-bottom: 8px;
-}
-.punch-preview-panel .field-row {
-  gap: 6px;
-}
-.punch-preview-panel .field-label,
-.punch-preview-panel .readout {
-  font-size: 9.5px;
-}
-.punch-preview-panel .punch-legend {
-  gap: 7px;
-  margin-top: 5px;
-  font-size: 9.5px;
-}
-.punch-grid {
-  stroke: var(--border);
-  stroke-width: 0.7;
-}
+
 .punch-fp {
   fill: var(--accent-soft);
   stroke: var(--accent);
   stroke-width: 1;
 }
-.punch-fp-tilted {
-  stroke-width: 1.25;
-}
-.punch-margin {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 0.8;
-  stroke-dasharray: 2 2;
-  opacity: 0.5;
-}
-.punch-tail {
-  fill: var(--accent);
-  opacity: 0.12;
-}
+
 .punch-ib {
   fill: var(--amber-soft);
   stroke: var(--amber);
@@ -1979,12 +1898,7 @@ input[type="range"]::-moz-range-track {
   opacity: 0.9;
   paint-order: stroke;
 }
-.punch-axis {
-  fill: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-style: italic;
-}
+
 .punch-legend {
   display: flex;
   flex-wrap: wrap;
@@ -2412,19 +2326,7 @@ input[type="range"]::-moz-range-track {
 .stage-card .card-body > .punch-workspace {
   grid-column: 1 / -1;
 }
-.stage-card .card-body > .stage-visual {
-  grid-column: 2;
-  grid-row: 1 / span 10;
-  align-self: center;
-}
-.stage-visual {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-}
+
 .stage-card-compact .card-body {
   display: flex;
   flex-direction: column;
@@ -2444,30 +2346,22 @@ input[type="range"]::-moz-range-track {
 .punch-stage-card .card-body > .config-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-/* the |Q| band slider spans its preview-controls row above the slices */
-.pdf-preview-controls {
-  display: flex;
-}
+
 @container main (max-width: 870px) {
   .stage-card .card-body {
     grid-template-columns: 1fr;
   }
   .stage-card .card-body > .config-grid,
-  .stage-card .card-body > .config-grid-3,
-  .stage-card .card-body > .config-sub-row,
-  .stage-card .card-body > .switch-row,
-  .stage-card .card-body > .field,
-  .stage-card .card-body > .punch-workspace,
-  .stage-card .card-body > .stage-visual {
+.stage-card .card-body > .config-grid-3,
+.stage-card .card-body > .config-sub-row,
+.stage-card .card-body > .switch-row,
+.stage-card .card-body > .field,
+.stage-card .card-body > .punch-workspace {
     grid-column: 1;
     grid-row: auto;
   }
   .punch-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .punch-preview-controls {
-    grid-template-columns: 1fr;
-    display: flex;
   }
 }
 @container main (max-width: 600px) {
@@ -4846,9 +4740,7 @@ h6.md-h {
 .punch-controls {
   container: cfg-controls / inline-size;
 }
-.punch-preview-pane {
-  container: cfg-preview / inline-size;
-}
+
 @container cfg-controls (max-width: 1049px) {
   .cfg-stage-grid,
   .cfg-stage-row {
@@ -4877,15 +4769,6 @@ h6.md-h {
   }
   .cfg-box .punch-basis > :last-child {
     grid-column: 1 / -1;
-  }
-}
-@container cfg-preview (max-width: 559px) {
-  .punch-preview-grid,
-  .punch-preview-controls {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .punch-preview-controls {
-    display: grid;
   }
 }
 
@@ -4964,10 +4847,7 @@ h6.md-h {
     gap: 24px;
     align-items: start;
   }
-  .punch-preview-pane {
-    position: sticky;
-    top: 0;
-  }
+
   .bragg-plot {
     min-height: 420px;
   }
@@ -5214,8 +5094,15 @@ h6.md-h {
   .stage-card > .card-title-row {
     padding: 13px 13px 0;
   }
-  .data-card {
+  .data-card,
+  .cfg-preview {
     padding: 13px;
+  }
+  /* the one view stays about square, with room left to scroll the page */
+  .cfg-preview-view .view-body {
+    height: auto;
+    aspect-ratio: 1 / 1;
+    max-height: 72vh;
   }
   .cfg-box {
     padding: 12px;
@@ -5472,9 +5359,7 @@ h6.md-h {
   .bragg-trow {
     height: 38px;
   }
-  .punch-tabs button {
-    padding: 8px 0;
-  }
+
   .ai-chip,
   .ai-vision-chip,
   .ai-provider-tab {

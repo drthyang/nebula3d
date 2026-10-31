@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { tabId, tabKeyTarget, tabPanelId } from "../tabs";
+import { tabId, tabKeyTarget, tabPanelId } from "../tabKeys";
 
 describe("tabKeyTarget", () => {
   it("moves right and left along a horizontal list, wrapping at the ends", () => {

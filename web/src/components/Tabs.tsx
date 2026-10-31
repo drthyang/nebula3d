@@ -1,5 +1,5 @@
 // A tab list (role="tablist") styled as the segmented control the viewer
-// pages switch planes with. The keys follow tabs.ts: the arrows move to the
+// pages switch planes with. The keys follow tabKeys.ts: the arrows move to the
 // next or previous tab and select it, Home and End to the ends; only the
 // selected tab is in the Tab order. The caller renders the panel with
 // role="tabpanel", id tabPanelId(idBase) and aria-labelledby tabId(idBase,
@@ -7,7 +7,7 @@
 
 import { useRef, type ReactNode } from "react";
 
-import { tabId, tabKeyTarget, tabPanelId } from "./tabs";
+import { tabId, tabKeyTarget, tabPanelId } from "./tabKeys";
 
 export interface TabSpec {
   id: string;
