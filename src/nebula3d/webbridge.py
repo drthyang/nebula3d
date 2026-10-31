@@ -64,6 +64,7 @@ from nebula3d.pipeline import load_input as _load_run_input
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
+from nebula3d.server import laue as _laue
 from nebula3d.server import modulation as _mod
 from nebula3d.server import regrid as _regrid
 from nebula3d.server import rings as _rings
@@ -89,6 +90,7 @@ __all__ = [
     "volume_slice",
     "volume_coverage_json",
     "volume_ub_check_json",
+    "volume_laue_compare_json",
     "dataset_regrid_json",
     "volume_ring_isotropy_json",
     "volume_shell_floors_json",
@@ -1218,6 +1220,34 @@ def volume_ub_check_json(volume_id: str, cell: str = "1,1,1",
     nodes = _parse_cell(cell)
     m = _vol.volume_ub_check(stage.path, nodes, None if q_max is None else float(q_max))
     return _json({**m, "id": volume_id})
+
+
+def volume_laue_compare_json(volume_id: str, params_json: str = "{}", extra_json: str = "[]",
+                             progress: Callable[[float, str], None] | None = None) -> str:
+    """Every candidate Laue class of an HKL stage compared by R_int, with the
+    rule's suggestion (mirrors POST /api/volumes/{id}/laue-compare: the same
+    payload, and the same refusal of a volume symmetrized already).
+
+    *params_json* is the run's curated ``StageParamsIn`` (its edge trim, punch
+    cell and punch footprint), *extra_json* a list of custom classes to compare
+    beside the presets, *progress* ``(fraction, message)`` — the worker posts
+    it as the comparison's progress.  The volume is read in the browser's
+    float32, as a run reads it; the viewers' cached volumes are dropped first,
+    as a run drops them, since the comparison holds its own copy.
+    """
+    stage = _resolve(volume_id, "hkl")
+    params = build_params(_make_request(params_json, True))
+    _apply_browser_precision(params, params_json)
+    extra = json.loads(extra_json) if extra_json else []
+    _clear_caches()
+
+    def cb(fraction: float, message: str) -> None:
+        if progress is not None:
+            progress(float(fraction), str(message))
+
+    out = _laue.laue_compare(stage.path, params, extra=[str(x) for x in extra or []],
+                             progress=cb)
+    return _json({**out, "id": volume_id})
 
 
 def dataset_regrid_json(dataset_id: str, cell: str = "1,1,1", q_max: float | None = None,
