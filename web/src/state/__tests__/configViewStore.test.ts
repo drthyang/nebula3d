@@ -122,6 +122,39 @@ describe("the advanced folds", () => {
   });
 });
 
+describe("a fold the agent opens", () => {
+  beforeEach(() => vi.stubGlobal("localStorage", memoryStorage()));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shows for the visit, and is not remembered as the user's choice", async () => {
+    const first = await freshStore();
+    first.useConfigViewStore.getState().revealAdvanced(["punch", "pdf"]);
+    const st = first.useConfigViewStore.getState();
+    expect(first.advancedShown(st, "punch")).toBe(true);
+    expect(first.advancedShown(st, "rings")).toBe(false);
+    expect(st.advancedOpen).toEqual([]);
+    expect(localStorage.length).toBe(0);
+    const again = await freshStore();
+    expect(again.advancedShown(again.useConfigViewStore.getState(), "punch")).toBe(false);
+  });
+
+  it("closes when the user closes it, whoever opened it", async () => {
+    const { useConfigViewStore, advancedShown } = await freshStore();
+    useConfigViewStore.getState().revealAdvanced(["flatten"]);
+    useConfigViewStore.getState().setAdvancedOpen("flatten", false);
+    expect(advancedShown(useConfigViewStore.getState(), "flatten")).toBe(false);
+    expect(useConfigViewStore.getState().advancedRevealed).toEqual([]);
+  });
+
+  it("leaves a fold the user already opened as it is, and ignores unknown stages", async () => {
+    const { useConfigViewStore } = await freshStore();
+    useConfigViewStore.getState().setAdvancedOpen("rings", true);
+    useConfigViewStore.getState().revealAdvanced(["rings", "backfill" as never, "rings"]);
+    expect(useConfigViewStore.getState().advancedRevealed).toEqual([]);
+    expect(useConfigViewStore.getState().advancedOpen).toEqual(["rings"]);
+  });
+});
+
 describe("the preview's zoom", () => {
   beforeEach(() => vi.stubGlobal("localStorage", memoryStorage()));
   afterEach(() => vi.unstubAllGlobals());

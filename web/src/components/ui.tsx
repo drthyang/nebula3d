@@ -9,13 +9,15 @@ export function Field({
   label,
   children,
   grow = false,
+  className,
 }: {
   label: ReactNode;
   children: ReactNode;
   grow?: boolean;
+  className?: string; // extra classes (e.g. the Configure page's flash of an agent's change)
 }) {
   return (
-    <div className={`field${grow ? " grow" : ""}`}>
+    <div className={`field${grow ? " grow" : ""}${className ? ` ${className}` : ""}`}>
       <span className="field-label">{label}</span>
       {children}
     </div>

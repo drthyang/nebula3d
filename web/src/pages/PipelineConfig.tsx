@@ -23,12 +23,14 @@ import { boxQMax, metricFromUb, reciprocalMetric } from "../components/reciproca
 import { Field, HelpTip, RangeSlider, Switch } from "../components/ui";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { declaresNone, modulationRequest } from "../state/modulation";
-import { useConfigViewStore, type AdvancedStage } from "../state/configViewStore";
+import { useAgentEdits, type AgentEdit } from "../state/agentEdits";
+import { advancedShown, useConfigViewStore, type AdvancedStage } from "../state/configViewStore";
 import {
   STAGE_LABELS,
   STAGE_NO,
   usePipelineStore,
   pipelineBusy,
+  type PipelineConfig,
 } from "../state/pipelineStore";
 import { useHighlightKeys } from "../llm/highlight";
 import { datasetName } from "../api/datasetName";
@@ -36,7 +38,7 @@ import { staleOutputs } from "../api/stale";
 import { useChatStore } from "../llm/chatStore";
 import { useMarkStore } from "../state/markStore";
 import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
-import { advancedFields, changedFields, SECTION_SUMMARY, type SectionStage } from "./configSections";
+import { advancedFields, changedFields, foldsHolding, SECTION_SUMMARY, type SectionStage } from "./configSections";
 
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
@@ -116,10 +118,18 @@ function BoxHead({ title, unit, help }: { title: string; unit?: string; help?: R
 // that differ from their defaults, so a change made there (by the agent, a
 // restored session) is not missed.
 function AdvancedFold({ stage, changed, children }: { stage: AdvancedStage; changed: number; children: ReactNode }) {
-  const open = useConfigViewStore((st) => st.advancedOpen.includes(stage));
+  const open = useConfigViewStore((st) => advancedShown(st, stage));
   const setOpen = useConfigViewStore((st) => st.setAdvancedOpen);
   return (
-    <details className="cfg-advanced" open={open} onToggle={(e) => setOpen(stage, e.currentTarget.open)}>
+    <details
+      className="cfg-advanced"
+      open={open}
+      // The browser fires toggle when the page opens the fold too (the agent's
+      // reveal): only a change from what was rendered is the user's own.
+      onToggle={(e) => {
+        if (e.currentTarget.open !== open) setOpen(stage, e.currentTarget.open);
+      }}
+    >
       <summary>
         Advanced
         {changed > 0 && (
@@ -132,6 +142,9 @@ function AdvancedFold({ stage, changed, children }: { stage: AdvancedStage; chan
     </details>
   );
 }
+
+/** Class names joined, the empty ones left out. */
+const cls = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(" ");
 
 const SUPERCELL_TITLE =
   "Supercell factor along this axis that the volume is indexed on (e.g. 2 for a " +
@@ -345,6 +358,22 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   const changed = (stage: SectionStage) =>
     changedFields(s, usePipelineStore.getInitialState(), advancedFields(stage, s)).length;
   const flattenIsModel = s.flattenEstimator === "" || s.flattenEstimator === "model";
+  // The agent's changes (state/agentEdits.ts: update_settings, a tuning run's
+  // kept settings): the Advanced folds that hold them open, and their fields
+  // flash once. The user's own edits and a restored session never come through
+  // here. An edit made while the page was closed is shown once when it opens.
+  const agentEdit = useAgentEdits((st) => st.last);
+  const revealAdvanced = useConfigViewStore((st) => st.revealAdvanced);
+  const [flashEdit, setFlashEdit] = useState<AgentEdit | null>(null);
+  useEffect(() => {
+    if (!agentEdit || agentEdit.seq <= useAgentEdits.getState().shown) return;
+    useAgentEdits.getState().markShown(agentEdit.seq);
+    revealAdvanced(foldsHolding(agentEdit.fields, usePipelineStore.getState()));
+    setFlashEdit(agentEdit);
+  }, [agentEdit, revealAdvanced]);
+  // Two class names that alternate, so the same field changed again flashes again.
+  const flash = (key: keyof PipelineConfig) =>
+    flashEdit?.fields.includes(key) ? `cfg-flash cfg-flash-${flashEdit.seq % 2}` : undefined;
   const run = usePipelineStore((st) => st.run);
 
   const punchFrame = s.punchFrame === "q" ? "q" : "spherical";
@@ -866,7 +895,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               <AdvancedFold stage="rings" changed={changed("rings")}>
                 <div className="cfg-fields">
                   {s.ringModel !== "global_v2" && (
-                    <Field label="Slice axis">
+                    <Field className={flash("ringSliceAxis")} label="Slice axis">
                       <select
                         value={s.ringSliceAxis}
                         title="Stack axis: the planes the per-plane models fit one by one, and that the pooled model pools across"
@@ -880,7 +909,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   )}
                   {s.ringModel === "pooled" && (
                     <>
-                      <Field label="Sectors (n)">
+                      <Field className={flash("ringPooledSectors")} label="Sectors (n)">
                         <input
                           type="number"
                           min="8"
@@ -891,7 +920,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                           onChange={(e) => patch({ ringPooledSectors: e.target.value })}
                         />
                       </Field>
-                      <Field label="Stack window (°)">
+                      <Field className={flash("ringPooledWindow")} label="Stack window (°)">
                         <input
                           type="number"
                           min="0.5"
@@ -906,7 +935,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   )}
                   {s.ringModel === "global_v2" && (
                     <>
-                      <Field label="Confidence z">
+                      <Field className={flash("ringGlobalConfidence")} label="Confidence z">
                         <input
                           type="number"
                           min="0"
@@ -916,7 +945,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                           onChange={(e) => patch({ ringGlobalConfidence: e.target.value })}
                         />
                       </Field>
-                      <Field label="Angular degree">
+                      <Field className={flash("ringGlobalLmax")} label="Angular degree">
                         <input
                           type="number"
                           min="0"
@@ -927,7 +956,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                           onChange={(e) => patch({ ringGlobalLmax: e.target.value })}
                         />
                       </Field>
-                      <Field label="Minimum SNR">
+                      <Field className={flash("ringGlobalMinSnr")} label="Minimum SNR">
                         <input
                           type="number"
                           min="0"
@@ -937,7 +966,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                           onChange={(e) => patch({ ringGlobalMinSnr: e.target.value })}
                         />
                       </Field>
-                      <Field label="Max FWHM (Å⁻¹)">
+                      <Field className={flash("ringWidth")} label="Max FWHM (Å⁻¹)">
                         <input
                           type="number"
                           min="0.02"
@@ -951,7 +980,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     </>
                   )}
                   {s.ringModel === "parametric" && (
-                    <Field label={s.ringRadialMode === "rolling" ? "Window (Å⁻¹)" : "Ring width (Å⁻¹)"}>
+                    <Field className={flash("ringWidth")} label={s.ringRadialMode === "rolling" ? "Window (Å⁻¹)" : "Ring width (Å⁻¹)"}>
                       <input
                         type="number"
                         min="0.02"
@@ -968,7 +997,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     </Field>
                   )}
                   {s.ringModel === "patched" && (
-                    <Field label="Patches (n)">
+                    <Field className={flash("ringNPatches")} label="Patches (n)">
                       <input
                         type="number"
                         min="4"
@@ -981,7 +1010,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     </Field>
                   )}
                   {(s.ringModel === "patched" || s.ringModel === "parametric") && (
-                    <Field label="Fourier order">
+                    <Field className={flash("ringNFourier")} label="Fourier order">
                       <input
                         type="number"
                         min="0"
@@ -999,7 +1028,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
           >
             <div className="cfg-box">
               <div className="cfg-fields">
-                <Field label="Model">
+                <Field className={flash("ringModel")} label="Model">
                   <select
                     value={s.ringModel}
                     title="Pooled: per-sector radial profiles pooled across neighbouring planes (follows rings whose radius wanders with direction). Global 3D: sample-only spherical-shell inference with uncertainty. Patched/parametric: legacy plane-by-plane models."
@@ -1013,7 +1042,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 </Field>
                 {s.ringModel === "global_v2" && (
                   <>
-                    <Field label="Material prior">
+                    <Field className={flash("ringGlobalMaterial")} label="Material prior">
                       <select
                         value={s.ringGlobalMaterial}
                         title="Auto keeps supported powder shells and labels Al matches. Aluminum keeps only FCC-Al-matched shells. Generic uses no material prior."
@@ -1024,7 +1053,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         <option value="generic">Material agnostic</option>
                       </select>
                     </Field>
-                    <Field label="Subtraction">
+                    <Field className={flash("ringGlobalSubtraction")} label="Subtraction">
                       <select
                         value={s.ringGlobalSubtraction}
                         title="Conservative subtracts the lower confidence bound; Mean subtracts the fitted mean; Diagnose only leaves intensity unchanged."
@@ -1038,7 +1067,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </>
                 )}
                 {s.ringModel === "parametric" && (
-                  <Field label="Radial mode">
+                  <Field className={flash("ringRadialMode")} label="Radial mode">
                     <select
                       value={s.ringRadialMode}
                       title="Rolling: a thick window swept Qmin→Qmax fits a continuous Ring(|Q|) × per-shell texture (no discrete peaks; thicker = smoother). Peaks: detect discrete rings and fit a pseudo-Voigt each."
@@ -1068,7 +1097,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             advanced={
               <AdvancedFold stage="punch" changed={changed("punch")}>
                 <div className="cfg-fields">
-                  <Field label="Profile reach ×σ">
+                  <Field className={flash("punchProfileNSigma")} label="Profile reach ×σ">
                     <input
                       type="number"
                       step="0.1"
@@ -1080,7 +1109,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchProfileNSigma: e.target.value })}
                     />
                   </Field>
-                  <Field label="H guard (r.l.u.)">
+                  <Field className={flash("punchHGuard")} label="H guard (r.l.u.)">
                     <input
                       type="number"
                       step="0.01"
@@ -1091,7 +1120,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchHGuard: e.target.value })}
                     />
                   </Field>
-                  <Field label="Search floor ×σ">
+                  <Field className={flash("punchSearchFloor")} label="Search floor ×σ">
                     <input
                       type="number"
                       step="1"
@@ -1102,7 +1131,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSearchFloor: e.target.value })}
                     />
                   </Field>
-                  <Field label="Search width ×Bragg">
+                  <Field className={flash("punchSearchMaxWidth")} label="Search width ×Bragg">
                     <input
                       type="number"
                       step="0.1"
@@ -1113,7 +1142,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSearchMaxWidth: e.target.value })}
                     />
                   </Field>
-                  <div className="switch-row">
+                  <div className={cls("switch-row", flash("punchFitUnconstrained"))}>
                     <Switch
                       label="Drop fit constraints"
                       checked={s.punchFitUnconstrained}
@@ -1126,7 +1155,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       punch masks on weak or noisy peaks.
                     </HelpTip>
                   </div>
-                  <div className="switch-row">
+                  <div className={cls("switch-row", flash("incidentBeamFitCovariance"))}>
                     <Switch
                       label="Fit the direct-beam ellipsoid"
                       checked={s.incidentBeamFitCovariance}
@@ -1147,7 +1176,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               <div className="cfg-box">
                 <BoxHead title="Detection" />
                 <div className="cfg-fields">
-                  <Field label="Footprint">
+                  <Field className={flash("punchFootprint")} label="Footprint">
                     <select
                       value={s.punchFootprint}
                       title="How far each peak is punched. Own width (default): each peak to its own measured width, as far as that peak stays above the noise, so a sharp spike on a broad maximum takes a small punch. Profile-matched: every peak shares the dataset's learned Bragg profile (a consistent width), punched as far as it stays above the noise. Ellipsoid: the fixed resolution ellipsoid below, scaled with intensity."
@@ -1158,7 +1187,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       <option value="ellipsoid">Ellipsoid</option>
                     </select>
                   </Field>
-                  <Field label="Min σ">
+                  <Field className={flash("punchMinSig")} label="Min σ">
                     <input
                       type="number"
                       step="0.5"
@@ -1174,7 +1203,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchMinSig: e.target.value })}
                     />
                   </Field>
-                  <Field label="Mode">
+                  <Field className={flash("punchMode")} label="Mode">
                     <select
                       value={s.punchMode}
                       title="Which peaks to punch: integer (the lattice nodes), search (off-lattice peaks found in |Q| shells) or both"
@@ -1201,7 +1230,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   }
                 />
                 <div className="config-grid-3">
-                  <Field label="Supercell H">
+                  <Field className={flash("punchSupercellH")} label="Supercell H">
                     <input
                       type="number"
                       step="1"
@@ -1212,7 +1241,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSupercellH: e.target.value })}
                     />
                   </Field>
-                  <Field label="Supercell K">
+                  <Field className={flash("punchSupercellK")} label="Supercell K">
                     <input
                       type="number"
                       step="1"
@@ -1223,7 +1252,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSupercellK: e.target.value })}
                     />
                   </Field>
-                  <Field label="Supercell L">
+                  <Field className={flash("punchSupercellL")} label="Supercell L">
                     <input
                       type="number"
                       step="1"
@@ -1235,7 +1264,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     />
                   </Field>
                 </div>
-                <Field label="Modulation k (r.l.u.)">
+                <Field className={flash("modulationK")} label="Modulation k (r.l.u.)">
                   <input
                     type="text"
                     placeholder="default"
@@ -1245,7 +1274,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   />
                 </Field>
                 <div className="config-grid-3">
-                  <Field label="Form">
+                  <Field className={flash("modulationForm")} label="Form">
                     <select
                       value={s.modulationForm === "planes" ? "planes" : ""}
                       disabled={!s.modulationK.trim() || declaresNone(s.modulationK)}
@@ -1256,7 +1285,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       <option value="planes">planes</option>
                     </select>
                   </Field>
-                  <Field label="Order m">
+                  <Field className={flash("modulationOrder")} label="Order m">
                     <input
                       type="number"
                       step="1"
@@ -1269,7 +1298,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ modulationOrder: e.target.value })}
                     />
                   </Field>
-                  <Field label="± width (r.l.u.)">
+                  <Field className={flash("modulationHalfWidth")} label="± width (r.l.u.)">
                     <input
                       type="number"
                       step="0.01"
@@ -1299,7 +1328,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     </>
                   }
                 />
-                <Field label="Frame">
+                <Field className={flash("punchFrame")} label="Frame">
                   <select
                     value={s.punchFrame || "spherical"}
                     title="Punch ellipsoid axis frame"
@@ -1311,7 +1340,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 </Field>
                 {(s.punchFrame || "spherical") === "spherical" ? (
                   <div className="config-grid-3">
-                    <Field label={<>r<sub>ρ</sub></>}>
+                    <Field className={flash("punchRho")} label={<>r<sub>ρ</sub></>}>
                       <input
                         type="number"
                         step="0.005"
@@ -1322,7 +1351,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         onChange={(e) => patch({ punchRho: e.target.value })}
                       />
                     </Field>
-                    <Field label={<>r<sub>θ</sub></>}>
+                    <Field className={flash("punchTheta")} label={<>r<sub>θ</sub></>}>
                       <input
                         type="number"
                         step="0.005"
@@ -1333,7 +1362,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         onChange={(e) => patch({ punchTheta: e.target.value })}
                       />
                     </Field>
-                    <Field label={<>r<sub>φ</sub></>}>
+                    <Field className={flash("punchPhi")} label={<>r<sub>φ</sub></>}>
                       <input
                         type="number"
                         step="0.005"
@@ -1347,7 +1376,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </div>
                 ) : (
                   <div className="config-grid-3">
-                    <Field label={<>r<sub>a*</sub></>}>
+                    <Field className={flash("punchQA")} label={<>r<sub>a*</sub></>}>
                       <input
                         type="number"
                         step="0.005"
@@ -1358,7 +1387,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         onChange={(e) => patch({ punchQA: e.target.value })}
                       />
                     </Field>
-                    <Field label={<>r<sub>b*</sub></>}>
+                    <Field className={flash("punchQB")} label={<>r<sub>b*</sub></>}>
                       <input
                         type="number"
                         step="0.005"
@@ -1369,7 +1398,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         onChange={(e) => patch({ punchQB: e.target.value })}
                       />
                     </Field>
-                    <Field label={<>r<sub>c*</sub></>}>
+                    <Field className={flash("punchQC")} label={<>r<sub>c*</sub></>}>
                       <input
                         type="number"
                         step="0.005"
@@ -1383,7 +1412,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </div>
                 )}
                 <div className="config-grid-3">
-                  <Field label="Margin">
+                  <Field className={flash("punchMargin")} label="Margin">
                     <input
                       type="number"
                       step="0.005"
@@ -1409,7 +1438,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   }
                 />
                 <div className="config-grid-3">
-                  <Field label={<>r<sub>a*</sub></>}>
+                  <Field className={flash("incidentBeamQA")} label={<>r<sub>a*</sub></>}>
                     <input
                       type="number"
                       step="0.005"
@@ -1420,7 +1449,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ incidentBeamQA: e.target.value })}
                     />
                   </Field>
-                  <Field label={<>r<sub>b*</sub></>}>
+                  <Field className={flash("incidentBeamQB")} label={<>r<sub>b*</sub></>}>
                     <input
                       type="number"
                       step="0.005"
@@ -1431,7 +1460,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ incidentBeamQB: e.target.value })}
                     />
                   </Field>
-                  <Field label={<>r<sub>c*</sub></>}>
+                  <Field className={flash("incidentBeamQC")} label={<>r<sub>c*</sub></>}>
                     <input
                       type="number"
                       step="0.005"
@@ -1444,7 +1473,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </Field>
                 </div>
                 <div className="config-grid-3">
-                  <Field label="Margin">
+                  <Field className={flash("incidentBeamMargin")} label="Margin">
                     <input
                       type="number"
                       step="0.005"
@@ -1478,7 +1507,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             >
               <div className="cfg-box">
                 <div className="cfg-fields">
-                  <Field label="Method">
+                  <Field className={flash("backfillMethod")} label="Method">
                     <select value={s.backfillMethod} onChange={(e) => patch({ backfillMethod: e.target.value })}>
                       <option value="">laplace (default)</option>
                       <option value="local">local</option>
@@ -1506,7 +1535,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               advanced={
                 <AdvancedFold stage="flatten" changed={changed("flatten")}>
                   <div className="cfg-fields">
-                    <Field label="Fit to |Q| (Å⁻¹)">
+                    <Field className={flash("flattenFitQMax")} label="Fit to |Q| (Å⁻¹)">
                       <input
                         type="number"
                         step="0.5"
@@ -1518,7 +1547,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         onChange={(e) => patch({ flattenFitQMax: e.target.value })}
                       />
                     </Field>
-                    <div className="switch-row">
+                    <div className={cls("switch-row", flash("flattenQ2"))}>
                       <Switch label="+ b·Q² term" checked={s.flattenQ2} onChange={(v) => patch({ flattenQ2: v })} />
                       <HelpTip>
                         Adds b·Q² to the model: the smooth rise of the inelastic background (thermal diffuse scattering,
@@ -1533,7 +1562,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             >
               <div className="cfg-box">
                 <div className="cfg-fields">
-                  <Field label="Estimator">
+                  <Field className={flash("flattenEstimator")} label="Estimator">
                     <select
                       value={s.flattenEstimator}
                       disabled={!s.flatten}
@@ -1544,7 +1573,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       <option value="snip">snip</option>
                     </select>
                   </Field>
-                  <Field label="Magnetic ion">
+                  <Field className={flash("flattenIon")} label="Magnetic ion">
                     <select
                       value={s.flattenIon}
                       disabled={!s.flatten || !flattenIsModel}
@@ -1577,7 +1606,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               advanced={
                 <AdvancedFold stage="pdf" changed={changed("pdf")}>
                   <div className="cfg-fields">
-                    <Field label="Window shape">
+                    <Field className={flash("pdfWindowShape")} label="Window shape">
                       <select
                         value={s.pdfWindowShape}
                         title="auto: an ellipsoid that respects the lattice symmetry where a per-axis window would break it (hexagonal cells), else per-axis"
@@ -1588,7 +1617,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         <option value="ellipsoid">ellipsoid</option>
                       </select>
                     </Field>
-                    <div className="switch-row">
+                    <div className={cls("switch-row", flash("pdfWindowSupport"))}>
                       <Switch
                         label="Taper to the measured coverage"
                         checked={s.pdfWindowSupport}
@@ -1607,7 +1636,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             >
               <div className="cfg-box">
                 <div className="cfg-fields">
-                  <Field label="Apodization">
+                  <Field className={flash("pdfApod")} label="Apodization">
                     <select
                       value={s.pdfApod}
                       title="Q-space window applied before the FFT to suppress termination ripples"

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { configOf } from "../../state/configMemory";
 import { STAGES, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
-import { advancedFields, basicFields, changedFields, SECTION_ORDER, SECTION_SWITCH, type SectionStage } from "../configSections";
+import { advancedFields, basicFields, changedFields, foldsHolding, SECTION_ORDER, SECTION_SWITCH, type SectionStage } from "../configSections";
 
 const defaults = usePipelineStore.getInitialState() as PipelineConfig;
 const MODELS = ["pooled", "global_v2", "patched", "parametric"];
@@ -78,5 +78,19 @@ describe("the advanced settings", () => {
     // a setting set back to its default no longer counts
     expect(changedFields({ ...s, punchHGuard: "" }, defaults, keys)).toEqual(["punchFitUnconstrained"]);
     expect(changedFields({ ...defaults, pdfWindowSupport: false }, defaults, advancedFields("pdf", defaults))).toEqual(["pdfWindowSupport"]);
+  });
+});
+
+describe("the folds an agent's change opens", () => {
+  it("are those holding a changed setting, for the current ring model", () => {
+    expect(foldsHolding(["punchHGuard", "punchMinSig"], defaults)).toEqual(["punch"]);
+    expect(foldsHolding(["pdfWindowSupport", "flattenFitQMax"], defaults)).toEqual(["flatten", "pdf"]);
+    // ringNFourier is advanced for the patched model; the pooled one does not use it.
+    expect(foldsHolding(["ringNFourier"], { ...defaults, ringModel: "patched" })).toEqual(["rings"]);
+    expect(foldsHolding(["ringNFourier"], defaults)).toEqual([]);
+  });
+
+  it("are none for settings shown up front", () => {
+    expect(foldsHolding(["punchMinSig", "backfillMethod", "pdfApod", "ringModel"], defaults)).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@
 // Every setting of the form has one home here, basic or advanced (the test
 // checks it), so a new setting has to be given one.
 
+import type { AdvancedStage } from "../state/configViewStore";
 import type { PipelineConfig } from "../state/pipelineStore";
 
 export type SectionStage = "rings" | "punch" | "backfill" | "flatten" | "pdf";
@@ -89,6 +90,14 @@ export function advancedFields(stage: SectionStage, s: ModelOf): Key[] {
     case "pdf":
       return ["pdfWindowShape", "pdfWindowSupport"];
   }
+}
+
+/** The stages whose Advanced fold holds any of `fields`, for the current ring model: the folds to open. */
+export function foldsHolding(fields: readonly Key[], s: ModelOf): AdvancedStage[] {
+  const changed = new Set<string>(fields);
+  return SECTION_ORDER.filter(
+    (stage): stage is AdvancedStage => stage !== "backfill" && advancedFields(stage, s).some((k) => changed.has(k)),
+  );
 }
 
 /**

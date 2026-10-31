@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { useAgentEdits } from "../../state/agentEdits";
 import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
 import { DEFAULT_SETTINGS } from "../settings";
 import { currentStageSettings, proposalToPatch, ProposalError, sampleParam, toFormValue } from "../tune/catalog";
@@ -155,6 +156,19 @@ describe("startTuning", () => {
     expect(promoted()).toEqual(["punch-2", "backfill-1"]);
     // Each trial is measured through its own view.
     expect(api.fetchDataset).toHaveBeenCalledWith(`${RUN.dataset_id}~punch-2`);
+  });
+
+  it("tells the Configure page the settings a stage kept, and nothing when it keeps the user's (state/agentEdits.ts)", async () => {
+    useAgentEdits.setState({ last: null, shown: 0 });
+    llm.completeChat
+      .mockResolvedValueOnce('{"candidates": [{"changes": {"punchMinSig": 4}}]}')
+      .mockResolvedValueOnce('{"best": 2, "why": "fewer leftover peaks"}')
+      .mockResolvedValueOnce('{"candidates": [{"changes": {"backfillMethod": "local"}}]}')
+      .mockResolvedValueOnce('{"best": 1, "why": "both seamless"}');
+    await startTuning({ dataset, stages: ["punch", "backfill"], trialsPerStage: 2, llm: DEFAULT_SETTINGS });
+    expect(useTuneStore.getState().error).toBeNull();
+    // The punch kept trial 2 (min σ 4); the backfill kept the user's settings, so only the punch is told.
+    expect(useAgentEdits.getState().last).toEqual({ fields: ["punchMinSig"], seq: 1 });
   });
 
   it("keeps the user's settings when the model proposes nothing", async () => {

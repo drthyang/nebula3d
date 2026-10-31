@@ -6,6 +6,7 @@
 // page's fields (the sample's modulation holds four): the model reads and
 // writes it as one setting (SampleParam).
 
+import { noteAgentEdit } from "../../../state/agentEdits";
 import { usePipelineStore, type PipelineConfig } from "../../../state/pipelineStore";
 import {
   allowedValues,
@@ -122,6 +123,8 @@ export const update_settings: ChatTool = {
     });
     const patch = Object.assign({}, ...[...wanted].filter(([key]) => !unchanged.includes(key)).map(([, fields]) => fields)) as Partial<PipelineConfig>;
     before.patch(patch);
+    // The page shows the fields the agent changed (state/agentEdits.ts): UI only.
+    noteAgentEdit(Object.keys(patch) as (keyof PipelineConfig)[]);
     const after = usePipelineStore.getState();
     const changed = [...wanted.keys()]
       .filter((key) => !unchanged.includes(key))

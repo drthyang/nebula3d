@@ -1636,6 +1636,26 @@ input[type="range"]::-moz-range-track {
 .config-page .switch-row .helptip-bubble::after {
   display: none;
 }
+/* on a phone a stage's ? sits mid-row (the switch has no visible name):
+   its bubble is anchored to the head's right edge, no wider than the head */
+@media (max-width: 599px) {
+  .config-page .cfg-stage-head {
+    position: relative;
+  }
+  .config-page .cfg-stage-head .helptip {
+    position: static;
+  }
+  .config-page .cfg-stage-head .helptip-bubble {
+    left: auto;
+    right: 0;
+    transform: none;
+    width: min(340px, 100%);
+    max-width: none;
+  }
+  .config-page .cfg-stage-head .helptip-bubble::after {
+    display: none;
+  }
+}
 
 /* Bragg-punch footprint illustration (pie analogue for the punch stage) */
 :root {
@@ -1949,6 +1969,47 @@ input[type="range"]::-moz-range-track {
 }
 .cfg-advanced-body {
   margin-top: 8px;
+}
+/* a setting the agent just changed (state/agentEdits.ts): its field flashes
+   twice in the agent's highlight colour, then rests. Two names alternate so a
+   second change to the same field flashes again. */
+.cfg-flash {
+  border-radius: var(--radius-sm);
+  animation: cfg-flash-a 1.2s ease-out 2;
+}
+.cfg-flash.cfg-flash-1 {
+  animation-name: cfg-flash-b;
+}
+@keyframes cfg-flash-a {
+  0% {
+    outline: 2px solid rgba(116, 168, 255, 0.95);
+    outline-offset: 3px;
+    box-shadow: 0 0 18px 3px rgba(79, 143, 247, 0.45);
+  }
+  100% {
+    outline: 2px solid rgba(116, 168, 255, 0);
+    outline-offset: 3px;
+    box-shadow: 0 0 18px 3px rgba(79, 143, 247, 0);
+  }
+}
+@keyframes cfg-flash-b {
+  0% {
+    outline: 2px solid rgba(116, 168, 255, 0.95);
+    outline-offset: 3px;
+    box-shadow: 0 0 18px 3px rgba(79, 143, 247, 0.45);
+  }
+  100% {
+    outline: 2px solid rgba(116, 168, 255, 0);
+    outline-offset: 3px;
+    box-shadow: 0 0 18px 3px rgba(79, 143, 247, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* one slow fade instead of two pulses */
+  .cfg-flash {
+    animation-duration: 2.4s;
+    animation-iteration-count: 1;
+  }
 }
 /* the ring removal's ?: the selected model's formula and its terms */
 .helptip--wide .helptip-bubble {

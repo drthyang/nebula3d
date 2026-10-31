@@ -3,7 +3,9 @@
 // and write them (configure_settings, update_settings), and nothing here is
 // read by them. It holds
 //   - the plane the preview shows (its tab), remembered per browser;
-//   - which stages show their advanced settings, remembered per browser;
+//   - which stages show their advanced settings, remembered per browser,
+//     and those the agent opened to show a setting it changed (for the visit:
+//     the agent's reveal is not the user's choice to remember);
 //   - each plane's zoom (a viewport in Å⁻¹, as on the viewer pages) and the
 //     preview's colour limits, for the dataset they were set on, for the visit.
 // The preview's colormap and scale are the viewer pages' own (viewerStore),
@@ -60,6 +62,11 @@ const remember = (key: string, value: string) => {
   }
 };
 
+/** Whether a stage's advanced settings show: the user left the fold open, or the agent opened it. */
+export function advancedShown(s: { advancedOpen: readonly AdvancedStage[]; advancedRevealed: readonly AdvancedStage[] }, stage: AdvancedStage): boolean {
+  return s.advancedOpen.includes(stage) || s.advancedRevealed.includes(stage);
+}
+
 /** One plane's viewport for a dataset, from the views set on it (none: the whole slice). */
 export function previewView(
   views: { dataset: string | null; byPlane: Partial<Record<PunchPlane, Viewport>> },
@@ -72,8 +79,10 @@ export function previewView(
 interface ConfigViewState {
   previewTab: PunchPlane;
   setPreviewTab: (plane: PunchPlane) => void;
-  advancedOpen: AdvancedStage[];
+  advancedOpen: AdvancedStage[]; // the user's, remembered
   setAdvancedOpen: (stage: AdvancedStage, open: boolean) => void;
+  advancedRevealed: AdvancedStage[]; // opened by the agent, for the visit
+  revealAdvanced: (stages: readonly AdvancedStage[]) => void;
   // Each plane's zoom, for the dataset it was set on (another dataset starts from the whole slice).
   views: { dataset: string | null; byPlane: Partial<Record<PunchPlane, Viewport>> };
   setView: (dataset: string, plane: PunchPlane, v: Viewport | null) => void;
@@ -91,10 +100,19 @@ export const useConfigViewStore = create<ConfigViewState>((set) => ({
   advancedOpen: initialAdvancedOpen(),
   setAdvancedOpen: (stage, open) =>
     set((s) => {
-      if (!isStage(stage) || s.advancedOpen.includes(stage) === open) return s;
+      if (!isStage(stage)) return s;
+      // Closing a fold closes it whoever opened it.
+      const advancedRevealed = open ? s.advancedRevealed : s.advancedRevealed.filter((x) => x !== stage);
+      if (s.advancedOpen.includes(stage) === open) return advancedRevealed === s.advancedRevealed ? s : { advancedRevealed };
       const advancedOpen = open ? [...s.advancedOpen, stage] : s.advancedOpen.filter((x) => x !== stage);
       remember(ADVANCED_OPEN_KEY, JSON.stringify(advancedOpen));
-      return { advancedOpen };
+      return { advancedOpen, advancedRevealed };
+    }),
+  advancedRevealed: [],
+  revealAdvanced: (stages) =>
+    set((s) => {
+      const add = stages.filter((x) => isStage(x) && !s.advancedOpen.includes(x) && !s.advancedRevealed.includes(x));
+      return add.length ? { advancedRevealed: [...s.advancedRevealed, ...add] } : s;
     }),
   views: { dataset: null, byPlane: {} },
   setView: (dataset, plane, v) =>
