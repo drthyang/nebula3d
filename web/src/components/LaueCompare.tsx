@@ -6,7 +6,7 @@
 // the diffuse reading flags, the classes refused and why. A click on a row
 // sets the Laue class; the user runs it. state/laueCompare.ts words the rows.
 
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 
 import { compareLaueClasses } from "../api/client";
 import type { LaueComparison, LaueProgress, StageParamsIn } from "../api/types";
@@ -42,7 +42,12 @@ function Cell({ c }: { c: CellView }) {
   return (
     <td className={`laue-cell laue-cell--${c.state}`} title={c.title}>
       <span className="laue-rint">{c.value}</span>
-      {c.detail && <span className="laue-detail">{c.detail}</span>}
+      {c.detail && (
+        <span className="laue-detail">
+          {c.lead}
+          {c.tail && <span className="laue-tail">{c.tail}</span>}
+        </span>
+      )}
     </td>
   );
 }
@@ -185,7 +190,7 @@ export function LaueCompare({
                     title={`Set the Laue class to ${row.laue}${row.contains.length ? ` (contains ${row.contains.join(", ")})` : ""}`}
                   >
                     <td className="laue-class">
-                      <span className="laue-indent" style={{ paddingLeft: `${row.depth * 10}px` }}>
+                      <span className="laue-indent" style={{ "--depth": row.depth } as CSSProperties}>
                         {row.depth > 0 && <span className="laue-chain" aria-hidden="true">└</span>}
                         <button
                           type="button"
@@ -206,7 +211,8 @@ export function LaueCompare({
                     <Cell c={row.all} />
                     <Cell c={row.diffuse} />
                     <td className="num" title={row.orbitsTitle}>
-                      {row.orbits}
+                      <span className="laue-orbits-full">{row.orbits}</span>
+                      <span className="laue-orbits-short">{row.orbitsShort}</span>
                     </td>
                   </tr>
                 ))}

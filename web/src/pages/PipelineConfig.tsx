@@ -1031,6 +1031,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               <div className="cfg-fields">
                 <Field className={flash("edgeTrim")} label="Edge trim">
                   <select
+                    aria-label="Edge trim"
                     value={String(edgeTrimLayers(s))}
                     title="Voxel layers taken off the raw input's coverage edge (the NeXus Viewer's edge erosion)"
                     onChange={(e) => patch({ edgeTrim: Number(e.target.value) === DEFAULT_EDGE_TRIM ? "" : e.target.value })}
@@ -1101,7 +1102,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 </details>
               )}
             </div>
-            <div className="cfg-box cfg-box--always">
+            <div className="cfg-box cfg-box--always cfg-box--wide">
               <BoxHead title="Which class: the evidence" />
               <LaueCompare
                 volumeId={rawVolumeId}

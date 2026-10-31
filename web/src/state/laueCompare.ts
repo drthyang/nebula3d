@@ -26,10 +26,22 @@ export type Reading = "all" | "diffuse";
 /** One reading's cell: R_int, a second line, and what the rule made of it. */
 export interface CellView {
   value: string; // R_int, or – without one
-  detail: string; // its ratio to the noise floor, or how far it rose
+  detail: string; // its ratio to the noise floor, or how far it rose: lead + tail
+  lead: string; // the second line's figure ("1.00×", "rose 2.08×"): all a phone shows
+  tail: string; // its words (" noise", " vs -1")
   state: "ok" | "rose" | "below" | "unjudged" | "flag";
   title: string; // the cell's numbers in full, for the tooltip
 }
+
+/** A cell from its parts: the detail is the lead and the tail together. */
+const view = (value: string, lead: string, tail: string, state: CellView["state"], title: string): CellView => ({
+  value,
+  detail: lead + tail,
+  lead,
+  tail,
+  state,
+  title,
+});
 
 export interface LaueRow {
   laue: string;
@@ -40,6 +52,7 @@ export interface LaueRow {
   all: CellView;
   diffuse: CellView;
   orbits: string; // orbits compared on every measured voxel
+  orbitsShort: string; // the same, compact for a phone ("2.09M", "593k")
   orbitsTitle: string;
   suggested: boolean;
   current: boolean; // the class the form holds now
@@ -55,34 +68,40 @@ export function formatRint(x: number | null | undefined): string {
 /** A count with thousands separators. */
 const count = (n: number): string => n.toLocaleString("en-US");
 
+/** A count compact: millions to two decimals, thousands rounded, the rest whole. */
+export const countShort = (n: number): string =>
+  n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${Math.round(n / 1e3)}k` : count(n);
+
 /** A ratio or a rise: two decimals. */
 const times = (x: number | null | undefined): string => (x == null || !Number.isFinite(x) ? "–" : x.toFixed(2));
 
 function cell(r: LaueReading | null, v: LaueVerdict | null, flagged: boolean): CellView {
-  if (!r || r.r_int == null) return { value: "–", detail: "", state: "unjudged", title: "No orbit with two measured members" };
+  if (!r || r.r_int == null) return view("–", "", "", "unjudged", "No orbit with two measured members");
   const numbers =
     `R_int ${formatRint(r.r_int)}` +
     (r.noise != null ? `; the noise floor ${formatRint(r.noise)}, what counting noise alone gives on these orbits` : "") +
     (r.ratio != null ? `; ${times(r.ratio)}× it (± ${times(r.ratio_se)})` : "") +
     `; ${count(r.orbits)} orbits, ${count(r.voxels)} voxels, ${count(r.pairs)} pairs compared`;
-  if (!v || !v.judged || r.ratio == null) return { value: formatRint(r.r_int), detail: "", state: "unjudged", title: numbers };
+  if (!v || !v.judged || r.ratio == null) return view(formatRint(r.r_int), "", "", "unjudged", numbers);
   if (v.rises) {
-    return {
-      value: formatRint(r.r_int),
-      detail: `rose ${times(v.rise)}× vs ${v.against}`,
-      state: flagged ? "flag" : "rose",
-      title: `${numbers}. Its ratio to the noise floor rose ${times(v.rise)}× against ${v.against}'s: more than the rule allows.`,
-    };
+    return view(
+      formatRint(r.r_int),
+      `rose ${times(v.rise)}×`,
+      ` vs ${v.against}`,
+      flagged ? "flag" : "rose",
+      `${numbers}. Its ratio to the noise floor rose ${times(v.rise)}× against ${v.against}'s: more than the rule allows.`,
+    );
   }
   if (!v.supported) {
-    return {
-      value: formatRint(r.r_int),
-      detail: "a subgroup rose",
-      state: flagged ? "flag" : "below",
-      title: `${numbers}. One of its subgroups rose against its own, so this class, which contains it, is not supported either.`,
-    };
+    return view(
+      formatRint(r.r_int),
+      "a subgroup rose",
+      "",
+      flagged ? "flag" : "below",
+      `${numbers}. One of its subgroups rose against its own, so this class, which contains it, is not supported either.`,
+    );
   }
-  return { value: formatRint(r.r_int), detail: `${times(r.ratio)}× noise`, state: "ok", title: numbers };
+  return view(formatRint(r.r_int), `${times(r.ratio)}×`, " noise", "ok", numbers);
 }
 
 /** The class a Laue class field's text names, by the label the backend gives it ("6/mmm", "custom"), or null. */
@@ -114,6 +133,7 @@ export function laueRows(cmp: LaueComparison, currentSpec: string): LaueRow[] {
       all: cell(c.all, c.verdict.all, false),
       diffuse: cell(c.diffuse, c.verdict.diffuse, flagged),
       orbits: c.all ? count(c.all.orbits) : "–",
+      orbitsShort: c.all ? countShort(c.all.orbits) : "–",
       orbitsTitle: c.all
         ? `${count(c.all.orbits)} orbits with two measured members or more (${count(c.all.pairs)} pairs) on every measured voxel` +
           (c.diffuse ? `; ${count(c.diffuse.orbits)} on the diffuse` : "")

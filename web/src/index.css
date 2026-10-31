@@ -1413,6 +1413,10 @@ input[type="range"]::-moz-range-track {
 .cfg-stage--off .cfg-box.cfg-box--always {
   opacity: 1;
 }
+/* a box as wide as its stage's grid (the Laue comparison's table) */
+.cfg-stage-grid > .cfg-box--wide {
+  grid-column: 1 / -1;
+}
 
 /* "Compare Laue classes": the button, R_int's one line and its ?, the progress,
    the verdict, the table (indented by the chain of subgroups), its caption */
@@ -1504,6 +1508,7 @@ input[type="range"]::-moz-range-track {
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
+  padding-left: calc(var(--depth, 0) * 10px);
 }
 .laue-chain {
   color: var(--text-3);
@@ -1571,6 +1576,10 @@ input[type="range"]::-moz-range-track {
 .laue-refused td {
   color: var(--text-3);
   font-size: 11px;
+  white-space: normal;
+}
+.laue-orbits-short {
+  display: none;
 }
 .laue-refused td:first-child {
   font-family: var(--font-mono);
@@ -1581,15 +1590,37 @@ input[type="range"]::-moz-range-track {
   line-height: 1.4;
   color: var(--text-3);
 }
-/* phones: the second line of each cell under its value, the table at its width */
+/* phones: each cell's figure without its words, compact orbits, names that
+   wrap, a smaller indent: the table at the card's width (390 px viewport) */
 @container main (max-width: 480px) {
   .laue-table {
     font-size: 11px;
   }
   .laue-table th,
   .laue-table td {
-    padding-left: 4px;
-    padding-right: 4px;
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+  .laue-table th {
+    white-space: normal;
+    letter-spacing: 0.02em;
+  }
+  .laue-class {
+    white-space: normal;
+  }
+  .laue-indent {
+    padding-left: calc(var(--depth, 0) * 5px);
+  }
+  .laue-pick {
+    font-size: 11px;
+    text-align: left;
+  }
+  .laue-tail,
+  .laue-orbits-full {
+    display: none;
+  }
+  .laue-orbits-short {
+    display: inline;
   }
   .laue-badge {
     display: block;
