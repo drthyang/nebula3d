@@ -19,8 +19,9 @@ envelope). The messages:
 
 - the Worker's own (WORKER_TYPES), answered as the pipeline worker answers
   them: ``{id, type: "result", payload}``, ``{id, type: "result_binary"}`` with
-  the bytes as the body, or ``{id, type: "error", message}``; and, with
-  ``id: null``, the events ``boot_status``, ``progress`` and ``gpu_status``;
+  the bytes as the body, or ``{id, type: "error", message}`` (the size gate's
+  refusal adds ``code: "size_gate"`` and its ``report``); and, with ``id:
+  null``, the events ``boot_status``, ``progress`` and ``gpu_status``;
 - this adapter's own (CONTROL_TYPES): ``dev_case`` gives a dev case of the
   validation a fresh workspace, from its default run's snapshot when this
   process's root holds one; ``dev_snapshot`` keeps the workspace's outputs as
@@ -216,10 +217,12 @@ class Bridge:
         tmp = uploads / str(time.time_ns())
         tmp.write_bytes(body)
         try:
-            # The size gate's refusal is the reply's message, as the worker sends it.
+            # The size gate's refusal is the reply's message, with its report, as
+            # the worker sends it.
             report = json.loads(self.wb.inspect_input(req["name"], str(tmp)))
             if not report["ok"]:
-                self.emit({"id": rid, "type": "error", "message": report["message"]})
+                self.emit({"id": rid, "type": "error", "message": report["message"],
+                           "code": "size_gate", "report": report})
                 return
             self.result(rid, self.wb.load_input(req["name"], str(tmp)))
         finally:

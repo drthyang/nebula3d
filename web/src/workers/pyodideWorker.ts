@@ -9,7 +9,8 @@
 //
 //  id: null  — fire-and-forget events (boot_status, pipeline progress,
 //              gpu_status, memory: the WASM heap's size, see heapReport.ts)
-//  id: number — RPC responses (result / result_binary / error)
+//  id: number — RPC responses (result / result_binary / error; the size
+//              gate's refusal is an error with code "size_gate" and its report)
 //
 // Binary results (slice envelopes) are posted with an ArrayBuffer in the
 // transfer list (zero-copy from Worker to main thread).
@@ -151,7 +152,9 @@ async function dispatch(req: WorkerRequest): Promise<void> {
             (bridge!.inspect_input as (n: string, p: string) => string)(req.name, tmp),
           ) as { ok: boolean; message: string };
           if (!report.ok) {
-            replyError(new Error(report.message));
+            // The report travels with the refusal (code "size_gate"): the
+            // console's run-it-locally card shows its numbers (api/browserLimit.ts).
+            post({ id, type: "error", message: report.message, code: "size_gate", report });
             break;
           }
           const dsId = (bridge!.load_input as (n: string, p: string) => string)(req.name, tmp);

@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { useBootStatus } from "../api/hooks";
+import { errorDetail } from "../api/browserLimit";
 import { clearImportParams, parseImport, receiveImport, reportImport, type ImportProgress } from "../api/importHandoff";
 import { PYODIDE_MODE, bootPercent, engine, ensureBooted } from "../api/pyodideEngine";
 import { useDatasetStore } from "../state/datasetStore";
@@ -74,7 +75,8 @@ export function ViewerImportBanner({ onLoaded }: { onLoaded: () => void }) {
       })
       .catch((e: unknown) => {
         if (controller.signal.aborted) return;
-        const message = (e as Error).message;
+        // The size gate's refusal in its own words, with the native route.
+        const message = errorDetail(e);
         setState({ phase: "error", message });
         reportImport(req, { error: message });
       });

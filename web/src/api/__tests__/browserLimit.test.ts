@@ -7,10 +7,12 @@ import { describe, expect, it } from "vitest";
 import {
   BrowserLimitError,
   classifyBrowserLimit,
+  errorDetail,
   limitFromReport,
   LIMIT_TRAPS,
+  markGateRefusal,
+  markWorkerStopped,
   parseGateReport,
-  workerStoppedMessage,
   type GateReport,
   type LimitKind,
 } from "../browserLimit";
@@ -105,8 +107,6 @@ const MATCHES: [string, string, LimitKind][] = [
   ],
   ["Emscripten's short abort", "RuntimeError: Aborted(OOM)", "memory"],
   ["no room for a new WebAssembly heap", "RangeError: WebAssembly.instantiate(): Cannot allocate Wasm memory for new instance", "memory"],
-  ["the worker dying mid-run", workerStoppedMessage("Uncaught InternalError: too much recursion"), "worker"],
-  ["the worker dying mid-run with no reason", workerStoppedMessage(""), "worker"],
   ["the gate's refusal, desktop", GATE_DESKTOP, "gate"],
   ["the gate's refusal, phone", GATE_PHONE, "gate"],
   ["the engine's short refusal, logged", new BrowserLimitError("huge.h5", REPORT).message, "gate"],
@@ -128,8 +128,25 @@ describe("classifyBrowserLimit", () => {
     expect(classifyBrowserLimit(new Error(message))?.detail).toBe(message);
   });
 
+  it("knows the pipeline worker dying mid-run by the engine's mark, not its words", () => {
+    // The words stay the engine's own ("Worker error: …"): NEBULA Pilot reads them.
+    const died = markWorkerStopped(new Error("Worker error: Uncaught InternalError: too much recursion"));
+    expect(died.message).toBe("Worker error: Uncaught InternalError: too much recursion");
+    expect(classifyBrowserLimit(died)).toEqual({
+      kind: "worker",
+      detail: "Worker error: Uncaught InternalError: too much recursion",
+      needBytes: null,
+      requestBytes: null,
+      shape: null,
+      device: null,
+    });
+    expect(classifyBrowserLimit(markWorkerStopped(new Error("")))?.kind).toBe("worker");
+    // The same words without the mark: a worker that failed to boot, say.
+    expect(classifyBrowserLimit(new Error("Worker error: Uncaught InternalError: too much recursion"))).toBeNull();
+  });
+
   it("reads a worker that died of running out of memory as memory", () => {
-    expect(classifyBrowserLimit(workerStoppedMessage("RangeError: Out of memory"))?.kind).toBe("memory");
+    expect(classifyBrowserLimit(markWorkerStopped(new Error("Worker error: Uncaught RangeError: Out of memory")))?.kind).toBe("memory");
   });
 
   it.each([
@@ -190,9 +207,17 @@ describe("the gate's refusal at load", () => {
     });
   });
 
-  it("is known when it crossed a module boundary (by its name and report)", () => {
-    const like = { name: "BrowserLimitError", message: "x", report: REPORT, detail: GATE_DESKTOP };
-    expect(classifyBrowserLimit(like)?.needBytes).toBe(5.03e9);
+  it("is known by the engine's mark, its words unchanged", () => {
+    const refused = markGateRefusal(new Error(GATE_DESKTOP), REPORT);
+    expect(refused.message).toBe(GATE_DESKTOP);
+    expect(classifyBrowserLimit(refused)).toMatchObject({ kind: "gate", needBytes: 5.03e9, detail: GATE_DESKTOP });
+    // A report that admits the volume marks nothing.
+    expect(classifyBrowserLimit(markGateRefusal(new Error("Pipeline cancelled"), { ...REPORT, ok: true }))).toBeNull();
+  });
+
+  it("is reported in the gate's words (the NeXus Viewer hand-off passes them on)", () => {
+    expect(errorDetail(new BrowserLimitError("huge.h5", REPORT))).toBe(GATE_DESKTOP);
+    expect(errorDetail(new Error("Could not read big.nxs again"))).toBe("Could not read big.nxs again");
   });
 
   it("takes only a report that refuses", () => {

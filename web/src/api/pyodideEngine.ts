@@ -20,8 +20,17 @@
 //
 // See docs/web.md ("In-browser run" / "Architecture") for context.
 
+import {
+  BrowserLimitError,
+  classifyBrowserLimit,
+  markGateRefusal,
+  markWorkerStopped,
+  parseGateReport,
+  type GateReport,
+} from "./browserLimit";
 import { isMobileDevice } from "./device";
 import { clearMainHeap, setMainHeap } from "./engineMemory";
+import { clearFailedRun, clearRefusedLoad, setFailedRun, setRefusedLoad } from "./limitSignals";
 import { disposeRingPool, ensureRingPool } from "./ringPool";
 import type {
   BraggProfile,
@@ -130,6 +139,7 @@ let workerInstance: Worker | null = null;
 let bootPromise: Promise<void> | null = null;
 let idCounter = 0;
 const pending = new Map<number, {
+  type: string; // the request's, so a worker that dies can tell a run was in flight
   resolve: (v: unknown) => void;
   reject: (e: Error) => void;
 }>();
@@ -146,7 +156,9 @@ function getOrCreateWorker(): Worker {
     workerInstance.addEventListener("error", (ev: ErrorEvent) => {
       const msg = `Worker error: ${ev.message}`;
       setBoot({ phase: "error", message: msg, ready: false, error: msg });
-      rejectAllPending(msg);
+      // A run in flight died with the worker: the run-it-locally card reads
+      // that mark (browserLimit.ts); the words stay these.
+      rejectAllPending(msg, (type) => type === "run_pipeline");
       // An 'error' event does NOT kill the worker — terminate it explicitly,
       // and tear down the ring pool wired to it (otherwise up to ~1 GB of idle
       // Pyodide heaps stay resident until the next boot).
@@ -160,8 +172,9 @@ function getOrCreateWorker(): Worker {
   return workerInstance;
 }
 
-function rejectAllPending(msg: string): void {
-  for (const p of pending.values()) p.reject(new Error(msg));
+function rejectAllPending(msg: string, stoppedMidRun?: (type: string) => boolean): void {
+  const running = stoppedMidRun ? [...pending.values()].some((p) => stoppedMidRun(p.type)) : false;
+  for (const p of pending.values()) p.reject(running ? markWorkerStopped(new Error(msg)) : new Error(msg));
   pending.clear();
 }
 
@@ -209,7 +222,10 @@ function handleWorkerMessage(ev: MessageEvent): void {
   pending.delete(msg.id);
 
   if (msg.type === "error") {
-    p.reject(new Error(msg.message as string));
+    const err = new Error(msg.message as string);
+    // The size gate's refusal carries its report (pyodideWorker.ts, load_file).
+    const report = msg.code === "size_gate" ? parseGateReport(msg.report) : null;
+    p.reject(report ? markGateRefusal(err, report) : err);
   } else if (msg.type === "result_binary") {
     // Received transferred ArrayBuffer — wrap in Uint8Array for decoding.
     p.resolve(new Uint8Array(msg.payload as ArrayBuffer));
@@ -226,7 +242,7 @@ function rpc(
   const id = ++idCounter;
   const w = getOrCreateWorker();
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    pending.set(id, { type, resolve, reject });
     w.postMessage({ id, type, ...data }, transfer);
   });
 }
@@ -359,45 +375,83 @@ async function selectInput(
   await sendInput(src);
 }
 
+interface RunOptions {
+  datasetId?: string;
+  paramsJson: string;
+  flattenEnabled: boolean;
+  force: boolean;
+  forceFrom?: string | null;
+  stages?: string[];
+  tuning?: TuningTrial;
+  onProgress?: (ev: PipelineProgressEvent) => void;
+}
+
+async function runInWorker(opts: RunOptions): Promise<Dataset[]> {
+  await ensureBooted();
+  const { datasetId, paramsJson, flattenEnabled, force, forceFrom, stages, tuning, onProgress } = opts;
+  if (datasetId) await selectInput(datasetId, onProgress);
+  const unsub = onProgress ? subscribeProgress(onProgress) : (): void => {};
+  try {
+    const json = (await rpc("run_pipeline", {
+      paramsJson,
+      flattenEnabled,
+      force,
+      forceFrom: forceFrom ?? null,
+      stages: stages ?? null,
+      tuningRun: tuning?.run_id ?? null,
+      tuningTrial: tuning?.trial ?? null,
+    })) as string;
+    return JSON.parse(json) as Dataset[];
+  } finally {
+    unsub();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Public engine API (mirrors the FastAPI endpoints; same return types)
 // ---------------------------------------------------------------------------
 export const engine = {
-  loadFile(file: File): Promise<string> {
-    return loadInput({ kind: "file", file });
-  },
-
-  loadDemo(): Promise<string> {
-    return loadInput({ kind: "demo" });
-  },
-
-  async runPipeline(opts: {
-    datasetId?: string;
-    paramsJson: string;
-    flattenEnabled: boolean;
-    force: boolean;
-    forceFrom?: string | null;
-    stages?: string[];
-    tuning?: TuningTrial;
-    onProgress?: (ev: PipelineProgressEvent) => void;
-  }): Promise<Dataset[]> {
-    await ensureBooted();
-    const { datasetId, paramsJson, flattenEnabled, force, forceFrom, stages, tuning, onProgress } = opts;
-    if (datasetId) await selectInput(datasetId, onProgress);
-    const unsub = onProgress ? subscribeProgress(onProgress) : (): void => {};
+  // A volume the size gate refuses rejects with a BrowserLimitError: a short
+  // message, the gate's report and words beside it, and the refusal is kept
+  // for the run-it-locally card (limitSignals.ts) until a load succeeds.
+  async loadFile(file: File): Promise<string> {
     try {
-      const json = (await rpc("run_pipeline", {
-        paramsJson,
-        flattenEnabled,
-        force,
-        forceFrom: forceFrom ?? null,
-        stages: stages ?? null,
-        tuningRun: tuning?.run_id ?? null,
-        tuningTrial: tuning?.trial ?? null,
-      })) as string;
-      return JSON.parse(json) as Dataset[];
-    } finally {
-      unsub();
+      const id = await loadInput({ kind: "file", file });
+      clearRefusedLoad();
+      return id;
+    } catch (e) {
+      const report = (e as { gateReport?: GateReport }).gateReport;
+      if (!report) throw e;
+      const refused = new BrowserLimitError(file.name, report);
+      const limit = classifyBrowserLimit(refused);
+      if (limit) setRefusedLoad(file.name, limit);
+      throw refused;
+    }
+  },
+
+  async loadDemo(): Promise<string> {
+    const id = await loadInput({ kind: "demo" });
+    clearRefusedLoad();
+    return id;
+  },
+
+  // The size gate's report for a dataset already loaded (a regridded volume
+  // never passed it at load): the card says before a run that it won't fit.
+  inspectDataset(datasetId: string): Promise<GateReport | null> {
+    return jsonCall<unknown>("inspect_dataset_json", [datasetId]).then(parseGateReport);
+  },
+
+  async runPipeline(opts: RunOptions): Promise<Dataset[]> {
+    clearFailedRun();
+    try {
+      return await runInWorker(opts);
+    } catch (e) {
+      // A failure that is the engine's limit is kept for the run-it-locally
+      // card; the error itself goes on unchanged (its words reach the log and
+      // NEBULA Pilot).
+      const limit = classifyBrowserLimit(e);
+      if (limit) setFailedRun(opts.datasetId ?? "", limit);
+      throw e;
     }
   },
 

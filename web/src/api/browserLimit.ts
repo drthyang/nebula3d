@@ -11,6 +11,11 @@
 // into its run-it-locally card (components/LocalHandoff.tsx); the original
 // error stays behind the card's "Details".
 //
+// Two of them the engine marks on the error rather than in its words
+// (pyodideEngine.ts): the gate's report (`gateReport`) and a worker that died
+// with a run in flight (`workerStopped`). A run's error text reaches NEBULA
+// Pilot (the run_pipeline tool's failure), so it stays as it was.
+//
 // A new 32-bit trap is one more entry in LIMIT_TRAPS, with its message in the
 // tests (api/__tests__/browserLimit.test.ts).
 
@@ -78,27 +83,38 @@ export const LIMIT_TRAPS: readonly LimitTrap[] = [
   { kind: "memory", pattern: /Maximum memory size exceeded/i, what: "WebAssembly.Memory.grow() past the 4 GiB maximum" },
   { kind: "memory", pattern: /Cannot enlarge memory|Aborted\(OOM\)/i, what: "Emscripten's abort when the heap cannot grow" },
   { kind: "memory", pattern: /Cannot allocate Wasm memory/i, what: "V8: no room for a new WebAssembly heap" },
-
-  // The worker died with a run in flight (pyodideEngine.ts words it).
-  { kind: "worker", pattern: /The in-browser engine stopped during the run/, what: "the pipeline worker's error event mid-run" },
 ];
 
-/** What the engine says when the pipeline worker dies with a run in flight. */
-export function workerStoppedMessage(reason: string | undefined): string {
-  const why = (reason ?? "").trim() || "the browser gave no reason";
-  return `The in-browser engine stopped during the run (${why}).`;
+/** Marks *err* as the pipeline worker dying with a run in flight (its words unchanged). */
+export function markWorkerStopped<E extends Error>(err: E): E & { workerStopped: true } {
+  return Object.assign(err, { workerStopped: true as const });
 }
 
-/** A load the size gate refused: the short message, with the gate's report beside it. */
+/** Marks *err* as the size gate's refusal, with its report (its words unchanged). */
+export function markGateRefusal<E extends Error>(err: E, report: GateReport): E & { gateReport: GateReport } {
+  return Object.assign(err, { gateReport: report });
+}
+
+/**
+ * A load the size gate refused, as "Load volume…" shows it: a short message
+ * (the card beside it says the rest), the gate's report, and its own words as
+ * the detail.
+ */
 export class BrowserLimitError extends Error {
-  readonly report: GateReport;
+  readonly gateReport: GateReport;
   readonly detail: string;
   constructor(fileName: string, report: GateReport) {
     super(`“${fileName}” was not loaded: it is too large for the in-browser engine.`);
     this.name = "BrowserLimitError";
-    this.report = report;
+    this.gateReport = report;
     this.detail = report.message || this.message;
   }
+}
+
+/** The words a load's failure is reported in: the gate's own for its refusal. */
+export function errorDetail(err: unknown): string {
+  if (err instanceof BrowserLimitError) return err.detail;
+  return errorText(err) ?? String(err);
 }
 
 /** The gate's report as the worker sent it, or null when it is not one. */
@@ -168,26 +184,26 @@ function errorText(err: unknown): string | null {
   return typeof m === "string" ? m : null;
 }
 
-function isGateError(err: unknown): err is BrowserLimitError {
-  if (err instanceof BrowserLimitError) return true;
-  const e = err as { name?: unknown; report?: unknown } | null | undefined;
-  return e?.name === "BrowserLimitError" && parseGateReport(e.report) !== null;
-}
+const mark = (err: unknown, key: "gateReport" | "workerStopped"): unknown =>
+  err && typeof err === "object" ? (err as Record<string, unknown>)[key] : undefined;
 
 /**
  * Whether *err* (an Error, a rejection, a logged message) is the in-browser
  * engine's limit, and what is known about it; null for any other failure.
  */
 export function classifyBrowserLimit(err: unknown): BrowserLimit | null {
-  if (isGateError(err)) {
-    const limit = limitFromReport(parseGateReport(err.report));
-    if (limit) return { ...limit, detail: err.detail || limit.detail || err.message };
-  }
   const text = errorText(err);
-  if (!text || !text.trim()) return null;
+  const gate = limitFromReport(parseGateReport(mark(err, "gateReport")));
+  if (gate) return { ...gate, detail: gate.detail || text || "" };
+  if (!text || !text.trim()) {
+    return mark(err, "workerStopped") === true ? { ...NOTHING_KNOWN, kind: "worker", detail: "" } : null;
+  }
   const searched = exceptionText(text);
   const trap = LIMIT_TRAPS.find((t) => t.pattern.test(searched));
-  if (!trap) return null;
+  if (!trap) {
+    // A worker that died mid-run, of nothing its words name.
+    return mark(err, "workerStopped") === true ? { ...NOTHING_KNOWN, kind: "worker", detail: text } : null;
+  }
 
   const request = /Unable to allocate ([\d.]+) ?([KMGTP]i?B|bytes)/i.exec(searched);
   const need = trap.kind === "gate" ? /roughly ([\d.]+) ?([KMGT]i?B)/i.exec(searched) : null;
@@ -201,3 +217,10 @@ export function classifyBrowserLimit(err: unknown): BrowserLimit | null {
     device: trap.kind === "gate" ? (/phone or tablet/i.test(searched) ? "mobile" : "desktop") : null,
   };
 }
+
+const NOTHING_KNOWN: Omit<BrowserLimit, "kind" | "detail"> = {
+  needBytes: null,
+  requestBytes: null,
+  shape: null,
+  device: null,
+};
