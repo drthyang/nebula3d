@@ -463,7 +463,8 @@ shows nothing until there is a measurement (`web/src/components/MemoryBar.tsx`,
   (the runtime's compiled code, the loaded and written files, the page), which
   the page cannot measure. So the share there is a lower bound and reads
   `≥ n %`, marked "heaps only". After a run on the 161³ demo the heap is
-  about 0.3 GiB, while the gate's phone model puts the whole tab near 1.1 GB.
+  about 0.3 GiB, while the whole tab measured about 1.1 GB for that run (the
+  phone budget notes in `nebula3d.webbridge`).
 - **Native server: nebula3d's processes against the machine's RAM**
   ([`GET /api/memory`](#endpoints-native-api)): the server and each running
   pipeline process (jobs run in a process of their own), as resident memory
