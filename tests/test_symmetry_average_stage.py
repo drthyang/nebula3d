@@ -381,3 +381,25 @@ def test_a_tuning_trial_takes_the_symmetrized_volume_from_processed(tmp_path, ga
     assert pipeline._stage_input("rings", p, trial, ("rings",), inputs) == symmetrized
     view = tuning.artifact_paths(cfg, run, "rings-1")
     assert view["symmetrized"] == symmetrized
+
+
+def test_the_meta_names_the_class_a_symmetrized_export_declares_for_its_source(tmp_path):
+    """An unsymmetrized volume with the viewer's symmetrized export of it
+    beside it: its meta says which class that export declares for it, what
+    "Symmetrize here" takes; the export itself, symmetrized, has none."""
+    from nebula3d.server.volumes import volume_meta
+
+    raw = tmp_path / "sample.nxs"
+    export = tmp_path / "sample_sym6mmm.nxs"
+    hexagonal = dataclasses.replace(_cubic_with_gap(),
+                                    ub_matrix=ub_from_lattice(4.2, 4.2, 6.8, 90, 90, 120))
+    nebula3d.save(hexagonal, raw)
+    nebula3d.save(hexagonal, export)
+    _declared(export, laue_group("6/mmm").ops_text, "6/mmm")
+    with h5py.File(export, "a") as f:
+        f["MDHistoWorkspace/nebula3d"].attrs["source_file"] = "sample.nxs"
+    hint = volume_meta(raw)["declared_for"]
+    assert hint["symmetry"] == "6/mmm" and hint["from"] == "sample_sym6mmm.nxs"
+    assert len(hint["symmetry_ops"]) == 24
+    assert volume_meta(export)["declared_for"] is None
+    assert volume_meta(export)["symmetry"] == "6/mmm"

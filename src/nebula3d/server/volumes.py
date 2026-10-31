@@ -133,9 +133,75 @@ def declared_symmetry(path: Path) -> tuple[str | None, list[list[list[int]]] | N
     return label, ([np.asarray(op, dtype=int).tolist() for op in ops] if ops else None)
 
 
+def declared_for(path: Path) -> dict | None:
+    """The Laue class declared *for* a volume that declares none itself.
+
+    A symmetrized NeXus Viewer export beside it that names it as its source
+    (``source_file``) declares the operations its user averaged it over; a
+    regridded volume records the operations that constrained its cell
+    (``regrid_operations``, :mod:`nebula3d.analysis.ub_regrid`).  Either is
+    the class the symmetry average (pipeline stage 0) can take for it:
+    ``{"symmetry": name, "symmetry_ops": matrices, "from": file}``.  None when
+    the volume declares a symmetry itself (it is symmetrized already) or
+    nothing declares one for it.
+    """
+    import h5py
+
+    from nebula3d.io.hkl_reader import declared_attrs
+    from nebula3d.symmetry import group_label, parse_symmetry_ops, point_group, read_symmetry_ops
+
+    def text(attrs: object, key: str) -> str | None:
+        raw = attrs.get(key) if attrs is not None else None  # type: ignore[attr-defined]
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "replace")
+        return str(raw).strip() if raw is not None and str(raw).strip() else None
+
+    def found(ops: tuple[np.ndarray, ...], label: str | None, source: str) -> dict:
+        group = point_group(ops)
+        return {"symmetry": label or group_label(group),
+                "symmetry_ops": [np.asarray(m, dtype=int).tolist() for m in group],
+                "from": source}
+
+    try:
+        own = read_symmetry_ops(path)
+        if own is not None and len(own) > 1:
+            return None
+        with h5py.File(path, "r") as f:
+            regrid = text(declared_attrs(f), "regrid_operations")
+    except (OSError, ValueError):
+        return None
+    if regrid:
+        try:
+            ops = parse_symmetry_ops(regrid)
+        except ValueError:
+            ops = ()
+        if len(point_group(ops)) > 1:
+            return found(ops, None, path.name)
+    try:
+        neighbours = sorted(path.parent.iterdir())
+    except OSError:
+        return None
+    for other in neighbours:
+        if other == path or other.suffix.lower() not in {".nxs", ".h5", ".hdf5"}:
+            continue
+        try:
+            with h5py.File(other, "r") as f:
+                attrs = declared_attrs(f)
+                source, label = text(attrs, "source_file"), text(attrs, "symmetry")
+            if source != path.name:
+                continue
+            theirs = read_symmetry_ops(other)
+        except (OSError, ValueError):
+            continue
+        if theirs is not None and len(theirs) > 1:
+            return found(theirs, label, other.name)
+    return None
+
+
 def volume_meta(path: Path) -> dict:
     """Compact metadata for a volume: shape, axis ranges, lattice, the
-    symmetry its file declares, whether its σ came with the data, and the
+    symmetry its file declares, or the one declared for it
+    (:func:`declared_for`), whether its σ came with the data, and the
     settings the flatten that wrote it recorded
     (:func:`~nebula3d.pipeline.read_flatten_settings`; ``None`` for a stage the
     flatten did not write, or wrote before it recorded them)."""
@@ -153,6 +219,7 @@ def volume_meta(path: Path) -> dict:
         "planes": list(PLANES),
         "symmetry": symmetry,
         "symmetry_ops": symmetry_ops,
+        "declared_for": declared_for(path),
         "sigma": "estimated" if vol.sigma_estimated else "measured",
         "sigma_note": sigma_note(vol),
         "flatten_settings": read_flatten_settings(path),

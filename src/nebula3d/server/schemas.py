@@ -130,6 +130,11 @@ class VolumeMetaOut(BaseModel):
     # The point group the file declares its data were symmetrised with.
     symmetry: str | None = None
     symmetry_ops: list[list[list[int]]] | None = None
+    # The Laue class declared *for* a file that declares none itself (by a
+    # symmetrized export beside it naming it as its source, or a regrid's
+    # record): {"symmetry", "symmetry_ops", "from"}, what the symmetry
+    # average (stage 0) can take for it; None otherwise.
+    declared_for: dict[str, Any] | None = None
     # "measured": σ came with the data; "estimated": √|I|, and sigma_note says
     # when that leaves a significance in σ meaningless (normalized values).
     sigma: str = "measured"
