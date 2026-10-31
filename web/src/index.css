@@ -6768,7 +6768,8 @@ html.kb-open .ai-side {
     left: -18px;
     right: -18px;
   }
-  /* the collapsed rail's button: the rail's whole width, and over its border */
+  /* the collapsed rail's button: the rail's whole width, and over its left
+     border (not past the screen's edge, which would widen the page) */
   .ai-rail button {
     position: relative;
     align-self: stretch;
@@ -6776,7 +6777,7 @@ html.kb-open .ai-side {
   .ai-rail button::before {
     content: "";
     position: absolute;
-    inset: 0 -1px;
+    inset: 0 0 0 -1px;
   }
 
   /* NEBULA Pilot's sheet handle: a 28 px bar whose hit area reaches 12 px

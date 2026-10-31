@@ -10,8 +10,9 @@
 // server, or the Pyodide build with --demo (it loads the demo volume and runs
 // the pipeline in each browser context first). For each page × viewport ×
 // drawer state it records:
-//   - doc:     document.scrollingElement's height and width against the viewport
-//              (the app shell must stay one screen; `.main` is the scroll pane)
+//   - doc:     document.scrollingElement's height and width against the screen
+//              (the app shell must stay one screen; `.main` is the scroll pane),
+//              and whether a touch browser zoomed the page out to fit wider content
 //   - main:    `.main`'s horizontal overflow (scrollWidth > clientWidth)
 //   - widest:  elements reaching past the viewport's right edge, or past the
 //              card they sit in, that no scrolling ancestor clips
@@ -324,6 +325,13 @@ const uniq = (rows, key) => {
           }
           await settle(p, pg.views);
           const m = await p.evaluate(measure, vp.touch);
+          // a phone or tablet browser widens its layout viewport to fit
+          // content wider than the screen (the page zooms out), so the
+          // document is measured against the screen, not innerWidth
+          m.zoomedOut = m.vw !== vp.w || m.vh !== vp.h;
+          m.vw = vp.w;
+          m.vh = vp.h;
+          m.docScrollable = m.docH > vp.h + 1;
           const shot = `${vp.w}x${vp.h}-${drawer}-${pg.key}.png`;
           if (shots) await p.screenshot({ path: join(out, shot) });
           results.push({ viewport: vp.name, group: vp.group, drawer, page: pg.key, shot, ...m });
@@ -348,7 +356,7 @@ const uniq = (rows, key) => {
       const rows = results.filter((r) => r.viewport === vp.name && r.drawer === drawer);
       if (!rows.length) continue;
       const scrolls = rows.filter((r) => r.docScrollable).map((r) => r.page);
-      const wider = rows.filter((r) => r.docW > r.vw + 1).map((r) => r.page);
+      const wider = rows.filter((r) => r.docW > r.vw + 1 || r.zoomedOut).map((r) => r.page);
       const mainX = rows.filter((r) => r.mainOverflowX > 1).map((r) => r.page);
       const n = (k, key) => uniq(rows.flatMap((r) => r[k]), key).length;
       lines.push(
