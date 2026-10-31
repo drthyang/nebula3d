@@ -4,7 +4,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { logClass, runOutputs, runPhase, stageInfo, stageStates, warns, type Phase } from "../executionLog";
+import deltaPdfSource from "../../../../src/nebula3d/analysis/delta_pdf.py?raw";
+
+import { logClass, runOutputs, runPhase, stageInfo, stageStates, WINDOW_SUPPORT_MARK, windowSupportFailed, warns, type Phase } from "../executionLog";
 
 const NOTICE =
   "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.";
@@ -142,3 +144,20 @@ describe("the outputs a run's stages are read against", () => {
     expect(["backfill", "flatten", "pdf", "pdf_check"].map((st) => r.states[st])).toEqual(["notrun", "notrun", "notrun", "notrun"]);
   });
 });
+
+describe("the 3D-ΔPDF's window failure", () => {
+  it("is told by the backend's message, as the server and the browser give it", () => {
+    expect(windowSupportFailed(`${WINDOW_SUPPORT_MARK}. Unmeasured voxels open to the box edge reach the origin.`)).toBe(true);
+    const traceback = `Traceback (most recent call last):\n  File "<exec>", line 1\nnebula3d.analysis.delta_pdf.WindowSupportError: ${WINDOW_SUPPORT_MARK}. …`;
+    expect(windowSupportFailed(traceback)).toBe(true);
+    expect(windowSupportFailed("The 3D-ΔPDF takes the centre voxel of each axis (index n // 2) as Q = 0")).toBe(false);
+    expect(windowSupportFailed(undefined)).toBe(false);
+  });
+
+  it("is the message the backend writes (nebula3d/analysis/delta_pdf.py), which names the remedy", () => {
+    const flat = deltaPdfSource.replace(/"\s*\n\s*"/g, "");
+    expect(flat).toContain(`"${WINDOW_SUPPORT_MARK}.`);
+    expect(flat).toContain("Symmetrize here");
+  });
+});
+

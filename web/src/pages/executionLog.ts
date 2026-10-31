@@ -12,6 +12,15 @@ import type { Dataset, JobEvent, StageStatus } from "../api/types";
  */
 export const warns = (message: string | null | undefined): boolean => Boolean(message?.includes("⚠"));
 
+/**
+ * Whether a run failed because the measured coverage left the 3D-ΔPDF's window
+ * no room around Q = 0 (the backend's WindowSupportError, WINDOW_SUPPORT_MESSAGE
+ * in nebula3d/analysis/delta_pdf.py; in the browser its traceback ends on it):
+ * the page then offers "Symmetrize here".
+ */
+export const WINDOW_SUPPORT_MARK = "No measured region around Q = 0 for the 3D-ΔPDF window";
+export const windowSupportFailed = (message: string | null | undefined): boolean => Boolean(message?.includes(WINDOW_SUPPORT_MARK));
+
 /** A log line's colour class, from its status and its marks (✗, ⚠, ✓, ■). */
 export function logClass(ev: JobEvent): string {
   const m = ev.message ?? "";
@@ -70,7 +79,7 @@ export function runPhase(running: boolean, terminal: string | null, events: numb
 }
 
 // The pipeline's stages in order (state/pipelineStore.ts STAGES).
-const ORDER = ["rings", "punch", "backfill", "flatten", "pdf", "pdf_check"];
+const ORDER = ["symmetry_average", "rings", "punch", "backfill", "flatten", "pdf", "pdf_check"];
 
 export interface StageStates {
   states: Record<string, NodeState>;
