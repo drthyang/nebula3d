@@ -2,8 +2,8 @@
 // examples/explore_delta_pdf_ortho.py.  Three linked orthogonal real-space cuts
 // in a workspace (grid · focus · single), each with its own cut slider, one
 // shared ± colour scale, a unit-cell gridline toggle and an optional overlay of
-// a crystal structure's pair vectors.  In Navigate mode a click on one view
-// moves the other two cuts through that point.
+// a crystal structure's pair vectors.  Hovering a view reads the ΔPDF (and the
+// pair vectors) under the pointer.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -37,7 +37,6 @@ import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
 import { useMarkStore, visibleMarks } from "../state/markStore";
 import { useStructureStore } from "../state/structureStore";
-import { useWorkspaceStore } from "../state/workspaceStore";
 import type { Marker } from "../structure/pairs";
 import { markersNear, usePlaneMarkers, useStructureModel } from "../structure/useStructure";
 import { useGlow } from "../llm/highlight";
@@ -99,7 +98,6 @@ export function DeltaPdfViewer() {
   const setManual = useDpdfStore((s) => s.setLimit);
   const setView = useDpdfStore((s) => s.setView);
   const center = useDpdfStore((s) => s.center);
-  const clickMode = useWorkspaceStore((s) => s.clickMode);
   const [cursor, setCursor] = useState<{ plane: string; p: [number, number] } | null>(null);
 
   const [layout, dispatchLayout] = useWorkspaceLayout("dpdf", ["xy", "xz", "yz"], {
@@ -209,16 +207,6 @@ export function DeltaPdfViewer() {
     meta?.lattice.gamma ?? 90,
   ];
 
-  // Navigate: a click on one view moves the other two cuts through the point.
-  const navigate = (p: (typeof PLANES)[number], slice: Slice | undefined) => (X: number, Y: number) => {
-    const angle = slice?.header.axes_angle ?? 90;
-    const [h, v] = displayToSlice(X, Y, { sx: 1, sy: 1, angle });
-    for (const [a, value] of [[p.h, h], [p.v, v]] as [Ax, number][]) {
-      const r = range[a], n = shape[a];
-      if (r && n) commitAngstrom(r, n, setIdx[a])(value);
-    }
-  };
-
   // The Pilot's ΔPDF marks (state/markStore.ts): each one's section by each
   // view's cut, a one-voxel slab along its cut axis.
   const allMarks = useMarkStore((s) => s.marks);
@@ -263,7 +251,7 @@ export function DeltaPdfViewer() {
         </div>
       </div>
 
-      {/* ── Workspace header (shared order): click mode · unit cells · structure ··· layout, then the display bar ── */}
+      {/* ── Workspace header (shared order): Box zoom (?) · unit cells · structure ··· layout, then the display bar ── */}
       <WorkspaceHeader
         overlays={
           <>
@@ -361,7 +349,6 @@ export function DeltaPdfViewer() {
                   axes={{ sx: 1, sy: 1, xLabel: AX_LABEL[p.h], yLabel: AX_LABEL[p.v], unit: "Å", fovUnit: "Å" }}
                   cursor={cursor?.plane === p.plane ? cursor.p : null}
                   onCursor={(pt) => setCursor(pt ? { plane: p.plane, p: pt } : null)}
-                  onNavigate={navigate(p, r.data)}
                 >
                   <SliceCanvas
                     slice={r.data}
@@ -437,14 +424,11 @@ export function DeltaPdfViewer() {
                       angles={cellAngles}
                     />
                   )}
-                  {clickMode === "navigate" && hits.length === 0 && (
-                    <span className="muted">click to move the other two cuts here</span>
-                  )}
                 </>
               );
             })()
           ) : (
-            <span className="muted">Hover a slice to read the ΔPDF{showStructure ? " and the pair vectors under the pointer" : ""}; in Navigate mode a click moves the other two cuts through the point.</span>
+            <span className="muted">Hover a slice to read the ΔPDF{showStructure ? " and the pair vectors under the pointer" : ""}.</span>
           )}
         </div>
       )}

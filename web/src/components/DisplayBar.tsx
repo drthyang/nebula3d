@@ -1,5 +1,5 @@
 // Display-bar controls shared by the viewer pages, after the NeXus Viewer's
-// workspace header: the click mode (with a "?" that opens the gesture card,
+// workspace header: the Box zoom tool (with a "?" that opens the gesture card,
 // GestureHint.tsx), the colour range around its bar (with the data's histogram behind it
 // and a handle at each limit), the scale, Auto, and a Brightness knob that
 // moves the same vmax in stops about Auto.  DisplayBar puts them together in
@@ -17,53 +17,45 @@ import {
 } from "./colorScale";
 import { GestureHint } from "./GestureHint";
 import type { LevelsModel } from "./useLevels";
-import { AUTO_TITLES, BRIGHTNESS_TITLE, CLICK_MODE_TITLES, SCALE_TITLES } from "./viewerText";
+import { AUTO_TITLES, BOX_ZOOM_TITLE, BRIGHTNESS_TITLE, SCALE_TITLES } from "./viewerText";
 
 /**
- * Navigate (the default) and the one-shot Box zoom tool, shared by every viewer
- * page: armed by its button, one box dragged on a view zooms into it and the
- * views are back in Navigate. A second press, or Esc, disarms it.
+ * The one-shot Box zoom tool, shared by every viewer page, with the "?" that
+ * opens the gesture card beside it: a press arms it, one box dragged on a view
+ * zooms into it and puts the tool away. A second press, or Esc, disarms it.
+ * Disarmed, a click on a view does nothing: hover reads values and draws the
+ * crosshair (ViewFrame).
  */
-export function ClickModeControl() {
+export function BoxZoomTool() {
   const mode = useWorkspaceStore((s) => s.clickMode);
   const setMode = useWorkspaceStore((s) => s.setClickMode);
+  const armed = mode === "box";
   // Esc puts an armed Box zoom away wherever focus is (the button just pressed,
   // most often), before a layout's own Esc; a focused view handles its own
   // (ViewFrame), and an open dialog (the gesture card) keeps Esc for itself.
   useEffect(() => {
-    if (mode !== "box") return;
+    if (!armed) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target instanceof Element ? e.target : null;
       if (e.key !== "Escape" || target?.closest(".vf, [role='dialog']")) return;
       e.preventDefault();
       e.stopPropagation();
-      setMode("navigate");
+      setMode("none");
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [mode, setMode]);
+  }, [armed, setMode]);
   return (
-    <span className="ws-group click-mode">
-      <div className="segmented" role="group" aria-label="Click mode">
-        <button
-          type="button"
-          className={mode === "navigate" ? "on" : ""}
-          title={CLICK_MODE_TITLES.navigate}
-          aria-pressed={mode === "navigate"}
-          onClick={() => setMode("navigate")}
-        >
-          Navigate
-        </button>
-        <button
-          type="button"
-          className={mode === "box" ? "on" : ""}
-          title={CLICK_MODE_TITLES.box}
-          aria-pressed={mode === "box"}
-          onClick={() => setMode(mode === "box" ? "navigate" : "box")}
-        >
-          Box zoom
-        </button>
-      </div>
+    <span className="ws-group box-zoom">
+      <button
+        type="button"
+        className={`ws-tool${armed ? " on" : ""}`}
+        title={BOX_ZOOM_TITLE}
+        aria-pressed={armed}
+        onClick={() => setMode(armed ? "none" : "box")}
+      >
+        Box zoom
+      </button>
       <GestureHint />
     </span>
   );

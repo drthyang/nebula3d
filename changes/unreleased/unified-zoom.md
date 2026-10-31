@@ -1,9 +1,8 @@
 - **One zoom model on every slice view, the same as the NeXus Viewer's.** The
-  click modes are *Navigate* and a one-shot **Box zoom**: press it, drag a box
-  on a view to zoom into it, and the views are back in *Navigate* (Esc or a
-  second press puts it away). The *Zoom* and *Move* modes are gone (zoom and
-  pan work in every mode), no mode is remembered, and a double-click returns
-  to the full view. **Bragg profile:** the selected peak's three tiles zoom and
+  click modes give way to a one-shot **Box zoom**: press it, drag a box on a
+  view to zoom into it, and the tool is put away (Esc or a second press puts
+  it away unused). The *Zoom* and *Move* modes are gone (zoom and pan need no
+  mode), nothing is remembered, and a double-click returns to the full view. **Bragg profile:** the selected peak's three tiles zoom and
   pan as one linked view about the peak (zooming or panning one moves the
   other two through the same hkl point), with ticks, + / −, *Reset view* and
   the shared gestures; the *Zoom* slider is gone. They open at the old default
