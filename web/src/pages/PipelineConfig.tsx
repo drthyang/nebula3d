@@ -22,7 +22,9 @@ import { boxQMax, metricFromUb, reciprocalMetric } from "../components/reciproca
 import { Field, HelpTip, RangeSlider, Switch } from "../components/ui";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { declaresNone, modulationRequest } from "../state/modulation";
+import { useConfigViewStore, type AdvancedStage } from "../state/configViewStore";
 import {
+  STAGE_LABELS,
   STAGE_NO,
   usePipelineStore,
   pipelineBusy,
@@ -33,6 +35,7 @@ import { staleOutputs } from "../api/stale";
 import { useChatStore } from "../llm/chatStore";
 import { useMarkStore } from "../state/markStore";
 import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
+import { advancedFields, changedFields, SECTION_SUMMARY, type SectionStage } from "./configSections";
 
 const DATASET_STAGE_BADGES = [
   { key: "raw", label: "Raw", group: "Input" },
@@ -51,57 +54,79 @@ const FLATTEN_IONS = [
   "Pr3+", "Nd3+", "Gd3+", "Dy3+", "Ho3+", "Er3+", "Tm3+", "Yb3+",
 ];
 
-// One pipeline stage rendered as its own card.  `step` shows the matching
-// stepper number so the tiles read in pipeline order regardless of how the
-// masonry packs them.
-function StageCard({
-  title,
-  step,
-  className = "",
+// One stage's section, the same for every stage: its head (number, title, one
+// plain line, the details behind "?", the Enable stage switch), its settings,
+// and its advanced settings folded away (configSections.ts). Disabling a
+// stage skips it: its input passes through to the next enabled stage.
+function StageSection({
+  stage,
+  enabled,
+  onToggle,
+  glow,
+  help,
+  advanced,
   children,
 }: {
-  title: string;
-  step?: number | string;
-  className?: string;
+  stage: SectionStage;
+  enabled: boolean;
+  onToggle: (b: boolean) => void;
+  glow: boolean; // the agent is on this stage
+  help: ReactNode;
+  advanced?: ReactNode;
   children: ReactNode;
 }) {
+  const id = `cfg-stage-${stage}`;
   return (
-    <section className={`card stage-card ${className}`}>
-      <div className="card-title-row">
-        {step != null && <span className="config-step-no">{step}</span>}
-        <h3>{title}</h3>
-        <span className="card-title-rule" />
+    <section className={`cfg-stage${enabled ? "" : " cfg-stage--off"}${glow ? " ai-glow-within" : ""}`} aria-labelledby={id}>
+      <div className="cfg-stage-head">
+        <span className="cfg-stage-no">{STAGE_NO[stage]}</span>
+        <h4 className="cfg-stage-title" id={id}>
+          {STAGE_LABELS[stage]}
+        </h4>
+        <span className="cfg-stage-summary">{SECTION_SUMMARY[stage]}</span>
+        <span className="cfg-stage-end">
+          <HelpTip>{help}</HelpTip>
+          <span className="cfg-stage-toggle">
+            <Switch label="Enable stage" checked={enabled} onChange={onToggle} />
+          </span>
+        </span>
       </div>
-      <div className="card-body">{children}</div>
+      {children}
+      {advanced}
     </section>
   );
 }
 
-// Floating header for one workflow stage: number chip + title, an optional help
-// bubble, and the per-stage "Enable stage" toggle on the right.  Disabling a
-// stage skips it — its input passes through to the next enabled stage.
-function StageHead({
-  no,
-  title,
-  enabled,
-  onToggle,
-  children,
-}: {
-  no: number | string;
-  title: string;
-  enabled: boolean;
-  onToggle: (b: boolean) => void;
-  children?: ReactNode;
-}) {
+// A box's head inside a stage: its name, its unit, and its details behind "?".
+function BoxHead({ title, unit, help }: { title: string; unit?: string; help?: ReactNode }) {
   return (
-    <div className="cfg-stage-head">
-      <span className="punch-group-no">{no}</span>
-      <span className="punch-group-title">{title}</span>
-      {children}
-      <div className="cfg-stage-toggle">
-        <Switch label="Enable stage" checked={enabled} onChange={onToggle} />
-      </div>
+    <div className="cfg-box-head">
+      <span className="cfg-box-eyebrow">{title}</span>
+      {unit && <span className="cfg-box-unit">{unit}</span>}
+      {help && <HelpTip>{help}</HelpTip>}
     </div>
+  );
+}
+
+// A stage's advanced settings, folded away; the fold is remembered per
+// browser (state/configViewStore.ts) and, closed, counts the settings in it
+// that differ from their defaults, so a change made there (by the agent, a
+// restored session) is not missed.
+function AdvancedFold({ stage, changed, children }: { stage: AdvancedStage; changed: number; children: ReactNode }) {
+  const open = useConfigViewStore((st) => st.advancedOpen.includes(stage));
+  const setOpen = useConfigViewStore((st) => st.setAdvancedOpen);
+  return (
+    <details className="cfg-advanced" open={open} onToggle={(e) => setOpen(stage, e.currentTarget.open)}>
+      <summary>
+        Advanced
+        {changed > 0 && (
+          <span className="cfg-advanced-count" title={`${changed} advanced setting${changed === 1 ? "" : "s"} differ${changed === 1 ? "s" : ""} from the default`}>
+            {changed} changed
+          </span>
+        )}
+      </summary>
+      <div className="cfg-box cfg-advanced-body">{children}</div>
+    </details>
   );
 }
 
@@ -313,6 +338,10 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     })),
   );
   const patch = usePipelineStore((st) => st.patch);
+  // A folded section's count of advanced settings changed from their defaults.
+  const changed = (stage: SectionStage) =>
+    changedFields(s, usePipelineStore.getInitialState(), advancedFields(stage, s)).length;
+  const flattenIsModel = s.flattenEstimator === "" || s.flattenEstimator === "model";
   const run = usePipelineStore((st) => st.run);
 
   const punchFrame = s.punchFrame === "q" ? "q" : "spherical";
@@ -806,259 +835,365 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
         footprintText={`${punchFrame === "spherical" ? "ρ, θ, φ" : "a*, b*, c*"} = ${(punchFrame === "spherical" ? sphRadii : [punchGeom.r0, punchGeom.r1, punchGeom.r2]).join(", ")} Å⁻¹`}
       />
 
-      {/* ------------------------------------------------- per-stage cards */}
-      <div className="config-cards">
-        <StageCard
-          title="3D-ΔPDF Workflow"
-          className="stage-card-wide punch-stage-card"
-        >
-          <div className="punch-workspace">
-            <div className="punch-controls">
-              <div className={`cfg-stage${s.ringsEnabled ? "" : " cfg-stage--off"}${lit.includes("rings") ? " ai-glow-within" : ""}`}>
-                <StageHead
-                  no={STAGE_NO.rings}
-                  title="Ring removal"
-                  enabled={s.ringsEnabled}
-                  onToggle={(v) => patch({ ringsEnabled: v })}
-                >
-                  <HelpTip>
-                    Pooled reads each ring's radial profile in small solid-angle
-                    cells — azimuthal sectors pooled across neighbouring planes —
-                    so it follows rings whose |Q| position and width wander with
-                    direction. Global 3D infers powder shells with a fixed line
-                    shape and a spherical-harmonic texture. The per-plane patched
-                    and parametric models remain available for comparison.
-                  </HelpTip>
-                </StageHead>
-                <div className="cfg-stage-grid">
-                  <div className="cfg-box">
-                  <div className="ring-removal-controls">
-                    <Field label="Model">
+      {/* ------------------------------------------------ stage sections */}
+      <section className="card cfg-workflow" aria-labelledby="cfg-workflow-title">
+        <div className="card-title-row">
+          <h3 id="cfg-workflow-title">3D-ΔPDF Workflow</h3>
+          <span className="cfg-card-summary">The five stages, in the order they run</span>
+          <span className="card-title-rule" />
+        </div>
+        <div className="cfg-stages">
+          <StageSection
+            stage="rings"
+            enabled={s.ringsEnabled}
+            onToggle={(v) => patch({ ringsEnabled: v })}
+            glow={lit.includes("rings")}
+            help={
+              <>
+                Pooled reads each ring&apos;s radial profile in small solid-angle cells — azimuthal sectors pooled
+                across neighbouring planes — so it follows rings whose |Q| position and width wander with direction.
+                Global 3D infers powder shells with a fixed line shape and a spherical-harmonic texture. The per-plane
+                patched and parametric models remain available for comparison.
+              </>
+            }
+            advanced={
+              <AdvancedFold stage="rings" changed={changed("rings")}>
+                <div className="cfg-fields">
+                  {s.ringModel !== "global_v2" && (
+                    <Field label="Slice axis">
                       <select
-                        value={s.ringModel}
-                        title="Pooled: per-sector radial profiles pooled across neighbouring planes (follows rings whose radius wanders with direction). Global 3D: sample-only spherical-shell inference with uncertainty. Patched/parametric: legacy plane-by-plane models."
-                        onChange={(e) => patch({ ringModel: e.target.value })}
+                        value={s.ringSliceAxis}
+                        title="Stack axis: the planes the per-plane models fit one by one, and that the pooled model pools across"
+                        onChange={(e) => patch({ ringSliceAxis: e.target.value })}
                       >
-                        <option value="pooled">Pooled 3D sectors</option>
-                        <option value="global_v2">Global 3D (sample-only)</option>
-                        <option value="patched">Patched (per-patch)</option>
-                        <option value="parametric">Parametric (pseudo-Voigt)</option>
+                        <option value="H">H · fit 0kl planes</option>
+                        <option value="K">K · fit h0l planes</option>
+                        <option value="L">L · fit hk0 planes</option>
                       </select>
                     </Field>
-                    {s.ringModel !== "global_v2" && (
-                      <Field label="Slice axis">
-                        <select
-                          value={s.ringSliceAxis}
-                          title="Stack axis: the planes the per-plane models fit one by one, and that the pooled model pools across"
-                          onChange={(e) => patch({ ringSliceAxis: e.target.value })}
-                        >
-                          <option value="H">H · fit 0kl planes</option>
-                          <option value="K">K · fit h0l planes</option>
-                          <option value="L">L · fit hk0 planes</option>
-                        </select>
-                      </Field>
-                    )}
-                    {s.ringModel === "global_v2" && (
-                      <>
-                        <Field label="Material prior">
-                          <select
-                            value={s.ringGlobalMaterial}
-                            title="Auto keeps supported powder shells and labels Al matches. Aluminum keeps only FCC-Al-matched shells. Generic uses no material prior."
-                            onChange={(e) => patch({ ringGlobalMaterial: e.target.value })}
-                          >
-                            <option value="auto">Auto · Al + generic</option>
-                            <option value="aluminum">Aluminum FCC only</option>
-                            <option value="generic">Material agnostic</option>
-                          </select>
-                        </Field>
-                        <Field label="Subtraction">
-                          <select
-                            value={s.ringGlobalSubtraction}
-                            title="Conservative subtracts the lower confidence bound; Mean subtracts the fitted mean; Diagnose only leaves intensity unchanged."
-                            onChange={(e) => patch({ ringGlobalSubtraction: e.target.value })}
-                          >
-                            <option value="conservative">Conservative</option>
-                            <option value="mean">Fitted mean</option>
-                            <option value="diagnose_only">Diagnose only</option>
-                          </select>
-                        </Field>
-                        <Field label="Confidence z">
-                          <input
-                            type="number" min="0" step="0.25"
-                            value={s.ringGlobalConfidence}
-                            title="Conservative subtraction removes max(mean − z·sigma, 0). Higher retains more uncertain intensity."
-                            onChange={(e) => patch({ ringGlobalConfidence: e.target.value })}
-                          />
-                        </Field>
-                        <Field label="Angular degree">
-                          <input
-                            type="number" min="0" max="8" step="1"
-                            value={s.ringGlobalLmax}
-                            title="Maximum real-spherical-harmonic degree for the full 3D shell texture."
-                            onChange={(e) => patch({ ringGlobalLmax: e.target.value })}
-                          />
-                        </Field>
-                        <Field label="Minimum SNR">
-                          <input
-                            type="number" min="0" step="0.5"
-                            value={s.ringGlobalMinSnr}
-                            title="Minimum global radial-profile signal-to-noise ratio required to fit a shell."
-                            onChange={(e) => patch({ ringGlobalMinSnr: e.target.value })}
-                          />
-                        </Field>
-                        <Field label="Max FWHM (Å⁻¹)">
-                          <input
-                            type="number" min="0.02" step="0.02" placeholder="0.24"
-                            value={s.ringWidth}
-                            title="Broader radial features are retained as possible sample diffuse scattering."
-                            onChange={(e) => patch({ ringWidth: e.target.value })}
-                          />
-                        </Field>
-                      </>
-                    )}
-                    {s.ringModel === "pooled" && (
-                      <>
-                        <Field label="Sectors (n)">
-                          <input
-                            type="number"
-                            min="8"
-                            step="1"
-                            placeholder="72"
-                            value={s.ringPooledSectors}
-                            title="Azimuthal sectors each plane's radial profiles are read in (72 = 5° each)"
-                            onChange={(e) => patch({ ringPooledSectors: e.target.value })}
-                          />
-                        </Field>
-                        <Field label="Stack window (°)">
-                          <input
-                            type="number"
-                            min="0.5"
-                            step="0.5"
-                            placeholder="5"
-                            value={s.ringPooledWindow}
-                            title="Half-width, as an angle on the ring sphere, of the neighbouring planes pooled with each plane (the plane window widens with |Q|)"
-                            onChange={(e) => patch({ ringPooledWindow: e.target.value })}
-                          />
-                        </Field>
-                      </>
-                    )}
-                    {s.ringModel === "parametric" && (
-                      <>
-                        <Field label="Radial mode">
-                          <select
-                            value={s.ringRadialMode}
-                            title="Rolling: a thick window swept Qmin→Qmax fits a continuous Ring(|Q|) × per-shell texture (no discrete peaks; thicker = smoother). Peaks: detect discrete rings and fit a pseudo-Voigt each."
-                            onChange={(e) => patch({ ringRadialMode: e.target.value })}
-                          >
-                            <option value="rolling">Rolling (continuous)</option>
-                            <option value="peaks">Peaks (pseudo-Voigt)</option>
-                          </select>
-                        </Field>
-                        <Field
-                          label={s.ringRadialMode === "rolling" ? "Window (Å⁻¹)" : "Ring width (Å⁻¹)"}
-                        >
-                          <input
-                            type="number"
-                            min="0.02"
-                            step="0.02"
-                            placeholder="0.24"
-                            value={s.ringWidth}
-                            title={
-                              s.ringRadialMode === "rolling"
-                                ? "Rolling-window half-width in |Q| (Å⁻¹). Thicker = more azimuthal voxels per shell = smoother texture."
-                                : "Max powder-ring full width / SNIP baseline window in |Q| (Å⁻¹). Broader features are kept as diffuse."
-                            }
-                            onChange={(e) => patch({ ringWidth: e.target.value })}
-                          />
-                        </Field>
-                      </>
-                    )}
-                    {s.ringModel === "patched" && (
-                      <Field label="Patches (n)">
+                  )}
+                  {s.ringModel === "pooled" && (
+                    <>
+                      <Field label="Sectors (n)">
                         <input
                           type="number"
-                          min="4"
+                          min="8"
                           step="1"
-                          placeholder="36"
-                          value={s.ringNPatches}
-                          title="Number of azimuthal patches the powder rings are divided into"
-                          onChange={(e) => patch({ ringNPatches: e.target.value })}
+                          placeholder="72"
+                          value={s.ringPooledSectors}
+                          title="Azimuthal sectors each plane's radial profiles are read in (72 = 5° each)"
+                          onChange={(e) => patch({ ringPooledSectors: e.target.value })}
                         />
                       </Field>
-                    )}
-                    {(s.ringModel === "patched" || s.ringModel === "parametric") && (
-                      <Field label="Fourier order">
+                      <Field label="Stack window (°)">
+                        <input
+                          type="number"
+                          min="0.5"
+                          step="0.5"
+                          placeholder="5"
+                          value={s.ringPooledWindow}
+                          title="Half-width, as an angle on the ring sphere, of the neighbouring planes pooled with each plane (the plane window widens with |Q|)"
+                          onChange={(e) => patch({ ringPooledWindow: e.target.value })}
+                        />
+                      </Field>
+                    </>
+                  )}
+                  {s.ringModel === "global_v2" && (
+                    <>
+                      <Field label="Confidence z">
                         <input
                           type="number"
                           min="0"
-                          step="1"
-                          placeholder="8"
-                          value={s.ringNFourier}
-                          title="Fourier order of the legacy azimuthal texture T(φ)"
-                          onChange={(e) => patch({ ringNFourier: e.target.value })}
+                          step="0.25"
+                          value={s.ringGlobalConfidence}
+                          title="Conservative subtraction removes max(mean − z·sigma, 0). Higher retains more uncertain intensity."
+                          onChange={(e) => patch({ ringGlobalConfidence: e.target.value })}
                         />
                       </Field>
-                    )}
+                      <Field label="Angular degree">
+                        <input
+                          type="number"
+                          min="0"
+                          max="8"
+                          step="1"
+                          value={s.ringGlobalLmax}
+                          title="Maximum real-spherical-harmonic degree for the full 3D shell texture."
+                          onChange={(e) => patch({ ringGlobalLmax: e.target.value })}
+                        />
+                      </Field>
+                      <Field label="Minimum SNR">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={s.ringGlobalMinSnr}
+                          title="Minimum global radial-profile signal-to-noise ratio required to fit a shell."
+                          onChange={(e) => patch({ ringGlobalMinSnr: e.target.value })}
+                        />
+                      </Field>
+                      <Field label="Max FWHM (Å⁻¹)">
+                        <input
+                          type="number"
+                          min="0.02"
+                          step="0.02"
+                          placeholder="0.24"
+                          value={s.ringWidth}
+                          title="Broader radial features are retained as possible sample diffuse scattering."
+                          onChange={(e) => patch({ ringWidth: e.target.value })}
+                        />
+                      </Field>
+                    </>
+                  )}
+                  {s.ringModel === "parametric" && (
+                    <Field label={s.ringRadialMode === "rolling" ? "Window (Å⁻¹)" : "Ring width (Å⁻¹)"}>
+                      <input
+                        type="number"
+                        min="0.02"
+                        step="0.02"
+                        placeholder="0.24"
+                        value={s.ringWidth}
+                        title={
+                          s.ringRadialMode === "rolling"
+                            ? "Rolling-window half-width in |Q| (Å⁻¹). Thicker = more azimuthal voxels per shell = smoother texture."
+                            : "Max powder-ring full width / SNIP baseline window in |Q| (Å⁻¹). Broader features are kept as diffuse."
+                        }
+                        onChange={(e) => patch({ ringWidth: e.target.value })}
+                      />
+                    </Field>
+                  )}
+                  {s.ringModel === "patched" && (
+                    <Field label="Patches (n)">
+                      <input
+                        type="number"
+                        min="4"
+                        step="1"
+                        placeholder="36"
+                        value={s.ringNPatches}
+                        title="Number of azimuthal patches the powder rings are divided into"
+                        onChange={(e) => patch({ ringNPatches: e.target.value })}
+                      />
+                    </Field>
+                  )}
+                  {(s.ringModel === "patched" || s.ringModel === "parametric") && (
+                    <Field label="Fourier order">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="8"
+                        value={s.ringNFourier}
+                        title="Fourier order of the legacy azimuthal texture T(φ)"
+                        onChange={(e) => patch({ ringNFourier: e.target.value })}
+                      />
+                    </Field>
+                  )}
+                </div>
+              </AdvancedFold>
+            }
+          >
+            <div className="cfg-box">
+              <div className="cfg-fields">
+                <Field label="Model">
+                  <select
+                    value={s.ringModel}
+                    title="Pooled: per-sector radial profiles pooled across neighbouring planes (follows rings whose radius wanders with direction). Global 3D: sample-only spherical-shell inference with uncertainty. Patched/parametric: legacy plane-by-plane models."
+                    onChange={(e) => patch({ ringModel: e.target.value })}
+                  >
+                    <option value="pooled">Pooled 3D sectors</option>
+                    <option value="global_v2">Global 3D (sample-only)</option>
+                    <option value="patched">Patched (per-patch)</option>
+                    <option value="parametric">Parametric (pseudo-Voigt)</option>
+                  </select>
+                </Field>
+                {s.ringModel === "global_v2" && (
+                  <>
+                    <Field label="Material prior">
+                      <select
+                        value={s.ringGlobalMaterial}
+                        title="Auto keeps supported powder shells and labels Al matches. Aluminum keeps only FCC-Al-matched shells. Generic uses no material prior."
+                        onChange={(e) => patch({ ringGlobalMaterial: e.target.value })}
+                      >
+                        <option value="auto">Auto · Al + generic</option>
+                        <option value="aluminum">Aluminum FCC only</option>
+                        <option value="generic">Material agnostic</option>
+                      </select>
+                    </Field>
+                    <Field label="Subtraction">
+                      <select
+                        value={s.ringGlobalSubtraction}
+                        title="Conservative subtracts the lower confidence bound; Mean subtracts the fitted mean; Diagnose only leaves intensity unchanged."
+                        onChange={(e) => patch({ ringGlobalSubtraction: e.target.value })}
+                      >
+                        <option value="conservative">Conservative</option>
+                        <option value="mean">Fitted mean</option>
+                        <option value="diagnose_only">Diagnose only</option>
+                      </select>
+                    </Field>
+                  </>
+                )}
+                {s.ringModel === "parametric" && (
+                  <Field label="Radial mode">
+                    <select
+                      value={s.ringRadialMode}
+                      title="Rolling: a thick window swept Qmin→Qmax fits a continuous Ring(|Q|) × per-shell texture (no discrete peaks; thicker = smoother). Peaks: detect discrete rings and fit a pseudo-Voigt each."
+                      onChange={(e) => patch({ ringRadialMode: e.target.value })}
+                    >
+                      <option value="rolling">Rolling (continuous)</option>
+                      <option value="peaks">Peaks (pseudo-Voigt)</option>
+                    </select>
+                  </Field>
+                )}
+              </div>
+            </div>
+          </StageSection>
+
+          <StageSection
+            stage="punch"
+            enabled={s.punchEnabled}
+            onToggle={(v) => patch({ punchEnabled: v })}
+            glow={lit.includes("punch")}
+            help={
+              <>
+                Each Bragg peak and the direct beam are cut out before the transform. Footprint: how far each peak is
+                punched; Min σ: the significance a peak must reach; Mode: integer nodes, the |Q|-shell search off the
+                lattice, or both. The preview above draws the footprints over the data.
+              </>
+            }
+            advanced={
+              <AdvancedFold stage="punch" changed={changed("punch")}>
+                <div className="cfg-fields">
+                  <Field label="Profile reach ×σ">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      placeholder="0.5"
+                      value={s.punchProfileNSigma}
+                      disabled={s.punchFootprint === "ellipsoid"}
+                      title="Own-width and profile-matched footprints: each peak is punched out to where its tail falls to this × the local noise. Lower reaches further down the wings of very strong peaks; higher punches tighter."
+                      onChange={(e) => patch({ punchProfileNSigma: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="H guard (r.l.u.)">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.12"
+                      value={s.punchHGuard}
+                      title="Integer punches stop this far from their node's H plane, so satellite planes at fractional H (e.g. H = ±1/3) stay unpunched. 0 turns the guard off."
+                      onChange={(e) => patch({ punchHGuard: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Search floor ×σ">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="27"
+                      value={s.punchSearchFloor}
+                      title="Off-lattice search: a peak must stand this many diffuse-scatter units above its shell and its neighbourhood. Lower catches weaker spurious peaks, and risks punching diffuse maxima."
+                      onChange={(e) => patch({ punchSearchFloor: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Search width ×Bragg">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1"
+                      placeholder="off"
+                      value={s.punchSearchMaxWidth}
+                      title="Off-lattice search: leave a candidate broader than this × the dataset's Bragg width (along any axis) as diffuse — a short-range-order maximum, not a spurious reflection. Spurious peaks are as sharp as Bragg peaks; 2 keeps them punched. Blank punches every candidate."
+                      onChange={(e) => patch({ punchSearchMaxWidth: e.target.value })}
+                    />
+                  </Field>
+                  <div className="switch-row">
+                    <Switch
+                      label="Drop fit constraints"
+                      checked={s.punchFitUnconstrained}
+                      onChange={(v) => patch({ punchFitUnconstrained: v })}
+                    />
+                    <HelpTip>
+                      Each integer Bragg peak&apos;s ellipsoid, tilt included, is fitted from its measured shape in Q.
+                      It always contains the resolution ellipsoid (the Bragg footprint) and is capped at a few times
+                      it. This switch drops both limits: useful for profile diagnostics, but it can create unstable
+                      punch masks on weak or noisy peaks.
+                    </HelpTip>
                   </div>
+                  <div className="switch-row">
+                    <Switch
+                      label="Fit the direct-beam ellipsoid"
+                      checked={s.incidentBeamFitCovariance}
+                      onChange={(v) => patch({ incidentBeamFitCovariance: v })}
+                    />
+                    <HelpTip>
+                      Fit a tilted ellipsoid to the direct-beam remnant at the origin during punching (analogue of the
+                      Bragg footprint fit), floored at the direct-beam radii so it only follows or expands the real
+                      beam shape. The preview shows the UB-derived floor; the fitted tilt is best checked in the
+                      punched slices.
+                    </HelpTip>
                   </div>
+                </div>
+              </AdvancedFold>
+            }
+          >
+            <div className="cfg-stage-grid">
+              <div className="cfg-box">
+                <BoxHead title="Detection" />
+                <div className="cfg-fields">
+                  <Field label="Footprint">
+                    <select
+                      value={s.punchFootprint}
+                      title="How far each peak is punched. Own width (default): each peak to its own measured width, as far as that peak stays above the noise, so a sharp spike on a broad maximum takes a small punch. Profile-matched: every peak shares the dataset's learned Bragg profile (a consistent width), punched as far as it stays above the noise. Ellipsoid: the fixed resolution ellipsoid below, scaled with intensity."
+                      onChange={(e) => patch({ punchFootprint: e.target.value })}
+                    >
+                      <option value="">Own width (default)</option>
+                      <option value="profile">Profile-matched (shared width)</option>
+                      <option value="ellipsoid">Ellipsoid</option>
+                    </select>
+                  </Field>
+                  <Field label="Min σ">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      placeholder="5"
+                      value={s.punchMinSig}
+                      title={
+                        "Significance a peak must reach, in standard errors of its " +
+                        "excess over its own background. Integer nodes are judged by " +
+                        "this alone, so it means the same for data of any intensity " +
+                        "scale (X-ray rates, neutron counts)."
+                      }
+                      onChange={(e) => patch({ punchMinSig: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Mode">
+                    <select
+                      value={s.punchMode}
+                      title="Which peaks to punch: integer (the lattice nodes), search (off-lattice peaks found in |Q| shells) or both"
+                      onChange={(e) => patch({ punchMode: e.target.value })}
+                    >
+                      <option value="">both (default)</option>
+                      <option value="integer">integer</option>
+                      <option value="search">search</option>
+                      <option value="both">both</option>
+                    </select>
+                  </Field>
                 </div>
               </div>
 
-              <div className={`cfg-stage${s.punchEnabled ? "" : " cfg-stage--off"}${lit.includes("punch") ? " ai-glow-within" : ""}`}>
-                <StageHead
-                  no={STAGE_NO.punch}
-                  title="Punch"
-                  enabled={s.punchEnabled}
-                  onToggle={(v) => patch({ punchEnabled: v })}
-                >
-                  <HelpTip>
-                    Detection method, the significance a peak must reach, and
-                    which peaks to punch — integer nodes, |Q|-shell search, or both.
-                  </HelpTip>
-                </StageHead>
-                <div className="cfg-stage-grid">
-                  <div className="cfg-box">
-                    <span className="cfg-box-eyebrow">Detection</span>
-                <div className="config-grid-3 punch-basis">
-                  <Field label="Footprint">
-                  <select
-                    value={s.punchFootprint}
-                    title="How far each peak is punched. Own width (default): each peak to its own measured width, as far as that peak stays above the noise, so a sharp spike on a broad maximum takes a small punch. Profile-matched: every peak shares the dataset's learned Bragg profile (a consistent width), punched as far as it stays above the noise. Ellipsoid: the fixed resolution ellipsoid below, scaled with intensity."
-                    onChange={(e) => patch({ punchFootprint: e.target.value })}
-                  >
-                    <option value="">Own width (default)</option>
-                    <option value="profile">Profile-matched (shared width)</option>
-                    <option value="ellipsoid">Ellipsoid</option>
-                  </select>
-                </Field>
-                <Field label="Min σ">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0.5"
-                    placeholder="5"
-                    value={s.punchMinSig}
-                    title={
-                      "Significance a peak must reach, in standard errors of its " +
-                      "excess over its own background. Integer nodes are judged by " +
-                      "this alone, so it means the same for data of any intensity " +
-                      "scale (X-ray rates, neutron counts)."
-                    }
-                    onChange={(e) => patch({ punchMinSig: e.target.value })}
-                  />
-                </Field>
-                <Field label="Mode">
-                  <select
-                    value={s.punchMode}
-                    onChange={(e) => patch({ punchMode: e.target.value })}
-                  >
-                    <option value="">both (default)</option>
-                    <option value="integer">integer</option>
-                    <option value="search">search</option>
-                    <option value="both">both</option>
-                  </select>
-                </Field>
-                </div>
+              <div className="cfg-box">
+                <BoxHead
+                  title="Sample"
+                  help={
+                    <>
+                      Facts about the crystal, yours to declare: the supercell the volume is indexed on (Bragg nodes
+                      are then the parent lattice&apos;s only), and its modulation, whose satellites G ± m·k the
+                      off-lattice search leaves alone.
+                    </>
+                  }
+                />
                 <div className="config-grid-3">
                   <Field label="Supercell H">
                     <input
@@ -1094,40 +1229,16 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     />
                   </Field>
                 </div>
-                <div className="config-grid">
-                  <Field label="H guard (r.l.u.)">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.12"
-                      value={s.punchHGuard}
-                      title="Integer punches stop this far from their node's H plane, so satellite planes at fractional H (e.g. H = ±1/3) stay unpunched. 0 turns the guard off."
-                      onChange={(e) => patch({ punchHGuard: e.target.value })}
-                    />
-                  </Field>
-                </div>
+                <Field label="Modulation k (r.l.u.)">
+                  <input
+                    type="text"
+                    placeholder="default"
+                    value={s.modulationK}
+                    title="The sample's modulation, a fact about the sample: its wave vector k in r.l.u., e.g. 1/3, 0, 0 (several separated by ;). The off-lattice search leaves its satellites G ± m·k alone, at every symmetry-equivalent position. 'none' declares none; blank leaves the backend's default."
+                    onChange={(e) => patch({ modulationK: e.target.value })}
+                  />
+                </Field>
                 <div className="config-grid-3">
-                  <Field label="Search floor ×σ">
-                    <input
-                      type="number"
-                      step="1"
-                      min="1"
-                      placeholder="27"
-                      value={s.punchSearchFloor}
-                      title="Off-lattice search: a peak must stand this many diffuse-scatter units above its shell and its neighbourhood. Lower catches weaker spurious peaks, and risks punching diffuse maxima."
-                      onChange={(e) => patch({ punchSearchFloor: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Modulation k (r.l.u.)">
-                    <input
-                      type="text"
-                      placeholder="default"
-                      value={s.modulationK}
-                      title="The sample's modulation, a fact about the sample: its wave vector k in r.l.u., e.g. 1/3, 0, 0 (several separated by ;). The off-lattice search leaves its satellites G ± m·k alone, at every symmetry-equivalent position. 'none' declares none; blank leaves the backend's default."
-                      onChange={(e) => patch({ modulationK: e.target.value })}
-                    />
-                  </Field>
                   <Field label="Form">
                     <select
                       value={s.modulationForm === "planes" ? "planes" : ""}
@@ -1139,8 +1250,6 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       <option value="planes">planes</option>
                     </select>
                   </Field>
-                </div>
-                <div className="config-grid-3">
                   <Field label="Order m">
                     <input
                       type="number"
@@ -1168,133 +1277,106 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </Field>
                 </div>
                 <p className="config-note">{modulationNote}</p>
-                <div className="config-grid-3">
-                  <Field label="Search width ×Bragg">
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="1"
-                      placeholder="off"
-                      value={s.punchSearchMaxWidth}
-                      title="Off-lattice search: leave a candidate broader than this × the dataset's Bragg width (along any axis) as diffuse — a short-range-order maximum, not a spurious reflection. Spurious peaks are as sharp as Bragg peaks; 2 keeps them punched. Blank punches every candidate."
-                      onChange={(e) => patch({ punchSearchMaxWidth: e.target.value })}
-                    />
-                  </Field>
-                  <Field label="Profile reach ×σ">
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      placeholder="0.5"
-                      value={s.punchProfileNSigma}
-                      disabled={s.punchFootprint === "ellipsoid"}
-                      title="Own-width and profile-matched footprints: each peak is punched out to where its tail falls to this × the local noise. Lower reaches further down the wings of very strong peaks; higher punches tighter."
-                      onChange={(e) => patch({ punchProfileNSigma: e.target.value })}
-                    />
-                  </Field>
-                </div>
-                  </div>
-                  <div className="cfg-box">
-                    <div className="cfg-box-head">
-                      <span className="cfg-box-eyebrow cfg-box-eyebrow--sub">Bragg footprint</span>
-                      <span className="punch-group-unit">Å⁻¹</span>
-                      <HelpTip>
-                        Punch ellipsoid radii in Q-space. <b>Spherical</b> (default)
-                        sets axes in the local spherical frame at each peak —
-                        r<sub>ρ</sub> radial (along Q̂), r<sub>θ</sub> polar,
-                        r<sub>φ</sub> azimuth (c* pole). <b>Reciprocal</b> uses fixed
-                        a*, b*, c* axes. This is the resolution ellipsoid: the
-                        smallest punch, and the whole punch for peaks without a
-                        fit. Blank fields use the validated defaults
-                        (0.097, 0.072, 0.115).
-                      </HelpTip>
-                    </div>
-                <div className="config-grid">
-                  <Field label="Frame">
-                    <select
-                      value={s.punchFrame || "spherical"}
-                      title="Punch ellipsoid axis frame"
-                      onChange={(e) => patch({ punchFrame: e.target.value })}
-                    >
-                      <option value="spherical">spherical (ρ, θ, φ)</option>
-                      <option value="q">reciprocal (a*, b*, c*)</option>
-                    </select>
-                  </Field>
-                </div>
+              </div>
+
+              <div className="cfg-box">
+                <BoxHead
+                  title="Bragg footprint"
+                  unit="Å⁻¹"
+                  help={
+                    <>
+                      Punch ellipsoid radii in Q-space. <b>Spherical</b> (default) sets axes in the local spherical
+                      frame at each peak — r<sub>ρ</sub> radial (along Q̂), r<sub>θ</sub> polar, r<sub>φ</sub> azimuth
+                      (c* pole). <b>Reciprocal</b> uses fixed a*, b*, c* axes. This is the resolution ellipsoid: the
+                      smallest punch, and the whole punch for peaks without a fit. Blank fields use the validated
+                      defaults (0.097, 0.072, 0.115).
+                    </>
+                  }
+                />
+                <Field label="Frame">
+                  <select
+                    value={s.punchFrame || "spherical"}
+                    title="Punch ellipsoid axis frame"
+                    onChange={(e) => patch({ punchFrame: e.target.value })}
+                  >
+                    <option value="spherical">spherical (ρ, θ, φ)</option>
+                    <option value="q">reciprocal (a*, b*, c*)</option>
+                  </select>
+                </Field>
                 {(s.punchFrame || "spherical") === "spherical" ? (
-                <div className="config-grid-3">
-                  <Field label={<>r<sub>ρ</sub></>}>
-                    <input
-                      type="number"
-                      step="0.005"
-                      min="0"
-                      placeholder="0.097"
-                      value={s.punchRho}
-                      title="Punch half-radius along the radial direction Q̂ (Å⁻¹)"
-                      onChange={(e) => patch({ punchRho: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={<>r<sub>θ</sub></>}>
-                    <input
-                      type="number"
-                      step="0.005"
-                      min="0"
-                      placeholder="0.072"
-                      value={s.punchTheta}
-                      title="Punch half-radius along the polar tangent (Å⁻¹)"
-                      onChange={(e) => patch({ punchTheta: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={<>r<sub>φ</sub></>}>
-                    <input
-                      type="number"
-                      step="0.005"
-                      min="0"
-                      placeholder="0.115"
-                      value={s.punchPhi}
-                      title="Punch half-radius along the azimuthal (a*–b* ring) tangent (Å⁻¹)"
-                      onChange={(e) => patch({ punchPhi: e.target.value })}
-                    />
-                  </Field>
-                </div>
+                  <div className="config-grid-3">
+                    <Field label={<>r<sub>ρ</sub></>}>
+                      <input
+                        type="number"
+                        step="0.005"
+                        min="0"
+                        placeholder="0.097"
+                        value={s.punchRho}
+                        title="Punch half-radius along the radial direction Q̂ (Å⁻¹)"
+                        onChange={(e) => patch({ punchRho: e.target.value })}
+                      />
+                    </Field>
+                    <Field label={<>r<sub>θ</sub></>}>
+                      <input
+                        type="number"
+                        step="0.005"
+                        min="0"
+                        placeholder="0.072"
+                        value={s.punchTheta}
+                        title="Punch half-radius along the polar tangent (Å⁻¹)"
+                        onChange={(e) => patch({ punchTheta: e.target.value })}
+                      />
+                    </Field>
+                    <Field label={<>r<sub>φ</sub></>}>
+                      <input
+                        type="number"
+                        step="0.005"
+                        min="0"
+                        placeholder="0.115"
+                        value={s.punchPhi}
+                        title="Punch half-radius along the azimuthal (a*–b* ring) tangent (Å⁻¹)"
+                        onChange={(e) => patch({ punchPhi: e.target.value })}
+                      />
+                    </Field>
+                  </div>
                 ) : (
-                <div className="config-grid-3">
-                  <Field label={<>r<sub>a*</sub></>}>
-                    <input
-                      type="number"
-                      step="0.005"
-                      min="0"
-                      placeholder="0.097"
-                      value={s.punchQA}
-                      title="Punch half-radius along a* (Å⁻¹)"
-                      onChange={(e) => patch({ punchQA: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={<>r<sub>b*</sub></>}>
-                    <input
-                      type="number"
-                      step="0.005"
-                      min="0"
-                      placeholder="0.072"
-                      value={s.punchQB}
-                      title="Punch half-radius along b* (Å⁻¹)"
-                      onChange={(e) => patch({ punchQB: e.target.value })}
-                    />
-                  </Field>
-                  <Field label={<>r<sub>c*</sub></>}>
-                    <input
-                      type="number"
-                      step="0.005"
-                      min="0"
-                      placeholder="0.115"
-                      value={s.punchQC}
-                      title="Punch half-radius along c* (Å⁻¹)"
-                      onChange={(e) => patch({ punchQC: e.target.value })}
-                    />
-                  </Field>
-                </div>
+                  <div className="config-grid-3">
+                    <Field label={<>r<sub>a*</sub></>}>
+                      <input
+                        type="number"
+                        step="0.005"
+                        min="0"
+                        placeholder="0.097"
+                        value={s.punchQA}
+                        title="Punch half-radius along a* (Å⁻¹)"
+                        onChange={(e) => patch({ punchQA: e.target.value })}
+                      />
+                    </Field>
+                    <Field label={<>r<sub>b*</sub></>}>
+                      <input
+                        type="number"
+                        step="0.005"
+                        min="0"
+                        placeholder="0.072"
+                        value={s.punchQB}
+                        title="Punch half-radius along b* (Å⁻¹)"
+                        onChange={(e) => patch({ punchQB: e.target.value })}
+                      />
+                    </Field>
+                    <Field label={<>r<sub>c*</sub></>}>
+                      <input
+                        type="number"
+                        step="0.005"
+                        min="0"
+                        placeholder="0.115"
+                        value={s.punchQC}
+                        title="Punch half-radius along c* (Å⁻¹)"
+                        onChange={(e) => patch({ punchQC: e.target.value })}
+                      />
+                    </Field>
+                  </div>
                 )}
-                <div className="config-grid">
+                <div className="config-grid-3">
                   <Field label="Margin">
                     <input
                       type="number"
@@ -1307,31 +1389,19 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     />
                   </Field>
                 </div>
-                <div className="switch-row">
-                  <Switch
-                    label="Drop fit constraints"
-                    checked={s.punchFitUnconstrained}
-                    onChange={(v) => patch({ punchFitUnconstrained: v })}
-                  />
-                  <HelpTip>
-                    Each integer Bragg peak's ellipsoid, tilt included, is fitted
-                    from its measured shape in Q. It always contains the resolution
-                    ellipsoid above (the preview) and is capped at a few times it.
-                    This switch drops both limits: useful for profile diagnostics,
-                    but it can create unstable punch masks on weak or noisy peaks.
-                  </HelpTip>
-                </div>
-                  </div>
-                  <div className="cfg-box">
-                    <div className="cfg-box-head">
-                      <span className="cfg-box-eyebrow cfg-box-eyebrow--sub">Direct beam</span>
-                      <span className="punch-group-unit">Å⁻¹</span>
-                      <HelpTip>
-                        Origin-centered incident/direct-beam ellipsoid in Q-space,
-                        using half-radii along a*, b*, c*. The backend converts these
-                        through UB, matching the Bragg footprint geometry.
-                      </HelpTip>
-                    </div>
+              </div>
+
+              <div className="cfg-box">
+                <BoxHead
+                  title="Direct beam"
+                  unit="Å⁻¹"
+                  help={
+                    <>
+                      Origin-centred incident/direct-beam ellipsoid in Q-space, using half-radii along a*, b*, c*. The
+                      backend converts these through UB, matching the Bragg footprint geometry.
+                    </>
+                  }
+                />
                 <div className="config-grid-3">
                   <Field label={<>r<sub>a*</sub></>}>
                     <input
@@ -1367,7 +1437,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     />
                   </Field>
                 </div>
-                <div className="config-grid">
+                <div className="config-grid-3">
                   <Field label="Margin">
                     <input
                       type="number"
@@ -1380,228 +1450,213 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     />
                   </Field>
                 </div>
-                <div className="switch-row">
-                  <Switch
-                    label="Fit ellipsoid (covariance)"
-                    checked={s.incidentBeamFitCovariance}
-                    onChange={(v) => patch({ incidentBeamFitCovariance: v })}
-                  />
-                  <HelpTip>
-                    Fit a tilted ellipsoid to the direct-beam remnant at the origin
-                    during punching (analogue of the Bragg footprint fit), floored at
-                    the radii above so it only follows/expands the real beam shape.
-                    The preview shows the UB-derived floor; the fitted tilt is best
-                    checked in the punched slices.
-                  </HelpTip>
-                </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="cfg-stage-row">
-                <div className={`cfg-stage${s.backfillEnabled ? "" : " cfg-stage--off"}${lit.includes("backfill") ? " ai-glow-within" : ""}`}>
-                  <StageHead
-                    no={STAGE_NO.backfill}
-                    title="Backfill"
-                    enabled={s.backfillEnabled}
-                    onToggle={(v) => patch({ backfillEnabled: v })}
-                  >
-                    <HelpTip>
-                      How punched Bragg / direct-beam holes are filled before the
-                      transform, always from the diffuse around each hole.
-                      laplace (default) interpolates it smoothly into the hole,
-                      from one voxel past the punch edge, and fills that voxel
-                      too; local uses the median of the hole's surrounding
-                      shell. q_shell
-                      (the |Q|-shell level) is for comparison only: it is biased
-                      at the lattice nodes and leaves ΔPDF artefacts at lattice
-                      vectors.
-                    </HelpTip>
-                  </StageHead>
-                  <div className="cfg-box">
-                <Field label="Method">
-                  <select
-                    value={s.backfillMethod}
-                    onChange={(e) => patch({ backfillMethod: e.target.value })}
-                  >
-                    <option value="">laplace (default)</option>
-                    <option value="local">local</option>
-                    <option value="q_shell">q_shell</option>
-                  </select>
-                </Field>
-                  </div>
-                </div>
-
-                <div className={`cfg-stage${s.flatten ? "" : " cfg-stage--off"}${lit.includes("flatten") ? " ai-glow-within" : ""}`}>
-                  <StageHead
-                    no={STAGE_NO.flatten}
-                    title="Background correction"
-                    enabled={s.flatten}
-                    onToggle={(v) => patch({ flatten: v })}
-                  >
-                    <HelpTip>
-                      Subtracts the isotropic pedestal before the transform. The
-                      default model fits const + c·F(Q)² to each |Q| shell&apos;s
-                      floor: nuclear incoherent plus single-ion paramagnetic
-                      scattering, with F the magnetic ion&apos;s form factor (neutron
-                      data only: X-rays carry no magnetic scattering). Both
-                      are self scattering, so they only touch the ΔPDF at r ≈ 0.
-                      floor and snip subtract a free-form curve and also remove some
-                      isotropic diffuse.
-                    </HelpTip>
-                  </StageHead>
-                  <div className="cfg-box">
-                <Field label="Estimator">
-                  <select
-                    value={s.flattenEstimator}
-                    disabled={!s.flatten}
-                    onChange={(e) => patch({ flattenEstimator: e.target.value })}
-                  >
-                    <option value="">model: const + c·F(Q)² (default)</option>
-                    <option value="floor">floor</option>
-                    <option value="snip">snip</option>
-                  </select>
-                </Field>
-                <Field label="Magnetic ion">
-                  <select
-                    value={s.flattenIon}
-                    disabled={!s.flatten || (s.flattenEstimator !== "" && s.flattenEstimator !== "model")}
-                    onChange={(e) => patch({ flattenIon: e.target.value })}
-                  >
-                    <option value="">none: constant only (default)</option>
-                    {FLATTEN_IONS.map((ion) => (
-                      <option key={ion} value={ion}>{ion}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Fit to |Q| (Å⁻¹)">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="1"
-                    placeholder="10"
-                    value={s.flattenFitQMax}
-                    disabled={!s.flatten || (s.flattenEstimator !== "" && s.flattenEstimator !== "model")}
-                    title="The model is fitted to the shell floors from 0.8 Å⁻¹ up to here. Raise it to the data's coverage when the background keeps changing beyond 10 Å⁻¹."
-                    onChange={(e) => patch({ flattenFitQMax: e.target.value })}
-                  />
-                </Field>
-                <div className="switch-row">
-                  <Switch
-                    label="+ b·Q² term"
-                    checked={s.flattenQ2}
-                    onChange={(v) => patch({ flattenQ2: v })}
-                  />
-                  <HelpTip>
-                    Adds b·Q² to the model: the smooth rise of the inelastic
-                    background (thermal diffuse scattering, Debye–Waller exponent
-                    2W ∝ Q²; with X-rays also Compton scattering). Like the
-                    other two terms it varies only on the scale of the whole |Q|
-                    range, so it cannot follow a pair correlation&apos;s oscillation.
-                    Use it when the floors climb across the coverage.
-                  </HelpTip>
-                </div>
-                  </div>
-                </div>
-
-                <div className={`cfg-stage${s.pdfEnabled ? "" : " cfg-stage--off"}${lit.includes("pdf") ? " ai-glow-within" : ""}`}>
-                  <StageHead
-                    no={STAGE_NO.pdf}
-                    title="Transform (3D-ΔPDF)"
-                    enabled={s.pdfEnabled}
-                    onToggle={(v) => patch({ pdfEnabled: v })}
-                  >
-                    <HelpTip>
-                      3D-FFT of the cleaned, backfilled diffuse volume. The
-                      apodization window tapers Q-space before the transform to
-                      suppress real-space termination ripples; the |Q| band (shown
-                      on the slices) sets the radial window the transform keeps.
-                    </HelpTip>
-                  </StageHead>
-                  <div className="cfg-box">
-                <Field label="Apodization">
-                  <select
-                    value={s.pdfApod}
-                    title="Q-space window applied before the FFT to suppress termination ripples"
-                    onChange={(e) => patch({ pdfApod: e.target.value })}
-                  >
-                    <option value="">gaussian (default)</option>
-                    <option value="hann">hann</option>
-                    <option value="none">none</option>
-                  </select>
-                </Field>
-                <div className="cfg-qband">
-                  <RangeSlider
-                    grow
-                    label="|Q| band"
-                    readout={
-                      pdfQBandIsFull
-                        ? `full 0.00 … ${(pdfQSpanMax || 0).toFixed(2)} Å⁻¹`
-                        : `${pdfQMin.toFixed(2)} … ${pdfQMax.toFixed(2)} Å⁻¹`
-                    }
-                    min={0}
-                    max={pdfQSpanMax || 1}
-                    step={0.05}
-                    valueMin={pdfQMin}
-                    valueMax={pdfQMax || 1}
-                    disabled={!pdfQSpanMax}
-                    onChange={updatePdfQBand}
-                  />
-                  {rawEdges?.q_max_edge != null && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      title="Set the band to where the raw data's counts begin and end"
-                      onClick={() =>
-                        updatePdfQBand(
-                          rawEdges.q_min_edge != null ? Math.ceil(rawEdges.q_min_edge * 20) / 20 : 0,
-                          Math.floor(rawEdges.q_max_edge! * 20) / 20,
-                        )
-                      }
-                    >
-                      From raw data
-                    </button>
-                  )}
-                </div>
-                {rawEdges?.q_max_edge != null && (
-                  <p className="config-note">
-                    Raw counts <b>{(rawEdges.q_min_edge ?? 0).toFixed(2)} … {rawEdges.q_max_edge.toFixed(2)} Å⁻¹</b>{" "}
-                    (most voxels outside hold none) · box face <b>{rawEdges.box_q.toFixed(2)} Å⁻¹</b>
-                  </p>
-                )}
-                <Field label="Window shape">
-                  <select
-                    value={s.pdfWindowShape}
-                    title="auto: an ellipsoid that respects the lattice symmetry where a per-axis window would break it (hexagonal cells), else per-axis"
-                    onChange={(e) => patch({ pdfWindowShape: e.target.value })}
-                  >
-                    <option value="">auto (default)</option>
-                    <option value="separable">per-axis (H × K × L)</option>
-                    <option value="ellipsoid">ellipsoid</option>
-                  </select>
-                </Field>
-                <div className="switch-row">
-                  <Switch
-                    label="Taper to the measured coverage"
-                    checked={s.pdfWindowSupport}
-                    onChange={(v) => patch({ pdfWindowSupport: v })}
-                  />
-                  <HelpTip>
-                    Voxels the input leaves masked count as no deviation from
-                    the mean (ΔI = 0) instead of zero intensity, and where the
-                    measured coverage ends inside the box the window becomes an
-                    ellipsoid shrunk to it, so it tapers to zero at the coverage
-                    edge rather than the box faces. Changes nothing when the
-                    whole box holds data.
-                  </HelpTip>
-                </div>
-                  </div>
-                </div>
               </div>
             </div>
+          </StageSection>
+
+          <div className="cfg-stage-row">
+            <StageSection
+              stage="backfill"
+              enabled={s.backfillEnabled}
+              onToggle={(v) => patch({ backfillEnabled: v })}
+              glow={lit.includes("backfill")}
+              help={
+                <>
+                  How punched Bragg / direct-beam holes are filled before the transform, always from the diffuse around
+                  each hole. laplace (default) interpolates it smoothly into the hole, from one voxel past the punch
+                  edge, and fills that voxel too; local uses the median of the hole&apos;s surrounding shell. q_shell
+                  (the |Q|-shell level) is for comparison only: it is biased at the lattice nodes and leaves ΔPDF
+                  artefacts at lattice vectors.
+                </>
+              }
+            >
+              <div className="cfg-box">
+                <div className="cfg-fields">
+                  <Field label="Method">
+                    <select value={s.backfillMethod} onChange={(e) => patch({ backfillMethod: e.target.value })}>
+                      <option value="">laplace (default)</option>
+                      <option value="local">local</option>
+                      <option value="q_shell">q_shell</option>
+                    </select>
+                  </Field>
+                </div>
+              </div>
+            </StageSection>
+
+            <StageSection
+              stage="flatten"
+              enabled={s.flatten}
+              onToggle={(v) => patch({ flatten: v })}
+              glow={lit.includes("flatten")}
+              help={
+                <>
+                  Subtracts the isotropic pedestal before the transform. The default model fits const + c·F(Q)² to each
+                  |Q| shell&apos;s floor: nuclear incoherent plus single-ion paramagnetic scattering, with F the
+                  magnetic ion&apos;s form factor (neutron data only: X-rays carry no magnetic scattering). Both are
+                  self scattering, so they only touch the ΔPDF at r ≈ 0. floor and snip subtract a free-form curve and
+                  also remove some isotropic diffuse.
+                </>
+              }
+              advanced={
+                <AdvancedFold stage="flatten" changed={changed("flatten")}>
+                  <div className="cfg-fields">
+                    <Field label="Fit to |Q| (Å⁻¹)">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="1"
+                        placeholder="10"
+                        value={s.flattenFitQMax}
+                        disabled={!s.flatten || !flattenIsModel}
+                        title="The model is fitted to the shell floors from 0.8 Å⁻¹ up to here. Raise it to the data's coverage when the background keeps changing beyond 10 Å⁻¹."
+                        onChange={(e) => patch({ flattenFitQMax: e.target.value })}
+                      />
+                    </Field>
+                    <div className="switch-row">
+                      <Switch label="+ b·Q² term" checked={s.flattenQ2} onChange={(v) => patch({ flattenQ2: v })} />
+                      <HelpTip>
+                        Adds b·Q² to the model: the smooth rise of the inelastic background (thermal diffuse scattering,
+                        Debye–Waller exponent 2W ∝ Q²; with X-rays also Compton scattering). Like the other two terms it
+                        varies only on the scale of the whole |Q| range, so it cannot follow a pair correlation&apos;s
+                        oscillation. Use it when the floors climb across the coverage.
+                      </HelpTip>
+                    </div>
+                  </div>
+                </AdvancedFold>
+              }
+            >
+              <div className="cfg-box">
+                <div className="cfg-fields">
+                  <Field label="Estimator">
+                    <select
+                      value={s.flattenEstimator}
+                      disabled={!s.flatten}
+                      onChange={(e) => patch({ flattenEstimator: e.target.value })}
+                    >
+                      <option value="">model: const + c·F(Q)² (default)</option>
+                      <option value="floor">floor</option>
+                      <option value="snip">snip</option>
+                    </select>
+                  </Field>
+                  <Field label="Magnetic ion">
+                    <select
+                      value={s.flattenIon}
+                      disabled={!s.flatten || !flattenIsModel}
+                      onChange={(e) => patch({ flattenIon: e.target.value })}
+                    >
+                      <option value="">none: constant only (default)</option>
+                      {FLATTEN_IONS.map((ion) => (
+                        <option key={ion} value={ion}>
+                          {ion}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </div>
+            </StageSection>
+
+            <StageSection
+              stage="pdf"
+              enabled={s.pdfEnabled}
+              onToggle={(v) => patch({ pdfEnabled: v })}
+              glow={lit.includes("pdf")}
+              help={
+                <>
+                  3D-FFT of the cleaned, backfilled diffuse volume. The apodization window tapers Q-space before the
+                  transform to suppress real-space termination ripples; the |Q| band (drawn on the preview) sets the
+                  radial window the transform keeps.
+                </>
+              }
+              advanced={
+                <AdvancedFold stage="pdf" changed={changed("pdf")}>
+                  <div className="cfg-fields">
+                    <Field label="Window shape">
+                      <select
+                        value={s.pdfWindowShape}
+                        title="auto: an ellipsoid that respects the lattice symmetry where a per-axis window would break it (hexagonal cells), else per-axis"
+                        onChange={(e) => patch({ pdfWindowShape: e.target.value })}
+                      >
+                        <option value="">auto (default)</option>
+                        <option value="separable">per-axis (H × K × L)</option>
+                        <option value="ellipsoid">ellipsoid</option>
+                      </select>
+                    </Field>
+                    <div className="switch-row">
+                      <Switch
+                        label="Taper to the measured coverage"
+                        checked={s.pdfWindowSupport}
+                        onChange={(v) => patch({ pdfWindowSupport: v })}
+                      />
+                      <HelpTip>
+                        Voxels the input leaves masked count as no deviation from the mean (ΔI = 0) instead of zero
+                        intensity, and where the measured coverage ends inside the box the window becomes an ellipsoid
+                        shrunk to it, so it tapers to zero at the coverage edge rather than the box faces. Changes
+                        nothing when the whole box holds data.
+                      </HelpTip>
+                    </div>
+                  </div>
+                </AdvancedFold>
+              }
+            >
+              <div className="cfg-box">
+                <div className="cfg-fields">
+                  <Field label="Apodization">
+                    <select
+                      value={s.pdfApod}
+                      title="Q-space window applied before the FFT to suppress termination ripples"
+                      onChange={(e) => patch({ pdfApod: e.target.value })}
+                    >
+                      <option value="">gaussian (default)</option>
+                      <option value="hann">hann</option>
+                      <option value="none">none</option>
+                    </select>
+                  </Field>
+                  <div className="cfg-qband">
+                    <RangeSlider
+                      grow
+                      label="|Q| band"
+                      readout={
+                        pdfQBandIsFull
+                          ? `full 0.00 … ${(pdfQSpanMax || 0).toFixed(2)} Å⁻¹`
+                          : `${pdfQMin.toFixed(2)} … ${pdfQMax.toFixed(2)} Å⁻¹`
+                      }
+                      min={0}
+                      max={pdfQSpanMax || 1}
+                      step={0.05}
+                      valueMin={pdfQMin}
+                      valueMax={pdfQMax || 1}
+                      disabled={!pdfQSpanMax}
+                      onChange={updatePdfQBand}
+                    />
+                    {rawEdges?.q_max_edge != null && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        title="Set the band to where the raw data's counts begin and end"
+                        onClick={() =>
+                          updatePdfQBand(
+                            rawEdges.q_min_edge != null ? Math.ceil(rawEdges.q_min_edge * 20) / 20 : 0,
+                            Math.floor(rawEdges.q_max_edge! * 20) / 20,
+                          )
+                        }
+                      >
+                        From raw data
+                      </button>
+                    )}
+                  </div>
+                  {rawEdges?.q_max_edge != null && (
+                    <p className="config-note cfg-fields-wide">
+                      Raw counts <b>{(rawEdges.q_min_edge ?? 0).toFixed(2)} … {rawEdges.q_max_edge.toFixed(2)} Å⁻¹</b>{" "}
+                      (most voxels outside hold none) · box face <b>{rawEdges.box_q.toFixed(2)} Å⁻¹</b>
+                    </p>
+                  )}
+                </div>
+              </div>
+            </StageSection>
           </div>
-        </StageCard>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }
