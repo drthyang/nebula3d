@@ -205,12 +205,13 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
   const cut = Math.max(cutRange.min, Math.min(cutRange.max, cuts[spec.cutAxis] ?? 0));
 
   // The plane on show at its cut; while another cut loads, the last one stays
-  // (never another plane's: its axes differ).
+  // (never another plane's or another volume's: their axes differ).
   const sliceQ = useQuery({
     queryKey: sliceKey(inputId, plane, cut),
     queryFn: () => fetchSlice(inputId as string, plane, cut, false),
     enabled: Boolean(inputId && meta),
-    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[2] === plane ? prev : undefined),
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === inputId && prevQuery?.queryKey[2] === plane ? prev : undefined,
   });
   const slice: Slice | undefined = sliceQ.data;
 
