@@ -12,7 +12,11 @@
   zoom* and *Contrast* sliders give way to the shared display bar (colormap ·
   vmin [bar] vmax · asinh / lin / log · Auto · Brightness); the three planes
   share one scale, with Auto from their cuts through the origin. The
-  powder-ring schematic and its equations are gone.
+  powder-ring schematic is gone; the ring removal's **?** now gives the
+  selected model's formula and what each term is (the pooled sector median
+  and its baseline and window, the global model's shells and spherical
+  harmonics, the parametric pseudo-Voigt × Fourier texture, the patched
+  per-patch profile), with the form's values in it.
 - **One section per stage, with the same head and the advanced settings
   folded away.** The stages run top to bottom in pipeline order (ring
   removal, Bragg punch, backfill, background correction, 3D-ΔPDF), each
@@ -20,8 +24,10 @@
   saying what it does, the details behind **?**, and *Enable stage*. Each
   stage's less-used settings sit under *Advanced*, closed at first and
   remembered by the browser; closed, it says how many of them differ from
-  their defaults, so a change made there by NEBULA Pilot or a restored
-  session is not missed. The punch's settings are four boxes: *Detection*,
+  their defaults. When NEBULA Pilot changes a setting (or a tuning run keeps
+  one), the fold that holds it opens for the visit and the changed field
+  flashes twice, wherever it is; the user's own edits and a restored session
+  never open a fold. The punch's settings are four boxes: *Detection*,
   *Sample* (the punch cell and the modulation), *Bragg footprint* and
   *Direct beam*. The |Q| band, a 3D-ΔPDF setting, moves into the 3D-ΔPDF
   section. No setting, default or value changes, and NEBULA Pilot reads and
