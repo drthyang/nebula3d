@@ -352,6 +352,58 @@ button {
   color: var(--text-3);
   white-space: nowrap;
 }
+/* The "?" beside the bar's title opens what the tooltip says as a card (for
+   touch screens and the keyboard), in the gesture card's look (.gh-*). */
+.mem-head {
+  align-items: center;
+}
+.mem-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.mem-help-wrap {
+  display: inline-flex;
+}
+.gh-trigger.mem-help {
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+}
+/* a target larger than the glyph */
+.gh-trigger.mem-help::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+.mem-pop {
+  position: fixed;
+  z-index: 60;
+}
+.gh-card.mem-card {
+  width: min(300px, calc(100vw - 32px));
+  padding: 10px 12px 11px;
+}
+.mem-card-line {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.mem-card .gh-head + .mem-card-line {
+  color: var(--text);
+}
+@media (pointer: coarse) {
+  .gh-trigger.mem-help {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+  }
+  .gh-trigger.mem-help::before {
+    inset: -10px;
+  }
+}
 :is(.sidebar-foot, .main-foot) .ver {
   display: inline-flex;
   align-items: center;

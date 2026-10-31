@@ -440,9 +440,13 @@ including the narrower column in the 4K side-by-side layout.
 
 Under the API status at the foot of the sidebar (at the end of each page in
 the top-bar layout): memory used against a ceiling, the share in percent,
-amber from 75 % and red from 90 %. Its tooltip says what is measured. It
-shows nothing until there is a measurement (`web/src/components/MemoryBar.tsx`,
-`memoryView.ts`).
+amber from 75 % and red from 90 %. Its tooltip says what is measured, and
+the **?** beside its title opens the same explanation as a card, for touch
+screens (where a tooltip never shows) and the keyboard: a tap, a click, or
+Enter or Space on the **?** opens it; Esc, a press outside it, its ×, or a
+scroll closes it. It works as the viewer's gesture card does and looks like
+it, and it opens above the **?** when there is room. It shows nothing until
+there is a measurement (`web/src/components/MemoryBar.tsx`, `memoryView.ts`).
 
 - **In-browser build: the pipeline worker's WASM heap against Pyodide's
   4 GiB ceiling**, the heap a run fails in. Pyodide grows the heap as Python

@@ -11,6 +11,7 @@ import {
   formatBytes,
   HIGH_AT,
   memoryLevel,
+  placeCard,
   serverMemoryView,
   WARN_AT,
 } from "../memoryView";
@@ -166,5 +167,52 @@ describe("serverMemoryView (native server)", () => {
     expect(idle.percentText).toBe("<1%");
     expect(idle.amount).toBe("99 MiB / 64 GiB");
     expect(serverMemoryView(server({ used_bytes: 0 }))!.percentText).toBe("0%");
+  });
+});
+
+describe("the \"?\" card", () => {
+  it("shows the tooltip's explanation, line for line", () => {
+    const views = [
+      engineMemoryView(engine({ main: 1.25 * GiB, ring: [200 * MiB], budget: DESKTOP }))!,
+      engineMemoryView(engine({ main: 700 * MiB, budget: MOBILE }))!,
+      serverMemoryView(server({ kind: "footprint" }))!,
+    ];
+    for (const v of views) {
+      expect(v.lines.length).toBeGreaterThan(2);
+      expect(v.lines.join("\n")).toBe(v.tooltip);
+    }
+    // what is measured comes first; the phone's lower bound is in its card
+    expect(views[0].lines[0]).toMatch(/^In-browser engine: the pipeline worker's WASM heap/);
+    expect(views[1].lines.join(" ")).toContain("real share is higher");
+    expect(views[2].lines.join(" ")).toContain("Physical footprint");
+  });
+
+  const SCREEN = { width: 390, height: 844 };
+  const card = { width: 300, height: 220 };
+
+  it("opens above the \"?\" when it fits, its left edge near it", () => {
+    const at = placeCard({ left: 60, top: 700, right: 80, bottom: 720 }, card, SCREEN);
+    expect(at).toEqual({ left: 48, top: 700 - 8 - 220, above: true });
+  });
+
+  it("opens below when there is no room above", () => {
+    const at = placeCard({ left: 60, top: 60, right: 80, bottom: 80 }, card, SCREEN);
+    expect(at).toEqual({ left: 48, top: 88, above: false });
+  });
+
+  it("stays inside the window", () => {
+    // a "?" near the right edge: the card shifts left to end 8 px in
+    expect(placeCard({ left: 360, top: 700, right: 380, bottom: 720 }, card, SCREEN).left).toBe(390 - 300 - 8);
+    // near the left edge: 8 px in
+    expect(placeCard({ left: 5, top: 700, right: 25, bottom: 720 }, card, SCREEN).left).toBe(8);
+    // no room either way: the roomier side, clamped to the window
+    const tall = placeCard({ left: 100, top: 400, right: 120, bottom: 420 }, { width: 300, height: 900 }, SCREEN);
+    expect(tall.top).toBe(8);
+  });
+
+  it("divides by the console's zoom (the 4K tier)", () => {
+    const at = placeCard({ left: 1000, top: 1500, right: 1025, bottom: 1525 }, { width: 375, height: 275 }, { width: 3840, height: 2160 }, 1.25);
+    expect(at.left).toBeCloseTo((1000 - 12) / 1.25, 6);
+    expect(at.top).toBeCloseTo((1500 - 8 - 275) / 1.25, 6);
   });
 });

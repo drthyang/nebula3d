@@ -1,6 +1,8 @@
 - **A memory bar in the sidebar.** Under the API status (at the end of each
   page on a phone): memory used against a ceiling, the share in percent, amber
-  from 75 % and red from 90 %, and a tooltip saying what is measured. In the
+  from 75 % and red from 90 %, and a tooltip saying what is measured, which
+  the **?** beside it opens as a card on a touch screen or from the keyboard
+  (Esc, a press outside or its × closes it). In the
   in-browser build it is the pipeline worker's WASM heap against Pyodide's
   4 GiB ceiling, a high-water mark, since the heap never shrinks; the ring
   workers' heaps are listed in the tooltip. On a phone or tablet it is every
