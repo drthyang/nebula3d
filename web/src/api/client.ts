@@ -17,6 +17,7 @@ import type {
   RegridResult,
   RingDiagnostics,
   RingIsotropy,
+  ServerMemory,
   ShellFloors,
   Slice,
   SliceHeader,
@@ -62,6 +63,13 @@ export function fetchHealth(): Promise<{ status: string }> {
   // lazily on the first compute, not here).
   if (PYODIDE_MODE) return Promise.resolve({ status: "pyodide" });
   return getJSON<{ status: string }>("/api/health");
+}
+
+// The native server's process memory (the memory bar). The in-browser build
+// has no server: its workers report their heaps themselves (api/engineMemory.ts).
+export function fetchServerMemory(): Promise<ServerMemory> {
+  if (PYODIDE_MODE) return Promise.reject(new Error("no server in the in-browser build"));
+  return getJSON<ServerMemory>("/api/memory");
 }
 
 export function fetchDatasets(): Promise<Dataset[]> {

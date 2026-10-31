@@ -13,6 +13,7 @@ import {
   IconTransform,
 } from "./components/ui";
 import { ViewerImportBanner } from "./components/ViewerImportBanner";
+import { MemoryBar } from "./components/MemoryBar";
 import { PilotDock } from "./components/PilotDock";
 import { useDockLayout } from "./components/useDockLayout";
 import { useAgentHighlights } from "./llm/highlight";
@@ -76,9 +77,10 @@ const NAV: { id: Tab; label: string; short?: string; desc?: string; icon: ReactN
 // Source repository; its README is the entry point to the documentation.
 const REPO_URL = "https://github.com/drthyang/nebula3d";
 
-// API status, version, copyright and documentation links.  Sits at the foot of
-// the sidebar; in the compact top-bar layout the sidebar copy is hidden and the
-// one at the end of <main> shows instead (see "Device layouts" in index.css).
+// API status, memory, version, copyright and documentation links.  Sits at the
+// foot of the sidebar; in the compact top-bar layout the sidebar copy is hidden
+// and the one at the end of <main> shows instead (see "Device layouts" in
+// index.css).
 function ConsoleFoot({ className, apiUp }: { className: string; apiUp: boolean }) {
   return (
     <footer className={className}>
@@ -90,6 +92,7 @@ function ConsoleFoot({ className, apiUp }: { className: string; apiUp: boolean }
             ? "API connected"
             : "API offline"}
       </span>
+      <MemoryBar />
       <span className="ver">
         <span className="ver-num">v0.4.0</span>
         <span className="ver-tag">dev</span>
