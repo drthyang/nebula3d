@@ -45,6 +45,7 @@ const CALLS: Call[] = [
   ["dpdf_peaks", { min_sigma: 3, limit: 30 }],
   ["grain_check", {}],
   ["ub_check", {}],
+  ["compare_laue_classes", {}],
   ["radial_profile", {}],
   ["radial_profile", { plane: "0kl", stages: ["raw", "flattened"], bins: 8 }],
   ["line_profile", { stage: "flattened", along: "H", at: { K: 0, L: 0 } }],

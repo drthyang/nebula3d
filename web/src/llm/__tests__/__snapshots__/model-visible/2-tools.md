@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (27 tools, 26437 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 27915 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -291,7 +291,22 @@ Parameters:
 }
 ```
 
-## 14. radial_profile
+## 14. compare_laue_classes
+
+```text
+Which Laue class does the sample have? Compares every Laue class the cell's metric allows (the UB under the symmetry average's 2% check) and whose operations map the grid, by R_int on the raw volume as the symmetry average reads it (the run's edge trim first): Σ|I − ⟨I⟩| / Σ|I| over the orbits measured twice or more, on every measured voxel and on the diffuse (the punch cell's Bragg nodes masked), each also over its noise floor, the R_int counting noise alone gives on the same orbits (x_noise). A class rises against a subgroup when its x_noise exceeds the subgroup's by more than 10% and two standard errors; suggestion is the supported class with the most operations in every reading that can tell the classes apart, none when even whole |Q| shells (no_symmetry) stay at the noise. flag says when the diffuse supports less than every measured voxel: averaging over the higher class would impose the Bragg peaks' symmetry on the diffuse. A volume symmetrized already is refused. Seconds on a small volume, a minute or more on a full one. Cite its classes, rule and flag when you suggest a Laue class; the class is the user's to set, and update_settings refuses it.
+```
+
+Parameters:
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+## 15. radial_profile
 
 ```text
 The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings, which are bumps in raw that ring removal should take out without denting the diffuse; after flatten the floor should sit near 0 at every |Q|. Use it to see where in |Q| a stage left or removed signal.
@@ -330,7 +345,7 @@ Parameters:
 }
 ```
 
-## 15. line_profile
+## 16. line_profile
 
 ```text
 Intensity along a straight line parallel to one axis through any stage volume — e.g. along H through (H, 1/3, 0) to see a satellite row, or across a residual ring. Reciprocal stages take H/K/L (r.l.u.); delta_pdf takes x/y/z (Å). Returns sampled points plus the exact maximum, minimum and median.
@@ -386,7 +401,7 @@ Parameters:
 }
 ```
 
-## 16. bragg_peaks
+## 17. bragg_peaks
 
 ```text
 Peaks from the punch stage's fitted Bragg profile: position (HKL and |Q|), intensity, local background, significance, measured width per axis (Å⁻¹), whether each axis is resolution-limited, and anisotropy (largest/smallest principal width). Sort by a property or by distance to an HKL point.
@@ -422,7 +437,7 @@ Parameters:
 }
 ```
 
-## 17. consistency_details
+## 18. consistency_details
 
 ```text
 The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data), so r below 1 on unsymmetrised data is no fault. Neither says a feature is real.
@@ -437,7 +452,7 @@ Parameters:
 }
 ```
 
-## 18. run_log
+## 19. run_log
 
 ```text
 The log of the last pipeline run in this session: each stage's start, skip, result and error lines (how many ring shells were fitted, peaks punched, voxels left unmeasured, the back-FFT r, …) and how the run ended. Use it to explain a result or a failure.
@@ -464,7 +479,7 @@ Parameters:
 }
 ```
 
-## 19. compare_datasets
+## 20. compare_datasets
 
 ```text
 The same cut measured on several datasets (e.g. temperatures), to see what changes between them. kind=reciprocal compares the stage metrics; kind=dpdf compares the ΔPDF feature metrics and back-FFT r. Up to 6 datasets; default all.
@@ -500,7 +515,7 @@ Parameters:
 }
 ```
 
-## 20. run_verdict
+## 21. run_verdict
 
 ```text
 The verdict on the run that {{achieved}} gives now, computed from this reply's checks: its words (null before any check), each stage's verdict, what needs attention, is not judged or not measured, and the data's problems no setting fixes. Read it before you write whether the run met its goal.
@@ -515,7 +530,7 @@ Parameters:
 }
 ```
 
-## 21. configure_settings
+## 22. configure_settings
 
 ```text
 The Configure page's current settings — what the next run would use (blank = the backend default). They may differ from the settings that produced the files on disk. Name settings exactly as returned here when you suggest a change.
@@ -530,10 +545,10 @@ Parameters:
 }
 ```
 
-## 22. update_settings
+## 23. update_settings
 
 ```text
-Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. These method choices and thresholds can be changed: ringModel (pooled|global_v2|patched|parametric), ringPooledSectors (integer 8–144), ringPooledWindow (number 0.5–30), ringNFourier (integer 0–40), ringGlobalSubtraction (conservative|mean), punchMinSig (number 3–12), punchMode (both|integer|search), punchHGuard (number 0–0.3), punchSearchFloor (number 3–60), punchFootprint (own|profile|ellipsoid), punchProfileNSigma (number 0.1–3), punchSearchMaxWidth (number 1–6), punchMargin (number 0–0.5), punchFitUnconstrained (true|false), backfillMethod (laplace|local|q_shell), flattenQ2 (true|false), flattenFitQMax (number 3–25), flattenEstimator (model|floor|snip), pdfApod (gaussian|hann|none), pdfWindowShape (auto|separable|ellipsoid), pdfWindowSupport (true|false). These facts about the sample only when the user asks for that change, never to improve a result: modulation ({"k": "1/3, 0, 0", "order": 1, "form": "points|planes", "half_width": 0.08}, "none" or "default"; The sample's modulation: the off-lattice search leaves its satellites G ± m·k alone (form points, the default) or the planes through them (form planes), the form the user's to declare; k in r.l.u., several separated by ";", order m 1–6 (default 1), half_width in r.l.u. (default 0.08); "none" declares none, and so does "default", the backend's own.) punchSupercellH (integer 1–6; The punch's indexing cell along H: the Bragg nodes are the multiples of this H (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellK (integer 1–6; The punch's indexing cell along K: the Bragg nodes are the multiples of this K (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellL (integer 1–6; The punch's indexing cell along L: the Bragg nodes are the multiples of this L (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) A change to one of them is refused unless the user's latest message names it. The magnetic ion and |Q| band stay with the user, and so does the symmetry average (symmetryAverageEnabled, symmetryLaue, symmetryReaverage, symmetryAllowMetricChange): suggest a Laue class with your evidence instead, for the user to set. Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings already at the value are left as they are. Returns each change and the stage to rerun from.
+Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. These method choices and thresholds can be changed: ringModel (pooled|global_v2|patched|parametric), ringPooledSectors (integer 8–144), ringPooledWindow (number 0.5–30), ringNFourier (integer 0–40), ringGlobalSubtraction (conservative|mean), punchMinSig (number 3–12), punchMode (both|integer|search), punchHGuard (number 0–0.3), punchSearchFloor (number 3–60), punchFootprint (own|profile|ellipsoid), punchProfileNSigma (number 0.1–3), punchSearchMaxWidth (number 1–6), punchMargin (number 0–0.5), punchFitUnconstrained (true|false), backfillMethod (laplace|local|q_shell), flattenQ2 (true|false), flattenFitQMax (number 3–25), flattenEstimator (model|floor|snip), pdfApod (gaussian|hann|none), pdfWindowShape (auto|separable|ellipsoid), pdfWindowSupport (true|false). These facts about the sample only when the user asks for that change, never to improve a result: modulation ({"k": "1/3, 0, 0", "order": 1, "form": "points|planes", "half_width": 0.08}, "none" or "default"; The sample's modulation: the off-lattice search leaves its satellites G ± m·k alone (form points, the default) or the planes through them (form planes), the form the user's to declare; k in r.l.u., several separated by ";", order m 1–6 (default 1), half_width in r.l.u. (default 0.08); "none" declares none, and so does "default", the backend's own.) punchSupercellH (integer 1–6; The punch's indexing cell along H: the Bragg nodes are the multiples of this H (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellK (integer 1–6; The punch's indexing cell along K: the Bragg nodes are the multiples of this K (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) punchSupercellL (integer 1–6; The punch's indexing cell along L: the Bragg nodes are the multiples of this L (2 when the volume is indexed on a doubled cell); the nodes between are superstructure or diffuse, not punched as Bragg peaks.) So too edgeTrim (0–3; Voxel layers taken off the raw input's coverage edge at load, whether or not the symmetry average is on (the NeXus Viewer's edge erosion): 0 to 3, default 1.) A change to one of them is refused unless the user's latest message names it. The magnetic ion and |Q| band stay with the user, and so does the symmetry average (symmetryAverageEnabled, symmetryLaue, symmetryReaverage, symmetryAllowMetricChange): suggest a Laue class with your evidence instead, for the user to set. Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings already at the value are left as they are. Returns each change and the stage to rerun from.
 ```
 
 Parameters:
@@ -551,7 +566,7 @@ Parameters:
 }
 ```
 
-## 23. run_pipeline
+## 24. run_pipeline
 
 ```text
 Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does: it writes the dataset's stage outputs, and the console shows the run on its Execution page while it goes. Without from_stage, outputs that already exist are reused (unless the user switched Force on), so it computes what is missing. With from_stage, that stage and every enabled stage after it are recomputed: use it after update_settings. A run takes seconds to minutes. Returns how it ended, which stages were computed or reused, and the outputs that now exist; measure them afterwards.
@@ -572,7 +587,7 @@ Parameters:
 }
 ```
 
-## 24. tune_pipeline
+## 25. tune_pipeline
 
 ```text
 Search for the best settings, one stage at a time: for each stage it runs the current settings, has you propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later stages build on the best earlier ones. Trials run in a tuning folder: the dataset's own outputs are not changed, and the chosen settings end up on the Configure page. The user watches the trials in the chat, under this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns every trial's changes and numbers (a trial that matched the current settings' numbers exactly is marked no_effect), and each stage's chosen trial and why: quote these, never numbers the result does not hold.
@@ -602,7 +617,7 @@ Parameters:
 }
 ```
 
-## 25. regrid_refined_ub
+## 26. regrid_refined_ub
 
 ```text
 Regrid the dataset's raw volume onto its refined UB, as a new dataset: the fit is ub_check's (the punch cell's Bragg nodes, q_max), and the volume resampled onto the refined UB is written as <stem>_regridded.nxs beside the raw file, never over a file. No pipeline is run. Only when the user's latest message asks for a regrid; otherwise refused. Nothing is written, and refusal gives code and reason, when the turn is under turn_threshold_deg, a symmetrised volume has no unsymmetrised source beside it, or the new file or dataset id exists. Returns the new dataset, the turn, the peaks' RMS before → after, and the measured voxels lost outside the old grid.
@@ -622,7 +637,7 @@ Parameters:
 }
 ```
 
-## 26. show_in_viewer
+## 27. show_in_viewer
 
 ```text
 Open a cut in the console's viewer so the user can see what you are describing: view=cleanup opens the reciprocal-space cleanup page (all stages side by side) at a reciprocal plane; view=dpdf opens the 3D-ΔPDF page at a real-space section. Use it for the one cut that best shows your point.
@@ -651,7 +666,7 @@ Parameters:
 }
 ```
 
-## 27. mark_region
+## 28. mark_region
 
 ```text
 Mark a region in the console's slice views and move them to it, so the user sees what you found: use it for a finding they should look at, such as satellites at h ± q, a ring left over, or a ΔPDF feature. where: the stage whose output shows it: raw, rings, punch, backfill or flatten (reciprocal space; h, k, l in r.l.u.), or pdf (the 3D-ΔPDF; x, y, z in Å along a, b, c). shape: box or ellipsoid, with center and half_size (half-widths along the three axes), or points, with up to 12 positions. evidence: the calls in this conversation whose results show it, as tool or tool.field (dpdf_peaks.features.0). A region without evidence, empty, or outside the volume is not marked. The result says which views and cuts it was drawn on, cut to the volume. Cite the mark by its id (M1, …) in your answer.

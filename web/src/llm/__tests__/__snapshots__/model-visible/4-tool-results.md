@@ -920,6 +920,105 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## compare_laue_classes {} (the demo crystal's comparison (cubic; its rods along L make it 4/mmm))
+
+2467 characters sent.
+
+```json
+{
+  "columns": "r_int and x_noise are [every measured voxel, diffuse]; x_noise is R_int over its noise floor (1.00: agreement to the counting noise)",
+  "classes": [
+    {
+      "class": "-1",
+      "ops": 2,
+      "r_int": [0.042, 0.049],
+      "x_noise": [1, 1],
+      "orbits": 34460,
+      "verdict": "supported"
+    },
+    {
+      "class": "2/m (b unique)",
+      "ops": 4,
+      "contains": ["-1"],
+      "r_int": [0.051, 0.06],
+      "x_noise": [1, 1],
+      "orbits": 17660,
+      "verdict": "supported"
+    },
+    {
+      "class": "2/m (c unique)",
+      "ops": 4,
+      "contains": ["-1"],
+      "r_int": [0.051, 0.06],
+      "x_noise": [1, 1],
+      "orbits": 17660,
+      "verdict": "supported"
+    },
+    {
+      "class": "mmm",
+      "ops": 8,
+      "contains": ["2/m (b unique)", "2/m (c unique)"],
+      "r_int": [0.055, 0.065],
+      "x_noise": [1, 1],
+      "orbits": 9260,
+      "verdict": "supported"
+    },
+    {
+      "class": "4/m",
+      "ops": 8,
+      "contains": ["2/m (c unique)"],
+      "r_int": [0.055, 0.065],
+      "x_noise": [1, 1],
+      "orbits": 8840,
+      "verdict": "supported"
+    },
+    {
+      "class": "4/mmm",
+      "ops": 16,
+      "contains": ["mmm", "4/m"],
+      "r_int": [0.057, 0.067],
+      "x_noise": [1, 1],
+      "orbits": 4850,
+      "verdict": "supported"
+    },
+    {
+      "class": "m-3",
+      "ops": 24,
+      "contains": ["mmm"],
+      "r_int": [0.087, 0.105],
+      "x_noise": [1.51, 1.53],
+      "orbits": 3100,
+      "verdict": "rose 1.51× against 2/m (b unique) (all); rose 1.54× against 2/m (c unique) (diffuse)"
+    },
+    {
+      "class": "m-3m",
+      "ops": 48,
+      "contains": ["4/mmm", "m-3"],
+      "r_int": [0.087, 0.105],
+      "x_noise": [1.5, 1.52],
+      "orbits": 1770,
+      "verdict": "rose 1.5× against 2/m (b unique) (all); rose 1.53× against 2/m (c unique) (diffuse)"
+    }
+  ],
+  "no_symmetry": {
+    "r_int": [0.537, 0.342],
+    "x_noise": [9.12, 4.9]
+  },
+  "refused": ["-3: metric changes 100%", "-3m1: metric changes 100%", "-31m: metric changes 100%", "6/m: metric changes 100%", "6/mmm: metric changes 100%"],
+  "suggestion": "4/mmm",
+  "suggested_by": {
+    "all": "4/mmm",
+    "diffuse": "4/mmm"
+  },
+  "why": "4/mmm is the class with the most operations the rule supports in both readings: its R_int, in units of the noise floor, is 1.00× that of 2/m (b unique), the subgroup that agrees best; m-3m rose 1.50× against 2/m (b unique).",
+  "flag": null,
+  "rule": "A class rises against a subgroup when its x_noise exceeds the subgroup's by more than 10% and 2 standard errors; it is supported when it rises against none of its subgroups and all of them are supported. suggestion: the supported class with the most operations in every reading that can tell the classes apart (no_symmetry must rise too).",
+  "diffuse_mask": "Bragg nodes of the 1×1×1 cell within 0.25 Å⁻¹ (2.7% of the measured voxels)",
+  "edge_trim": 1,
+  "limits": "Twinning, or domains related by an operation the sample lacks, make a lower symmetry look higher: R_int alone cannot tell. Only the presets' settings are compared."
+}
+```
+
 ## radial_profile {}
 
 2096 characters sent.
@@ -1746,7 +1845,7 @@ Error: not marked: the box (x 19 to 21) is outside the volume: the volume spans 
 ## delete_dataset {} (a tool that does not exist)
 
 ```text
-Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region
+Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region
 ```
 
 ## measure_reciprocal_cut {plane: hk0 (arguments that are not JSON)

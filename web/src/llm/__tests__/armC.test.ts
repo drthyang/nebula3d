@@ -56,6 +56,7 @@ const api = vi.hoisted(() => ({
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
+  compareLaueClasses: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
   fetchVolumeTexture: vi.fn(),
 }));
@@ -164,7 +165,7 @@ const ROUNDS: Call[][] = [
   ],
   [["texture_check", {}], ["qmax_coverage", {}], ["symmetry_check", {}], ["consistency_details", {}]],
   // The regrid the TASK does not ask for: refused, nothing written (its gate, the same in both arms).
-  [["grain_check", {}], ["ub_check", {}], ["regrid_refined_ub", {}], ["bragg_peaks", {}]],
+  [["grain_check", {}], ["ub_check", {}], ["compare_laue_classes", {}], ["regrid_refined_ub", {}], ["bragg_peaks", {}]],
   [["dpdf_contrast", {}], ["dpdf_peaks", {}]],
   [["compare_datasets", { kind: "reciprocal", plane: "hk0", value: 0 }], ["run_log", {}], ["run_verdict", {}]],
   [["tune_pipeline", { stages: ["flatten"], trials_per_stage: 2 }]],
@@ -266,10 +267,13 @@ describe("arm C's session, with the skills off", () => {
       { role: "assistant" as const, content: first.result.content },
     ];
     const earlier = toolStepsIn([first.result]);
-    // And a number from the first turn's flatten measured before its rerun: stale in this one.
+    // And a number from the first turn's flatten measured before its rerun:
+    // stale in this one. One no other result of the session holds within the
+    // answer checks' 2 %: h0l's floor span (its negative share, 0.056, lies
+    // within 2 % of the Laue comparison's R_int values 0.055 and 0.057).
     const before = first.result.steps.find((s) => s.name === "assess_stage" && s.args.stage === "flatten")!;
-    const plane = (JSON.parse(before.result!) as { flatten: { per_plane: { h0l: { after_negative_fraction: number } } } }).flatten.per_plane.h0l;
-    const secondAnswer = `${SECOND} On h0l, ${plane.after_negative_fraction} of the voxels were negative.`;
+    const plane = (JSON.parse(before.result!) as { flatten: { per_plane: { h0l: { floor_span_fraction: number } } } }).flatten.per_plane.h0l;
+    const secondAnswer = `${SECOND} On h0l, the floors spanned ${plane.floor_span_fraction} of their level.`;
     const followUp = buildChatMessages(context, history, FOLLOW_UP, null, { tools: true, skills: false });
     second = await reply(followUp, [[{ content: secondAnswer }], [{ content: SECOND_REVISED }]], earlier);
 

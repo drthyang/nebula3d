@@ -6,7 +6,9 @@
 // page's fields (the sample's modulation holds four): the model reads and
 // writes it as one setting (SampleParam). The symmetry average's settings, the
 // sample's Laue class above all, it never changes: it refuses them, and the
-// model suggests a class to the user instead (SYMMETRY_AVERAGE_SETTINGS).
+// model suggests a class to the user instead (SYMMETRY_AVERAGE_SETTINGS). The
+// raw edge trim, a data choice no fact about the sample, changes the same way a
+// fact does: only when the user's latest message names it (USER_CHOICE_PARAMS).
 
 import { noteAgentEdit } from "../../../state/agentEdits";
 import { usePipelineStore, type PipelineConfig } from "../../../state/pipelineStore";
@@ -14,7 +16,9 @@ import {
   allowedValues,
   displayValue,
   isSampleFact,
+  isUserChoice,
   namesSampleFact,
+  namesUserChoice,
   SAMPLE_PARAMS,
   sampleFactRefusal,
   SYMMETRY_AVERAGE_SETTINGS,
@@ -22,6 +26,8 @@ import {
   toFormValue,
   TUNE_PARAMS,
   TUNE_STAGES,
+  USER_CHOICE_PARAMS,
+  userChoiceRefusal,
   type ParamValue,
   type TuneStage,
 } from "../../tune/catalog";
@@ -51,6 +57,7 @@ const SETTABLE: Settable[] = [
     }),
   ),
   ...SAMPLE_PARAMS,
+  ...USER_CHOICE_PARAMS,
 ];
 const findSettable = (key: string): Settable | undefined => SETTABLE.find((p) => p.key === key);
 const userSets = (key: string): boolean => (SYMMETRY_AVERAGE_SETTINGS as readonly string[]).includes(key);
@@ -84,6 +91,7 @@ export const update_settings: ChatTool = {
     "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
     `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
     `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${p.allowed}; ${p.help})`).join(" ")} ` +
+    `So too ${USER_CHOICE_PARAMS.map((p) => `${p.key} (${p.allowed}; ${p.help})`).join(" ")} ` +
     "A change to one of them is refused unless the user's latest message names it. " +
     `The magnetic ion and |Q| band stay with the user, and so does the symmetry average (${SYMMETRY_AVERAGE_SETTINGS.join(", ")}): ` +
     "suggest a Laue class with your evidence instead, for the user to set. " +
@@ -110,8 +118,11 @@ export const update_settings: ChatTool = {
     // refused, whatever its value, and the symmetry average's settings always;
     // the other changes go ahead. A call whose every change is refused fails,
     // so the model reads the refusal as one.
-    const refused = Object.keys(changes).filter((key) => userSets(key) || (isSampleFact(key) && !namesSampleFact(ctx.userMessage ?? "", key)));
-    const why = (key: string): string => (userSets(key) ? symmetryAverageRefusal(key) : sampleFactRefusal(key));
+    const message = ctx.userMessage ?? "";
+    const refused = Object.keys(changes).filter(
+      (key) => userSets(key) || (isSampleFact(key) && !namesSampleFact(message, key)) || (isUserChoice(key) && !namesUserChoice(message, key)),
+    );
+    const why = (key: string): string => (userSets(key) ? symmetryAverageRefusal(key) : isUserChoice(key) ? userChoiceRefusal(key) : sampleFactRefusal(key));
     const asked = Object.entries(changes).filter(([key]) => !refused.includes(key));
     if (!asked.length) throw new Error(refused.map(why).join(" "));
     // Each setting's fields as the change asks for them, checked.
@@ -159,7 +170,8 @@ export const update_settings: ChatTool = {
       summary: refused.length
         ? [
             done,
-            ...(refused.some((k) => !userSets(k)) ? [`refused, a fact about the sample: ${refused.filter((k) => !userSets(k)).join(", ")}`] : []),
+            ...(refused.some((k) => isSampleFact(k)) ? [`refused, a fact about the sample: ${refused.filter((k) => isSampleFact(k)).join(", ")}`] : []),
+            ...(refused.some((k) => isUserChoice(k)) ? [`refused, the user's to choose: ${refused.filter((k) => isUserChoice(k)).join(", ")}`] : []),
             ...(refused.some(userSets) ? [`refused, the user's to set: ${refused.filter(userSets).join(", ")}`] : []),
           ].join("; ")
         : done,
