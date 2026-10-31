@@ -36,6 +36,9 @@ export const UNIT_CELL_TITLES = {
   both: "Dashed lines at integer h, k, l on the Q views, at the cell edges on the ΔPDF view",
 } as const;
 
+/** The switch's name where it draws only integer h, k, l on the raw volume: the Configure preview. */
+export const HKL_GRID_LABEL = "HKL grid";
+
 export const RESET_ZOOM_TITLE = "Reset zoom (double-click the view, or 0)";
 
 export const STRUCTURE_TITLE = "Mark the structure's interatomic vectors on the ΔPDF";
