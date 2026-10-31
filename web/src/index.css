@@ -1320,71 +1320,6 @@ input[type="range"]::-moz-range-track {
   cursor: not-allowed;
 }
 
-/* ring-model illustration (pie = patches, ring = Fourier texture) */
-.ring-viz {
-  display: block;
-  width: 128px;
-  height: 128px;
-  margin: 0 auto;
-}
-.ring-viz-pie .even {
-  fill: var(--surface-2);
-}
-.ring-viz-pie .odd {
-  fill: var(--surface-3);
-}
-.ring-viz-pie path {
-  stroke: var(--bg);
-  stroke-width: 0.6;
-}
-.ring-viz-hub {
-  fill: var(--surface);
-  stroke: var(--border-strong);
-  stroke-width: 1;
-}
-.ring-viz-count {
-  fill: var(--text);
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 700;
-}
-/* parametric ring viz: faint radial underlay = continuous Ring(|Q|) */
-.pring-underlay {
-  stroke: var(--surface-3);
-  opacity: 0.5;
-}
-/* radial line-shape Ring(|Q|) curve */
-.rprof {
-  display: block;
-  width: 100%;
-  max-width: 190px;
-  margin: 0 auto;
-}
-.rprof-line {
-  stroke: var(--accent);
-  stroke-width: 1.6;
-}
-.rprof-fill {
-  fill: var(--accent);
-  opacity: 0.16;
-}
-.rprof-win {
-  fill: var(--amber);
-  opacity: 0.18;
-}
-.rprof-axis {
-  stroke: var(--border-strong);
-  stroke-width: 1;
-}
-.rprof-tick {
-  stroke: var(--text-3);
-  stroke-width: 1;
-}
-.rprof-lbl {
-  fill: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 8px;
-}
 .ring-viz-cap {
   margin-top: 6px;
   text-align: center;
@@ -1917,54 +1852,6 @@ input[type="range"]::-moz-range-track {
   .ring-removal-controls {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-/* right 2/3: the texture schematic beside its equations, which wrap below it
-   when the box is too narrow for both */
-.cfg-stage-grid > .ring-removal-figure {
-  grid-column: span 2;
-}
-.ring-removal-figure {
-  display: flex;
-  flex-flow: row wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 14px 36px;
-}
-.ring-removal-viz {
-  flex: none;
-  width: 168px;
-}
-/* closed-form ring model, mirroring the fitted computation */
-.ring-eqn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  overflow-x: auto;
-  font-family: "Cambria Math", "STIX Two Math", "Palatino Linotype", Georgia, serif;
-}
-.ring-eqn .eq {
-  font-size: 15px;
-  color: var(--text);
-  white-space: nowrap;
-  text-align: center;
-}
-.ring-eqn .eq.sub {
-  font-size: 13px;
-  color: var(--text-2);
-}
-.ring-eqn i {
-  font-style: italic;
-}
-.ring-eqn .op {
-  font-style: normal;
-}
-.ring-eqn sub,
-.ring-eqn sup {
-  font-style: normal;
-  font-family: var(--font-mono);
-  font-size: 0.66em;
 }
 .punch-group-head {
   display: flex;
@@ -4971,10 +4858,6 @@ h6.md-h {
   .cfg-stage-grid > :last-child:nth-child(odd),
   .cfg-stage-row > :last-child:nth-child(odd) {
     grid-column: 1 / -1;
-  }
-  /* two columns: the ring figure sits beside the ring controls */
-  .cfg-stage-grid > .ring-removal-figure {
-    grid-column: auto;
   }
 }
 @container cfg-controls (max-width: 559px) {
