@@ -39,7 +39,10 @@ pass adds none, at most 48 operations. A group named by its operations gets
 the preset's name when it has the same operations, else "custom".
 
 Which class a sample has is the user's to declare. The Pilot may suggest one
-with evidence, but its settings tool does not set it.
+with evidence, but its settings tool does not set it. The evidence is the
+comparison of every candidate class by R_int, on every measured voxel and on
+the diffuse ([laue_compare.md](laue_compare.md)): the Configure page's
+*Compare Laue classes*, and the Pilot's `compare_laue_classes`.
 
 ## Two checks
 
@@ -111,8 +114,8 @@ operations the sample lacks.
 ### Order with the coverage-edge trim
 
 The raw input's coverage edge is always trimmed first (`edge_trim`, the
-[edge trim](inpainting.md)), then averaged; this order is the rule, not a
-setting. Measured voxels next to unmeasured space are barely normalised and can
+[edge trim](inpainting.md), the page's *Edge trim*, 0 to 3 voxel layers), then
+averaged; this order is the rule, not a setting. Measured voxels next to unmeasured space are barely normalised and can
 be orders of magnitude above the interior; trimmed first, they are pooled into
 no orbit, where trimmed after the average they would already have been pooled
 into the orbits of interior voxels. The viewer's equivalent is its

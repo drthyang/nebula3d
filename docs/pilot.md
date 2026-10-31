@@ -12,7 +12,7 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 27 tools (26 with the skills off: no `read_skill`), which run in the
+calls 28 tools (27 with the skills off: no `read_skill`), which run in the
 browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
@@ -21,7 +21,13 @@ browser against the same API the viewers use:
   `compare_datasets`, `configure_settings`, `run_log`, and `run_verdict` (the
   run's verdict as `{{achieved}}` would give it now, read before writing).
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
-  `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
+  `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`,
+  and `compare_laue_classes`, the evidence for a Laue class: every class the
+  cell allows compared by R_int on the raw volume, on all measured voxels and
+  on the diffuse, with the suggestion, its rule and the flag
+  ([laue_compare.md](algorithms/laue_compare.md)). The system prompt asks
+  for it before the model suggests a class, which stays yours to set; a
+  local model is offered it for a question about symmetry.
 - **Display:** `dpdf_contrast`, and `mark_region`, which marks a region in the
   slice views for you to look at (below).
 - **Acting:** `update_settings`, `run_pipeline`, `tune_pipeline`,
@@ -84,8 +90,13 @@ Each is described under [How it works](#how-it-works).
   or a "cell" alone name nothing, nor does a bare "yes" (say which: "yes, it
   has that modulation"), while a question that names a fact names it.
   `tune/catalog.ts` lists the words; the modulation's are provisional, yours
-  to confirm. The magnetic ion and the |Q| band the model cannot change at
-  all.
+  to confirm. The raw edge trim (`edgeTrim`, 0 to 3 voxel layers) is under
+  the same gate though no fact about the sample: it decides which measured
+  voxels every stage reads, so the model changes it only when your latest
+  message names it ("edge trim", "edge erosion", "coverage edge", or "trim"
+  with "edge"), and never in a tuning run. The magnetic ion, the |Q| band and
+  the symmetry average's settings (the Laue class above all) the model
+  cannot change at all.
 - **The questions only you can answer are asked, never answered for you.**
   When a run's sharp peaks off the lattice bunch at one commensurate
   fraction, as the satellites of a modulation nobody declared would, the

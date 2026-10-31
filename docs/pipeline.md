@@ -162,7 +162,11 @@ the cell's metric by more than 2 % (no symmetries of this lattice; with
 `allow_metric_change=True` it averages over them anyway and records a
 warning). An input that declares a symmetry already (a NeXus Viewer export)
 passes through unless `reaverage=True`. The raw coverage edge is always
-trimmed before the average.
+trimmed before the average (`PipelineParams.edge_trim`, 0 to 3 voxel layers on
+the Configure page, the NeXus Viewer's edge erosion rule for rule). Which class
+to declare: `nebula3d.analysis.laue_compare.compare_laue_classes` compares
+every candidate by R_int, on all measured voxels and on the diffuse, and
+suggests one ([laue_compare.md](algorithms/laue_compare.md)).
 The log gives the operations, the metric change ("metric (UB) kept to …"),
 the voxels filled, and R_int of the measured equivalents. The algorithm, its
 checks and the cross-check against the viewer:
