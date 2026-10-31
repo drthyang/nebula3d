@@ -32,7 +32,8 @@ import { clampHalf, displayToSlice, extentBounds, sampleIndex, type Viewport } f
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
 import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader";
-import { AUTO_TITLES, EDIT_STRUCTURE_TITLE, STRUCTURE_TITLE } from "../components/viewerText";
+import { useTouchOnly } from "../components/usePlatform";
+import { AUTO_TITLES, EDIT_STRUCTURE_TITLE, readVerb, STRUCTURE_TITLE } from "../components/viewerText";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
 import { useMarkStore, visibleMarks } from "../state/markStore";
@@ -77,6 +78,7 @@ const AX_LAT: Record<Ax, string> = { x: "a", y: "b", z: "c" };
 const AX_INDEX: Record<Ax, 0 | 1 | 2> = { x: 0, y: 1, z: 2 };
 
 export function DeltaPdfViewer() {
+  const touch = useTouchOnly();
   const pdfLit = useGlow("pdf");
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
@@ -428,7 +430,7 @@ export function DeltaPdfViewer() {
               );
             })()
           ) : (
-            <span className="muted">Hover a slice to read the ΔPDF{showStructure ? " and the pair vectors under the pointer" : ""}.</span>
+            <span className="muted">{readVerb(touch)} a slice to read the ΔPDF{showStructure ? " and the pair vectors under the pointer" : ""}.</span>
           )}
         </div>
       )}

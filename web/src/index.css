@@ -6730,6 +6730,17 @@ html.kb-open .ai-side {
     inset: -5px; /* from inside the 1 px border: 34 + 10 */
   }
 
+  /* a slice view: one finger scrolls the page over it (a phone's views fill
+     its width), two pinch and move it (ViewFrame keeps their touchmove from
+     the page), a tap or a sideways drag reads values; with Box zoom armed the
+     finger draws the box */
+  .vf {
+    touch-action: pan-y;
+  }
+  .vf.vf--box {
+    touch-action: none;
+  }
+
   /* NEBULA Pilot's sheet handle: a 28 px bar whose hit area reaches 12 px
      up over the page's edge */
   .ai-resize-y {
