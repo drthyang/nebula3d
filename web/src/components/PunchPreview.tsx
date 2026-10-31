@@ -1,23 +1,28 @@
 // The Configure page's preview: the input volume (raw, else ring-removed) on
-// one plane at a time, a*–b*, a*–c* or b*–c* in tabs, with the punch drawn
-// over it: the footprint at each Bragg node, the direct beam at the origin, an
-// example search punch (a "satellite") and the ΔPDF's |Q| band.
+// its three planes, a*–b*, a*–c* and b*–c*, with the punch drawn over them:
+// the footprint at each Bragg node, the direct beam at the origin, an example
+// search punch (a "satellite") and the ΔPDF's |Q| band. On a wide card the
+// three planes sit side by side, each with its cut slider under it; on a
+// narrower one they fold into one view with tabs, the cut in the header and
+// the tab remembered per browser (previewLayout.ts: where the line falls, and
+// why there).
 //
 // It is a slice view like those of the viewer pages, on their frame and header:
 // zoom, pan and reset as on every view (ViewFrame: Ctrl/⌘ + wheel or a pinch,
 // a Shift / middle / two-finger drag, a double-click), Box zoom and the gesture
-// card, the Unit cell lines at integer h, k, l, and the display bar for the
-// colour range (WorkspaceHeader, DisplayBar). Each plane keeps its own zoom.
-// The three share one colour scale: Auto pools their cuts through the origin,
-// so it holds still while a cut moves and when the tab changes. The colormap
-// and scale are the viewer pages' (one setting across the console); the
-// limits are the preview's own (state/configViewStore.ts).
+// card, the HKL grid (the other pages' Unit cell switch, one setting: dashed
+// lines at integer h, k, l), and the display bar for the colour range
+// (WorkspaceHeader, DisplayBar). Each plane keeps its own zoom. The three
+// share one colour scale: Auto pools their cuts through the origin, so it
+// holds still while a cut moves, when the tab changes and between the
+// layouts. The colormap and scale are the viewer pages' (one setting across
+// the console); the limits are the preview's own (state/configViewStore.ts).
 //
 // The overlay maps display units (Å⁻¹) to the view's pixels with the
 // viewport the canvas draws by, so the footprints stay on the peaks at any
 // zoom (punchGeometry.ts).
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { fetchSlice } from "../api/client";
@@ -27,7 +32,8 @@ import { useConfigViewStore, previewView } from "../state/configViewStore";
 import { useDpdfStore } from "../state/dpdfStore";
 import type { PunchPlane } from "../state/pipelineStore";
 import { useViewerStore } from "../state/viewerStore";
-import { fmtLevel } from "./colorScale";
+import { fmtLevel, type ScaleKind } from "./colorScale";
+import { useSideBySide } from "./previewLayout";
 import {
   axisIndex,
   axisLattice,
@@ -52,11 +58,22 @@ import { HklGrid } from "./UnitCellGrid";
 import { useLevels } from "./useLevels";
 import { ViewFrame } from "./ViewFrame";
 import { useViewSize } from "./viewSize";
-import { clampHalf, displayToPixel, extentBounds, fitViewport, sampleIndex, type SliceGeom, type Viewport } from "./viewport";
-import { RESET_ZOOM_TITLE } from "./viewerText";
+import {
+  clampHalf,
+  displayToPixel,
+  extentBounds,
+  fitViewport,
+  sampleIndex,
+  type Bounds,
+  type SliceGeom,
+  type Viewport,
+} from "./viewport";
+import { HKL_GRID_LABEL, RESET_ZOOM_TITLE } from "./viewerText";
 import { UnitCellsSwitch, WorkspaceHeader } from "./WorkspaceHeader";
 
-const TABS = PUNCH_PLANES.map((p) => ({ id: p.id, label: p.title, title: `The ${p.title} plane, cut along ${p.cutLabel}` }));
+const planeTitle = (p: (typeof PUNCH_PLANES)[number]) => `The ${p.title} plane, cut along ${p.cutLabel}`;
+
+const TABS = PUNCH_PLANES.map((p) => ({ id: p.id, label: p.title, title: planeTitle(p) }));
 
 // Where the example search punch is drawn (r.l.u.): off every lattice node.
 const SATELLITE: [number, number] = [1.5, -0.5];
@@ -178,6 +195,145 @@ export interface PunchPreviewProps {
   footprintText: string; // the footprint's radii as the caption says them
 }
 
+type PlaneSpec = (typeof PUNCH_PLANES)[number];
+
+/** A plane's axes, its r.l.u. → Å⁻¹ mapping, its whole view and how far it zooms. */
+interface PlaneFrame {
+  spec: PlaneSpec;
+  axisX: HklAxis;
+  axisY: HklAxis;
+  latX: number;
+  latY: number;
+  latCut: number;
+  geom: SliceGeom;
+  fit: Viewport; // the whole slice
+  bounds: Bounds | undefined; // the slice's extent: panning keeps the view's centre on it
+  voxel: number; // the finest voxel side (Å⁻¹)
+}
+
+function planeFrame(meta: VolumeMeta | undefined, spec: PlaneSpec): PlaneFrame {
+  const [axisX, axisY] = planeHklAxes(spec.id);
+  const latX = axisLattice(axisX, meta?.lattice) ?? 1;
+  const latY = axisLattice(axisY, meta?.lattice) ?? 1;
+  const latCut = axisLattice(spec.cutAxis, meta?.lattice) ?? 1;
+  const geom: SliceGeom = { sx: (2 * Math.PI) / latX, sy: (2 * Math.PI) / latY, angle: 90 };
+  const extent = meta ? { x_axis: rangeOf(meta, axisX), y_axis: rangeOf(meta, axisY) } : null;
+  return {
+    spec,
+    axisX,
+    axisY,
+    latX,
+    latY,
+    latCut,
+    geom,
+    fit: extent ? fitViewport(extent, geom) : { cx: 0, cy: 0, half: 1 },
+    bounds: extent ? extentBounds(extent, geom) : undefined,
+    voxel: Math.min(axisRange(meta, axisX).step * geom.sx, axisRange(meta, axisY).step * geom.sy),
+  };
+}
+
+/**
+ * One plane's slice at its cut, fetched while the plane is on show. While
+ * another cut loads, the last one stays (never another volume's).
+ */
+function usePlaneSlice(inputId: string | undefined, meta: VolumeMeta | undefined, plane: PunchPlane, cut: number, shown: boolean) {
+  return useQuery({
+    queryKey: sliceKey(inputId, plane, cut),
+    queryFn: () => fetchSlice(inputId as string, plane, cut, false),
+    enabled: shown && Boolean(inputId && meta),
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === inputId && prevQuery?.queryKey[2] === plane ? prev : undefined,
+  });
+}
+
+type PlaneQuery = ReturnType<typeof usePlaneSlice>;
+
+/** What a plane's view draws: its slice with the HKL grid and the punch over it, else a placeholder or the error. */
+function PlaneBody({
+  frame,
+  query,
+  meta,
+  viewport,
+  onViewport,
+  cursor,
+  onCursor,
+  punch,
+  bands,
+  cut,
+  gridlines,
+  lut,
+  vmin,
+  vmax,
+  scale,
+  soft,
+}: {
+  frame: PlaneFrame;
+  query: PlaneQuery;
+  meta: VolumeMeta | undefined;
+  viewport: Viewport;
+  onViewport: (v: Viewport | null) => void;
+  cursor: [number, number] | null;
+  onCursor: (p: [number, number] | null) => void;
+  punch: PunchGeom;
+  bands: [number, number];
+  cut: number;
+  gridlines: boolean;
+  lut: Uint8ClampedArray;
+  vmin: number;
+  vmax: number;
+  scale: ScaleKind;
+  soft: number;
+}) {
+  const slice: Slice | undefined = query.data;
+  if (query.isError) return <div className="panel-err">{(query.error as Error)?.message ?? "Slice unavailable"}</div>;
+  if (!slice || !meta) return <div className="skeleton" style={{ width: "100%", height: "100%" }} />;
+  const { geom } = frame;
+  return (
+    <ViewFrame
+      viewport={viewport}
+      onViewport={onViewport}
+      fit={frame.fit}
+      bounds={frame.bounds}
+      limit={(half) => clampHalf(half, frame.fit.half, frame.voxel)}
+      onReset={() => onViewport(null)}
+      axes={{ sx: geom.sx, sy: geom.sy, xLabel: frame.axisX, yLabel: frame.axisY, unit: "r.l.u.", fovUnit: "Å⁻¹" }}
+      cursor={cursor}
+      onCursor={onCursor}
+    >
+      <SliceCanvas
+        slice={slice}
+        lut={lut}
+        vmin={vmin}
+        vmax={vmax}
+        log={false}
+        scale={scale}
+        soft={soft}
+        viewport={viewport}
+        reciprocalAxes
+        latX={frame.latX}
+        latY={frame.latY}
+        latCut={frame.latCut}
+      />
+      {gridlines && <HklGrid viewport={viewport} geom={geom} lut={lut} />}
+      <PunchOverlay plane={frame.spec.id} geom={punch} meta={meta} viewport={viewport} bands={bands} cut={cut} />
+      {query.isFetching && <span className="spin vf-spin" />}
+    </ViewFrame>
+  );
+}
+
+/** The slices on show, pooled for the colour bar's histogram (one array as it is). */
+function pooled(parts: (Float32Array | undefined)[]): Float32Array | null {
+  const got = parts.filter((d): d is Float32Array => Boolean(d));
+  if (got.length < 2) return got[0] ?? null;
+  const out = new Float32Array(got.reduce((n, d) => n + d.length, 0));
+  let at = 0;
+  for (const d of got) {
+    out.set(d, at);
+    at += d.length;
+  }
+  return out;
+}
+
 export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts, onCut, bands, bandText, footprintText }: PunchPreviewProps) {
   const tab = useConfigViewStore((s) => s.previewTab);
   const setTab = useConfigViewStore((s) => s.setPreviewTab);
@@ -189,33 +345,32 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
   const setColormap = useViewerStore((s) => s.setColormap);
   const scale = useViewerStore((s) => s.scale);
   const setScale = useViewerStore((s) => s.setScale);
-  // "Unit cell" is one setting across the pages: here the lines of integer h, k, l.
+  // "HKL grid" here, "Unit cell" on the other pages: one setting, the lines of integer h, k, l.
   const gridlines = useDpdfStore((s) => s.gridlines);
-  const [cursor, setCursor] = useState<[number, number] | null>(null);
+  const [cursor, setCursor] = useState<{ plane: PunchPlane; p: [number, number] } | null>(null);
   const idBase = useId();
+  // Wide enough, the three planes side by side; else the tab's plane alone
+  // (and with no volume to show, one view says so rather than three).
+  const cardRef = useRef<HTMLElement>(null);
+  const wide = useSideBySide(cardRef) && Boolean(inputId);
 
-  const spec = PUNCH_PLANES.find((p) => p.id === tab) ?? PUNCH_PLANES[0];
-  const plane = spec.id;
-  const [axisX, axisY] = planeHklAxes(plane);
-  const latX = axisLattice(axisX, meta?.lattice) ?? 1;
-  const latY = axisLattice(axisY, meta?.lattice) ?? 1;
-  const latCut = axisLattice(spec.cutAxis, meta?.lattice) ?? 1;
-  const sliceGeom: SliceGeom = useMemo(() => ({ sx: (2 * Math.PI) / latX, sy: (2 * Math.PI) / latY, angle: 90 }), [latX, latY]);
-  const cutRange = axisRange(meta, spec.cutAxis);
-  const cut = Math.max(cutRange.min, Math.min(cutRange.max, cuts[spec.cutAxis] ?? 0));
+  const frames = useMemo(() => PUNCH_PLANES.map((spec) => planeFrame(meta, spec)), [meta]);
+  const tabFrame = frames.find((f) => f.spec.id === tab) ?? frames[0];
+  const shown = (plane: PunchPlane) => wide || plane === tabFrame.spec.id;
+  const cutOf = (spec: PlaneSpec) => {
+    const range = axisRange(meta, spec.cutAxis);
+    return Math.max(range.min, Math.min(range.max, cuts[spec.cutAxis] ?? 0));
+  };
+  const [hk, hl, kl] = frames;
 
-  // The plane on show at its cut; while another cut loads, the last one stays
-  // (never another plane's or another volume's: their axes differ).
-  const sliceQ = useQuery({
-    queryKey: sliceKey(inputId, plane, cut),
-    queryFn: () => fetchSlice(inputId as string, plane, cut, false),
-    enabled: Boolean(inputId && meta),
-    placeholderData: (prev, prevQuery) =>
-      prevQuery?.queryKey[1] === inputId && prevQuery?.queryKey[2] === plane ? prev : undefined,
-  });
-  const slice: Slice | undefined = sliceQ.data;
+  // Each plane on show at its cut (the three side by side, else the tab's).
+  const qHK = usePlaneSlice(inputId, meta, "hk", cutOf(hk.spec), shown("hk"));
+  const qHL = usePlaneSlice(inputId, meta, "hl", cutOf(hl.spec), shown("hl"));
+  const qKL = usePlaneSlice(inputId, meta, "kl", cutOf(kl.spec), shown("kl"));
+  const queries: Record<PunchPlane, PlaneQuery> = { hk: qHK, hl: qHL, kl: qKL };
 
-  // Auto from the three planes through the origin: one scale for the tabs.
+  // Auto from the three planes through the origin: one scale for every plane,
+  // in either layout.
   const refQs = useQueries({
     queries: PUNCH_PLANES.map((p) => {
       const c = originCut(axisRange(meta, p.cutAxis));
@@ -232,79 +387,116 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
     const got = [r0, r1, r2].filter((d): d is Float32Array => Boolean(d));
     return got.length ? got : null;
   }, [r0, r1, r2]);
+  // The colour bar's histogram: the slices on show.
+  const [dHK, dHL, dKL] = [qHK.data?.data, qHL.data?.data, qKL.data?.data];
+  const tabData = queries[tabFrame.spec.id].data?.data;
+  const histData = useMemo(() => (wide ? pooled([dHK, dHL, dKL]) : tabData), [wide, dHK, dHL, dKL, tabData]);
   const lv = useLevels({
     samples,
-    histData: slice?.data,
+    histData,
     scale,
     manual: manual && manual.dataset === datasetId ? manual : null,
   });
   const lut = COLORMAPS[colormap] ?? COLORMAPS.inferno;
 
-  // The whole slice is the full view; panning keeps the view's centre on it.
-  const fit = useMemo(
-    () => (meta ? fitViewport({ x_axis: rangeOf(meta, axisX), y_axis: rangeOf(meta, axisY) }, sliceGeom) : { cx: 0, cy: 0, half: 1 }),
-    [meta, axisX, axisY, sliceGeom],
-  );
-  const bounds = useMemo(
-    () => (meta ? extentBounds({ x_axis: rangeOf(meta, axisX), y_axis: rangeOf(meta, axisY) }, sliceGeom) : undefined),
-    [meta, axisX, axisY, sliceGeom],
-  );
-  const viewport = previewView(views, datasetId, plane) ?? fit;
-  const voxel = Math.min(axisRange(meta, axisX).step * sliceGeom.sx, axisRange(meta, axisY).step * sliceGeom.sy);
-  const limit = (half: number) => clampHalf(half, fit.half, voxel);
-  const onViewport = (v: Viewport | null) => datasetId && setView(datasetId, plane, v);
-
-  const valueAt = (p: [number, number]) => {
-    if (!slice) return undefined;
-    const ij = sampleIndex(slice.header, p[0], p[1], sliceGeom);
-    return ij ? slice.data[ij[1] * slice.header.nx + ij[0]] : undefined;
-  };
-  const hovered = cursor ? valueAt(cursor) : undefined;
+  const onViewportOf = (plane: PunchPlane) => (v: Viewport | null) => datasetId && setView(datasetId, plane, v);
   const fmtCut = (v: number) => Number(v.toFixed(3)).toString();
+  const caption = (f: PlaneFrame) => `${sourceName ?? "—"} · ${f.spec.cutAxis} = ${fmtCut(cutOf(f.spec))}`;
 
-  let body;
-  if (!inputId) {
-    body = <div className="cfg-preview-empty">No raw or ring-removed volume to preview: choose a dataset.</div>;
-  } else if (sliceQ.isError) {
-    body = <div className="panel-err">{(sliceQ.error as Error)?.message ?? "Slice unavailable"}</div>;
-  } else if (slice && meta) {
-    body = (
-      <ViewFrame
-        viewport={viewport}
-        onViewport={onViewport}
-        fit={fit}
-        bounds={bounds}
-        limit={limit}
-        onReset={() => onViewport(null)}
-        axes={{ sx: sliceGeom.sx, sy: sliceGeom.sy, xLabel: axisX, yLabel: axisY, unit: "r.l.u.", fovUnit: "Å⁻¹" }}
-        cursor={cursor}
-        onCursor={setCursor}
-      >
-        <SliceCanvas
-          slice={slice}
-          lut={lut}
-          vmin={lv.levels.lo}
-          vmax={lv.levels.hi}
-          log={false}
-          scale={scale}
-          soft={lv.soft}
-          viewport={viewport}
-          reciprocalAxes
-          latX={latX}
-          latY={latY}
-          latCut={latCut}
-        />
-        {gridlines && <HklGrid viewport={viewport} geom={sliceGeom} lut={lut} />}
-        <PunchOverlay plane={plane} geom={geom} meta={meta} viewport={viewport} bands={bands} cut={cut} />
-        {sliceQ.isFetching && <span className="spin vf-spin" />}
-      </ViewFrame>
+  const cutSlider = (f: PlaneFrame, grow: boolean) => {
+    const { cutAxis } = f.spec;
+    const range = axisRange(meta, cutAxis);
+    const clamp = (v: number) => Math.max(range.min, Math.min(range.max, v));
+    return (
+      <Slider
+        grow={grow}
+        label={`Cut ${cutAxis}`}
+        readout={meta ? undefined : "—"}
+        valueInput={
+          meta
+            ? { value: cutOf(f.spec), prefix: `${cutAxis} =`, suffix: "r.l.u.", onCommit: (v) => onCut(cutAxis, Number(clamp(v).toFixed(4))) }
+            : undefined
+        }
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        value={cutOf(f.spec)}
+        disabled={!meta}
+        onChange={(v) => onCut(cutAxis, Number(v.toFixed(4)))}
+      />
     );
-  } else {
-    body = <div className="skeleton" style={{ width: "100%", height: "100%" }} />;
-  }
+  };
+
+  const resetButton = (plane: PunchPlane) => (
+    <button type="button" className="icon-btn view-reset" title={RESET_ZOOM_TITLE} aria-label="Reset zoom" onClick={() => onViewportOf(plane)(null)}>
+      {RESET_ICON}
+    </button>
+  );
+
+  const body = (f: PlaneFrame): ReactNode => {
+    if (!inputId) return <div className="cfg-preview-empty">No raw or ring-removed volume to preview: choose a dataset.</div>;
+    const plane = f.spec.id;
+    return (
+      <PlaneBody
+        frame={f}
+        query={queries[plane]}
+        meta={meta}
+        viewport={previewView(views, datasetId, plane) ?? f.fit}
+        onViewport={onViewportOf(plane)}
+        cursor={cursor?.plane === plane ? cursor.p : null}
+        onCursor={(p) => setCursor(p ? { plane, p } : null)}
+        punch={geom}
+        bands={bands}
+        cut={cutOf(f.spec)}
+        gridlines={gridlines}
+        lut={lut}
+        vmin={lv.levels.lo}
+        vmax={lv.levels.hi}
+        scale={scale}
+        soft={lv.soft}
+      />
+    );
+  };
+
+  const legend = (
+    <>
+      <div className="punch-legend">
+        <span>
+          <span className="sw fp" />
+          Bragg
+        </span>
+        <span>
+          <span className="sw ib" />
+          beam
+        </span>
+        {geom.mode !== "integer" && (
+          <span>
+            <span className="sw sat" />
+            satellite
+          </span>
+        )}
+        {(bands[0] > 0 || bands[1] > 0) && (
+          <span>
+            <span className="sw qband" />
+            |Q| band
+          </span>
+        )}
+      </div>
+      <span className="cfg-preview-cap">
+        footprint <b>{footprintText}</b> · |Q| band <b>{bandText}</b>
+      </span>
+    </>
+  );
+
+  // The hover readout, for the plane under the pointer (one on show).
+  const hover = cursor && shown(cursor.plane) ? cursor : null;
+  const hoverFrame = hover ? frames.find((f) => f.spec.id === hover.plane) : undefined;
+  const hoverSlice = hover ? queries[hover.plane].data : undefined;
+  const hoverIj = hover && hoverFrame && hoverSlice ? sampleIndex(hoverSlice.header, hover.p[0], hover.p[1], hoverFrame.geom) : null;
+  const hovered = hoverIj && hoverSlice ? hoverSlice.data[hoverIj[1] * hoverSlice.header.nx + hoverIj[0]] : undefined;
 
   return (
-    <section className="card cfg-preview" aria-labelledby={`${idBase}-title`}>
+    <section ref={cardRef} className={`card cfg-preview${wide ? " cfg-preview--wide" : ""}`} aria-labelledby={`${idBase}-title`}>
       <div className="card-title-row">
         <h3 id={`${idBase}-title`}>Preview</h3>
         <span className="cfg-card-summary">The input volume with the punch and the |Q| band drawn over it</span>
@@ -312,33 +504,15 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
         <HelpTip>
           The raw volume (the ring-removed one when there is no raw file). Bragg: the footprint&apos;s resolution floor,
           the smallest punch, with its margin, at each Bragg node of the punch cell; beam: the direct beam at the
-          origin; satellite: an example search punch off the lattice; |Q| band: the band the 3D-ΔPDF keeps. Each
+          origin; satellite: an example search punch off the lattice; |Q| band: the band the 3D-ΔPDF keeps. On a wide
+          page the three planes sit side by side, each with its cut under it; on a narrower one they are tabs. Each
           plane keeps its own zoom; the three share one colour scale, Auto taken from their cuts through the origin.
         </HelpTip>
       </div>
 
       <WorkspaceHeader
-        overlays={<UnitCellsSwitch kind="hkl" />}
-        nav={
-          <div className="ws-cut">
-            <Slider
-              grow
-              label={`Cut ${spec.cutAxis}`}
-              readout={meta ? undefined : "—"}
-              valueInput={
-                meta
-                  ? { value: cut, prefix: `${spec.cutAxis} =`, suffix: "r.l.u.", onCommit: (v) => onCut(spec.cutAxis, Number(Math.max(cutRange.min, Math.min(cutRange.max, v)).toFixed(4))) }
-                  : undefined
-              }
-              min={cutRange.min}
-              max={cutRange.max}
-              step={cutRange.step}
-              value={cut}
-              disabled={!meta}
-              onChange={(v) => onCut(spec.cutAxis, Number(v.toFixed(4)))}
-            />
-          </div>
-        }
+        overlays={<UnitCellsSwitch kind="hkl" label={HKL_GRID_LABEL} />}
+        nav={wide ? undefined : <div className="ws-cut">{cutSlider(tabFrame, true)}</div>}
         displays={[
           {
             colormap,
@@ -354,60 +528,65 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
         ]}
       />
 
-      <div className="view cfg-preview-view">
-        <header className="view-head">
-          <TabList tabs={TABS} value={plane} onChange={(id) => setTab(id as PunchPlane)} label="Preview plane" idBase={idBase} />
-          <span className="view-caption">
-            {sourceName ?? "—"} · {spec.cutAxis} = {fmtCut(cut)}
-          </span>
-          <span className="view-actions">
-            <button type="button" className="icon-btn view-reset" title={RESET_ZOOM_TITLE} aria-label="Reset zoom" onClick={() => onViewport(null)}>
-              {RESET_ICON}
-            </button>
-          </span>
-        </header>
-        <div className="view-body" role="tabpanel" id={tabPanelId(idBase)} aria-labelledby={tabId(idBase, plane)}>
-          <div className="view-fill">{body}</div>
-        </div>
-        <footer className="view-foot cfg-preview-foot">
-          <div className="punch-legend">
-            <span>
-              <span className="sw fp" />
-              Bragg
-            </span>
-            <span>
-              <span className="sw ib" />
-              beam
-            </span>
-            {geom.mode !== "integer" && (
-              <span>
-                <span className="sw sat" />
-                satellite
-              </span>
-            )}
-            {(bands[0] > 0 || bands[1] > 0) && (
-              <span>
-                <span className="sw qband" />
-                |Q| band
-              </span>
-            )}
+      {wide ? (
+        <>
+          <div className="cfg-preview-planes">
+            {frames.map((f) => (
+              <section key={f.spec.id} className="view cfg-preview-plane" aria-label={planeTitle(f.spec)}>
+                <header className="view-head">
+                  <span className="view-title cfg-plane-title" title={planeTitle(f.spec)}>
+                    {f.spec.title}
+                  </span>
+                  <span className="view-caption">{caption(f)}</span>
+                  <span className="view-actions">{resetButton(f.spec.id)}</span>
+                </header>
+                <div className="view-body">
+                  <div className="view-fill">{body(f)}</div>
+                </div>
+                <footer className="view-foot">{cutSlider(f, false)}</footer>
+              </section>
+            ))}
           </div>
-          <span className="cfg-preview-cap">
-            footprint <b>{footprintText}</b> · |Q| band <b>{bandText}</b>
-          </span>
-        </footer>
-      </div>
+          <div className="cfg-preview-key">{legend}</div>
+        </>
+      ) : (
+        <div className="view cfg-preview-view">
+          <header className="view-head">
+            <TabList
+              tabs={TABS}
+              value={tabFrame.spec.id}
+              onChange={(id) => {
+                setTab(id as PunchPlane);
+                setCursor(null);
+              }}
+              label="Preview plane"
+              idBase={idBase}
+            />
+            <span className="view-caption">{caption(tabFrame)}</span>
+            <span className="view-actions">{resetButton(tabFrame.spec.id)}</span>
+          </header>
+          <div className="view-body" role="tabpanel" id={tabPanelId(idBase)} aria-labelledby={tabId(idBase, tabFrame.spec.id)}>
+            <div className="view-fill">{body(tabFrame)}</div>
+          </div>
+          <footer className="view-foot cfg-preview-foot">{legend}</footer>
+        </div>
+      )}
 
       <div className="ws-readout cfg-preview-readout">
-        {cursor ? (
+        {hover && hoverFrame ? (
           <>
             <b>
-              {axisX} {(cursor[0] / sliceGeom.sx).toFixed(3)} · {axisY} {(cursor[1] / sliceGeom.sy).toFixed(3)} · {spec.cutAxis} {fmtCut(cut)}
+              {hoverFrame.axisX} {(hover.p[0] / hoverFrame.geom.sx).toFixed(3)} · {hoverFrame.axisY}{" "}
+              {(hover.p[1] / hoverFrame.geom.sy).toFixed(3)} · {hoverFrame.spec.cutAxis} {fmtCut(cutOf(hoverFrame.spec))}
             </b>
             <span>{hovered === undefined ? "—" : Number.isFinite(hovered) ? fmtLevel(hovered) : "masked"}</span>
           </>
+        ) : wide ? (
+          <span className="muted">Hover a slice to read its intensity at (H, K, L).</span>
         ) : (
-          <span className="muted">Hover the slice to read its intensity at ({axisX}, {axisY}).</span>
+          <span className="muted">
+            Hover the slice to read its intensity at ({tabFrame.axisX}, {tabFrame.axisY}).
+          </span>
         )}
       </div>
     </section>

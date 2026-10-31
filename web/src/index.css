@@ -1723,8 +1723,9 @@ input[type="range"]::-moz-range-track {
 }
 
 /* Configure: the preview card (components/PunchPreview.tsx) — the viewer
-   pages' header, then one slice view whose plane its tabs pick, the punch
-   drawn over it, and the hover readout. */
+   pages' header, then the three planes side by side on a wide card or one
+   slice view whose plane its tabs pick, the punch drawn over them, and the
+   hover readout. */
 .cfg-preview {
   display: flex;
   flex-direction: column;
@@ -1785,7 +1786,8 @@ input[type="range"]::-moz-range-track {
   justify-content: space-between;
   gap: 4px 14px;
 }
-.cfg-preview-foot .punch-legend {
+.cfg-preview-foot .punch-legend,
+.cfg-preview-key .punch-legend {
   margin-top: 0;
   justify-content: flex-start;
 }
@@ -1799,6 +1801,32 @@ input[type="range"]::-moz-range-track {
 }
 .ws-readout.cfg-preview-readout {
   background: var(--surface-2);
+}
+/* a wide card (≥ 1100 px, components/previewLayout.ts): the three planes side
+   by side, each about square with its cut under it, the legend once below */
+.cfg-preview-planes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.cfg-preview-plane .view-body {
+  flex: none;
+  aspect-ratio: 1 / 1;
+  max-height: 70vh;
+}
+.cfg-plane-title {
+  font: 600 12px var(--font-mono);
+}
+.cfg-preview-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 14px;
+  padding: 8px 11px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 /* Configure: the 3D-ΔPDF Workflow card — one section per stage, in the order

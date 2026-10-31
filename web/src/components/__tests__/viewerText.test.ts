@@ -28,6 +28,14 @@ describe("viewer tooltips", () => {
   });
 });
 
+describe("the grid switch's names", () => {
+  it("is HKL grid on the Configure preview, with the integer-h, k, l tooltip", () => {
+    // The user's names: "HKL grid" on Configure, "Unit cell" elsewhere (WorkspaceHeader's default).
+    expect(text.HKL_GRID_LABEL).toBe("HKL grid");
+    expect(text.UNIT_CELL_TITLES.hkl).toBe("Dashed lines at integer h, k, l");
+  });
+});
+
 describe("the folded display row's summary", () => {
   const lv = (hi: number) => ({ levels: { hi } });
   it("names the scale of sequential data, lin when none is set", () => {
