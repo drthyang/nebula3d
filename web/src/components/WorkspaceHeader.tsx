@@ -1,7 +1,7 @@
 // The header every viewer page shares, after the NeXus Viewer's workspace
 // header, so the controls sit in one order with one name each on every page:
 //
-//   row 1 — Navigate · Box zoom (?) · overlays (Unit cell, Structure, …;
+//   row 1 — Box zoom (?) · overlays (Unit cell, Structure, …;
 //           the Configure preview names Unit cell "HKL grid")
 //           │ the page's own navigation (plane, cuts, filters)  ···  layout
 //   row 2 — the display bar(s) (DisplayBar)  ···  the page's display extras
@@ -18,7 +18,7 @@ import { useId, type ReactNode } from "react";
 
 import { useDpdfStore } from "../state/dpdfStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
-import { ClickModeControl, DisplayBar, type DisplayBarProps } from "./DisplayBar";
+import { BoxZoomTool, DisplayBar, type DisplayBarProps } from "./DisplayBar";
 import { ColormapBar, Switch } from "./ui";
 import { DISPLAY_TOGGLE_TITLE, displaySummaryText, UNIT_CELL_TITLES } from "./viewerText";
 
@@ -72,7 +72,7 @@ export function WorkspaceHeader({
   displayEnd,
   notes,
 }: {
-  overlays?: ReactNode; // after the click mode: Unit cell, Structure, …
+  overlays?: ReactNode; // after the Box zoom tool: Unit cell, Structure, …
   nav?: ReactNode; // the page's navigation, after a separator
   end?: ReactNode; // at the right of row 1: the layout switch
   rows?: ReactNode; // whole rows between the two
@@ -87,7 +87,7 @@ export function WorkspaceHeader({
   return (
     <div className="ws-head">
       <div className="ws-row">
-        <ClickModeControl />
+        <BoxZoomTool />
         {overlays}
         {nav && (
           <>

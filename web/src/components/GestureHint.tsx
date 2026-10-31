@@ -1,4 +1,4 @@
-// The gesture card: the "?" beside the click modes opens a popover that shows
+// The gesture card: the "?" beside the Box zoom tool opens a popover that shows
 // how to zoom, move and reset a view (and use the Box zoom tool), one row per
 // action, the ways drawn as key caps and pointer glyphs — the mouse, trackpad
 // and keyboard ways with ⌘ or Ctrl, or the touch ones on a touch-only device
@@ -214,7 +214,7 @@ export function GestureHint() {
               <span id={titleId} className="gh-title">
                 Zoom, move, reset
               </span>
-              <span className="gh-sub">{touch ? "on every view" : "in any mode, on every view"}</span>
+              <span className="gh-sub">on every view</span>
               <button type="button" className="gh-close" aria-label="Close" onClick={() => close(true)}>
                 ×
               </button>

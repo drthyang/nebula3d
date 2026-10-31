@@ -1733,7 +1733,7 @@ input[type="range"]::-moz-range-track {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
-/* — the gesture card (GestureHint.tsx): the "?" beside the click modes — */
+/* — the gesture card (GestureHint.tsx): the "?" beside the Box zoom tool — */
 .gh {
   position: relative;
   display: inline-flex;
@@ -5819,7 +5819,7 @@ h6.md-h {
 }
 
 /* ---------------------------------------------------------------------------
-   viewer workspace — after the NeXus Viewer: a header with the click mode,
+   viewer workspace — after the NeXus Viewer: a header with the Box zoom tool,
    plane / cut and layout, a display bar (colour range, scale, Auto,
    Brightness), then the views in a grid, focus or single layout.
    --------------------------------------------------------------------------- */
@@ -5879,6 +5879,35 @@ h6.md-h {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+/* The Box zoom tool: one toggle, as tall as a segmented control and lit like
+   its pressed button while armed (DisplayBar's BoxZoomTool). */
+.ws-tool {
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.ws-tool:hover {
+  color: var(--text);
+  border-color: var(--text-3);
+}
+.ws-tool.on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+/* a finger-sized target on touch screens (after the rule above, which it overrides) */
+@media (pointer: coarse) {
+  .ws-tool {
+    min-height: 44px;
+    padding: 0 14px;
+  }
 }
 /* A display group (Q or R) wraps onto the next line as a whole. */
 .ws-display-group {
@@ -6222,17 +6251,18 @@ h6.md-h {
   opacity: 1;
 }
 
-/* the interactive frame around a slice */
+/* the interactive frame around a slice: the crosshair cursor over the
+   crosshair it draws (zoom-in while the box zoom is armed) */
 .vf {
   position: absolute;
   inset: 0;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+  cursor: crosshair;
 }
 .vf:focus { outline: none; }
 .vf:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: -2px; }
-.vf--navigate { cursor: crosshair; }
 .vf--box { cursor: zoom-in; }
 .vf-overlay {
   position: absolute;
