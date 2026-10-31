@@ -4,10 +4,11 @@
 //
 //   PW=<path to playwright-core> node scripts/responsive_audit.mjs <base-url> <out-dir> \
 //     [--viewports=phone,ipad,desktop | --viewports=390x844,1024x768] [--pages=config,dpdf] \
-//     [--drawer=closed,open] [--no-shots]
+//     [--drawer=closed,open] [--no-shots] [--demo]
 //
-// It needs a running console with a dataset whose stages exist (the native
-// server, or the Pyodide build after "Use demo"). For each page × viewport ×
+// It needs a running console with a dataset whose stages exist: the native
+// server, or the Pyodide build with --demo (it loads the demo volume and runs
+// the pipeline in each browser context first). For each page × viewport ×
 // drawer state it records:
 //   - doc:     document.scrollingElement's height and width against the viewport
 //              (the app shell must stay one screen; `.main` is the scroll pane)
@@ -37,6 +38,9 @@ const positional = args.filter((a) => !a.startsWith("--"));
 const base = positional[0] ?? "http://127.0.0.1:8026/";
 const out = positional[1] ?? "audit-out";
 const shots = !args.includes("--no-shots");
+// the Pyodide build (npm run dev:pyodide / build:pages): load the demo volume
+// and run the pipeline in each browser context before measuring
+const demo = args.includes("--demo");
 mkdirSync(out, { recursive: true });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -303,6 +307,12 @@ const uniq = (rows, key) => {
       p.on("pageerror", (e) => errors.push(`${vp.name}: ${e.message}`));
       await p.goto(base);
       await sleep(2000);
+      if (demo) {
+        await p.getByRole("button", { name: "Use demo" }).click({ timeout: 180_000 });
+        await p.getByRole("button", { name: "Run pipeline" }).click({ timeout: 180_000 });
+        await sleep(1500);
+        await p.waitForFunction(() => !document.querySelector(".nav-dot"), null, { timeout: 600_000 });
+      }
       for (const pg of pages) {
         try {
           await p.locator(".nav button").nth(pg.nav).click();

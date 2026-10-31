@@ -6756,6 +6756,29 @@ html.kb-open .ai-side {
     touch-action: none;
   }
 
+  .ai-gear {
+    flex: none;
+  }
+  /* the docked Pilot's edge: a 9 px strip with a 45 px hit area */
+  .ai-resize-x::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -18px;
+    right: -18px;
+  }
+  /* the collapsed rail's button: the rail's whole width, and over its border */
+  .ai-rail button {
+    position: relative;
+    align-self: stretch;
+  }
+  .ai-rail button::before {
+    content: "";
+    position: absolute;
+    inset: 0 -1px;
+  }
+
   /* NEBULA Pilot's sheet handle: a 28 px bar whose hit area reaches 12 px
      up over the page's edge */
   .ai-resize-y {
