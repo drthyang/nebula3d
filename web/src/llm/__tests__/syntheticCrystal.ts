@@ -15,6 +15,7 @@ import type {
   DeltaPdfMeta,
   DpdfFeatures,
   FlattenSettings,
+  LaueComparison,
   RegridResult,
   RingDiagnostics,
   RingIsotropy,
@@ -31,15 +32,17 @@ import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useViewerStore } from "../../state/viewerStore";
 import { useTuneStore } from "../tune/tuner";
+import laueComparison from "./__fixtures__/laue-compare-demo.json";
 import { labelsOn, onTheThirds, recordOf, THIRDS_AS_PLANES } from "./helpers";
 import { shellFloorsOf } from "./shellFloors";
 
 /**
  * The API client's functions the crystal answers: the test file's mocks of
  * them. The regrid's (regridDataset) is optional: only a file that runs
- * regrid_refined_ub's gate open mocks it.
+ * regrid_refined_ub's gate open mocks it; so is the Laue comparison's
+ * (compareLaueClasses), mocked by the files that run compare_laue_classes.
  */
-export type BackendMocks = { regridDataset?: Mock } & Record<
+export type BackendMocks = { regridDataset?: Mock; compareLaueClasses?: Mock } & Record<
   | "fetchBraggProfile"
   | "fetchConsistencyCheck"
   | "fetchDataset"
@@ -566,6 +569,9 @@ export function installBackend(api: BackendMocks): void {
   api.fetchRingDiagnostics.mockImplementation(async (id: string) => ringDiagnostics(id));
   api.fetchDataset.mockImplementation(async (id: string) => DATASETS.find((d) => d.id === stemOf(id)));
   api.regridDataset?.mockImplementation(async (id: string) => regridAnswer(id));
+  // The Laue classes compared on the demo crystal (the backend's own result,
+  // __fixtures__/laue-compare-demo.json): cubic, its rods along L make it 4/mmm.
+  api.compareLaueClasses?.mockImplementation(async (id: string) => ({ ...(laueComparison as unknown as LaueComparison), id }));
 }
 
 // The console as a fresh session leaves it: default settings, no run, the

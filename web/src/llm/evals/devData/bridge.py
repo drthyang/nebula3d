@@ -250,7 +250,18 @@ class Bridge:
         return fn
 
     def json_call(self, rid: object, req: dict[str, Any], _body: bytes) -> None:
-        self.result(rid, self._method(req["method"])(*req.get("args", [])))
+        args = list(req.get("args", []))
+        stage = req.get("progress")
+        if stage:
+            # A call that reports its progress, as the pipeline worker passes it:
+            # a (fraction, message) callback after the arguments, posted as
+            # that stage's progress events.
+            def progress(fraction: float | None, message: str) -> None:
+                self.emit({"id": None, "type": "progress", "stage": stage, "status": "progress",
+                           "fraction": fraction, "message": message})
+
+            args.append(progress)
+        self.result(rid, self._method(req["method"])(*args))
 
     def slice_call(self, rid: object, req: dict[str, Any], _body: bytes) -> None:
         data = self._method(req["method"])(*req.get("args", []))

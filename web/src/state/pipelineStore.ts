@@ -62,6 +62,10 @@ export interface PipelineConfig {
   symmetryLaue: string;
   symmetryReaverage: boolean;
   symmetryAllowMetricChange: boolean;
+  // Voxel layers taken off the raw input's coverage edge at load, whether or
+  // not the symmetry average is on (the NeXus Viewer's "Edge erosion r",
+  // the same rule): "0" to "3"; blank = the backend default, 1.
+  edgeTrim: string;
   ringModel: string; // "pooled" | "global_v2" | "patched" | "parametric"
   ringRadialMode: string; // parametric: "rolling" | "peaks"
   ringNPatches: string;
@@ -193,6 +197,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   symmetryLaue: "",
   symmetryReaverage: false,
   symmetryAllowMetricChange: false,
+  edgeTrim: "",
   ringModel: "pooled",
   ringRadialMode: "rolling",
   ringNPatches: "",
@@ -479,6 +484,17 @@ export function enabledStages(s: PipelineConfig): string[] {
   ].filter((x): x is string => Boolean(x));
 }
 
+/** The raw coverage-edge trim the backend takes when none is sent: 1 voxel layer (PipelineParams.edge_trim). */
+export const DEFAULT_EDGE_TRIM = 1;
+/** The layers the page offers (the NeXus Viewer's edge erosion takes the same rule). */
+export const EDGE_TRIM_LAYERS = [0, 1, 2, 3] as const;
+
+/** The edge trim the form asks for, in voxel layers: blank (or anything else) is the default. */
+export function edgeTrimLayers(s: Pick<PipelineConfig, "edgeTrim">): number {
+  const n = Number(s.edgeTrim);
+  return s.edgeTrim !== "" && (EDGE_TRIM_LAYERS as readonly number[]).includes(n) ? n : DEFAULT_EDGE_TRIM;
+}
+
 // Convert the editable form values into the curated StageParamsIn the pipeline
 // accepts (empty fields stay unset → the backend/bridge default is used).  The
 // cleanup stages' switches are always sent (the flatten's is the request's
@@ -496,6 +512,9 @@ export function formToParams(s: PipelineConfig): StageParamsIn {
     if (s.symmetryReaverage) params.symmetry_average_reaverage = true;
     if (s.symmetryAllowMetricChange) params.symmetry_average_allow_metric_change = true;
   }
+  // The raw coverage-edge trim, when it is not the backend's default (1 layer).
+  const trim = edgeTrimLayers(s);
+  if (trim !== DEFAULT_EDGE_TRIM) params.edge_trim = trim;
   if (s.ringModel) params.rings_model = s.ringModel;
   if (s.ringNPatches) params.rings_n_patches = Number(s.ringNPatches);
   if (s.ringNFourier) params.rings_n_fourier = Number(s.ringNFourier);

@@ -1421,7 +1421,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## configure_settings {}
 
-1545 characters sent.
+1570 characters sent.
 
 ```json
 {
@@ -1436,6 +1436,7 @@ References of this skill (read one with read_skill and `reference`):
     "symmetryLaue": "(none chosen: the user's to set)",
     "symmetryReaverage": false,
     "symmetryAllowMetricChange": false,
+    "edgeTrim": "1 (default)",
     "ringModel": "pooled",
     "ringRadialMode": "rolling",
     "ringNPatches": "(default)",

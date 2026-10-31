@@ -16,6 +16,7 @@ import {
 } from "../api/pyodideEngine";
 import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
 import type { Lattice, VolumeMeta } from "../api/types";
+import { LaueCompare } from "../components/LaueCompare";
 import { PunchPreview } from "../components/PunchPreview";
 import { RingModelHelp } from "../components/RingModelHelp";
 import type { HklAxis, PunchGeom } from "../components/punchGeometry";
@@ -27,6 +28,10 @@ import { formatOp, gridProblem, LAUE_PRESETS, laueGroup, laueSpecOf, METRIC_TOLE
 import { useAgentEdits, type AgentEdit } from "../state/agentEdits";
 import { advancedShown, useConfigViewStore, type AdvancedStage } from "../state/configViewStore";
 import {
+  DEFAULT_EDGE_TRIM,
+  EDGE_TRIM_LAYERS,
+  edgeTrimLayers,
+  formToParams,
   STAGE_LABELS,
   STAGE_NO,
   usePipelineStore,
@@ -318,6 +323,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       symmetryLaue: st.symmetryLaue,
       symmetryReaverage: st.symmetryReaverage,
       symmetryAllowMetricChange: st.symmetryAllowMetricChange,
+      edgeTrim: st.edgeTrim,
       ringsEnabled: st.ringsEnabled,
       punchEnabled: st.punchEnabled,
       backfillEnabled: st.backfillEnabled,
@@ -474,6 +480,13 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   // the stage passes it through) and what is declared for it ("Use it").
   const rawMeta = punchPreviewStage?.name === "raw" ? punchMetaQ.data : undefined;
   const laue = useMemo(() => readLaue(s.symmetryLaue, rawMeta), [s.symmetryLaue, rawMeta]);
+  // "Compare Laue classes" reads the raw volume with the run's settings (its
+  // edge trim, punch cell and footprint), and the form's custom class beside
+  // the presets.
+  const rawVolumeId = punchPreviewStage?.name === "raw" ? punchPreviewStage.volume_id : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `s` changes with every field the run reads
+  const compareParams = useMemo(() => formToParams(usePipelineStore.getState()), [s]);
+  const compareExtra = useMemo(() => (laue.group?.label === "custom" ? [s.symmetryLaue.trim()] : []), [laue.group, s.symmetryLaue]);
   const declaredOrder = rawMeta?.symmetry_ops?.length ?? 0;
   const passesThrough = declaredOrder > 1 && !s.symmetryReaverage;
   const metricOff = (laue.metric ?? 0) > METRIC_TOLERANCE;
@@ -998,7 +1011,43 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               </AdvancedFold>
             }
           >
+            <div className="cfg-stage-grid">
+            <div className="cfg-box cfg-box--always">
+              <BoxHead
+                title="Raw input"
+                help={
+                  <>
+                    Measured voxels next to unmeasured space are only partly covered by the detectors: their
+                    normalisation is tiny, and their values can be orders of magnitude off. The edge trim unmeasures every
+                    measured voxel within that many voxels (the (2N+1)³ box around it) of an unmeasured or NaN voxel; the
+                    volume&apos;s own faces are not an edge. It is the NeXus Viewer&apos;s &quot;Edge erosion&quot;, the
+                    same rule voxel for voxel, and it applies to the raw input before every stage, whether or not the
+                    symmetry average is on (an input that declares a symmetry is trimmed across each orbit, so it stays
+                    symmetric). &quot;Compare Laue classes&quot; reads the raw input with this trim too. A change applies to
+                    the outputs made after it: switch on Force to remake those already on disk.
+                  </>
+                }
+              />
+              <div className="cfg-fields">
+                <Field className={flash("edgeTrim")} label="Edge trim">
+                  <select
+                    value={String(edgeTrimLayers(s))}
+                    title="Voxel layers taken off the raw input's coverage edge (the NeXus Viewer's edge erosion)"
+                    onChange={(e) => patch({ edgeTrim: Number(e.target.value) === DEFAULT_EDGE_TRIM ? "" : e.target.value })}
+                  >
+                    {EDGE_TRIM_LAYERS.map((n) => (
+                      <option key={n} value={n}>
+                        {n === 0 ? "None" : `${n} voxel layer${n === 1 ? "" : "s"}`}
+                        {n === DEFAULT_EDGE_TRIM ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <p className="config-note">Drops measured voxels next to unmeasured space in the raw input, whether or not averaging is on.</p>
+            </div>
             <div className="cfg-box">
+              <BoxHead title="Laue class" />
               <div className="cfg-fields">
                 <Field className={focusFlash ? `cfg-flash cfg-flash-${focusFlash % 2}` : flash("symmetryLaue")} label="Laue class">
                   <select
@@ -1051,6 +1100,18 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   <code>{laue.group.ops.map(formatOp).join("   ")}</code>
                 </details>
               )}
+            </div>
+            <div className="cfg-box cfg-box--always">
+              <BoxHead title="Which class: the evidence" />
+              <LaueCompare
+                volumeId={rawVolumeId}
+                params={compareParams}
+                extra={compareExtra}
+                currentSpec={s.symmetryLaue}
+                onPick={(spec) => patch({ symmetryLaue: spec })}
+                disabled={s.running}
+              />
+            </div>
             </div>
           </StageSection>
 

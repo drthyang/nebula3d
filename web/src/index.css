@@ -1402,6 +1402,195 @@ input[type="range"]::-moz-range-track {
   overflow-wrap: anywhere;
   color: var(--text-2);
 }
+/* a box of a stage that applies whether or not the stage is on (the raw edge
+   trim; the Laue comparison, read before switching the average on) */
+.cfg-stage--off .cfg-box.cfg-box--always {
+  opacity: 1;
+}
+
+/* "Compare Laue classes": the button, R_int's one line and its ?, the progress,
+   the verdict, the table (indented by the chain of subgroups), its caption */
+.laue-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.laue-compare-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.laue-compare-head .btn {
+  flex: none;
+}
+.laue-compare-line {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+.laue-compare-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.laue-compare-message {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.laue-verdict {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.laue-verdict--none {
+  color: var(--text-3);
+}
+.laue-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.laue-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.laue-table th {
+  padding: 0 6px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+.laue-table td {
+  padding: 4px 6px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.laue-table .num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+.laue-row {
+  cursor: pointer;
+}
+.laue-row:hover td {
+  background: var(--surface-3);
+}
+.laue-row--suggested td {
+  background: var(--green-soft);
+}
+.laue-row--current td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.laue-class {
+  white-space: nowrap;
+}
+.laue-indent {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.laue-chain {
+  color: var(--text-3);
+  font-size: 10px;
+}
+.laue-pick {
+  padding: 0;
+  font: 600 12px var(--font-mono);
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.laue-pick:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+.laue-row--current .laue-pick {
+  color: var(--accent-hi);
+}
+.laue-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 15px;
+  border-radius: 8px;
+  color: var(--green);
+  background: var(--green-soft);
+  vertical-align: 1px;
+}
+.laue-cell {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.laue-rint {
+  display: block;
+  color: var(--text);
+}
+.laue-detail {
+  display: block;
+  font-size: 10px;
+  color: var(--text-3);
+}
+.laue-cell--rose .laue-detail,
+.laue-cell--below .laue-detail {
+  color: var(--red);
+}
+.laue-cell--flag .laue-detail {
+  color: var(--amber);
+}
+.laue-cell--flag .laue-rint::after {
+  content: " ⚠";
+  color: var(--amber);
+}
+.laue-ref td {
+  color: var(--text-3);
+  font-style: italic;
+}
+.laue-ref .laue-rint {
+  color: var(--text-3);
+}
+.laue-refused td {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.laue-refused td:first-child {
+  font-family: var(--font-mono);
+}
+.laue-caption {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+/* phones: the second line of each cell under its value, the table at its width */
+@container main (max-width: 480px) {
+  .laue-table {
+    font-size: 11px;
+  }
+  .laue-table th,
+  .laue-table td {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  .laue-badge {
+    display: block;
+    width: max-content;
+    margin: 2px 0 0;
+  }
+}
 .config-grid-3 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
