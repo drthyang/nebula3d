@@ -28,8 +28,9 @@ pooled with equal weight.
 
 from __future__ import annotations
 
+import math
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -677,6 +678,207 @@ def _representatives(sym: GridSymmetry, lo: int, hi: int) -> NDArray[np.bool_]:
     return rep
 
 
+# ---------------------------------------------------------------------------
+# One slab's orbits: the pass the average and the Laue comparison share
+# ---------------------------------------------------------------------------
+# The orbits are visited a slab of H planes at a time, each from its
+# representative (:func:`_representatives`), through its images on the grid
+# in the group's order (:func:`_orbit_images`); a member counts when it is
+# measured — its mask True and its value finite — and the orbit's mean is the
+# equal-weight mean of those (:func:`orbit_terms`).  :func:`symmetry_average`
+# writes the means back; :mod:`nebula3d.analysis.laue_compare` reads the
+# agreement of each orbit's members (R_int) for every candidate Laue class,
+# with this same code, so the two cannot count orbits differently.
+
+
+def _on_grid(si: NDArray[np.intp], sj: NDArray[np.intp], sl: NDArray[np.intp],
+             shape: tuple[int, int, int]) -> NDArray[np.bool_]:
+    """Whether each index image lies on the grid."""
+    return ((si >= 0) & (si < shape[0]) & (sj >= 0) & (sj < shape[1])
+            & (sl >= 0) & (sl < shape[2]))
+
+
+def slab_planes(sym: GridSymmetry, slab_voxels: int = 1 << 20) -> int:
+    """H planes per slab, for about *slab_voxels* voxels a slab: a quarter of
+    that for a group with an operation that mixes L with H and K, whose
+    representative test holds three index arrays per operation."""
+    _nh, nk, nl = sym.shape
+    planes = max(1, int(slab_voxels) // max(1, nk * nl))
+    if not all(_l_separate(r) for r, _t in sym.index_ops):
+        planes = max(1, planes // 4)
+    return planes
+
+
+def slab_orbits(sym: GridSymmetry, lo: int, hi: int,
+                ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.intp]]:
+    """The orbits whose representative lies in H planes ``lo:hi``, by the
+    representatives' voxel indices (the member with the smallest flat index
+    among those on the grid, :func:`_representatives`): every orbit of the
+    grid in exactly one slab."""
+    ri, rj, rl = np.nonzero(_representatives(sym, lo, hi))
+    return ((ri + lo).astype(np.intp, copy=False), rj.astype(np.intp, copy=False),
+            rl.astype(np.intp, copy=False))
+
+
+def _orbit_images(
+    sym: GridSymmetry, ri: NDArray[np.intp], rj: NDArray[np.intp], rl: NDArray[np.intp],
+    select: NDArray[np.bool_] | None = None,
+) -> Iterator[tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.intp], NDArray[np.intp]]]:
+    """Per operation, in the group's order: which representatives' images lie
+    on the grid (their positions, of those *select* keeps) and the images.  A
+    member on a symmetry element is the image of its representative under
+    several operations, once per operation."""
+    for r, t in sym.index_ops:
+        si, sj, sl = _images(r, t, ri, rj, rl)
+        on = _on_grid(si, sj, sl, sym.shape)
+        if select is not None:
+            on &= select
+        pos = np.flatnonzero(on)
+        del on
+        # Only the images on the grid stay alive while the caller works.
+        si, sj, sl = si[pos], sj[pos], sl[pos]
+        yield pos, si, sj, sl
+
+
+#: E|X| / σ for a normal X of mean 0: what the mean absolute deviation of a
+#: voxel from its orbit's mean is, in units of its standard deviation, when
+#: the members differ by counting noise alone.
+_MEAN_ABS_NORMAL = math.sqrt(2.0 / math.pi)
+
+
+@dataclass
+class OrbitTerms:
+    """One measured mask's sums over a slab of orbits (:func:`orbit_terms`).
+
+    Per orbit, over its measured members (mask True, value finite), each
+    member once per operation that maps the representative onto it, so every
+    sum is ``stab`` times the sum over distinct members: ``total`` of the
+    values and ``count`` of the members; ``mean`` (the equal-weight mean,
+    ``total / count``) where ``has`` (a member measured); ``twice`` where at
+    least two distinct members are measured (``count ≥ 2·stab``).  With σ,
+    ``var2`` sums σ² and ``known`` counts the members it was known for.  On
+    the ``twice`` orbits, ``dev`` sums |I − ⟨I⟩| and ``mag`` sums |I|: R_int's
+    terms; ``noise`` sums the expected |I − ⟨I⟩| from σ alone,
+    √(2/π)·sd(I − ⟨I⟩) with sd² = σᵢ²(1 − 2/n) + Σσ²/n² for n measured
+    members of independent errors.  ``None`` where not asked for.
+    """
+
+    total: NDArray[np.float64]
+    count: NDArray[np.int32]
+    mean: NDArray[np.float64]
+    has: NDArray[np.bool_]
+    twice: NDArray[np.bool_]
+    var2: NDArray[np.float64] | None = None
+    known: NDArray[np.int32] | None = None
+    dev: NDArray[np.float64] | None = None
+    mag: NDArray[np.float64] | None = None
+    noise: NDArray[np.float64] | None = None
+
+    def r_int_sums(self, stab: NDArray[np.int32]) -> tuple[float, float]:
+        """R_int's numerator and denominator over this slab: Σ|I − ⟨I⟩| and
+        Σ|I| over the measured members of the orbits measured at least twice,
+        each distinct member once."""
+        if self.dev is None or self.mag is None or not self.twice.any():
+            return 0.0, 0.0
+        tw = self.twice
+        return (float((self.dev[tw] / stab[tw]).sum()),
+                float((self.mag[tw] / stab[tw]).sum()))
+
+
+def orbit_terms(
+    data: NDArray[np.floating], masks: Sequence[NDArray[np.bool_]], sym: GridSymmetry,
+    ri: NDArray[np.intp], rj: NDArray[np.intp], rl: NDArray[np.intp], *,
+    sigma: NDArray[np.floating] | None = None, sigma_unknown_abs: bool = False,
+    deviations: bool = True, noise: bool = False,
+) -> tuple[NDArray[np.int32], list[OrbitTerms]]:
+    """Sums over the measured members of the orbits ``(ri, rj, rl)`` represent
+    (:func:`slab_orbits`), for each of *masks*: one :class:`OrbitTerms` per
+    mask, and ``stab``, how many operations map each representative onto
+    itself.
+
+    A member counts for a mask when the mask is True there and its value is
+    finite (the measured-voxel rule of :func:`symmetry_average`).  The values
+    are summed in float64 over the images in the group's order.  With
+    *sigma*, σ² is summed over the members whose σ is finite (``known``
+    counts them); *sigma_unknown_abs* takes |I| for a σ that is not (√|I|,
+    the loader's estimate), so every measured member has one.  *deviations*
+    adds a second pass over the orbits measured at least twice for R_int's
+    terms, and *noise* (with *sigma*) their counting-noise expectation.  The
+    work holds a few arrays of the representatives' length, never one of the
+    volume's.
+    """
+    n = ri.size
+    stab = np.zeros(n, dtype=np.int32)
+    total = [np.zeros(n, dtype=np.float64) for _ in masks]
+    count = [np.zeros(n, dtype=np.int32) for _ in masks]
+    var2 = [np.zeros(n, dtype=np.float64) for _ in masks] if sigma is not None else None
+    known = [np.zeros(n, dtype=np.int32) for _ in masks] if sigma is not None else None
+    # 1. Sum each orbit's measured values over its images, in the group's order.
+    for pos, si, sj, sl in _orbit_images(sym, ri, rj, rl):
+        v = data[si, sj, sl].astype(np.float64)
+        finite = np.isfinite(v)
+        stab[pos] += (si == ri[pos]) & (sj == rj[pos]) & (sl == rl[pos])
+        var = None
+        if sigma is not None:
+            var = np.square(sigma[si, sj, sl].astype(np.float64))
+            if sigma_unknown_abs:
+                var = np.where(np.isfinite(var), var, np.abs(v))
+        for m, mask in enumerate(masks):
+            ok = mask[si, sj, sl] & finite
+            total[m][pos] += np.where(ok, v, 0.0)
+            count[m][pos] += ok
+            if var is not None and var2 is not None and known is not None:
+                kn = ok & np.isfinite(var)
+                var2[m][pos] += np.where(kn, var, 0.0)
+                known[m][pos] += kn
+    terms = []
+    for m in range(len(masks)):
+        has = count[m] > 0
+        mean = np.zeros(n, dtype=np.float64)
+        mean[has] = total[m][has] / count[m][has]
+        terms.append(OrbitTerms(
+            total=total[m], count=count[m], mean=mean, has=has,
+            twice=has & (count[m] >= 2 * stab),
+            var2=None if var2 is None else var2[m],
+            known=None if known is None else known[m]))
+    if not deviations:
+        return stab, terms
+    # 2. How far the measured members were from their mean (R_int), on the
+    #    orbits measured at least twice (count / stab distinct members).
+    want = np.zeros(n, dtype=bool)
+    for t in terms:
+        want |= t.twice
+    if not want.any():
+        return stab, terms
+    for t in terms:
+        t.dev = np.zeros(n, dtype=np.float64)
+        t.mag = np.zeros(n, dtype=np.float64)
+        if noise and sigma is not None:
+            t.noise = np.zeros(n, dtype=np.float64)
+    members = {id(t): (t.count / np.maximum(stab, 1)) for t in terms} if noise else {}
+    for pos, si, sj, sl in _orbit_images(sym, ri, rj, rl, want):
+        v = data[si, sj, sl].astype(np.float64)
+        finite = np.isfinite(v)
+        var = None
+        if noise and sigma is not None:
+            var = np.square(sigma[si, sj, sl].astype(np.float64))
+            if sigma_unknown_abs:
+                var = np.where(np.isfinite(var), var, np.abs(v))
+        for t, mask in zip(terms, masks):
+            ok = mask[si, sj, sl] & finite & t.twice[pos]
+            t.dev[pos] += np.where(ok, np.abs(v - t.mean[pos]), 0.0)  # type: ignore[index]
+            t.mag[pos] += np.where(ok, np.abs(v), 0.0)  # type: ignore[index]
+            if var is not None and t.noise is not None and t.var2 is not None:
+                nn = members[id(t)][pos]
+                spread = t.var2[pos] / np.maximum(stab[pos], 1)  # Σσ² over distinct members
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    sd2 = var * (1.0 - 2.0 / nn) + spread / (nn * nn)
+                use = ok & np.isfinite(var)
+                t.noise[pos] += np.where(use, _MEAN_ABS_NORMAL * np.sqrt(np.maximum(
+                    np.where(use, sd2, 0.0), 0.0)), 0.0)
+    return stab, terms
+
+
 def symmetry_average(
     vol: HKLVolume, sym: GridSymmetry, *, slab_voxels: int = 1 << 20,
 ) -> AverageStats:
@@ -710,10 +912,8 @@ def symmetry_average(
         vol.sigma = np.array(np.broadcast_to(vol.sigma, data.shape), dtype=data.dtype)
     sigma = vol.sigma
     measured_sigma = not vol.sigma_estimated
-    nh, nk, nl = sym.shape
-    planes = max(1, int(slab_voxels) // max(1, nk * nl))
-    if not all(_l_separate(r) for r, _t in sym.index_ops):
-        planes = max(1, planes // 4)  # the general test holds three index arrays per op
+    nh = sym.shape[0]
+    planes = slab_planes(sym, slab_voxels)
 
     before = 0
     for lo in range(0, nh, planes):
@@ -722,64 +922,25 @@ def symmetry_average(
 
     orbits = defaulted = 0
     dev_sum = abs_sum = 0.0
-    shape = (nh, nk, nl)
-
-    def on_grid(si: NDArray[np.intp], sj: NDArray[np.intp],
-                sl: NDArray[np.intp]) -> NDArray[np.bool_]:
-        return ((si >= 0) & (si < shape[0]) & (sj >= 0) & (sj < shape[1])
-                & (sl >= 0) & (sl < shape[2]))
-
     for lo in range(0, nh, planes):
-        hi = min(nh, lo + planes)
-        ri, rj, rl = np.nonzero(_representatives(sym, lo, hi))
+        ri, rj, rl = slab_orbits(sym, lo, min(nh, lo + planes))
         if ri.size == 0:
             continue
-        ri = (ri + lo).astype(np.intp, copy=False)
-        rj = rj.astype(np.intp, copy=False)
-        rl = rl.astype(np.intp, copy=False)
         n = ri.size
-        total = np.zeros(n, dtype=np.float64)
-        count = np.zeros(n, dtype=np.int32)
-        stab = np.zeros(n, dtype=np.int32)
-        var2 = np.zeros(n, dtype=np.float64) if measured_sigma else None
-        known = np.zeros(n, dtype=np.int32) if measured_sigma else None
-        # 1. Sum each orbit's measured values over its images, in the group's order.
-        for r, t in sym.index_ops:
-            si, sj, sl = _images(r, t, ri, rj, rl)
-            pos = np.flatnonzero(on_grid(si, sj, sl))
-            si, sj, sl = si[pos], sj[pos], sl[pos]
-            v = data[si, sj, sl].astype(np.float64)
-            ok = mask[si, sj, sl] & np.isfinite(v)
-            total[pos] += np.where(ok, v, 0.0)
-            count[pos] += ok
-            stab[pos] += (si == ri[pos]) & (sj == rj[pos]) & (sl == rl[pos])
-            if var2 is not None and known is not None:
-                var = np.square(sigma[si, sj, sl].astype(np.float64))
-                kn = ok & np.isfinite(var)
-                var2[pos] += np.where(kn, var, 0.0)
-                known[pos] += kn
-        has = count > 0
-        mean = np.zeros(n, dtype=np.float64)
-        mean[has] = total[has] / count[has]
-        # 2. How far the measured members were from their mean (R_int), on the
-        #    orbits measured at least twice (count / stab distinct members).
-        twice = has & (count >= 2 * stab)
-        if twice.any():
-            dev = np.zeros(n, dtype=np.float64)
-            mag = np.zeros(n, dtype=np.float64)
-            for r, t in sym.index_ops:
-                si, sj, sl = _images(r, t, ri, rj, rl)
-                pos = np.flatnonzero(on_grid(si, sj, sl) & twice)
-                v = data[si[pos], sj[pos], sl[pos]].astype(np.float64)
-                ok = mask[si[pos], sj[pos], sl[pos]] & np.isfinite(v)
-                dev[pos] += np.where(ok, np.abs(v - mean[pos]), 0.0)
-                mag[pos] += np.where(ok, np.abs(v), 0.0)
-            dev_sum += float((dev[twice] / stab[twice]).sum())
-            abs_sum += float((mag[twice] / stab[twice]).sum())
+        # 1–2. Each orbit's measured values summed over its images, in the
+        #      group's order, and R_int's terms (orbit_terms, shared with the
+        #      Laue comparison).
+        stab, (terms,) = orbit_terms(data, (mask,), sym, ri, rj, rl,
+                                     sigma=sigma if measured_sigma else None)
+        has, mean = terms.has, terms.mean
+        slab_dev, slab_abs = terms.r_int_sums(stab)
+        dev_sum += slab_dev
+        abs_sum += slab_abs
         value = mean.astype(data.dtype)
-        if var2 is not None and known is not None:
+        if terms.var2 is not None and terms.known is not None:
             # The viewer's export writes σ² of the mean, or √|mean| without a
             # known σ, which loads back as written.
+            var2, known = terms.var2, terms.known
             err = np.sqrt(np.abs(mean))
             some = has & (known > 0)
             err[some] = np.sqrt(var2[some] * stab[some]) / known[some]
@@ -795,16 +956,15 @@ def symmetry_average(
         # 3. Write the mean to every member on the grid (and unmeasure the
         #    orbits with no measured member, as the loader leaves them).
         members = np.zeros(n, dtype=np.int32)
-        for r, t in sym.index_ops:
-            si, sj, sl = _images(r, t, ri, rj, rl)
-            pos = np.flatnonzero(on_grid(si, sj, sl))
-            si, sj, sl = si[pos], sj[pos], sl[pos]
+        for pos, si, sj, sl in _orbit_images(sym, ri, rj, rl):
             data[si, sj, sl] = value[pos]
             sigma[si, sj, sl] = err_out[pos]
             mask[si, sj, sl] = has[pos]
             members[pos] += 1
         if short.any():
             defaulted += int((members[short] // stab[short]).sum())
+        # Free this slab's arrays before the next slab's pass allocates its own.
+        del stab, terms, has, mean, value, err, err_out, short, members
     after = 0
     for lo in range(0, nh, planes):
         after += int(np.count_nonzero(mask[lo:lo + planes]))
