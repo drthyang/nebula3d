@@ -16,7 +16,10 @@
     "r_int": 0.0415817,
     "noise": 0.0416785,
     "ratio": 0.997677,
-    "ratio_se": 0.00451784,
+    "ratio_se": 0.00429887,
+    "ratio_se_orbits": 0.00451784,
+    "chi2": 0.997274,
+    "dof": 34460,
     "orbits": 34460,
     "voxels": 68920,
     "pairs": 34460
@@ -25,10 +28,39 @@
     "r_int": 0.0492959,
     "noise": 0.0494647,
     "ratio": 0.996589,
-    "ratio_se": 0.0042554,
+    "ratio_se": 0.00407282,
+    "ratio_se_orbits": 0.0042554,
+    "chi2": 0.997037,
+    "dof": 33533,
     "orbits": 33533,
     "voxels": 67066,
     "pairs": 33533
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0415817,
+     "noise": 0.0416785,
+     "ratio": 0.997677,
+     "ratio_se": 0.00429887,
+     "ratio_se_orbits": 0.00451784,
+     "chi2": 0.997274,
+     "dof": 34460,
+     "orbits": 34460,
+     "voxels": 68920,
+     "pairs": 34460
+    },
+    "diffuse": {
+     "r_int": 0.0492959,
+     "noise": 0.0494647,
+     "ratio": 0.996589,
+     "ratio_se": 0.00407282,
+     "ratio_se_orbits": 0.0042554,
+     "chi2": 0.997037,
+     "dof": 33533,
+     "orbits": 33533,
+     "voxels": 67066,
+     "pairs": 33533
+    }
    },
    "verdict": {
     "all": {
@@ -36,6 +68,7 @@
      "rises": false,
      "against": null,
      "rise": null,
+     "se": null,
      "judged": true
     },
     "diffuse": {
@@ -43,6 +76,23 @@
      "rises": false,
      "against": null,
      "rise": null,
+     "se": null,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": null,
+     "rise": null,
+     "se": null,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": null,
+     "rise": null,
+     "se": null,
      "judged": true
     }
    }
@@ -64,7 +114,10 @@
     "r_int": 0.0505754,
     "noise": 0.0507691,
     "ratio": 0.996185,
-    "ratio_se": 0.00370513,
+    "ratio_se": 0.00379104,
+    "ratio_se_orbits": 0.00370513,
+    "chi2": 0.997027,
+    "dof": 51260,
     "orbits": 17660,
     "voxels": 68920,
     "pairs": 101660
@@ -73,10 +126,39 @@
     "r_int": 0.0600782,
     "noise": 0.0603124,
     "ratio": 0.996117,
-    "ratio_se": 0.00344112,
+    "ratio_se": 0.00335222,
+    "ratio_se_orbits": 0.00344112,
+    "chi2": 0.996798,
+    "dof": 49917,
     "orbits": 17149,
     "voxels": 67066,
     "pairs": 99069
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0505754,
+     "noise": 0.0507691,
+     "ratio": 0.996185,
+     "ratio_se": 0.00379104,
+     "ratio_se_orbits": 0.00370513,
+     "chi2": 0.997027,
+     "dof": 51260,
+     "orbits": 17660,
+     "voxels": 68920,
+     "pairs": 101660
+    },
+    "diffuse": {
+     "r_int": 0.0600782,
+     "noise": 0.0603124,
+     "ratio": 0.996117,
+     "ratio_se": 0.00335222,
+     "ratio_se_orbits": 0.00344112,
+     "chi2": 0.996798,
+     "dof": 49917,
+     "orbits": 17149,
+     "voxels": 67066,
+     "pairs": 99069
+    }
    },
    "verdict": {
     "all": {
@@ -84,6 +166,7 @@
      "rises": false,
      "against": "-1",
      "rise": 0.998504,
+     "se": 0.00236653,
      "judged": true
     },
     "diffuse": {
@@ -91,6 +174,23 @@
      "rises": false,
      "against": "-1",
      "rise": 0.999527,
+     "se": 0.00231513,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 0.998504,
+     "se": 0.00236653,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 0.999527,
+     "se": 0.00231513,
      "judged": true
     }
    }
@@ -112,7 +212,10 @@
     "r_int": 0.050599,
     "noise": 0.0507701,
     "ratio": 0.996631,
-    "ratio_se": 0.00368177,
+    "ratio_se": 0.00341847,
+    "ratio_se_orbits": 0.00368177,
+    "chi2": 0.994655,
+    "dof": 51260,
     "orbits": 17660,
     "voxels": 68920,
     "pairs": 101660
@@ -121,10 +224,39 @@
     "r_int": 0.0600151,
     "noise": 0.0603131,
     "ratio": 0.995058,
-    "ratio_se": 0.00344789,
+    "ratio_se": 0.00300797,
+    "ratio_se_orbits": 0.00344789,
+    "chi2": 0.9943,
+    "dof": 49917,
     "orbits": 17149,
     "voxels": 67066,
     "pairs": 99069
+   },
+   "common": {
+    "all": {
+     "r_int": 0.050599,
+     "noise": 0.0507701,
+     "ratio": 0.996631,
+     "ratio_se": 0.00341847,
+     "ratio_se_orbits": 0.00368177,
+     "chi2": 0.994655,
+     "dof": 51260,
+     "orbits": 17660,
+     "voxels": 68920,
+     "pairs": 101660
+    },
+    "diffuse": {
+     "r_int": 0.0600151,
+     "noise": 0.0603131,
+     "ratio": 0.995058,
+     "ratio_se": 0.00300797,
+     "ratio_se_orbits": 0.00344789,
+     "chi2": 0.9943,
+     "dof": 49917,
+     "orbits": 17149,
+     "voxels": 67066,
+     "pairs": 99069
+    }
    },
    "verdict": {
     "all": {
@@ -132,6 +264,7 @@
      "rises": false,
      "against": "-1",
      "rise": 0.998951,
+     "se": 0.00307397,
      "judged": true
     },
     "diffuse": {
@@ -139,6 +272,23 @@
      "rises": false,
      "against": "-1",
      "rise": 0.998464,
+     "se": 0.00291092,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 0.998951,
+     "se": 0.00307397,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 0.998464,
+     "se": 0.00291092,
      "judged": true
     }
    }
@@ -163,7 +313,10 @@
     "r_int": 0.0545926,
     "noise": 0.0547693,
     "ratio": 0.996773,
-    "ratio_se": 0.00343538,
+    "ratio_se": 0.00321589,
+    "ratio_se_orbits": 0.00343538,
+    "chi2": 0.995339,
+    "dof": 59660,
     "orbits": 9260,
     "voxels": 68920,
     "pairs": 231260
@@ -172,10 +325,39 @@
     "r_int": 0.0648095,
     "noise": 0.0650818,
     "ratio": 0.995815,
-    "ratio_se": 0.00321549,
+    "ratio_se": 0.00285395,
+    "ratio_se_orbits": 0.00321549,
+    "chi2": 0.994901,
+    "dof": 58109,
     "orbits": 8957,
     "voxels": 67066,
     "pairs": 225785
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0545926,
+     "noise": 0.0547693,
+     "ratio": 0.996773,
+     "ratio_se": 0.00321589,
+     "ratio_se_orbits": 0.00343538,
+     "chi2": 0.995339,
+     "dof": 59660,
+     "orbits": 9260,
+     "voxels": 68920,
+     "pairs": 231260
+    },
+    "diffuse": {
+     "r_int": 0.0648095,
+     "noise": 0.0650818,
+     "ratio": 0.995815,
+     "ratio_se": 0.00285395,
+     "ratio_se_orbits": 0.00321549,
+     "chi2": 0.994901,
+     "dof": 58109,
+     "orbits": 8957,
+     "voxels": 67066,
+     "pairs": 225785
+    }
    },
    "verdict": {
     "all": {
@@ -183,6 +365,7 @@
      "rises": false,
      "against": "2/m (b unique)",
      "rise": 1.00059,
+     "se": 0.00205164,
      "judged": true
     },
     "diffuse": {
@@ -190,6 +373,23 @@
      "rises": false,
      "against": "2/m (c unique)",
      "rise": 1.00076,
+     "se": 0.00148136,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": "2/m (b unique)",
+     "rise": 1.00059,
+     "se": 0.00205164,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "2/m (c unique)",
+     "rise": 1.00076,
+     "se": 0.00148136,
      "judged": true
     }
    }
@@ -212,7 +412,10 @@
     "r_int": 0.0548796,
     "noise": 0.0550032,
     "ratio": 0.997754,
-    "ratio_se": 0.00336734,
+    "ratio_se": 0.00317014,
+    "ratio_se_orbits": 0.00336734,
+    "chi2": 0.99517,
+    "dof": 60080,
     "orbits": 8840,
     "voxels": 68920,
     "pairs": 237740
@@ -221,10 +424,39 @@
     "r_int": 0.0651006,
     "noise": 0.0653144,
     "ratio": 0.996726,
-    "ratio_se": 0.00320576,
+    "ratio_se": 0.00254382,
+    "ratio_se_orbits": 0.00320576,
+    "chi2": 0.994579,
+    "dof": 58485,
     "orbits": 8581,
     "voxels": 67066,
     "pairs": 231645
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0548796,
+     "noise": 0.0550032,
+     "ratio": 0.997754,
+     "ratio_se": 0.00317014,
+     "ratio_se_orbits": 0.00336734,
+     "chi2": 0.99517,
+     "dof": 60080,
+     "orbits": 8840,
+     "voxels": 68920,
+     "pairs": 237740
+    },
+    "diffuse": {
+     "r_int": 0.0651006,
+     "noise": 0.0653144,
+     "ratio": 0.996726,
+     "ratio_se": 0.00254382,
+     "ratio_se_orbits": 0.00320576,
+     "chi2": 0.994579,
+     "dof": 58485,
+     "orbits": 8581,
+     "voxels": 67066,
+     "pairs": 231645
+    }
    },
    "verdict": {
     "all": {
@@ -232,6 +464,7 @@
      "rises": false,
      "against": "2/m (c unique)",
      "rise": 1.00113,
+     "se": 0.00183969,
      "judged": true
     },
     "diffuse": {
@@ -239,6 +472,23 @@
      "rises": false,
      "against": "2/m (c unique)",
      "rise": 1.00168,
+     "se": 0.00192621,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": "2/m (c unique)",
+     "rise": 1.00113,
+     "se": 0.00183969,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "2/m (c unique)",
+     "rise": 1.00168,
+     "se": 0.00192621,
      "judged": true
     }
    }
@@ -265,7 +515,10 @@
     "r_int": 0.0567186,
     "noise": 0.05678,
     "ratio": 0.998918,
-    "ratio_se": 0.00335437,
+    "ratio_se": 0.00304446,
+    "ratio_se_orbits": 0.00335437,
+    "chi2": 0.998007,
+    "dof": 64070,
     "orbits": 4850,
     "voxels": 68920,
     "pairs": 483980
@@ -274,10 +527,39 @@
     "r_int": 0.0673353,
     "noise": 0.0674568,
     "ratio": 0.998199,
-    "ratio_se": 0.00312401,
+    "ratio_se": 0.00262826,
+    "ratio_se_orbits": 0.00312401,
+    "chi2": 0.997645,
+    "dof": 62387,
     "orbits": 4679,
     "voxels": 67066,
     "pairs": 473021
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0567186,
+     "noise": 0.05678,
+     "ratio": 0.998918,
+     "ratio_se": 0.00304446,
+     "ratio_se_orbits": 0.00335437,
+     "chi2": 0.998007,
+     "dof": 64070,
+     "orbits": 4850,
+     "voxels": 68920,
+     "pairs": 483980
+    },
+    "diffuse": {
+     "r_int": 0.0673353,
+     "noise": 0.0674568,
+     "ratio": 0.998199,
+     "ratio_se": 0.00262826,
+     "ratio_se_orbits": 0.00312401,
+     "chi2": 0.997645,
+     "dof": 62387,
+     "orbits": 4679,
+     "voxels": 67066,
+     "pairs": 473021
+    }
    },
    "verdict": {
     "all": {
@@ -285,6 +567,7 @@
      "rises": false,
      "against": "2/m (b unique)",
      "rise": 1.00274,
+     "se": 0.00232889,
      "judged": true
     },
     "diffuse": {
@@ -292,6 +575,23 @@
      "rises": false,
      "against": "2/m (c unique)",
      "rise": 1.00316,
+     "se": 0.00196177,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": "2/m (b unique)",
+     "rise": 1.00274,
+     "se": 0.00232889,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "2/m (c unique)",
+     "rise": 1.00316,
+     "se": 0.00196177,
      "judged": true
     }
    }
@@ -316,7 +616,10 @@
     "r_int": 0.0866715,
     "noise": 0.057581,
     "ratio": 1.50521,
-    "ratio_se": 0.020489,
+    "ratio_se": 0.0645284,
+    "ratio_se_orbits": 0.020489,
+    "chi2": 2.23416,
+    "dof": 65820,
     "orbits": 3100,
     "voxels": 68920,
     "pairs": 761420
@@ -325,10 +628,39 @@
     "r_int": 0.104543,
     "noise": 0.0683719,
     "ratio": 1.52903,
-    "ratio_se": 0.0210343,
+    "ratio_se": 0.0676178,
+    "ratio_se_orbits": 0.0210343,
+    "chi2": 2.26464,
+    "dof": 64069,
     "orbits": 2997,
     "voxels": 67066,
     "pairs": 743333
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0866715,
+     "noise": 0.057581,
+     "ratio": 1.50521,
+     "ratio_se": 0.0645284,
+     "ratio_se_orbits": 0.020489,
+     "chi2": 2.23416,
+     "dof": 65820,
+     "orbits": 3100,
+     "voxels": 68920,
+     "pairs": 761420
+    },
+    "diffuse": {
+     "r_int": 0.104543,
+     "noise": 0.0683719,
+     "ratio": 1.52903,
+     "ratio_se": 0.0676178,
+     "ratio_se_orbits": 0.0210343,
+     "chi2": 2.26464,
+     "dof": 64069,
+     "orbits": 2997,
+     "voxels": 67066,
+     "pairs": 743333
+    }
    },
    "verdict": {
     "all": {
@@ -336,6 +668,7 @@
      "rises": true,
      "against": "2/m (b unique)",
      "rise": 1.51097,
+     "se": 0.0642911,
      "judged": true
     },
     "diffuse": {
@@ -343,6 +676,23 @@
      "rises": true,
      "against": "2/m (c unique)",
      "rise": 1.53662,
+     "se": 0.0678985,
+     "judged": true
+    },
+    "common_all": {
+     "supported": false,
+     "rises": true,
+     "against": "2/m (b unique)",
+     "rise": 1.51097,
+     "se": 0.0642911,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": false,
+     "rises": true,
+     "against": "2/m (c unique)",
+     "rise": 1.53662,
+     "se": 0.0678985,
      "judged": true
     }
    }
@@ -371,7 +721,10 @@
     "r_int": 0.087095,
     "noise": 0.058156,
     "ratio": 1.49761,
-    "ratio_se": 0.0266316,
+    "ratio_se": 0.0635722,
+    "ratio_se_orbits": 0.0266316,
+    "chi2": 2.21051,
+    "dof": 67150,
     "orbits": 1770,
     "voxels": 68920,
     "pairs": 1445420
@@ -380,10 +733,39 @@
     "r_int": 0.10506,
     "noise": 0.0690672,
     "ratio": 1.52113,
-    "ratio_se": 0.0275363,
+    "ratio_se": 0.066612,
+    "ratio_se_orbits": 0.0275363,
+    "chi2": 2.24052,
+    "dof": 65367,
     "orbits": 1699,
     "voxels": 67066,
     "pairs": 1415813
+   },
+   "common": {
+    "all": {
+     "r_int": 0.087095,
+     "noise": 0.058156,
+     "ratio": 1.49761,
+     "ratio_se": 0.0635722,
+     "ratio_se_orbits": 0.0266316,
+     "chi2": 2.21051,
+     "dof": 67150,
+     "orbits": 1770,
+     "voxels": 68920,
+     "pairs": 1445420
+    },
+    "diffuse": {
+     "r_int": 0.10506,
+     "noise": 0.0690672,
+     "ratio": 1.52113,
+     "ratio_se": 0.066612,
+     "ratio_se_orbits": 0.0275363,
+     "chi2": 2.24052,
+     "dof": 65367,
+     "orbits": 1699,
+     "voxels": 67066,
+     "pairs": 1415813
+    }
    },
    "verdict": {
     "all": {
@@ -391,6 +773,7 @@
      "rises": true,
      "against": "2/m (b unique)",
      "rise": 1.50335,
+     "se": 0.063335,
      "judged": true
     },
     "diffuse": {
@@ -398,6 +781,23 @@
      "rises": true,
      "against": "2/m (c unique)",
      "rise": 1.52868,
+     "se": 0.0668926,
+     "judged": true
+    },
+    "common_all": {
+     "supported": false,
+     "rises": true,
+     "against": "2/m (b unique)",
+     "rise": 1.50335,
+     "se": 0.063335,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": false,
+     "rises": true,
+     "against": "2/m (c unique)",
+     "rise": 1.52868,
+     "se": 0.0668926,
      "judged": true
     }
    }
@@ -445,7 +845,10 @@
    "r_int": 0.537286,
    "noise": 0.0589337,
    "ratio": 9.11679,
-   "ratio_se": 1.48784,
+   "ratio_se": 1.20619,
+   "ratio_se_orbits": 1.48784,
+   "chi2": 48.7686,
+   "dof": 68886,
    "orbits": 34,
    "voxels": 68920,
    "pairs": 118500764
@@ -454,7 +857,10 @@
    "r_int": 0.342498,
    "noise": 0.0699376,
    "ratio": 4.8972,
-   "ratio_se": 0.456409,
+   "ratio_se": 0.268698,
+   "ratio_se_orbits": 0.456409,
+   "chi2": 21.1715,
+   "dof": 67033,
    "orbits": 33,
    "voxels": 67066,
    "pairs": 112620173
@@ -480,7 +886,7 @@
  "rule": {
   "delta": 0.1,
   "z": 2.0,
-  "text": "Each class's R_int is read in units of its noise floor (the R_int counting noise alone gives on the same orbits, from \u03c3). A class rises against a subgroup when that ratio exceeds the subgroup's by more than 10% and by more than 2 standard errors; it is supported when it rises against none of its candidate subgroups and all of them are supported. A reading tells the classes apart only when pooling whole |Q| shells rises against the lowest class by the same test. The suggestion is the supported class with the most operations in every reading that tells them apart."
+  "text": "Each class's R_int is read in units of its noise floor (the R_int counting noise alone gives on the same orbits, from \u03c3). A class rises against a subgroup when that ratio exceeds the subgroup's by more than 10% and the excess is more than 2 standard errors (a spatial block bootstrap of the difference); it is supported when it rises against none of its candidate subgroups and all of them are supported. A reading tells the classes apart only when pooling whole |Q| shells rises against the lowest class by the same test. The suggestion is the supported class with the most operations in every reading that tells them apart."
  },
  "readings": {
   "all": {
@@ -503,6 +909,31 @@
  },
  "reason": "4/mmm is the class with the most operations the rule supports in both readings: its R_int, in units of the noise floor, is 1.00\u00d7 that of 2/m (b unique), the subgroup that agrees best; m-3m rose 1.50\u00d7 against 2/m (b unique).",
  "disagreement": null,
- "notes": [],
- "limits": "Twinning or several domains related by an operation the sample lacks make a lower symmetry look higher: the domains' sum has the higher symmetry, and R_int alone cannot tell them apart. Only the presets' settings are compared (the four-fold along c, the two-fold along b or c); a sample with its unique axis elsewhere needs custom generators. The diffuse reading masks a sphere around each Bragg node, not the punch itself."
+ "notes": [
+  "The bootstrap's blocks were cut to 3 voxels (the correlation asks for 4) to keep 64 of them."
+ ],
+ "bootstrap": {
+  "replicates": 200,
+  "seed": 20261101,
+  "block_voxels": 3,
+  "blocks": 84,
+  "effective_blocks": 69.3,
+  "correlation_voxels": [
+   0.0,
+   0.02,
+   0.0
+  ],
+  "correlation_reading": "all",
+  "reaches_past": false,
+  "variance_kept": 0.988
+ },
+ "common": {
+  "lowest": "-1",
+  "voxels": 68921,
+  "share": 1.0,
+  "suggestion": "4/mmm",
+  "main": "4/mmm",
+  "flag": null
+ },
+ "limits": "Twinning or several domains related by an operation the sample lacks make a lower symmetry look higher: the domains' sum has the higher symmetry, and R_int alone cannot tell them apart. Systematic errors that differ between regions of the coverage reject classes falsely (the common-subset reading flags it). Only the presets' settings are compared (the four-fold along c, the two-fold along b or c); a sample with its unique axis elsewhere needs custom generators. The diffuse reading masks a sphere around each Bragg node, not the punch itself."
 }

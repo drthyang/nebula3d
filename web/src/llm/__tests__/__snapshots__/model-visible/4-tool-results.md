@@ -922,17 +922,18 @@ References of this skill (read one with read_skill and `reference`):
 
 ## compare_laue_classes {} (the demo crystal's comparison (cubic; its rods along L make it 4/mmm))
 
-2467 characters sent.
+2445 characters sent.
 
 ```json
 {
-  "columns": "r_int and x_noise are [every measured voxel, diffuse]; x_noise is R_int over its noise floor (1.00: agreement to the counting noise)",
+  "columns": "r_int, x_noise, chi2: [all voxels, diffuse]; x_noise = R_int / noise floor, chi2 = χ²/dof (1: within counting noise)",
   "classes": [
     {
       "class": "-1",
       "ops": 2,
       "r_int": [0.042, 0.049],
       "x_noise": [1, 1],
+      "chi2": [1, 1],
       "orbits": 34460,
       "verdict": "supported"
     },
@@ -942,6 +943,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["-1"],
       "r_int": [0.051, 0.06],
       "x_noise": [1, 1],
+      "chi2": [1, 1],
       "orbits": 17660,
       "verdict": "supported"
     },
@@ -951,6 +953,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["-1"],
       "r_int": [0.051, 0.06],
       "x_noise": [1, 1],
+      "chi2": [0.99, 0.99],
       "orbits": 17660,
       "verdict": "supported"
     },
@@ -960,6 +963,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["2/m (b unique)", "2/m (c unique)"],
       "r_int": [0.055, 0.065],
       "x_noise": [1, 1],
+      "chi2": [1, 0.99],
       "orbits": 9260,
       "verdict": "supported"
     },
@@ -969,6 +973,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["2/m (c unique)"],
       "r_int": [0.055, 0.065],
       "x_noise": [1, 1],
+      "chi2": [1, 0.99],
       "orbits": 8840,
       "verdict": "supported"
     },
@@ -978,6 +983,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["mmm", "4/m"],
       "r_int": [0.057, 0.067],
       "x_noise": [1, 1],
+      "chi2": [1, 1],
       "orbits": 4850,
       "verdict": "supported"
     },
@@ -987,6 +993,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["mmm"],
       "r_int": [0.087, 0.105],
       "x_noise": [1.51, 1.53],
+      "chi2": [2.23, 2.26],
       "orbits": 3100,
       "verdict": "rose 1.51× against 2/m (b unique) (all); rose 1.54× against 2/m (c unique) (diffuse)"
     },
@@ -996,6 +1003,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["4/mmm", "m-3"],
       "r_int": [0.087, 0.105],
       "x_noise": [1.5, 1.52],
+      "chi2": [2.21, 2.24],
       "orbits": 1770,
       "verdict": "rose 1.5× against 2/m (b unique) (all); rose 1.53× against 2/m (c unique) (diffuse)"
     }
@@ -1004,7 +1012,7 @@ References of this skill (read one with read_skill and `reference`):
     "r_int": [0.537, 0.342],
     "x_noise": [9.12, 4.9]
   },
-  "refused": ["-3: metric changes 100%", "-3m1: metric changes 100%", "-31m: metric changes 100%", "6/m: metric changes 100%", "6/mmm: metric changes 100%"],
+  "refused": ["-3, -3m1, -31m, 6/m, 6/mmm: metric changes 100%"],
   "suggestion": "4/mmm",
   "suggested_by": {
     "all": "4/mmm",
@@ -1012,10 +1020,11 @@ References of this skill (read one with read_skill and `reference`):
   },
   "why": "4/mmm is the class with the most operations the rule supports in both readings: its R_int, in units of the noise floor, is 1.00× that of 2/m (b unique), the subgroup that agrees best; m-3m rose 1.50× against 2/m (b unique).",
   "flag": null,
-  "rule": "A class rises against a subgroup when its x_noise exceeds the subgroup's by more than 10% and 2 standard errors; it is supported when it rises against none of its subgroups and all of them are supported. suggestion: the supported class with the most operations in every reading that can tell the classes apart (no_symmetry must rise too).",
-  "diffuse_mask": "Bragg nodes of the 1×1×1 cell within 0.25 Å⁻¹ (2.7% of the measured voxels)",
+  "rule": "Rises: x_noise above a subgroup's by >10% and 2 SE of the difference (block bootstrap, 69 effective blocks). Supported: rises against no subgroup, all subgroups supported. suggestion: the supported class with most operations in every reading that tells classes apart (no_symmetry must rise).",
+  "diffuse_mask": "1×1×1 cell's Bragg nodes within 0.25 Å⁻¹ (2.7% of voxels)",
   "edge_trim": 1,
-  "limits": "Twinning, or domains related by an operation the sample lacks, make a lower symmetry look higher: R_int alone cannot tell. Only the presets' settings are compared."
+  "notes": ["The bootstrap's blocks were cut to 3 voxels (the correlation asks for 4) to keep 64 of them."],
+  "limits": "Twinning or domains can make a lower symmetry look higher; R_int cannot tell."
 }
 ```
 

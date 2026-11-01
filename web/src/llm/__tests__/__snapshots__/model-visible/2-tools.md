@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 27957 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 27936 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -294,7 +294,7 @@ Parameters:
 ## 14. compare_laue_classes
 
 ```text
-Which Laue class does the sample have? Compares every Laue class the cell's metric allows (the UB under the symmetry average's 2% check) and whose operations map the grid, by R_int on the raw volume as the symmetry average reads it (the run's edge trim first): Σ|I − ⟨I⟩| / Σ|I| over the orbits measured twice or more, on every measured voxel and on the diffuse (the punch cell's Bragg nodes masked), each also over its noise floor, the R_int counting noise alone gives on the same orbits (x_noise). A class rises against a subgroup when its x_noise exceeds the subgroup's by more than 10% and two standard errors; suggestion is the supported class with the most operations in every reading that can tell the classes apart, none when even whole |Q| shells (no_symmetry) stay at the noise. flag says when the diffuse supports less than every measured voxel: averaging over the higher class would impose the Bragg peaks' symmetry on the diffuse. A volume symmetrized already is refused. Seconds on a small volume, a minute or more on a full one. Cite its classes, rule and flag when you suggest a Laue class; the class is the user's to set, and update_settings refuses it.
+Which Laue class does the sample have? Compares every Laue class the cell's metric allows (the UB under the symmetry average's 2% check) and whose operations map the grid, by R_int on the raw volume as the symmetry average reads it (the run's edge trim first): Σ|I − ⟨I⟩| / Σ|I| over the orbits measured twice or more, on every measured voxel and on the diffuse (the punch cell's Bragg nodes masked), each also over its noise floor, the R_int counting noise alone gives on the same orbits (x_noise). A class rises against a subgroup when its x_noise exceeds the subgroup's by more than 10% and two standard errors of the difference; suggestion is the supported class with the most operations in every reading that can tell the classes apart, none when even whole |Q| shells (no_symmetry) stay at the noise. flag says when the diffuse supports less than every measured voxel: averaging over the higher class would impose the Bragg peaks' symmetry on the diffuse. A volume symmetrized already is refused. Seconds to minutes. Cite its classes, rule and flag when you suggest a Laue class; the class is the user's to set, and update_settings refuses it.
 ```
 
 Parameters:
