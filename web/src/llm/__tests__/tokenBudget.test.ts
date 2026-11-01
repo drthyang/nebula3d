@@ -3,18 +3,20 @@
 //
 // VERDICT (measured 2026-10-19; re-pinned 2026-10-24 with the skill fact sync
 // on #17's skill text and the prompts of 1.6, dpdf_peaks' orbits of 4.4, and
-// main's tools through #73 and #90): OVER 32k in both configurations.
+// main's tools through #73 and #90; re-pinned 2026-11-01 with THY-61's ring
+// record, +35, and its reduction-qc sentence, +111, on main through #144):
+// OVER 32k in both configurations.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 42.7k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 42.5k + 6,144
-//   = 48.7k before the loop's compaction, and 39.3k to 43.4k after it, by the
-//   order the skills are read (39.6k in the method's order).
+//   about 44.8k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 44.0k + 6,144
+//   = 50.1k before the loop's compaction, and 41.0k to 45.3k after it, by the
+//   order the skills are read (41.0k in the method's order).
 // - A model LM Studio loaded with 32k gets the turn in only because the window
 //   guard then shortens the results down to the newest: the two skills just
 //   read reach the model as stubs of a few hundred characters.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (8.7k
+// to reply, and leaves free the 3k a model-visible addition must leave (7.2k
 // now). The estimate is conservative (every tool result, the skills' prose
 // included, counts at the data rate), but at the prose rate for the skills
 // the turn is still over 32k.
@@ -133,12 +135,12 @@ const BAND = 0.05;
 // The current sizes (estimated prompt tokens, and with the reply reserve).
 // Update deliberately, with the verdict in the header, when the turn changes.
 const PINNED = {
-  console: { prompt: 42_736, total: 106_736 },
-  localBefore: { prompt: 42_533, total: 48_677 },
-  localSkillsFirst: { prompt: 33_137, total: 39_281 },
-  localMethod: { prompt: 33_417, total: 39_561 },
-  localSkillsLast: { prompt: 37_210, total: 43_354 },
-  lmStudio32k: { prompt: 28_646, total: 34_790 },
+  console: { prompt: 44_814, total: 108_814 },
+  localBefore: { prompt: 43_988, total: 50_132 },
+  localSkillsFirst: { prompt: 34_865, total: 41_009 },
+  localMethod: { prompt: 34_836, total: 40_980 },
+  localSkillsLast: { prompt: 39_122, total: 45_266 },
+  lmStudio32k: { prompt: 29_893, total: 36_037 },
 };
 
 // ---------------------------------------------------------------- the turn

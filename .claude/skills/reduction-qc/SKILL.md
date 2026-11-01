@@ -66,7 +66,9 @@ inward. Check these first, in this order, and say what each check found.
    only, and must stay. Planes cannot tell them apart: symmetry makes them
    equivalent (all three on a cubic cell, h0l and 0kl on a hexagonal or
    tetragonal one). The removal subtracts only confirmed rings, so a crystal
-   with none keeps all its diffuse. Report leftovers and dents at the
+   with none keeps all its diffuse. `stage_shells`: shells left and why:
+   height, isotropy: the crystal's own; snr, curve, member (of a doublet): too
+   faint; flank, grid, cells: unjudged. Report leftovers and dents at the
    confirmed rings as shares of the diffuse beside them; the verdict counts
    one only beyond three times its plane's noise. A ring too weak to rise in
    nearly every direction is neither removed nor counted: if one shows by eye,
