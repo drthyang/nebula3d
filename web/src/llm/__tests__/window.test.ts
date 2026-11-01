@@ -14,6 +14,8 @@ import {
   ollamaWindow,
   PROSE_CHARS_PER_TOKEN,
   resetTokenState,
+  TABLE_CHARS_PER_TOKEN,
+  tableChars,
   tokenScale,
 } from "../provider/tokens";
 import { planWindow } from "../provider/window";
@@ -39,6 +41,19 @@ describe("the token estimate", () => {
       baseTokens([{ role: "assistant", content: "", tool_calls: [{ id: "c", type: "function", function: { name: "assess_stage", arguments: args } }] }]),
       5 + 12 / PROSE_CHARS_PER_TOKEN + args.length / DATA_CHARS_PER_TOKEN,
     );
+  });
+
+  it("reads a result's rows of bare values at 1.2: a column table's rows and line_profile's points (THY-63 R1)", () => {
+    const rows = '[[0.345,16.7,null],["a ] \\" [",2,[1,0,0]]]';
+    const table = `{"cut":"H–K","shells":{"cols":["q","raw","flattened"],"rows":${rows}},"n":3}`;
+    expect(tableChars(table)).toBe(rows.length);
+    close(baseTokens([{ role: "tool", tool_call_id: "c", content: table }]), 5 + (table.length - rows.length) / DATA_CHARS_PER_TOKEN + rows.length / TABLE_CHARS_PER_TOKEN);
+    const points = '[[-2.969,null],[-2.844,6.62]]';
+    const line = `{"along":"H","points":${points},"median":7}`;
+    expect(tableChars(line)).toBe(points.length);
+    // A list of objects, or rows in a message that is no tool result, count as before.
+    expect(tableChars('{"rows":[{"q":1}]}')).toBe(0);
+    close(baseTokens([{ role: "user", content: table }]), 5 + table.length / PROSE_CHARS_PER_TOKEN);
   });
 
   it("counts an image as about a thousand tokens, and the tools' definitions as prose", () => {

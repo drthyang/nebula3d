@@ -35,6 +35,7 @@ import { flattenJudging, flattenMetrics, volumePedestal } from "../../metrics/fl
 import { SYMMETRY_HOLDS } from "../../metrics/symmetry";
 import { fit } from "../../readings";
 import { CHAT_TOOLS, MAX_RESULT_CHARS } from "../../tools";
+import { tableRows, type Table } from "../../tools/shared/table";
 import { verdicts } from "../../verdicts";
 import { casesIn, type ValidationCase } from "../validation";
 import { bridgeConfig } from "./bridgeWorker";
@@ -435,7 +436,7 @@ for (const id of ["dev-rings", "dev-rings-shell"] as const) {
     check(id, name, async () => {
       const c = devCase(id);
       const log = ran(await c.tool("run_log", { stage: "rings" }), "run_log");
-      const done = (log.result.lines as { status: string; message: string }[]).filter((l) => l.status === "done").pop()?.message ?? "";
+      const done = (tableRows(log.result.lines as Table) as { status: string; message: string }[]).filter((l) => l.status === "done").pop()?.message ?? "";
       const rings = ran(await c.tool("assess_stage", { stage: "rings" }), "assess_stage rings").result.rings as Record<string, unknown>;
       const left = (await fetchRingDiagnostics((await c.dataset()).id)).unconfirmed_at_grid;
       const msg = evidence(c, { ring_log: done, notice: rings.notice ?? null, unconfirmed_at_grid: left });

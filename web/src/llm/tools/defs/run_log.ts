@@ -2,6 +2,7 @@
 
 import { STAGES, usePipelineStore } from "../../../state/pipelineStore";
 import { num, oneOf } from "../shared/args";
+import { columnTable } from "../shared/table";
 import { ToolArgError, type ChatTool } from "../types";
 
 export const run_log: ChatTool = {
@@ -28,7 +29,8 @@ export const run_log: ChatTool = {
       .map((e) => ({ stage: e.stage ?? null, status: e.status ?? null, message: e.message }));
     const ended = running ? "still running" : (terminal ?? "unknown");
     return {
-      result: { ended, lines },
+      // A row per line (a column table, tools/shared/table.ts).
+      result: { ended, lines: columnTable(lines, ["stage", "status", "message"]) },
       summary: `${lines.length} line${lines.length === 1 ? "" : "s"} · ${ended}`,
       view: { view: "execution", label: "the run log" },
     };

@@ -241,7 +241,7 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
   it("line_profile and radial_profile through the ΔPDF, and on chosen stages", async () => {
     expect((await run("line_profile", { stage: "delta_pdf", along: "x", at: { y: 0, z: 0 } })).units).toBe("Å");
     const radial = await run("radial_profile", { plane: "0kl", stages: ["raw", "flattened"], bins: 8 });
-    expect(Object.keys((radial.rows as object[])[0])).toEqual(["q", "raw", "flattened"]);
+    expect((radial.shells as { cols: string[] }).cols).toEqual(["q", "raw", "flattened"]);
   });
 
   it("update_settings: a setting already at its value, and one with no effect under the current model", async () => {
@@ -279,7 +279,7 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     usePipelineStore.setState({ events: [{ type: "progress", stage: "punch", status: "done", message: "13 peaks punched" }], terminal: "done", running: false });
     expect(await run("run_log", { stage: "punch", limit: 5 })).toEqual({
       ended: "done",
-      lines: [{ stage: "punch", status: "done", message: "13 peaks punched" }],
+      lines: { cols: ["stage", "status", "message"], rows: [["punch", "done", "13 peaks punched"]] },
     });
   });
 

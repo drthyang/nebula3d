@@ -9,6 +9,7 @@
 
 import type { AgentStep } from "./agent";
 import { resultsNewestFirst } from "./evidence";
+import { isTable } from "./tools/shared/table";
 import { verdicts } from "./verdicts";
 
 /** {{key}}: a letter, then letters, digits and _ . : − (assess_stage.flatten.verdict, dpdf_peaks.features.0.vectors_rlu.0). */
@@ -32,13 +33,39 @@ function shown(v: unknown): string | null {
   return null;
 }
 
-/** The value at `path` (dot-separated keys; whole numbers index lists) in `root`, or undefined. */
+/**
+ * The value at `path` (dot-separated keys; whole numbers index lists) in
+ * `root`, or undefined. A column table (tools/shared/table.ts) is read as the
+ * list of its rows, and a row's value by its column's name or index:
+ * {{radial_profile.shells.3.flattened}}, {{radial_profile.shells.rows.3.0}}.
+ */
 export function valueAt(root: unknown, path: readonly string[]): unknown {
+  const index = (key: string) => (/^\d+$/.test(key) ? Number(key) : null);
   let node: unknown = root;
+  // The columns of the table whose rows (`rows`) or one row (`row`) `node` is.
+  let cols: readonly string[] | null = null;
+  let at: "rows" | "row" | null = null;
   for (const key of path) {
-    if (Array.isArray(node) && /^\d+$/.test(key)) node = node[Number(key)];
-    else if (node && typeof node === "object" && !Array.isArray(node)) node = (node as Record<string, unknown>)[key];
-    else return undefined;
+    if (isTable(node) && (key === "rows" || index(key) !== null)) {
+      cols = node.cols;
+      at = "rows";
+      node = node.rows;
+      if (key === "rows") continue;
+    }
+    if (at === "rows" && Array.isArray(node) && index(key) !== null) {
+      node = node[index(key)!];
+      at = "row";
+    } else if (at === "row" && Array.isArray(node) && cols) {
+      const i = index(key) ?? cols.indexOf(key);
+      node = i >= 0 ? node[i] : undefined;
+      [cols, at] = [null, null];
+    } else if (Array.isArray(node) && index(key) !== null) {
+      node = node[index(key)!];
+      [cols, at] = [null, null];
+    } else if (node && typeof node === "object" && !Array.isArray(node)) {
+      node = (node as Record<string, unknown>)[key];
+      [cols, at] = [null, null];
+    } else return undefined;
     if (node === undefined) return undefined;
   }
   return node;

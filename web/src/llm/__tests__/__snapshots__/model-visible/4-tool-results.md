@@ -1013,183 +1013,39 @@ References of this skill (read one with read_skill and `reference`):
 
 ## radial_profile {}
 
-2096 characters sent.
+836 characters sent.
 
 ```json
 {
   "cut": "H–K plane at L = 0",
   "q_unit": "|Q| in Å⁻¹",
   "stat": "median per shell",
-  "rows": [
-    {
-      "q": 0.345,
-      "raw": 16.7,
-      "ringremoved": 16.7,
-      "braggpunched": 16.7,
-      "backfilled": 16.7,
-      "flattened": 0.646
-    },
-    {
-      "q": 0.531,
-      "raw": 17.5,
-      "ringremoved": 17.4,
-      "braggpunched": 17.4,
-      "backfilled": 17.4,
-      "flattened": 1.34
-    },
-    {
-      "q": 0.73,
-      "raw": 20,
-      "ringremoved": 19.9,
-      "braggpunched": 19.9,
-      "backfilled": 19.9,
-      "flattened": 3.75
-    },
-    {
-      "q": 0.933,
-      "raw": 20.8,
-      "ringremoved": 20.7,
-      "braggpunched": 20.7,
-      "backfilled": 20.7,
-      "flattened": 4.46
-    },
-    {
-      "q": 1.14,
-      "raw": 18.4,
-      "ringremoved": 18.4,
-      "braggpunched": 18.4,
-      "backfilled": 18.4,
-      "flattened": 2
-    },
-    {
-      "q": 1.35,
-      "raw": 18.2,
-      "ringremoved": 18.1,
-      "braggpunched": 18.1,
-      "backfilled": 18.1,
-      "flattened": 1.65
-    },
-    {
-      "q": 1.55,
-      "raw": 18.8,
-      "ringremoved": 18.7,
-      "braggpunched": 18.5,
-      "backfilled": 18.3,
-      "flattened": 1.68
-    },
-    {
-      "q": 1.76,
-      "raw": 18.5,
-      "ringremoved": 18.3,
-      "braggpunched": 18.2,
-      "backfilled": 18.1,
-      "flattened": 1.32
-    },
-    {
-      "q": 1.98,
-      "raw": 18.6,
-      "ringremoved": 18.4,
-      "braggpunched": 18.4,
-      "backfilled": 18.4,
-      "flattened": 1.39
-    },
-    {
-      "q": 2.19,
-      "raw": 19.8,
-      "ringremoved": 19.5,
-      "braggpunched": 19.3,
-      "backfilled": 19.2,
-      "flattened": 2
-    },
-    {
-      "q": 2.39,
-      "raw": 22.5,
-      "ringremoved": 21.9,
-      "braggpunched": 21.7,
-      "backfilled": 21.4,
-      "flattened": 3.94
-    },
-    {
-      "q": 2.6,
-      "raw": 21.4,
-      "ringremoved": 20.5,
-      "braggpunched": 20.5,
-      "backfilled": 20.5,
-      "flattened": 2.81
-    },
-    {
-      "q": 2.81,
-      "raw": 23.4,
-      "ringremoved": 20.9,
-      "braggpunched": 20.9,
-      "backfilled": 20.9,
-      "flattened": 2.88
-    },
-    {
-      "q": 3.02,
-      "raw": 30.3,
-      "ringremoved": 21.9,
-      "braggpunched": 21.8,
-      "backfilled": 21.8,
-      "flattened": 3.47
-    },
-    {
-      "q": 3.22,
-      "raw": 46.7,
-      "ringremoved": 23.8,
-      "braggpunched": 23.7,
-      "backfilled": 23.6,
-      "flattened": 5.04
-    },
-    {
-      "q": 3.43,
-      "raw": 28.5,
-      "ringremoved": 21.5,
-      "braggpunched": 21.3,
-      "backfilled": 21.2,
-      "flattened": 2.27
-    },
-    {
-      "q": 3.64,
-      "raw": 23.3,
-      "ringremoved": 21.5,
-      "braggpunched": 21.3,
-      "backfilled": 21.2,
-      "flattened": 1.86
-    },
-    {
-      "q": 3.85,
-      "raw": 23.3,
-      "ringremoved": 22.4,
-      "braggpunched": 22.4,
-      "backfilled": 22.4,
-      "flattened": 2.73
-    },
-    {
-      "q": 4.06,
-      "raw": 23.8,
-      "ringremoved": 23.3,
-      "braggpunched": 23.3,
-      "backfilled": 23.3,
-      "flattened": 3.17
-    },
-    {
-      "q": 4.26,
-      "raw": 23.8,
-      "ringremoved": 23.5,
-      "braggpunched": 23.5,
-      "backfilled": 23.5,
-      "flattened": 2.81
-    },
-    {
-      "q": 4.38,
-      "raw": 25.3,
-      "ringremoved": 25.1,
-      "braggpunched": 24.9,
-      "backfilled": 24.7,
-      "flattened": 3.92
-    }
-  ]
+  "shells": {
+    "cols": ["q", "raw", "ringremoved", "braggpunched", "backfilled", "flattened"],
+    "rows": [
+      [0.345, 16.7, 16.7, 16.7, 16.7, 0.646],
+      [0.531, 17.5, 17.4, 17.4, 17.4, 1.34],
+      [0.73, 20, 19.9, 19.9, 19.9, 3.75],
+      [0.933, 20.8, 20.7, 20.7, 20.7, 4.46],
+      [1.14, 18.4, 18.4, 18.4, 18.4, 2],
+      [1.35, 18.2, 18.1, 18.1, 18.1, 1.65],
+      [1.55, 18.8, 18.7, 18.5, 18.3, 1.68],
+      [1.76, 18.5, 18.3, 18.2, 18.1, 1.32],
+      [1.98, 18.6, 18.4, 18.4, 18.4, 1.39],
+      [2.19, 19.8, 19.5, 19.3, 19.2, 2],
+      [2.39, 22.5, 21.9, 21.7, 21.4, 3.94],
+      [2.6, 21.4, 20.5, 20.5, 20.5, 2.81],
+      [2.81, 23.4, 20.9, 20.9, 20.9, 2.88],
+      [3.02, 30.3, 21.9, 21.8, 21.8, 3.47],
+      [3.22, 46.7, 23.8, 23.7, 23.6, 5.04],
+      [3.43, 28.5, 21.5, 21.3, 21.2, 2.27],
+      [3.64, 23.3, 21.5, 21.3, 21.2, 1.86],
+      [3.85, 23.3, 22.4, 22.4, 22.4, 2.73],
+      [4.06, 23.8, 23.3, 23.3, 23.3, 3.17],
+      [4.26, 23.8, 23.5, 23.5, 23.5, 2.81],
+      [4.38, 25.3, 25.1, 24.9, 24.7, 3.92]
+    ]
+  }
 }
 ```
 
@@ -1272,125 +1128,128 @@ References of this skill (read one with read_skill and `reference`):
 
 ## bragg_peaks {}
 
-2071 characters sent.
+1054 characters sent.
 
 ```json
 {
   "n_peaks": 14,
   "punch_frame": "spherical",
   "sorted_by": "significance",
-  "peaks": [
-    {
-      "hkl": [1, 0, 0],
-      "q": 1.571,
-      "intensity": 1250,
-      "local_background": 16,
-      "significance": 310,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [0, 1, 0],
-      "q": 1.571,
-      "intensity": 1240,
-      "local_background": 16,
-      "significance": 305,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [1, 1, 0],
-      "q": 2.221,
-      "intensity": 1060,
-      "local_background": 16,
-      "significance": 262,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [1, 1, 1],
-      "q": 2.721,
-      "intensity": 900,
-      "local_background": 16,
-      "significance": 221,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [2, 0, 0],
-      "q": 3.142,
-      "intensity": 760,
-      "local_background": 16,
-      "significance": 188,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [2, 1, 0],
-      "q": 3.512,
-      "intensity": 640,
-      "local_background": 16,
-      "significance": 160,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [1.5, 0.5, 0],
-      "q": 2.483,
-      "intensity": 96,
-      "local_background": 16,
-      "significance": 22,
-      "measured_width_q": [0.157, 0.141, 0.188],
-      "resolution_limited": [false, false, false],
-      "anisotropy": 1.33,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [0.5, 1.5, 0],
-      "q": 2.483,
-      "intensity": 94,
-      "local_background": 16,
-      "significance": 21,
-      "measured_width_q": [0.157, 0.141, 0.188],
-      "resolution_limited": [false, false, false],
-      "anisotropy": 1.33,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [1.5, -0.5, 0],
-      "q": 2.483,
-      "intensity": 90,
-      "local_background": 16,
-      "significance": 20,
-      "measured_width_q": [0.157, 0.141, 0.188],
-      "resolution_limited": [false, false, false],
-      "anisotropy": 1.33,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [2.5, 0.5, 0],
-      "q": 4.005,
-      "intensity": 61,
-      "local_background": 16,
-      "significance": 14,
-      "measured_width_q": [0.157, 0.141, 0.188],
-      "resolution_limited": [false, false, false],
-      "anisotropy": 1.33,
-      "fit": "covariance"
-    }
-  ]
+  "peaks": {
+    "cols": ["hkl", "q", "intensity", "local_background", "significance", "measured_width_q", "resolution_limited", "anisotropy", "fit"],
+    "rows": [
+      [
+        [1, 0, 0],
+        1.571,
+        1250,
+        16,
+        310,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [0, 1, 0],
+        1.571,
+        1240,
+        16,
+        305,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [1, 1, 0],
+        2.221,
+        1060,
+        16,
+        262,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [1, 1, 1],
+        2.721,
+        900,
+        16,
+        221,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [2, 0, 0],
+        3.142,
+        760,
+        16,
+        188,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [2, 1, 0],
+        3.512,
+        640,
+        16,
+        160,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [1.5, 0.5, 0],
+        2.483,
+        96,
+        16,
+        22,
+        [0.157, 0.141, 0.188],
+        [false, false, false],
+        1.33,
+        "covariance"
+      ],
+      [
+        [0.5, 1.5, 0],
+        2.483,
+        94,
+        16,
+        21,
+        [0.157, 0.141, 0.188],
+        [false, false, false],
+        1.33,
+        "covariance"
+      ],
+      [
+        [1.5, -0.5, 0],
+        2.483,
+        90,
+        16,
+        20,
+        [0.157, 0.141, 0.188],
+        [false, false, false],
+        1.33,
+        "covariance"
+      ],
+      [
+        [2.5, 0.5, 0],
+        4.005,
+        61,
+        16,
+        14,
+        [0.157, 0.141, 0.188],
+        [false, false, false],
+        1.33,
+        "covariance"
+      ]
+    ]
+  }
 }
 ```
 
@@ -1419,48 +1278,23 @@ References of this skill (read one with read_skill and `reference`):
 
 ## run_log {}
 
-522 characters sent.
+378 characters sent.
 
 ```json
 {
   "ended": "done",
-  "lines": [
-    {
-      "stage": "rings",
-      "status": "skip",
-      "message": "ring-removed output exists"
-    },
-    {
-      "stage": "punch",
-      "status": "start",
-      "message": "Bragg punch"
-    },
-    {
-      "stage": "punch",
-      "status": "done",
-      "message": "13 peaks punched, 1 below the significance gate"
-    },
-    {
-      "stage": "backfill",
-      "status": "done",
-      "message": "13 holes filled"
-    },
-    {
-      "stage": "flatten",
-      "status": "done",
-      "message": "floor fitted on 32 shells"
-    },
-    {
-      "stage": "pdf",
-      "status": "done",
-      "message": "3D-ΔPDF written"
-    },
-    {
-      "stage": "pdf_check",
-      "status": "done",
-      "message": "back-FFT r = 0.99714"
-    }
-  ]
+  "lines": {
+    "cols": ["stage", "status", "message"],
+    "rows": [
+      ["rings", "skip", "ring-removed output exists"],
+      ["punch", "start", "Bragg punch"],
+      ["punch", "done", "13 peaks punched, 1 below the significance gate"],
+      ["backfill", "done", "13 holes filled"],
+      ["flatten", "done", "floor fitted on 32 shells"],
+      ["pdf", "done", "3D-ΔPDF written"],
+      ["pdf_check", "done", "back-FFT r = 0.99714"]
+    ]
+  }
 }
 ```
 

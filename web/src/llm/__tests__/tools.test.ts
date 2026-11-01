@@ -19,6 +19,7 @@ import type { AgentStep } from "../agent";
 import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type ToolContext } from "../tools";
 import { offLatticeBunching } from "../metrics/bunching";
 import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
+import { tableRows } from "../tools/shared/table";
 import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
 import braggOverDiffuse from "../../state/__tests__/__fixtures__/laue-compare-bragg-over-diffuse.json";
 import hex6m from "../../state/__tests__/__fixtures__/laue-compare-hex-6m.json";
@@ -192,10 +193,12 @@ describe("bragg_peaks", () => {
       peaks: [peak([1, 0, 0], 8), peak([2, 0, 0], 30), peak([0, 1, 0], 12)],
     } as unknown as BraggProfile);
     const bySig = JSON.parse((await run("bragg_peaks", {})).text);
-    expect(bySig.peaks.map((p: { hkl: number[] }) => p.hkl)).toEqual([[2, 0, 0], [0, 1, 0], [1, 0, 0]]);
-    expect(bySig.peaks[0].anisotropy).toBe(2);
+    // A row per peak, in a column table (THY-63 R1).
+    expect(bySig.peaks.cols).toEqual(["hkl", "q", "intensity", "local_background", "significance", "measured_width_q", "resolution_limited", "anisotropy", "fit"]);
+    expect(tableRows(bySig.peaks).map((p) => p.hkl)).toEqual([[2, 0, 0], [0, 1, 0], [1, 0, 0]]);
+    expect(tableRows(bySig.peaks)[0].anisotropy).toBe(2);
     const near = JSON.parse((await run("bragg_peaks", { near_hkl: [0, 1, 0], limit: 1 })).text);
-    expect(near.peaks).toEqual([expect.objectContaining({ hkl: [0, 1, 0] })]);
+    expect(tableRows(near.peaks)).toEqual([expect.objectContaining({ hkl: [0, 1, 0] })]);
   });
 });
 
@@ -889,9 +892,10 @@ describe("run_log", () => {
     });
     const all = JSON.parse((await run("run_log", {})).text);
     expect(all.ended).toBe("done");
-    expect(all.lines.map((l: { message: string }) => l.message)).toEqual(["9 shells fitted", "188 peaks punched"]);
+    expect(all.lines.cols).toEqual(["stage", "status", "message"]);
+    expect(tableRows(all.lines).map((l) => l.message)).toEqual(["9 shells fitted", "188 peaks punched"]);
     const punch = JSON.parse((await run("run_log", { stage: "punch" })).text);
-    expect(punch.lines).toEqual([{ stage: "punch", status: "done", message: "188 peaks punched" }]);
+    expect(punch.lines.rows).toEqual([["punch", "done", "188 peaks punched"]]);
   });
 
   it("says when there is no run yet", async () => {
@@ -910,9 +914,9 @@ describe("run_log", () => {
       ],
     });
     const b = JSON.parse((await run("run_log", { stage: "rings" })).text);
-    expect(b.lines).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
+    expect(tableRows(b.lines)).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
     const c = JSON.parse((await callTool({ ...ctx, skills: false }, "run_log", {})).text);
-    expect(c.lines.map((l: { message: string }) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
+    expect(tableRows(c.lines).map((l) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
   });
 });
 
@@ -1806,9 +1810,11 @@ describe("radial_profile", () => {
     );
     const out = JSON.parse((await runOn(full, "radial_profile", { stages: ["raw", "flattened"], bins: 8 })).text);
     expect(out.q_unit).toBe("|Q| in Å⁻¹");
-    expect(Object.keys(out.rows[0])).toEqual(["q", "raw", "flattened"]);
-    expect(out.rows[0].raw - out.rows[0].flattened).toBeCloseTo(8, 5);
-    expect(out.rows[out.rows.length - 1].q).toBeGreaterThan(out.rows[0].q);
+    // A row per shell, in a column table (THY-63 R1).
+    expect(out.shells.cols).toEqual(["q", "raw", "flattened"]);
+    const rows = tableRows(out.shells) as { q: number; raw: number; flattened: number }[];
+    expect(rows[0].raw - rows[0].flattened).toBeCloseTo(8, 5);
+    expect(rows[rows.length - 1].q).toBeGreaterThan(rows[0].q);
   });
 });
 
