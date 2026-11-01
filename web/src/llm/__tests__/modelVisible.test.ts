@@ -845,6 +845,10 @@ const COVERED = step("qmax_coverage", {}, { verdict: "clean: the ΔPDF's ellipso
 // Two marks made by mark_region, each named by its result's id.
 const markedAs = (id: string, label: string) =>
   step("mark_region", { where: "flatten", shape: "ellipsoid", label, evidence: ["measure_reciprocal_cut"] }, { marked: id, label, where: "flatten", page: "Reciprocal cleanup" });
+// A ΔPDF assessment whose SNR, and a ring assessment whose shell, an invented feature list traces to by chance.
+const PDF_JUDGED = step("assess_stage", { stage: "pdf" }, {
+  pdf: { verdict: VERDICT_LABEL.pass, criterion: CRITERIA.pdf, headline: "r 0.98901 (even part 1) · RMS 0.1253 · SNR 1380", back_fft_pearson_r_even: 1 },
+});
 const MARKED_M1 = markedAs("M1", "diffuse maximum");
 const MARKED_M2 = markedAs("M2", "its partners");
 
@@ -895,6 +899,12 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: Agen
     reply: "M2 marks the partners of the diffuse maximum, which M1 marks.",
     steps: [MARKED_M2],
     earlier: [MARKED_M1],
+  },
+  {
+    // The dev-control smoke run's answer, shortened (answerChecks.test.ts has it whole).
+    what: "a list of results credited to a tool that did not run, called illustrative",
+    reply: "The strongest features: Feature 1: Δr ≈ 2.6 Å, SNR ≈ 1380 (from dpdf_peaks via assess_stage pdf). The values are illustrative of the reported SNR.",
+    steps: [PDF_JUDGED, RINGS],
   },
   {
     what: "a question a result puts to the user, not asked, and its answer said as fact",
@@ -1004,6 +1014,7 @@ describe("5. the text sent back to the model", () => {
         [issues.unasked.length > 0, /has a question for the user that the answer does not ask/],
         [issues.assumed.length > 0, /as fact what a result in this reply asks the user/],
         [issues.unmadeMarks.length > 0, /(This mark id names|These mark ids name) no mark made in this conversation/],
+        [issues.uncalled.length > 0, /numbers to a check that did not run in this reply/],
       ];
       for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
     }
@@ -1036,7 +1047,8 @@ describe("5. the text sent back to the model", () => {
     const at = sentBack(c.added);
     expect(at).toBe(sentBack(b.added));
     expect(c.added.filter((_m, i) => i !== at)).toEqual(b.added.filter((_m, i) => i !== at));
-    expect(String(b.added[at].content)).toMatch(/call assess_stage with stage flatten/);
+    // Asked to answer now, the revision offers no tools (tool_choice none): the send-back asks for no call.
+    expect(String(b.added[at].content)).toMatch(/verdict on the flatten without its evidence in this reply, and no tool calls are left/);
     const sent = String(c.added[at].content);
     expect(namedInOwnWords(sent)).toEqual([]);
     expect(quotations(sent)).toEqual(["The flatten left no pedestal."]);

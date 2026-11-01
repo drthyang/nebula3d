@@ -134,7 +134,12 @@ const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the
 // A final answer that fails its checks (answerChecks.ts: a verdict without its
 // tool, a number from nowhere, a stage called clean that the tools judged to
 // need attention) goes back to the model this many times; what still fails is
-// noted under the reply.
+// noted under the reply. An answer that arrives with no round of calls to
+// spare goes back all the same, as the reply's last request, which offers no
+// tools: the send-back then asks for the claim to be left out, or said to be
+// unmeasured, instead of a call (issuesPrompt's `final`). Before THY-63 R3 it
+// was only noted, and a model that used every round but one kept a verdict,
+// or a list of results, no tool had returned.
 export const ANSWER_REVISIONS = 1;
 export const REVISING_NOTE = "Checking the answer against its evidence…";
 
@@ -227,6 +232,7 @@ export async function runAgent({
   const arrived = convo.length;
   let revisions = 0;
   let rejected = ""; // the last answer sent back, kept if the revision writes nothing
+  let rejectedIssues: ReturnType<typeof answerIssues> = null; // what it failed, noted if it is kept
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";
@@ -432,16 +438,20 @@ export async function runAgent({
       const earlier = earlierSources(ctx?.earlierSteps ?? [], steps);
       const sources = numberSources(convo, arrived, steps.map(whole), tools, earlier.standing);
       const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources, earlier.stale, ctx?.marksEarlier) : null;
-      if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
+      if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;
+        rejectedIssues = issues;
         content = before;
         convo.push({ role: "assistant", content: roundText });
         // The tools the fix asks for are offered. With the skills off the
         // send-back names none of them (issuesPrompt reads the switch), and
         // the guardrail still keeps them within reach.
         for (const t of [...issues.missing, ...issues.stale]) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
-        convo.push({ role: "user", content: issuesPrompt(issues, { skills: skillsOn(ctx) }) });
+        // The revision is the last request when no round of calls is left (or
+        // the model was asked to answer now): it can only rewrite.
+        const final = round + 1 >= maxRounds || answerNow;
+        convo.push({ role: "user", content: issuesPrompt(issues, { skills: skillsOn(ctx), final }) });
         emit(`_${REVISING_NOTE}_`);
         continue;
       }
@@ -449,11 +459,25 @@ export async function runAgent({
       if (issues) note = note ? `${note} ${issuesNote(issues)}` : issuesNote(issues);
       break;
     }
+    // A revision that called tools where none were left wrote nothing to
+    // replace: the answer it revised stands, with what it still fails.
+    // Returns what the kept answer still fails, for the note ("" when none is kept).
+    const keepRejected = (): string => {
+      if (!rejected || roundText.trim()) return "";
+      content = joinText(before, rejected);
+      return rejectedIssues ? issuesNote(rejectedIssues) : "";
+    };
     if (last) {
-      note = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
+      const failed = keepRejected();
+      const stopped = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
+      note = failed ? `${failed} ${stopped}` : stopped;
       break;
     }
-    if (answerNow) break; // asked to answer, it called again: what it has stands
+    if (answerNow) {
+      const failed = keepRejected();
+      if (failed) note = note ? `${note} ${failed}` : failed;
+      break; // asked to answer, it called again: what it has stands
+    }
 
     // The executor runs the round's calls (tools/round.ts). The transcript
     // shows each step as it changes; the console follows what the model

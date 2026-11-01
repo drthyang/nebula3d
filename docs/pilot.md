@@ -64,10 +64,15 @@ descriptions (`prompts/system.ts`, `prompts/templates.ts`).
   until a run in the conversation recomputes the stage it measured; a number
   only such a result holds goes back as measured before that run. A ring or
   punch verdict needs `assess_stage`, the ΔPDF's correlations `dpdf_peaks`
-  (or a measured section), the origin `ub_check`.
+  (or a measured section), the origin `ub_check`. A sentence that writes
+  numbers and names a tool credits them to it: that tool must have run in the
+  reply, whatever the sentence's hedge ("illustrative", "about").
   The check runs in code after the answer, not as a forced tool call, which the
-  paid models do not take. A failing answer goes back to the model once; what
-  still fails is noted under the reply (`answerChecks.ts`, `evidence.ts`).
+  paid models do not take. A failing answer goes back to the model once, even
+  when it came with no round of tool calls to spare: it is then the reply's
+  last request, which offers no tools, and the model is asked to leave out, or
+  call unmeasured, what no tool supports. What still fails is noted under the
+  reply (`answerChecks.ts`, `evidence.ts`).
 - **Numbers by reference.** The model writes a tool's number as
   `{{tool.field}}`, the field's path in that tool's result
   (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.floor_trend}}`;
@@ -350,9 +355,18 @@ reads a final answer, the agent loop checks it three ways:
   rules out, or a UB called right that `ub_check` turned or could not judge on a
   symmetrised volume.
 
+- **Only results that were returned.** A sentence that writes numbers and names
+  a tool credits them to that tool, which must have run in this reply, whatever
+  the sentence's hedge; a plan or a condition ("if you want, run dpdf_peaks …")
+  credits nothing. A model had listed the ΔPDF's strongest features "from
+  `dpdf_peaks`" without calling it, the values "illustrative", their numbers
+  matching other results only within the rounding tolerance.
+
 A failing answer goes back to the model once, with what to fix ("Checking the
-answer against its evidence…" shows meanwhile). What still fails is noted under
-the reply. The text checks are heuristic: a false alarm costs one tool call, a
+answer against its evidence…" shows meanwhile), also when it came with no round
+of tool calls to spare: the send-back is then the reply's last request, without
+tools, and asks the model to leave out, or call unmeasured, what no tool
+supports. What still fails is noted under the reply. The text checks are heuristic: a false alarm costs one tool call, a
 miss is a note.
 
 - **`metrics/`** — one pure module per judgment, each unit-tested
