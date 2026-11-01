@@ -511,6 +511,58 @@ class ModulationRecordOut(BaseModel):
     bunching: dict[str, Any] | None = None
 
 
+class MisorientationOut(BaseModel):
+    """The punch's diagnosis of a UB turned in the reduction (THY-60,
+    nebula3d.analysis.misorientation.Misorientation.to_json): the rotation
+    fitted to the strong peaks' centres, how well it explains them, and
+    whether the punch acted on it; ``round1`` what round 1 did."""
+
+    status: str
+    active: bool = False
+    n_peaks: int = 0
+    n_rejected: int = 0
+    omega_rad: list[float] | None = None
+    angle_deg: float | None = None
+    sigma_deg: float | None = None
+    axis: list[float] | None = None
+    axis_uvw: list[float] | None = None
+    axis_sigma_deg: float | None = None
+    r2: float | None = None
+    f_stat: float | None = None
+    p_value: float | None = None
+    rms_before: float | None = None
+    rms_after: float | None = None
+    max_shift: float | None = None
+    voxel_q: float | None = None
+    significant: bool = False
+    explains: bool = False
+    resolved: bool = False
+    rules: dict[str, float] = {}
+    round1: dict[str, Any] | None = None
+
+
+class TailSweepOut(BaseModel):
+    """Round 2 of the punch, the tail sweep (THY-60,
+    nebula3d.analysis.tail_sweep.TailSweep.to_json): whether it ran, what it
+    added (every voxel, in HKL), and the before/after numbers."""
+
+    setting: str
+    ran: bool
+    reason: str | None = None
+    z_gate: float | None = None
+    grow_sigma: float | None = None
+    n_voxels: int = 0
+    nodes_searched: int = 0
+    counts: dict[str, int] = {}
+    tail_voxels: dict[str, int] = {}
+    tail_excess: dict[str, float] = {}
+    bright_fill: dict[str, float | None] = {}
+    limits: dict[str, float] = {}
+    shells_capped: list[float] = []
+    nodes: list[dict[str, Any]] = []
+    voxels_hkl: list[list[float]] = []
+
+
 class BraggProfileOut(BaseModel):
     dataset_id: str
     profile_path: str | None = None
@@ -528,6 +580,10 @@ class BraggProfileOut(BaseModel):
     # What the search left alone and what it found (server.modulation.record_out);
     # None for a record written before the punch kept it.
     modulation: ModulationRecordOut | None = None
+    # A UB turned in the reduction, and the tail sweep (THY-60); None for a
+    # record written before the punch kept them.
+    misorientation: MisorientationOut | None = None
+    tail_sweep: TailSweepOut | None = None
 
 
 class ModulationPositionOut(BaseModel):
@@ -631,6 +687,11 @@ class StageParamsIn(BaseModel):
     punch_search_protect_h: list[float] | None = None
     punch_search_protect_half_width: float | None = None
     punch_search_max_width_ratio: float | None = None
+    # A UB turned in the reduction (THY-60): round 1 follows the fitted
+    # rotation when it is active (bool), and round 2 sweeps the tails it
+    # leaves ("off" | "auto" | "on").
+    punch_rotation_aware: bool | None = None
+    punch_tail_sweep: str | None = None
     punch_mode: str | None = None
     # Supercell the volume is indexed on, per axis (≥ 1): integer-mode Bragg
     # nodes are the parent lattice's only.

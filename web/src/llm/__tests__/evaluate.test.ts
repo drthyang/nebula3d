@@ -163,6 +163,37 @@ describe("evaluateStage", () => {
     }
   });
 
+  it("puts a significant UB turn and its tail sweep in the punch's numbers, beside the verdict it leaves as it was (THY-60)", async () => {
+    const misorientation = {
+      status: "active", active: true, n_peaks: 105, n_rejected: 0, omega_rad: [0.0017, -0.0026, 0.0083], angle_deg: 0.5012, sigma_deg: 0.0024,
+      axis: [0.19, -0.29, 0.94], axis_uvw: [0.24, -0.33, 1], axis_sigma_deg: 0.66, r2: 0.9971, f_stat: 3000, p_value: 5.6e-260,
+      rms_before: 0.08, rms_after: 0.005, max_shift: 0.1125, voxel_q: 0.0456, significant: true, explains: true, resolved: true,
+      round1: { rotation_aware: true, stretched: 105, centred: 0 },
+    };
+    const tail_sweep = {
+      setting: "auto", ran: true, reason: null, z_gate: 5, n_voxels: 697, nodes_searched: 105,
+      counts: { swept: 44, clean: 58, extended: 2, broad: 1 }, tail_voxels: { before: 437, after: 7, left_alone: 7 },
+      bright_fill: { before: 0.0014, after: 0 }, nodes: [], voxels_hkl: [],
+    };
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 105, misorientation, tail_sweep });
+    const e = await evaluateStage("punch", dataset);
+    expect(e.ub_turn).toEqual({
+      status: "active", deg: 0.501, sd: 0.0024, r2: 1, peaks: 105, shift_voxels: 2.5, stretched: 105,
+      sweep: { voxels: 697, nodes: 44, left_alone: 3, tail: [437, 7], bright_fill: [0.0014, 0] },
+    });
+    expect(headline("punch", e)).toMatch(/ · UB turned 0\.501° ± 0\.0024°$/);
+    expect(judge("punch", e)).toEqual(judge("punch", { ...e, ub_turn: undefined }));
+    // Not significant, or not in the record: nothing added.
+    for (const m of [{ ...misorientation, status: "not_significant", significant: false }, null, undefined]) {
+      api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 105, misorientation: m, tail_sweep });
+      expect(await evaluateStage("punch", dataset)).not.toHaveProperty("ub_turn");
+    }
+    // Significant, the sweep not run: why, in a few words.
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 105, misorientation: { ...misorientation, status: "not_explained", explains: false },
+      tail_sweep: { ...tail_sweep, ran: false, reason: "not_explained" } });
+    expect(((await evaluateStage("punch", dataset)).ub_turn as { sweep: unknown }).sweep).toBe("auto: not run (not explained)");
+  });
+
   it("passes on the raw volume's note when its σ is √|I| of normalized data", async () => {
     const meta = await api.fetchMeta();
     const note = "No σ came with this volume, so σ is taken as √|I| …";

@@ -6,7 +6,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-5976 characters sent.
+7206 characters sent.
 
 ```text
 Skill bragg-node-audit
@@ -75,6 +75,28 @@ all three.
    diffuse level or more. A lattice-periodic fill pattern is texture that the
    3D-ΔPDF will show.
 8. **Report** (below).
+
+## A UB turned in the reduction
+
+A UB slightly turned upstream moves each peak across Q, more the higher |Q|,
+and smears it the same way: far out the punch leaves a tail beside the hole,
+and the backfill makes it a bright spot.
+
+- **Recognise:** bright spots beside punched holes at high |Q|, across Q,
+  growing with |Q|. The punch's assessment then gives `ub_turn`: the
+  turn and its standard error, the share of the peaks' offsets it explains,
+  and the peaks fitted. Far beyond its error and explaining most offsets, it
+  is one turn; explaining little, it is not, and nothing acts on it.
+- **Remedy:** refine the UB in the data reduction; say so with those numbers.
+  The volume may not be fixable here: never propose a regrid for it.
+- **In the punch:** the tail sweep (`punchTailSweep`) and the rotation-aware
+  punch (`punchRotationAware`) act only on a turn the punch trusts; its sweep
+  line says what they took and the nodes left alone. Suggest them, citing the
+  turn; the settings stay the user's.
+- **Verify** with `assess_stage` on the punch and the backfill: peaks left at
+  nodes and bright fills, before and after.
+- The sweep takes Bragg tails, never diffuse signal; nodes it left alone keep
+  their diffuse.
 
 ## Firm rules (enforced in code)
 
@@ -1520,7 +1542,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## configure_settings {}
 
-1570 characters sent.
+1625 characters sent.
 
 ```json
 {
@@ -1568,6 +1590,8 @@ References of this skill (read one with read_skill and `reference`):
     "punchQB": "(default)",
     "punchQC": "(default)",
     "punchFitUnconstrained": false,
+    "punchRotationAware": true,
+    "punchTailSweep": "(default)",
     "punchMargin": "(default)",
     "incidentBeamQA": "(default)",
     "incidentBeamQB": "(default)",
