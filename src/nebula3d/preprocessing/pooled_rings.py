@@ -42,7 +42,11 @@ a single plane lacks:
    shells are subtracted, and the Al lattice is fitted from confirmed rings
    alone, so a crystal with no rings keeps all of its diffuse.  Each shell is
    judged with every shell above half the noise cut kept out of its flanks,
-   which only protects the flanks and subtracts nothing.
+   which only protects the flanks and subtracts nothing.  **Al lines:** once
+   the lattice is confirmed on three Al lines, the candidates left on a
+   fitted Al line are judged again by the Al lines' rule, close doublets as
+   one, in each direction cell's Al frame
+   (:func:`~nebula3d.preprocessing.ring_isotropy.judge_al_lines`).
 3. **Pooling (pass 2):** each plane's sector profile is replaced by the weighted
    median of the sector profiles in a small solid angle of the ring sphere
    around it: the planes whose direction at that |Q| lies within ±``pool_deg``
@@ -58,6 +62,8 @@ a single plane lacks:
    excess is kept only inside the confirmed shells, through a flat-topped
    envelope ``envelope_scale`` × FWHM wide (room for the direction-dependent
    position), and capped at ``amp_cap`` × the shell's across-stack amplitude.
+   The cores of the shells judged not to be rings are taken out of the
+   envelope (:func:`_spare_rejected`).
 5. **Subtract:** the sector excess, interpolated bilinearly over (φ, |Q|) at
    every voxel of the plane.
 

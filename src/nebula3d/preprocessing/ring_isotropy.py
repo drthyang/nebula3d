@@ -83,6 +83,41 @@ On the validation's dev crystal (a = 3.9 Å, ±4 r.l.u.), the 81-point grid
 puts 0.99 voxels across 0.16 Å⁻¹, under one; at 1.75 Å⁻¹ it fills 16 of the 128
 cells. The 161-point grid puts 1.99 voxels across it and fills 90 % of the
 cells or more from 1.2 Å⁻¹ out.
+
+Al lines
+--------
+A fitted Al lattice predicts where every Al line lies, and on a measured volume
+it predicts more: in each direction cell the Al lines sit at q_line × (1 +
+scale), one scale per cell (up to about ±1 %), the same for every line, so a
+line's place moves with direction in proportion to its |Q| (the sample
+environment's Al is not where the sample is). At 9 Å⁻¹ that is ±0.1 Å⁻¹, more
+than the line's width: the core cut at the all-direction profile's |Q| misses
+the line in some cells and its flank catches it, so the strict rule reads a
+negative height there and rejects the line. :func:`al_cell_scales` reads each
+cell's scale off the confirmed Al rings (each placed by a matched peak, the
+cell's scale their weighted median), shrunk towards 0 by its error as far as
+the scales' spread over the cells is error: from noise, no frame.
+
+:func:`judge_al_lines` judges Al lines in that frame, each cell's |Q| divided by
+(1 + scale): the core every line's ± ``core_scale`` × the Al width, lines too
+close for a clean flank between them judged as one cluster with the flanks
+outside it. The rule is the strict one, the same isotropy (``height_share`` of
+the median height in ``direction_share`` of the measured cells) and curvature,
+with the noise floor at ``al_min_snr`` (2, against 3), and each line of a
+cluster must rise on its own amplitude (a peak per line, fitted by least
+squares in every cell) by the same isotropy. What tells an Al line from the
+crystal's own scattering at its |Q| stays: the isotropy, the width (the
+caller admits only candidates no wider than ``al_width_ratio`` × the Al
+width), the curve, and the frame itself, in which a feature fixed in |Q| sits
+off the core wherever the lines move. A lower direction share would not keep
+it: on a synthetic volume, diffuse at the Al 400 |Q| present where
+|cos θ| < 0.6 reads 0.39 at a 75 % share and passes, 0.007 at 90 %.
+
+The noise floor's false confirmation, per shell, on pure noise (independent
+bins, the cells paired by the inversion a Laue symmetrisation brings,
+20 000 draws each): 6e-4 on 16 measured cells (``min_cells``), 2.5e-4 on 24,
+none on 34 or more (at 3: 1e-4, 5e-5, none), each candidate having already
+risen 6 σ above the across-stack profile's noise to be detected.
 """
 
 from __future__ import annotations
@@ -135,6 +170,9 @@ class IsotropyConfig:
     voxels per direction cell and |Q| bin, all of them when it has fewer, so
     the budget thins only the shells that have plenty: a small one near
     |Q| = 0 would otherwise lose most of its cells.
+    ``al_min_snr`` is the Al lines' noise floor and ``al_width_ratio`` the
+    widest candidate they take, in Al widths (the module docstring, *Al
+    lines*).
     """
 
     n_cos: int = 8
@@ -320,7 +358,7 @@ def _layout(lines: Sequence[float], fwhm_in: float, cfg: IsotropyConfig, q_step:
     if hi_edge > lo_edge:
         span = span + (hi_edge - lo_edge)
     n_bins = int(np.ceil(span / q_step))
-    centres = lo + (np.arange(n_bins) + 0.5) * q_step
+    centres = (lo + (np.arange(n_bins) + 0.5) * q_step).astype(np.float64)
     d = (np.abs(centres - lo_edge) if len(lines) == 1
          else np.min(np.abs(centres[None, :] - np.asarray(lines)[:, None]), axis=0))
     clean = d > core + gap
