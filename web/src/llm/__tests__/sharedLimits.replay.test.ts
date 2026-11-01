@@ -474,7 +474,7 @@ const ONE_SIDED: { name: string; holds: string; why: string }[] = [
   { name: "SYMMETRY_HOLDS (1e-3)", holds: "metrics/symmetry.ts", why: "the package's symmetry_break (ub_refine.SYMMETRISED, 1e-4) is another measure, of the reciprocal volume" },
   { name: "SECOND_GRAIN_DEG, NODE_TOL, BROAD_VOXELS, NOISE_MULTIPLE", holds: "metrics/grains.ts, punch.ts, rings.ts", why: "the grain check, the leftover scan and the ring residuals run in TypeScript only" },
   { name: "ub_check's unexplained offset (a quarter voxel, 0.8 of it left)", holds: "tools/defs/ub_check.ts", why: "the package fits; tests/test_faults.py ports the rule as a test" },
-  { name: "the ring test's min_snr (3) and curve_share (0.25)", holds: "IsotropyConfig, nebula3d.preprocessing.ring_isotropy", why: "no TypeScript text states them (the skills' lint lists them, UNSTATED in skillLint.test.ts)" },
+  { name: "the ring test's min_snr (3) and curve_share (0.25)", holds: "IsotropyConfig, nebula3d.preprocessing.ring_isotropy", why: "no TypeScript text states them (the skills' lint binds them, GATES and GATED in skillLint.test.ts)" },
   { name: "SAMPLES_PER_FWHM (2) and the ring test's direction cells", holds: "nebula3d.preprocessing.ring_isotropy", why: "the TypeScript reads the test's reason (GRID_TOO_COARSE, pinned), not its limits" },
 ];
 

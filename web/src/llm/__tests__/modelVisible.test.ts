@@ -15,8 +15,9 @@
 // measured data is used.
 //
 // Tool results sampled: all 27 tools in CHAT_TOOLS. None skipped. Covered in part:
-// - read_skill: one skill's body; not a reference (those are docs/algorithms
-//   pages, read as written).
+// - read_skill: one skill's core, its details on request, and a long
+//   reference page's index and one section (the pages are docs/algorithms,
+//   read as written).
 // - run_pipeline, tune_pipeline: the runs are stubs; what is sampled is the
 //   tool's own account of a fake run (the stages it ran, the trials it kept).
 //
@@ -444,6 +445,14 @@ const BUNCHED_NOTE = "a run whose punch record says its sharp peaks off the latt
 
 const SAMPLES: Sample[] = [
   { name: "read_skill", args: { name: "bragg-node-audit" } },
+  // A skill's details, read on request (THY-63 R4).
+  { name: "read_skill", args: { name: "bragg-node-audit", section: "Details" } },
+  // A long reference page: its index, then one section (THY-63 R4).
+  { name: "read_skill", args: { name: "delta-pdf-interpretation", reference: "delta_pdf" } },
+  {
+    name: "read_skill",
+    args: { name: "delta-pdf-interpretation", reference: "delta_pdf", section: "The window and the measured coverage (`support`)" },
+  },
   { name: "describe_dataset", args: {} },
   { name: "current_view", args: {} },
   { name: "measure_reciprocal_cut", args: { plane: "h0l", value: 1 } },
