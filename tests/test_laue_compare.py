@@ -166,13 +166,14 @@ def correlated_noise(*, seed: int = 0, n: int = 61, width: float = 1.0) -> HKLVo
                                  sigma=np.full((n, n, n), 0.1), ub_matrix=ORTHO_UB)
 
 
-def poorly_covered(*, scale: float = 1.1, seed: int = 0) -> HKLVolume:
+def poorly_covered(*, scale: float = 1.1, seed: int = 0, n_hk: int = 61,
+                   n_l: int = 41) -> HKLVolume:
     """The 6/m crystal with the wedge cut (:func:`wedge_cut`) and its
     intensities scaled by *scale* where their Friedel mates fall in the
     unmeasured wedge (azimuths 200°–260°), as an absorption or a detector
     region would: an error only the poorly covered region carries, which only
     classes above -1 compare there."""
-    out = wedge_cut(hex_crystal(seed=seed), seed=seed)
+    out = wedge_cut(hex_crystal(seed=seed, n_hk=n_hk, n_l=n_l), seed=seed)
     q = np.einsum("ij,j...->i...", np.asarray(out.ub_matrix),
                   np.stack(np.meshgrid(out.h_axis, out.k_axis, out.l_axis, indexing="ij")))
     phi = np.degrees(np.arctan2(q[1], q[0])) % 360.0

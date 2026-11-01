@@ -2,16 +2,24 @@
 // page. Runs the backend's comparison (api/client.ts compareLaueClasses: every
 // candidate class by R_int, on every measured voxel and on the diffuse) with
 // the run's settings, shows its progress, then the table: the classes indented
-// by the chain of subgroups below them, the suggested row and why, the rows
-// the diffuse reading flags, the classes refused and why. A click on a row
-// sets the Laue class; the user runs it. state/laueCompare.ts words the rows.
+// by the chain of subgroups below them, χ²/dof beside R_int, the suggested
+// row and why, the rows the diffuse reading flags, the classes refused and
+// why; under it a line each for χ²/dof and the block bootstrap behind the
+// standard errors, and the common-subset diagnostic (its flag, and the classes
+// on it in a disclosure). A click on a row sets the Laue class; the user runs
+// it. state/laueCompare.ts words the rows.
 
 import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 
 import { compareLaueClasses } from "../api/client";
 import type { LaueComparison, LaueProgress, StageParamsIn } from "../api/types";
 import {
+  bootstrapLine,
+  CHI2_LINE,
+  commonLine,
+  commonRows,
   diffuseLine,
+  formatChi2,
   formatRint,
   laueCompareParams,
   laueRows,
@@ -51,17 +59,51 @@ function Cell({ c }: { c: CellView }) {
 const RINT_HELP = (
   <>
     R_int = Σ|I − ⟨I⟩| / Σ|I| over the measured voxels of the orbits measured at least twice, with the symmetry average&apos;s
-    own orbits: 0 when equivalent voxels agree exactly. <b>Noise floor</b>: the R_int counting noise alone would give on the
-    same orbits, from σ. R_int grows with the orbits&apos; size even then, so classes are compared in units of it (&quot;1.00×
-    noise&quot; is agreement to the counting noise). <b>All</b> reads every measured voxel, where the Bragg peaks weigh most;{" "}
+    own orbits: 0 when equivalent voxels agree exactly. Only measured voxels count, in orbits with two or more of them: an
+    empty voxel is never a zero. <b>Noise floor</b>: the R_int counting noise alone would give on the same orbits, from σ.
+    R_int grows with the orbits&apos; size even then, so classes are compared in units of it (&quot;1.00× noise&quot; is
+    agreement to the counting noise). <b>All</b> reads every measured voxel, where the Bragg peaks weigh most;{" "}
     <b>Diffuse</b> masks a sphere around each Bragg node of the punch cell. <b>The rule</b>: a class rises against a subgroup
     when its ratio exceeds the subgroup&apos;s by more than {Math.round(100 * LAUE_RULE_DELTA)}% and {LAUE_RULE_Z} standard
-    errors; it is supported when it rises against none of its subgroups and all of them are supported. The suggestion is the
+    errors of the difference (a block bootstrap, below); it is supported when it rises against none of its subgroups and all
+    of them are supported. The suggestion is the
     supported class with the most operations in every reading that can tell the classes apart (pooling whole |Q| shells,
     the last row, must rise too; else no class can be preferred). ⚠ marks the diffuse supporting less than all voxels: the
     Bragg peaks would impose their symmetry on it. <b>Limits</b>: twinning, or domains related by an operation the sample
     lacks, make a lower symmetry look higher, and R_int alone cannot tell. Only the presets&apos; settings are compared. It is a
     suggestion: the class is yours to set. Click a row to set it, then run.
+  </>
+);
+
+const CHI2_HELP = (
+  <>
+    χ²/dof = Σ(I − ⟨I⟩)²/σ² over the measured members of the orbits measured twice or more, ⟨I⟩ each orbit&apos;s
+    σ-weighted mean, divided by Σ(n − 1). Under counting noise alone it is 1 whatever the orbits&apos; size: the rigorous
+    cross-check of the ratio to the noise floor. Above 1 the equivalents disagree beyond their σ: an operation the sample
+    lacks, or systematic errors. Where σ is unknown it is taken as √|I|, and the level is only as right as that. The last row
+    pools whole |Q| shells.
+  </>
+);
+
+const BOOTSTRAP_HELP = (
+  <>
+    Neighbouring voxels share noise and errors through the resolution, so orbits are not independent samples, and treating
+    them as such makes the standard errors too small. These come from a spatial block bootstrap: the grid is cut into cubes,
+    each orbit belongs to the cube of its representative under the largest class compared (a class&apos;s orbit and its
+    subgroups&apos; orbits inside it stay together), and the cubes are resampled with replacement from a fixed seed. The
+    cube&apos;s edge follows how far the residuals stay correlated (4 voxels at least). The rule weighs each class against its
+    subgroup on the same resamples, so what they share cancels. Effective: the cubes weighed by the data they hold.
+  </>
+);
+
+const COMMON_HELP = (
+  <>
+    Each class read again on only the voxels the lowest class can judge (those whose equivalent under it was measured too). A
+    class sees voxels its subgroups cannot compare: those cross-orbit comparisons are often its strongest evidence where the
+    coverage is sparse, which is why the table reads every measured voxel. When the suggestion changes here, the voxels only a
+    higher class compares disagree differently from the rest: errors that depend on the region (absorption, detector or
+    coverage edges) can reject a class falsely there, and more rarely a breaking shows only there. Look at the flagged class
+    before choosing.
   </>
 );
 
@@ -113,6 +155,10 @@ export function LaueCompare({
 
   const result = last?.result ?? null;
   const rows = useMemo(() => (result ? laueRows(result, currentSpec) : []), [result, currentSpec]);
+  const common = useMemo(() => (result ? commonRows(result) : []), [result]);
+  const commonText = result ? commonLine(result) : null;
+  const commonWhole = result?.common?.share != null && result.common.share >= 0.9995;
+  const bootText = result ? bootstrapLine(result) : null;
   const stale = result != null && last?.key !== key;
   const pct = Math.round(100 * (progress?.fraction ?? 0));
 
@@ -172,6 +218,9 @@ export function LaueCompare({
                   <th scope="col" title="R_int with the Bragg nodes masked">
                     R_int diffuse
                   </th>
+                  <th scope="col" className="num" title="χ² per degree of freedom: every measured voxel over the diffuse. 1 is agreement within the counting noise">
+                    χ²/dof
+                  </th>
                   <th scope="col" className="num" title="Orbits with two measured members or more">
                     Orbits
                   </th>
@@ -206,6 +255,10 @@ export function LaueCompare({
                     <td className="num">{row.order}</td>
                     <Cell c={row.all} />
                     <Cell c={row.diffuse} />
+                    <td className="num laue-chi2" title={row.chi2.title}>
+                      <span className="laue-rint">{row.chi2.all}</span>
+                      <span className="laue-detail">{row.chi2.diffuse}</span>
+                    </td>
                     <td className="num" title={row.orbitsTitle}>
                       <span className="laue-orbits-full">{row.orbits}</span>
                       <span className="laue-orbits-short">{row.orbitsShort}</span>
@@ -220,18 +273,85 @@ export function LaueCompare({
                   <td className="laue-cell">
                     <span className="laue-rint">{formatRint(result.isotropic.diffuse.r_int)}</span>
                   </td>
+                  <td className="num laue-chi2">
+                    <span className="laue-rint">{formatChi2(result.isotropic.all.chi2)}</span>
+                    <span className="laue-detail">{formatChi2(result.isotropic.diffuse.chi2)}</span>
+                  </td>
                   <td />
                 </tr>
                 {result.refused.map((r) => (
                   <tr key={`refused-${r.laue}`} className="laue-refused" title={r.detail}>
                     <td>{r.laue}</td>
                     <td className="num">{r.order}</td>
-                    <td colSpan={3}>Refused: {refusalText(r)}</td>
+                    <td colSpan={4}>Refused: {refusalText(r)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <p className="laue-caption laue-caption--help">
+            <span>{CHI2_LINE}</span>
+            <HelpTip className="helptip--wide">{CHI2_HELP}</HelpTip>
+          </p>
+          {bootText && (
+            <p className="laue-caption laue-caption--help">
+              <span>{bootText}</span>
+              <HelpTip className="helptip--wide">{BOOTSTRAP_HELP}</HelpTip>
+            </p>
+          )}
+          {result.common?.flag && (
+            <p className="config-note config-note--warn" role="status">
+              ⚠ {result.common.flag}
+            </p>
+          )}
+          {commonText && (
+            <div className="laue-common">
+              <p className="laue-caption laue-caption--help">
+                <span>{commonText}</span>
+                <HelpTip className="helptip--wide">{COMMON_HELP}</HelpTip>
+              </p>
+              {!commonWhole && (
+                <details className="laue-common-details">
+                  <summary>Each class on it</summary>
+                  <table className="laue-table laue-table--common">
+                    <thead>
+                      <tr>
+                        <th scope="col">Class</th>
+                        <th scope="col" title="R_int over its noise floor on the common subset, every measured voxel">
+                          × noise all
+                        </th>
+                        <th scope="col" title="R_int over its noise floor on the common subset, the diffuse">
+                          × noise diffuse
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {common.map((row) => (
+                        <tr key={row.laue} className={row.suggested ? "laue-row--suggested" : undefined}>
+                          <td className="laue-class">
+                            <span className="laue-indent" style={{ "--depth": row.depth } as CSSProperties}>
+                              {row.depth > 0 && (
+                                <span className="laue-chain" aria-hidden="true">
+                                  └
+                                </span>
+                              )}
+                              <span className="laue-name">{row.laue}</span>
+                            </span>
+                          </td>
+                          <td className={`laue-cell laue-cell--${row.all.state}`} title={row.all.title}>
+                            <span className="laue-detail">{row.all.value}</span>
+                          </td>
+                          <td className={`laue-cell laue-cell--${row.diffuse.state}`} title={row.diffuse.title}>
+                            <span className="laue-detail">{row.diffuse.value}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+            </div>
+          )}
           <p className="laue-caption">{diffuseLine(result)}</p>
           {result.notes.map((note) => (
             <p key={note} className="laue-caption">

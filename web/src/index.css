@@ -1617,6 +1617,44 @@ input[type="range"]::-moz-range-track {
   line-height: 1.4;
   color: var(--text-3);
 }
+/* a caption with its "?" (χ²/dof, the bootstrap, the common subset) */
+.laue-caption--help {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.laue-caption--help > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.laue-chi2 .laue-rint,
+.laue-chi2 .laue-detail {
+  white-space: nowrap;
+}
+.laue-common {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.laue-common-details > summary {
+  width: max-content;
+  font-size: 11px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.laue-common-details[open] > summary {
+  margin-bottom: 4px;
+}
+.laue-table--common {
+  width: auto;
+  min-width: min(100%, 300px);
+}
+.laue-table--common .laue-detail {
+  font-size: 11px;
+}
+.laue-name {
+  font: 600 12px var(--font-mono);
+}
 /* phones: each cell's figure without its words, compact orbits, names that
    wrap, a smaller indent: the table at the card's width (390 px viewport) */
 @container main (max-width: 480px) {
@@ -7046,8 +7084,12 @@ html.kb-open .ai-side {
   .switch input:checked + .switch-track::after {
     transform: translateX(16px);
   }
-  .cfg-advanced > summary {
+  .cfg-advanced > summary,
+  .laue-common-details > summary {
     min-height: 44px;
+  }
+  .laue-common-details > summary {
+    line-height: 44px;
   }
   :is(.sidebar-foot, .main-foot) .foot-links a {
     display: inline-flex;
