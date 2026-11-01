@@ -35,6 +35,7 @@ import type { AgentStep } from "../agent";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
+import { ubTurnFacts } from "../metrics/ubTurn";
 import { SECOND_GRAIN_DEG } from "../metrics/grains";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { FILL_BIAS_FLOOR } from "../metrics/texture";
@@ -321,8 +322,21 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   },
 ];
 
+/** A significant UB turn as the punch's record holds it (THY-60): what makes `ub_turn` appear. */
+const SIGNIFICANT_TURN = {
+  status: "active", active: true, n_peaks: 105, n_rejected: 0, omega_rad: null, angle_deg: 0.5, sigma_deg: 0.002, axis: null, axis_uvw: null,
+  axis_sigma_deg: null, r2: 0.99, f_stat: null, p_value: null, rms_before: null, rms_after: null, max_shift: 0.11, voxel_q: 0.046,
+  significant: true, explains: true, resolved: true,
+};
+
 /** Names in backticks that are no tool, field, parameter or setting, and how each is checked. */
 const OTHER_NAMES: { name: string; what: string; holds: () => boolean }[] = [
+  {
+    name: "ub_turn",
+    what: "the punch assessment's UB turn and tail sweep, only on a volume with a significant turn (metrics/ubTurn.ts), which the synthetic crystal has not",
+    holds: () =>
+      ubTurnFacts({ ...SIGNIFICANT_TURN }, null) !== null && ubTurnFacts({ ...SIGNIFICANT_TURN, significant: false }, null) === null,
+  },
   { name: "docs/SKILL_INTERVIEWS.md", what: "the interview guide", holds: () => REPO_FILES.has("docs/SKILL_INTERVIEWS.md") },
   { name: "examples/refine_ub.py", what: "the UB refinement example", holds: () => REPO_FILES.has("examples/refine_ub.py") },
   { name: "nebula3d.demo", what: "the demo volume's module", holds: () => REPO_FILES.has("src/nebula3d/demo.py") },
