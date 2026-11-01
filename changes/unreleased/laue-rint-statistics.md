@@ -6,8 +6,10 @@
   fixed seed): every orbit sits in the block of its representative under the
   largest class compared, so a class and its subgroups are resampled on the
   same voxels, and the rule tests each class's excess over its subgroup
-  against two standard errors of that difference. The block edge follows how
-  far the residuals stay correlated (4 voxels at least). A **χ²/dof** column
+  against two standard errors of that difference (capped at the subgroup's
+  own, provisional: a breaking's uneven reach is no noise). The block edge
+  follows how far the residuals stay correlated (4 voxels at least). A
+  **χ²/dof** column
   (1 = agreement within the counting noise) sits beside R_int, and a
   diagnostic reads every class again on the voxels the lowest class can
   judge: a warning when the suggestion changes there, a sign of errors that
