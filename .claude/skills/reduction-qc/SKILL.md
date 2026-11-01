@@ -2,25 +2,24 @@
 name: reduction-qc
 description: >-
   Check that a reduction can be trusted before reading physics from it: the UB,
-  the symmetrisation, the raw counts' |Q| edges and the coverage, edge and
-  unmeasured voxels, the powder rings and the flatten floor. Use it when asked
-  whether a run is sound or ready for the 3D-ΔPDF, and before changing or tuning
-  the ring removal or the flatten. NOT for reading ΔPDF features
+  the symmetrisation and its Laue class, the raw counts' |Q| edges and the
+  coverage, edge and unmeasured voxels, the powder rings and the flatten floor.
+  Use it when asked whether a run is sound or ready for the 3D-ΔPDF, and before
+  changing or tuning the ring removal or the flatten. NOT for reading ΔPDF features
   (delta-pdf-interpretation) or auditing the Bragg nodes (bragg-node-audit).
 ---
 
 # Reduction QC: is the reduced volume fit for a 3D-ΔPDF?
 
 A reduction can look clean on one cut and still be wrong in ways every later
-stage inherits. Check it first, in the order below, and say what each check
+stage inherits. Check it first, in this order, and say what each check
 found.
 
 ## Gates
 
 - `ub_check`: the UB turned at 0.05° or more, from an unsymmetrised fit.
 - `qmax_coverage`: the ΔPDF's Qmin and Qmax are where the raw counts begin
-  and end (the user's rule); the window's weight on unmeasured space is clean
-  up to about 1e-3.
+  and end; the window's weight on unmeasured space is clean up to about 1e-3.
 - `assess_stage` rings: a powder ring rises in nearly every direction (3D): at
   least 0.15 of its median height in 90 % of the directions, three times its
   noise above its flanks, a quarter of its height above a curve through them.
@@ -30,6 +29,8 @@ found.
   over the outer half of the shells the counts reach.
 - `symmetry_check`: an operation the data were symmetrised with holds to about
   1e-3 or better.
+- `compare_laue_classes`: a class is rejected when its `x_noise` rises above a
+  subgroup's by more than 10 % and two standard errors of the difference.
 
 ## Steps
 
@@ -47,10 +48,11 @@ found.
    inside them) and the verdict, the share of the transform window's weight on
    unmeasured space. The band and the magnetic ion stay with the user: suggest
    them, never set them unasked.
-4. **Edge and unmeasured voxels.** Trim the edge before a volume is regridded
-   or symmetrised outside the pipeline. Before proposing a Laue class for the
-   symmetry average, run `compare_laue_classes`: give its suggestion, rule and
-   flag, and that twinning can hide a lower class.
+4. **Edge and unmeasured voxels.** Trim the edge before regridding or
+   symmetrising outside the pipeline. Before proposing a Laue class for the
+   symmetry average, run `compare_laue_classes` (Details: The Laue class):
+   cite the classes, rule and flags and suggest a class; never set it
+   (`update_settings` refuses it).
 5. **Powder rings.** `assess_stage` for the rings (`shells_judged`), then
    `radial_profile`. Report leftovers and dents at the confirmed rings as
    shares of the diffuse beside them. A ring too weak to rise in nearly every
@@ -94,8 +96,9 @@ A symmetrised volume and its unsymmetrised export are separate datasets.
 
 ### The coverage and the |Q| band
 
-- Past the raw counts' edges most voxels hold no counts. The verdict's weight
-  on unmeasured space is recorded with the ΔPDF.
+- The band at the raw counts' edges is the user's rule: past them most voxels
+  hold no counts. The verdict's weight on unmeasured space is recorded with
+  the ΔPDF.
 - Without that record, the verdict compares how far the window reaches with
   where the counts stop: the band if one is set, else the box faces, the
   coverage edge when the window is tapered to the coverage, or the box corners
@@ -111,6 +114,36 @@ the page's `edgeTrim`, changed only when the user names it). Unmeasured voxels
 stay masked. The backfill fills punched holes and gaps the measured data
 enclose, not the open coverage; the symmetry average fills gaps from
 equivalents.
+
+### The Laue class
+
+Evidence for the user's choice of the class for the symmetry average.
+
+- **Numbers.** R_int: how much equivalent voxels disagree. `x_noise`: R_int
+  over what counting noise alone gives on the same orbits, so classes of any
+  size compare; near 1, the equivalents agree within the noise. `chi2`
+  (χ²/dof) reads alike and weighs strong disagreements (Bragg peaks) more.
+- **Voxels.** Only measured voxels count, in orbits with another measured
+  member; an empty voxel is never a zero.
+- **Classes see different voxels.** With partial coverage a higher class
+  compares voxels its subgroups cannot: evidence, not bias. Each is weighed
+  against its own subgroups on its own voxels in its own noise units, so
+  shared errors cancel.
+- **The rule errs low** (Gates). Errors add disagreement, which a higher class
+  pools more of, so a wrong answer is a class too low: gaps unfilled, nothing
+  imposed.
+- **Limits.** The errors come from a block bootstrap, which allows for
+  correlated neighbouring voxels. Errors that differ between regions reject
+  classes falsely (`common_flag`). Twinning, or domains related by an
+  operation the sample lacks, make a lower symmetry look higher, undetectably.
+- **Flags.** `flag`: the diffuse supports a lower class than the Bragg peaks,
+  whose symmetry averaging would impose on it; the suggestion is the
+  diffuse's. A note that every measured voxel supports less than the diffuse:
+  the Bragg peaks break the symmetry or carry extinction or absorption
+  errors. `common_flag`: the voxels the lowest class can judge suggest
+  another class; if higher, the main suggestion may be a false rejection:
+  give both, ask the user to look. No suggestion: isotropic within the noise
+  (`no_symmetry` did not rise).
 
 ### Powder rings
 

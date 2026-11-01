@@ -2,23 +2,23 @@
 // guard counts, against a 32k local context window, held to ceilings by
 // component (docs/pilot-context-design.md §5.8).
 //
-// VERDICT (measured 2026-11-01 with THY-63 R4's skill cores, with
-// scripts/measure_pilot_context.sh, which counts the same way): OVER 32k
-// before compaction, and under it after.
+// VERDICT (measured 2026-11-01 with THY-63 R4's skill cores and THY-59's
+// skill text, with scripts/measure_pilot_context.sh, which counts the same
+// way): OVER 32k before compaction, and under it after.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 31.0k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 30.4k + 6,144
-//   = 36.6k before the loop's compaction, and 29.6k to 30.6k after it, by the
-//   order the skills are read (30.4k in the method's order).
+//   about 31.1k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 30.5k + 6,144
+//   = 36.7k before the loop's compaction, and 29.7k to 30.7k after it, by the
+//   order the skills are read (30.5k in the method's order).
 // - A model LM Studio loaded with 32k gets the whole turn with 8.5k left for
 //   the reply; the skills read earlier reach it shortened to their heads and
 //   gates (compaction, readings/compact.ts).
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (20.8k
+// to reply, and leaves free the 3k a model-visible addition must leave (20.7k
 // now). The estimate is conservative (every tool result, the skills' Markdown
 // included, counts at the data rate, 1.4 characters a token); at 3.0 for the
-// skills' 13.6k characters (C6, R5) the turn before compaction is about 31.2k
+// skills' 13.8k characters (C6, R5) the turn before compaction is about 31.2k
 // with the reply reserve, under 32k.
 //
 // The turn is driven through the real agent loop (runAgent, agent.ts) with a
@@ -158,16 +158,19 @@ type Component = (typeof ROWS)[number];
 // every prompt; read_skill's `section` parameter grew the tools by 4 (5,554 ->
 // 5,558; every tool's definition 6,139 -> 6,143).
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 4_453, tools: 5_558, context: 2_382, skills: 9_929, results: 8_091 };
+// THY-59's skill text (reduction-qc's Laue class: its description, two gates
+// and a step's words in the core, its section in the details) spent its
+// reserve line: system +6 (the description), skills +131 (the core).
+const MEASURED: Record<Component, number> = { system: 4_459, tools: 5_558, context: 2_382, skills: 10_060, results: 8_091 };
 // Every tool's definition, as the console sends them (Claude).
 const MEASURED_ALL_TOOLS = 6_143;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 30_997,
-  localBefore: 30_412,
-  localSkillsFirst: 23_437,
-  localMethod: 24_257,
-  localSkillsLast: 24_453,
+  console: 31_134,
+  localBefore: 30_549,
+  localSkillsFirst: 23_534,
+  localMethod: 24_394,
+  localSkillsLast: 24_590,
 };
 
 // The room held for the queued model-visible features, by component, in
@@ -177,10 +180,6 @@ const MEASURED_PROMPT = {
 // scripts/measure_pilot_context.sh. Results and skills count at the data
 // rate (1.4 characters a token), definitions at the prose rate (3.5).
 const RESERVED: Record<string, { what: string; room: Partial<Record<Component, number>> }> = {
-  "THY-59": {
-    what: "Laue R_int statistics, measured on its branch: reduction-qc's new section, +2,139 characters (its result and description shrink by 22 and 21 characters, not credited)",
-    room: { skills: 1_528 },
-  },
   "THY-60": {
     what: "UB-aware punch, estimated: the turned-UB diagnosis and the tail sweep in the punch record, at most 400 characters of result and 100 of description",
     room: { results: 270, tools: 30 },
