@@ -345,7 +345,9 @@ the demo crystal (8 candidates; a workstation shared with other jobs):
 | 241³ | partial, as above | 17.3 s | 26.0 s |
 
 Full coverage reuses the main readings for the common subset; partial
-coverage reads four. Cubic classes take longest (their representative test
+coverage reads four. In the browser (Pyodide, the same machine), from the
+click to the table: a synthetic cubic volume of 4.2 M voxels 8.8 s before,
+11.4 s now; a 6/m volume of 0.4 M voxels with a wedge 0.8 s and 1.3 s. Cubic classes take longest (their representative test
 mixes L with H and K). Results are cached by the file, its mtime and every
 setting that changes them.
 
