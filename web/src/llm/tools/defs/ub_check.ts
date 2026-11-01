@@ -53,7 +53,7 @@ export const ub_check: ChatTool = {
   // Reportable, as the other checks on the result are: the report runs it, and names what it finds (Q11).
   facts: { label: "Checked the UB", acts: null, offeredFor: ["punch", "lattice", "general"], settles: ["ub", "origin"], reportable: true },
   ...described(
-    description("ub_check")`Is the volume's UB right? Fits the UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first). Returns verdict, rms_start → rms, cell_start and cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file${evidence(". An offset that changes with |Q| is no UB error")}. About 10 s.`,
+    description("ub_check")`Is the volume's UB right? Fits a UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first); it changes no data. Returns verdict, rms_start → rms, cell_start → cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file${evidence(". An offset that changes with |Q| is no UB error")}.`,
   ),
   parameters: {
     type: "object",

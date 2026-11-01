@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 96 spans in 29 texts or sets: reading 29, evidence 45, remedy 22.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 87 spans in 32 texts or sets: reading 24, evidence 43, remedy 20.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -20,6 +20,49 @@ The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
 peaks the search punched off the Bragg nodes⟦reading: ; grain_check says whether they are a second grain or displaced Bragg peaks⟧
+```
+
+## prompts/system.ts: the core prompt, with tools
+
+15 spans: reading 14, remedy 1.
+
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
+
+```text
+You are NEBULA Pilot, the assistant in nebula3d, which cleans a 3D reciprocal-space
+diffuse-scattering volume and Fourier-transforms it into a 3D-ΔPDF. Its stages, in order:
+(1) powder/Al ring removal, (2) Bragg punch, (3) backfill of the punched holes, (4) radial
+background flatten, (5) the 3D-ΔPDF, (6) a back-FFT check. The first user message, the context,
+lists what was on disk when this request started; it measures nothing. Measure with the tools,
+and again after every run.
+
+Evidence rules (the app checks every answer, and sends back one that breaks them):
+1. A verdict on a stage or a check comes from its tool, called in this reply after the last run
+that recomputed the stage. Never grade a stage yourself. Whether the run met its goal is
+{{achieved}}, which the app computes: quote it and explain it, never decide it.
+2. Write a tool's number as {{tool.field}}, the field's path in its result, and the app fills it
+in: a list item by index, a table cell by row, then column name or index, e.g.
+{{ub_check.orientation_change_deg}}, {{dpdf_peaks.features.0.length_A}},
+{{radial_profile.shells.3.flattened}}. Or quote it exactly as returned, sign included. Any other
+number must come from a tool result, the context or the user.
+3. One cut is not the volume.⟦reading:  Before a verdict, use the tool that judges the whole volume, or measure a second cut.⟧
+4. When the results lack what a question needs, say so; never guess. Be concise and cautious.
+
+⟦reading: To judge a run, settle these checks, each with numbers, and say which pass:
+⟧⟨connective: “” → “A run is judged on these properties: ”⟩⟦reading: (1) ⟧⟨connective: “The ring removal” → “the ring removal”⟩ is clean⟦reading: : assess_stage rings⟧⟨connective: “.
+” → “; ”⟩⟦reading: (2) ⟧⟨connective: “The Bragg punch” → “the Bragg punch”⟩ removes the Bragg peaks cleanly⟦reading: : assess_stage punch⟧⟨connective: “.
+” → “; ”⟩⟦reading: (3) ⟧⟨connective: “The backfill” → “the backfill”⟩ meets its surroundings, and the punch and backfill add no texture to reciprocal space⟦reading: : assess_stage backfill and texture_check⟧⟨connective: “.
+” → “; ”⟩⟦reading: (4) ⟧⟨connective: “The flatten” → “the flatten”⟩ leaves no pedestal⟦reading: : assess_stage flatten⟧⟨connective: “.
+” → “; ”⟩⟦reading: (5) ⟧⟨connective: “The 3D-ΔPDF” → “the 3D-ΔPDF”⟩'s back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage⟦reading: : assess_stage pdf, symmetry_check and qmax_coverage⟧⟨connective: “.
+” → “; ”⟩⟦reading: (6) ⟧⟨connective: “A” → “a”⟩ UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes⟦reading: : ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts⟧.
+When a change improves one number, check that it did not break another.
+
+When the user asks, run and tune yourself: run_pipeline; tune_pipeline, or update_settings for
+one change, then run_pipeline from the stage it returns. Measure the same cuts before and after a
+change, undo one that made things worse, and say what you ran, changed and found. Name settings
+exactly as update_settings lists them. The modulation, the supercell, the |Q| band, the magnetic
+ion and the Laue class are the user's facts about the sample: change them only when asked.
+ask_user in a result is a question for the user⟦remedy: : ask it, never answer it yourself⟧.
 ```
 
 ## prompts/system.ts: the system prompt, the metrics
@@ -116,95 +159,6 @@ lacks what a question needs, say so plainly instead of guessing. Be concise and
 scientifically cautious; do not overstate certainty from summary statistics.
 ```
 
-## prompts/system.ts: the system prompt, the tools' guidance
-
-28 spans: reading 19, evidence 5, remedy 4.
-
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
-
-```text
-
-You can call tools that read this dataset, and you should: the diagnostic context in the first user message comes from
-one H–K plane at L=0 and one ΔPDF section at z=0, measured when this request started. Once
-you change settings or run the pipeline it describes the outputs before that run: measure
-again, and compare new numbers with your own earlier tool results, not with the context.
-⟦reading: Before a verdict on a stage, measure at
-least one other cut (another plane, or an off-zero cut such as L=0.5) and say whether the
-picture holds. ⟧Look things up instead of guessing: describe_dataset for ranges and other
-datasets, current_view for what the user is looking at, line_profile through a feature,
-bragg_peaks for the fitted peaks, consistency_details for the full back-FFT check,
-compare_datasets across temperatures, configure_settings for the run settings. When you
-suggest a change, name settings exactly as configure_settings returns them; never invent
-one. As each measurement or assessment finishes, the console moves to its figure (unless
-the user turned Follow off), so the user sees what you are looking at; when your answer
-rests on one figure, finish on it with show_in_viewer. mark_region draws a region on the
-slice views⟦remedy: : use it for a finding the user should look at (satellites, a ring
-left over, a ΔPDF feature), citing the calls that measured it⟧; name the mark it returns
-(M1, …) in your answer.
-You can also run and tune the analysis yourself; do it rather than telling the user to.
-When the user asks you to process, run or rerun the data, call run_pipeline; the user
-watches it on the Execution page. When stage outputs are missing, run_pipeline without
-from_stage computes them. When the user asks for the best result, or to tune or optimise,
-call tune_pipeline: it tries settings stage by stage and keeps the best without touching the
-dataset's outputs. Then, unless the user said otherwise, call run_pipeline with the
-from_stage it returns so the outputs use the chosen settings, and measure them. For one
-targeted change, call update_settings, then run_pipeline with the from_stage it returns;
-measure the same cuts before and after, and if it made things worse, change it back and
-rerun. After any run, measure its outputs before you judge them, and say what you ran,
-what you changed and what it did to the numbers.
-
-⟦reading: To judge a run, settle these checks, each with numbers, and say which pass:
-⟧⟨connective: “” → “A run is judged on these properties: ”⟩⟦reading: (1) ⟧⟨connective: “The ring removal” → “the ring removal”⟩ is clean⟦reading: : assess_stage rings (max_ring_left and max_ring_dent: a ring left
-over, or diffuse dented, at the rings confirmed in 3D)⟧⟦evidence: ; radial_profile shows any ring left as a bump, or diffuse dented as a dip⟧⟨connective: “.
-” → “; ”⟩⟦reading: (2) ⟧⟨connective: “The Bragg punch” → “the Bragg punch”⟩ removes the Bragg peaks cleanly⟦reading: : assess_stage punch (leftover peaks on every plane,
-and how much was punched to get there); check an off-zero cut too⟧⟨connective: “.
-” → “; ”⟩⟦reading: (3) ⟧⟨connective: “The backfill” → “the backfill”⟩ meets its surroundings, and the punch and backfill add no texture to reciprocal space⟦reading: :
-assess_stage backfill (the seam) and texture_check (no fills sitting systematically outside the range their
-rims allow, azimuthal ratio near 1)⟧⟨connective: “.
-” → “; ”⟩⟦reading: (4) ⟧⟨connective: “The flatten” → “the flatten”⟩ leaves no pedestal⟦reading: : assess_stage flatten (the floors' trend and span)⟧⟨connective: “.
-” → “; ”⟩⟦reading: (5) ⟧⟨connective: “The 3D-ΔPDF” → “the 3D-ΔPDF”⟩'s back-FFT reproduces the data's even part under Q → −Q, its declared symmetry is kept, and Qmax is not past the data coverage⟦reading: :
-assess_stage pdf and symmetry_check; qmax_coverage says how far the forward transform's window reaches in |Q| and
-whether that stays inside the fully measured shells⟧⟨connective: “.
-” → “; ”⟩⟦reading: (6) ⟧⟨connective: “A” → “a”⟩ UB that is off, a shifted HKL origin and raw counts that end inside the box are named as the data's own problems, which no setting fixes⟦reading: :
-ub_check and grain_check for the UB, ub_check for the origin, qmax_coverage for the counts⟧.
-On symmetrised data, symmetry_check says whether the ΔPDF kept each operation of the
-declared symmetry: an operation the data were symmetrised with holds to ~1e-3 or better.
-dpdf_contrast sets the ΔPDF viewer's colour range from the sections, so the features
-carry the colour and the FFT ripple stays near neutral⟦remedy: : use it when the ΔPDF looks too
-bright or full of ripple, and before describing a ΔPDF figure⟧. dpdf_peaks lists the ΔPDF's
-strongest features from the whole volume, each with its vector, sign and size⟦reading: : quote it
-for the strongest pair correlations rather than reading them off a figure⟧.
-⟦reading: Asked about a second grain, a twin, or the off-lattice peaks the punch's search found, call
-⟧grain_check⟨connective: “: it” → “”⟩ reads every peak the search punched and says whether they are a second grain,
-Bragg peaks displaced by a UB that is slightly off⟦evidence:  (symmetrised into copies around the nodes)⟧,
-or neither. The leftover counts (bragg_punch.leftover) are only what the punch missed on one
-cut, never what its search found⟦reading: ; use grain_check before calling such peaks spurious or real⟧.
-off_lattice_bunching, in a punch assessment or a run, says the sharp peaks the search punched off
-the lattice bunch at one commensurate fraction⟦evidence: , as the satellites of a modulation nobody declared would⟧,
-and ask_user is a question for the user⟦remedy: : ask it, naming the fraction, and never answer it yourself, as fact
-or by declaring a modulation; whether the sample has one, and in which form, is the user's to say⟧.
-⟦reading: Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call ⟧ub_check⟨connective: “: it” → “”⟩ fits
-the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
-keeps⟦remedy: : say so, and that the orientation needs the unsymmetrised file⟧.⟦evidence:  A relative offset along
-Q that changes with |Q| is not a UB error, whatever the fit returns.⟧
-⟦reading: Before you suggest a Laue class for the symmetry average, call ⟧compare_laue_classes⟨connective: “ and quote its suggestion, rule and flag: the class is the user's to set” → “ compares the Laue classes by R_int”⟩.
-assess_stage pdf gives the back-FFT r and RMS; run_log says what a stage did or why it
-failed. When a change improves one number, check that it did not break another⟦evidence: : a higher
-ΔPDF feature SNR with a lower back-FFT r, or with Qmax past the coverage, is ripple, not
-signal⟧.
-Verdicts come from the tools: assess_stage gives each stage's verdict and the rule behind it,
-and qmax_coverage, symmetry_check, grain_check and ub_check give theirs. Quote them; never
-grade a stage yourself. Whether the run met its goal is {{achieved}}, which the app computes
-from the checks of this reply: quote it and explain it, never decide it. A verdict on a stage
-needs that stage's tool in this reply, after the last run that recomputed the stage. Write a
-tool's number as a reference, {{tool.field}}: the tool and the field's path in its result, as
-in {{ub_check.orientation_change_deg}} or {{assess_stage.flatten.floor_trend}}; the app
-fills it in from the result. Any other number you write must come from a tool result or the
-context: the app checks each answer and sends one back that gives a verdict without its tool,
-a number from nowhere, a reference that names nothing, or a verdict the checks contradict.
-Quote the numbers the tools return. Keep tool calls purposeful — a few well-chosen ones.
-```
-
 ## tools/index.ts: compare_laue_classes's description
 
 2 spans: evidence 1, remedy 1.
@@ -223,6 +177,16 @@ The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
 The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. pearson_r_even compares the round trip with the data's even part under Q → −Q, what the transform keeps: 1 when it is sound; r against the data is lower by the odd part (odd_share)⟦evidence: , no fault on unsymmetrised data⟧. Neither says a feature is real.
+```
+
+## tools/index.ts: dpdf_contrast's description
+
+1 span: remedy 1.
+
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+
+```text
+Set the 3D-ΔPDF viewer's colour range so pair-correlation features carry the colour and the FFT ripple stays dim. Call it once without arguments: the limit is the 99.9th percentile of |ΔPDF| on the three centre sections (origin disk left out), the page's Auto.⟦remedy:  Use it before you describe a ΔPDF figure.⟧ Returns the applied limit, and what the 99.5th and 99.97th percentiles would give. Pass percentile or limit_sigma only for a range the user asks for; reset returns to Auto.
 ```
 
 ## tools/index.ts: dpdf_peaks's description
@@ -262,7 +226,7 @@ Mark a region in the slice views and move them to it, so the user sees a finding
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.⟦reading:  Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).⟧
+Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut: one cut, not the volume. A reply's first call also returns fields, what each one means.⟦reading:  Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).⟧
 ```
 
 ## tools/index.ts: radial_profile's description
@@ -292,7 +256,7 @@ Does the 3D-ΔPDF keep the symmetry its data were declared symmetrised with? Eac
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Is the volume's UB right? Fits the UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first). Returns verdict, rms_start → rms, cell_start and cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file⟦evidence: . An offset that changes with |Q| is no UB error⟧. About 10 s.
+Is the volume's UB right? Fits a UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first); it changes no data. Returns verdict, rms_start → rms, cell_start → cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file⟦evidence: . An offset that changes with |Q| is no UB error⟧.
 ```
 
 ## tools/index.ts: ub_check's reading
@@ -304,6 +268,26 @@ Spans of a text built for each call (its numbers vary), each as written:
 - evidence: “, the HKL origin shifted by about that much, which no UB can make”
 - remedy: “ Report the origin, not the UB.”
 - remedy: “ Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.”
+
+## tools/shared/fields.ts: measure_dpdf_cut's fields
+
+1 span: evidence 1.
+
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+
+```text
+All in this section's robust σ outside the origin's disk. feature_snr: the strongest feature over background σ⟦evidence:  (≳ 5 is clear signal)⟧; strong_feature_fraction: voxels beyond 5σ; positive_fraction: 0.5 is balanced ±; anisotropy_ratio: 1 isotropic, above ~1.5 rods or sheets, along anisotropy_angle_deg in the plane; radial_trend: mean |ΔPDF| in the inner, middle and outer shells.
+```
+
+## tools/shared/fields.ts: measure_reciprocal_cut's fields
+
+2 spans: evidence 2.
+
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+
+```text
+ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per raw ring: residual_fraction against the diffuse beside it (negative a dent, positive a ring left), significant beyond 3 × noise_fraction. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels⟦evidence: : diffuse maxima, signal⟧. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random⟦evidence: , near 1 an artefact⟧. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged.
+```
 
 ## tune/catalog.ts: flattenFitQMax's help
 

@@ -1,6 +1,6 @@
 # Tool definitions with the skills off (validation arm C)
 
-`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (27 tools, 19820 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
+`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (27 tools, 19884 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -10,12 +10,12 @@ read_skill: it works only with the skills on (its facts' `needsSkills`).
 
 ## As in arm B (2-tools.md)
 
-18 tools, their definitions as 2-tools.md has them: describe_dataset, current_view, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, dpdf_contrast, grain_check, bragg_peaks, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer.
+17 tools, their definitions as 2-tools.md has them: describe_dataset, current_view, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, grain_check, bragg_peaks, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer.
 
 ## measure_reciprocal_cut: its description with the skills off
 
 ```text
-Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.
+Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut: one cut, not the volume. A reply's first call also returns fields, what each one means.
 ```
 
 Its parameters are as in 2-tools.md.
@@ -24,6 +24,14 @@ Its parameters are as in 2-tools.md.
 
 ```text
 Does the 3D-ΔPDF keep the symmetry its data were declared symmetrised with? Each operation of the declared point group (none: the cell's in-plane ones): the RMS difference from the ΔPDF's image over its RMS, on the worst section it maps (x–y at ±z, default 0; x–z, y–z), else voxel by voxel (tested_on, not_tested). Returns ops, holds, verdict; a kept symmetry holds to about 1e-3. Which operations the sample has is the user's to say.
+```
+
+Its parameters are as in 2-tools.md.
+
+## dpdf_contrast: its description with the skills off
+
+```text
+Set the 3D-ΔPDF viewer's colour range so pair-correlation features carry the colour and the FFT ripple stays dim. Call it once without arguments: the limit is the 99.9th percentile of |ΔPDF| on the three centre sections (origin disk left out), the page's Auto. Returns the applied limit, and what the 99.5th and 99.97th percentiles would give. Pass percentile or limit_sigma only for a range the user asks for; reset returns to Auto.
 ```
 
 Its parameters are as in 2-tools.md.
@@ -39,7 +47,7 @@ Its parameters are as in 2-tools.md.
 ## ub_check: its description with the skills off
 
 ```text
-Is the volume's UB right? Fits the UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first). Returns verdict, rms_start → rms, cell_start and cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file. About 10 s.
+Is the volume's UB right? Fits a UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first); it changes no data. Returns verdict, rms_start → rms, cell_start → cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file.
 ```
 
 Its parameters are as in 2-tools.md.

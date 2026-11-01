@@ -28,7 +28,7 @@ import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
 import { writtenInferences } from "../inference";
-import { TOOLS } from "../prompts/system";
+import { CORE } from "../prompts/system";
 import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
 import { fillReferences } from "../references";
@@ -91,10 +91,10 @@ const MIN_WORDS = 7;
 /**
  * The skill's sentences arm B's system prompt holds whole, which arm C's does
  * not: inference the Pilot's own guidance shares with a skill word for word,
- * left out of arm C with the rest of the inference (inference.ts).
+ * left out of arm C with the rest of the inference (inference.ts). None since
+ * the core prompt (THY-63 R3): ub_check's caveat, the one shared sentence, is
+ * in its contract.
  */
-// None since THY-63 R4: reduction-qc's step 2 joins "say so, and that the orientation needs the unsymmetrised
-// file" to its rule with a colon, so the system prompt's copy is no sentence of the skill's.
 const SHARED_WITH_THE_SKILLS: string[] = [];
 
 /**
@@ -329,8 +329,8 @@ describe("arm C's session, with the skills off", () => {
       expect(skillSentencesIn(text, MIN_WORDS).map(label), text.slice(0, 200)).toEqual([]);
     }
     // What arm B's system prompt shares with a skill word for word is inference, and arm C's does not hold it.
-    expect(skillSentencesIn(TOOLS.whole, MIN_WORDS).map(label)).toEqual(SHARED_WITH_THE_SKILLS);
-    expect(skillSentencesIn(TOOLS.definitions, MIN_WORDS)).toEqual([]);
+    expect(skillSentencesIn(CORE.whole, MIN_WORDS).map(label)).toEqual(SHARED_WITH_THE_SKILLS);
+    expect(skillSentencesIn(CORE.definitions, MIN_WORDS)).toEqual([]);
   });
 
   it("holds none of the inference written anywhere: no span arm B reads that arm C leaves out", () => {
@@ -340,9 +340,11 @@ describe("arm C's session, with the skills off", () => {
     expect(spans.length).toBeGreaterThan(60);
     const c = [...requests().flatMap(textsOf), ...results()].join("\n");
     expect(spans.filter((t) => c.includes(t))).toEqual([]);
-    // And arm B's opening does hold them: the system prompt's spans.
+    // And arm B's opening does hold them: the core prompt's spans (the glossary's are a model's without tools).
     const b = String(armSetup("B", context).messages[0].content);
-    expect(writtenInferences().filter((e) => e.source.startsWith("prompts/system.ts")).every((e) => b.includes(e.span.text))).toBe(true);
+    const core = writtenInferences().filter((e) => e.source.startsWith("prompts/system.ts: the core prompt"));
+    expect(core.length).toBeGreaterThan(5);
+    expect(core.every((e) => b.includes(e.span.text))).toBe(true);
   });
 
   it("checks most of the skills' text, finds a skill's sentence where there is one, and puts the line where the data do", () => {

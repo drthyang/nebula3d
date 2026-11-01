@@ -29,8 +29,9 @@ import { loadPipelineContext } from "../../web/src/llm/context/loadContext";
 import { contextToJson, type PipelineContext } from "../../web/src/llm/context/pipelineContext";
 import { armSetup, TASK } from "../../web/src/llm/evals/validation";
 import { toolsFor } from "../../web/src/llm/localTools";
-import { SYSTEM, TOOLS } from "../../web/src/llm/prompts/system";
-import { buildChatMessages, buildStageReviewMessages, CHAT_HISTORY_TURNS, type ReviewStage } from "../../web/src/llm/prompts/templates";
+import { MAX_TOOL_ROUNDS } from "../../web/src/llm/runPolicy";
+import { CORE, roundsLine, SYSTEM } from "../../web/src/llm/prompts/system";
+import { buildChatMessages, buildStageReviewMessages, CHAT_HISTORY_TURNS, systemPrompt, type ReviewStage } from "../../web/src/llm/prompts/templates";
 import type { ChatMessage, StreamDelta, ToolSpec } from "../../web/src/llm/provider/client";
 import {
   baseTokens,
@@ -172,17 +173,25 @@ describe("1. the system prompt", () => {
   it("by section, arm B and arm C", () => {
     say("## 1. System prompt (estimator: prose, 3.5 characters a token)", "");
     const rows: (string | number)[][] = [];
+    // With tools (THY-63 R3): the core, the rounds line, and in arm B the skills' list.
+    for (const [arm, on] of [["B", true], ["C", false]] as const) {
+      const core = CORE.text(on);
+      const rounds = roundsLine(MAX_TOOL_ROUNDS);
+      const skills = on ? skillsPrompt() : "";
+      const whole = systemPrompt({ tools: true, skills: on });
+      expect(whole).toBe([core, rounds, ...(skills ? [skills] : [])].join("\n"));
+      for (const s of sectionsOf(core)) add({ group: "system.core", name: s.label, arm, rate: "prose", est: prose(s.text), text: s.text });
+      add({ group: "system.rounds", name: "rounds line", arm, rate: "prose", est: prose(rounds), text: rounds });
+      if (skills) add({ group: "system.skills", name: "skills list", arm, rate: "prose", est: prose(skills), text: skills });
+      rows.push([`arm ${arm}: core prompt (CORE)`, n(core.length), n(prose(core))]);
+      rows.push([`arm ${arm}: rounds line`, n(rounds.length), n(prose(rounds))]);
+      if (skills) rows.push([`arm ${arm}: skills list`, n(skills.length), n(prose(skills))]);
+      rows.push([`**arm ${arm}: system message**`, n(whole.length), `**${n(prose(whole))}**`]);
+    }
+    // Without tools, for comparison: the metrics' glossary and ground rules, unchanged.
     for (const [arm, on] of [["B", true], ["C", false]] as const) {
       const sys = SYSTEM.text(on);
-      const tools = TOOLS.text(on);
-      const skills = on ? skillsPrompt() : "";
-      for (const s of sectionsOf(sys)) add({ group: "system.metrics", name: s.label, arm, rate: "prose", est: prose(s.text), text: s.text });
-      for (const s of sectionsOf(tools)) add({ group: "system.tools", name: s.label, arm, rate: "prose", est: prose(s.text), text: s.text });
-      if (skills) add({ group: "system.skills", name: "skills list", arm, rate: "prose", est: prose(skills), text: skills });
-      rows.push([`arm ${arm}: metrics glossary + ground rules (SYSTEM)`, n(sys.length), n(prose(sys))]);
-      rows.push([`arm ${arm}: tools guidance + checks + evidence rules (TOOLS)`, n(tools.length), n(prose(tools))]);
-      if (skills) rows.push([`arm ${arm}: skills list`, n(skills.length), n(prose(skills))]);
-      rows.push([`**arm ${arm}: system message**`, n(sys.length + tools.length + skills.length + 2), `**${n(prose(sys) + prose(tools) + prose(skills))}**`]);
+      rows.push([`tools off, arm ${arm}: metrics glossary + ground rules (SYSTEM)`, n(sys.length), n(prose(sys))]);
     }
     table(["section", "chars", "est. tokens"], rows);
 
@@ -270,25 +279,25 @@ describe("3. the opening messages", () => {
       const msgs = buildChatMessages(context, [], TASK, null, { tools: true, skills: on });
       const [ctxMsg, ack, task] = msgs.slice(1);
       const ctxText = String(ctxMsg.content);
-      add({ group: "opening.context", name: "context block (indent 1)", arm, rate: "message", est: msgTokens(ctxMsg), text: ctxText });
+      add({ group: "opening.context", name: "dataset summary (C1)", arm, rate: "message", est: msgTokens(ctxMsg), text: ctxText });
       add({ group: "opening.ack", name: "acknowledgement", arm, rate: "message", est: msgTokens(ack), text: String(ack.content) });
       add({ group: "opening.task", name: "validation TASK", arm, rate: "message", est: msgTokens(task), text: String(task.content) });
-      const compactJson = JSON.stringify(JSON.parse(contextToJson(context, undefined, { skills: on })));
-      const compactMsg: ChatMessage = { role: "user", content: `Diagnostic context for this reduction (metrics computed from the current cut):\n\`\`\`json\n${compactJson}\n\`\`\`` };
-      add({ group: "whatif.context", name: "context block, compact JSON", arm, rate: "message", est: msgTokens(compactMsg), text: String(compactMsg.content) });
-      rows.push([`arm ${arm}: context block as sent (JSON indent 1)`, n(ctxText.length), n(msgTokens(ctxMsg))]);
-      rows.push([`arm ${arm}: the same, compact JSON (what-if)`, n(String(compactMsg.content).length), n(msgTokens(compactMsg))]);
+      rows.push([`arm ${arm}: context, the dataset summary as sent`, n(ctxText.length), n(msgTokens(ctxMsg))]);
       rows.push([`arm ${arm}: acknowledgement`, n(String(ack.content).length), n(msgTokens(ack))]);
       rows.push([`arm ${arm}: validation TASK`, n(String(task.content).length), n(msgTokens(task))]);
     }
+    // Without tools, for comparison: the cut's metrics as the context, unchanged.
+    const off = buildChatMessages(context, [], TASK, null, { tools: false })[1];
+    add({ group: "whatif.context", name: "tools off: context block (indent 1)", arm: "B", rate: "message", est: msgTokens(off), text: String(off.content) });
+    rows.push(["tools off: context block, the cut's metrics (JSON indent 1)", n(String(off.content).length), n(msgTokens(off))]);
     table(["message", "chars", "est. tokens"], rows);
 
-    // The context's top-level groups, arm B, compact.
+    // The tools-off context's top-level groups, arm B, compact.
     const ctx = JSON.parse(contextToJson(context)) as Record<string, unknown>;
     const groupRows = Object.entries(ctx)
       .map(([k, v]) => [k, n(JSON.stringify(v).length), n(JSON.stringify(v, null, 1).length), n(data(JSON.stringify(v, null, 1)))] as (string | number)[])
       .sort((a, b) => Number(String(b[2]).replace(/,/g, "")) - Number(String(a[2]).replace(/,/g, "")));
-    say("The context's groups (arm B):", "");
+    say("The tools-off context's groups (arm B):", "");
     table(["group", "compact chars", "indent-1 chars", "est. tokens as sent"], groupRows);
 
     // The chat history: the earlier turns go as their text, the newest CHAT_HISTORY_TURNS messages.
@@ -686,7 +695,7 @@ describe("8. one rule, many homes", () => {
   it("each rule's mentions, by where the model reads it (arm B)", () => {
     say("## 8. One rule, many homes (arm B: mentions of each rule's words)", "");
     const homes: [string, string][] = [
-      ["system", [SYSTEM.text(true), TOOLS.text(true), skillsPrompt()].join("\n")],
+      ["system", systemPrompt({ tools: true })],
       ["tool descriptions", CHAT_TOOLS.map((t) => t.description).join("\n")],
       ["skills", allSkills().map((s) => readSkill(s.name)).join("\n")],
       ["result criteria", Object.values(WORDS.criterion).join("\n")],

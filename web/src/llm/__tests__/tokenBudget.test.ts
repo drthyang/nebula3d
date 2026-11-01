@@ -2,24 +2,24 @@
 // guard counts, against a 32k local context window, held to ceilings by
 // component (docs/pilot-context-design.md §5.8).
 //
-// VERDICT (measured 2026-11-01 with THY-63 R4's skill cores and THY-59's
-// skill text, with scripts/measure_pilot_context.sh, which counts the same
-// way): OVER 32k before compaction, and under it after.
+// VERDICT (measured 2026-11-01 with THY-63 R3's core prompt, R4's skill
+// cores and THY-59's skill text, with scripts/measure_pilot_context.sh, which
+// counts the same way): UNDER 32k before compaction on a local model.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 31.1k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 30.5k + 6,144
-//   = 36.7k before the loop's compaction, and 29.7k to 30.7k after it, by the
-//   order the skills are read (30.5k in the method's order).
-// - A model LM Studio loaded with 32k gets the whole turn with 8.5k left for
-//   the reply; the skills read earlier reach it shortened to their heads and
-//   gates (compaction, readings/compact.ts).
+//   about 26.0k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 25.4k + 6,144
+//   = 31.5k before the loop's compaction, inside 32k (the stretch goal, met),
+//   and 28.4k to 29.7k after it, by the order the skills are read (29.7k in
+//   the method's order): the 20 % target (26,214) is missed by 3.4k.
+// - A model LM Studio loaded with 32k gets the turn in with the loop's own
+//   compaction: the window guard shortens nothing more.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (20.7k
+// to reply, and leaves free the 3k a model-visible addition must leave (25.8k
 // now). The estimate is conservative (every tool result, the skills' Markdown
 // included, counts at the data rate, 1.4 characters a token); at 3.0 for the
-// skills' 13.8k characters (C6, R5) the turn before compaction is about 31.2k
-// with the reply reserve, under 32k.
+// skills' 13.8k characters (C6, R5) the turn before compaction is about 26.1k
+// with the reply reserve.
 //
 // The turn is driven through the real agent loop (runAgent, agent.ts) with a
 // scripted model, and every request it sends is counted by the guard's own
@@ -76,7 +76,8 @@
 // it passes while the target is missed (printing the gap), and fails the day
 // the turn meets it, to be turned into a plain `it` then, so the target is
 // enforced from that change on. The stretch goal (the same turn fits 32k
-// without compaction) is tracked the same way.
+// without compaction) was tracked the same way, and is met since THY-63 R3
+// and R4 together: it is enforced.
 //
 // Hermetic and synthetic: no model is loaded, no backend or API is called, and
 // no measured data is used (the dev control is a synthetic case, its list
@@ -151,26 +152,30 @@ const CLAUDE_REPLY = 64_000;
 type Component = (typeof ROWS)[number];
 
 // Today's sizes, in estimated tokens (uncalibrated), rounded up: measured
-// 2026-11-01 with THY-63 R4's skill cores (on main d8f44023, R1 and R2
-// merged), and the same in scripts/measure_pilot_context.sh. R4 lowered the
+// 2026-11-01 on main df9823a8 (R1 to R3 merged) with THY-63 R4's skill cores,
+// and the same in scripts/measure_pilot_context.sh. R3 lowered the system
+// prompt (4,453 -> 1,357: the core in place of the metrics' glossary and the
+// tools' guidance) and the context (2,382 -> 288: the dataset's summary in
+// place of one cut's metrics); the tools offered grew a little (5,554 ->
+// 5,584; every definition 6,139 -> 6,169: the cut tools say they return
+// fields, and dpdf_contrast's contract took the figure rule). R4 lowered the
 // skills read on the worst turn (20,758 -> 9,929: two cores and one section
-// of a page, for two whole skills and a page cut at 12,000 characters) and
-// every prompt; read_skill's `section` parameter grew the tools by 4 (5,554 ->
-// 5,558; every tool's definition 6,139 -> 6,143).
+// of a page, for two whole skills and a page cut at 12,000 characters);
+// read_skill's `section` parameter grew the tools by 4. THY-59's skill text
+// (reduction-qc's Laue class: its description, two gates and a step's words
+// in the core, its section in the details) spent its reserve line: system +6
+// (the description), skills +131 (the core).
 // Arm B's worst local request, before the loop's compaction, by component:
-// THY-59's skill text (reduction-qc's Laue class: its description, two gates
-// and a step's words in the core, its section in the details) spent its
-// reserve line: system +6 (the description), skills +131 (the core).
-const MEASURED: Record<Component, number> = { system: 4_459, tools: 5_558, context: 2_382, skills: 10_060, results: 8_091 };
+const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 10_060, results: 8_091 };
 // Every tool's definition, as the console sends them (Claude).
-const MEASURED_ALL_TOOLS = 6_143;
+const MEASURED_ALL_TOOLS = 6_173;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 31_134,
-  localBefore: 30_549,
-  localSkillsFirst: 23_534,
-  localMethod: 24_394,
-  localSkillsLast: 24_590,
+  console: 25_975,
+  localBefore: 25_390,
+  localSkillsFirst: 23_510,
+  localMethod: 23_510,
+  localSkillsLast: 22_265,
 };
 
 // The room held for the queued model-visible features, by component, in
@@ -228,7 +233,7 @@ interface Call {
   args: Record<string, unknown>;
 }
 
-// One result of each tool the system prompt's method asks for (TOOLS_PROMPT,
+// One result of each tool the system prompt's method asks for (CORE,
 // prompts/system.ts): every stage's verdict, texture_check, qmax_coverage,
 // symmetry_check, ub_check and grain_check (its checks), radial_profile for
 // the rings, and dpdf_peaks for the correlations the TASK asks for.
@@ -612,18 +617,27 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     );
   }, TURN_TIMEOUT);
 
-  it("on LM Studio loaded with 32k: the guard shortens the results down to the newest, the skills read among them", async () => {
+  it("on LM Studio loaded with 32k: the loop's own compaction fits the window, and the guard shortens nothing more", async () => {
     model.loadedContext.mockResolvedValue({ loaded: WINDOW, max: 131_072 });
     const run = await drive(LM_STUDIO, ORDERS.method);
     // Every request is sent (none refused), each leaving at least MIN_REPLY.
     expect(run.result.note).toBeUndefined();
     expect(run.sent).toHaveLength(ORDERS.method.length + 1);
     for (const p of run.prompts) expect(p + MIN_REPLY).toBeLessThanOrEqual(WINDOW);
-    // The skills read in this reply reach its last request shortened.
+    // Since the core prompt and the dataset's summary (THY-63 R3) each request
+    // is the one the loop's own compaction sends (past SOFT_BUDGET, all but the
+    // newest KEEP_FULL shortened): the window guard, which shortens a request
+    // without MIN_REPLY free down to its newest result, has nothing to do.
+    // Before R3 it shortened both skills read to their stubs here.
+    const { after } = await localTurn();
+    expect(run.prompts).toEqual(after.method.prompts);
+    // So on the last request both skills' cores arrive as stubs: the one read
+    // before the checks, and the one read before its page's index and section
+    // (THY-63 R4), which with dpdf_peaks are the newest KEEP_FULL and whole.
     const last = run.sent[run.sent.length - 1];
     const bodies = resultsOf(last, isSkillBody);
     expect(bodies).toHaveLength(2);
-    expect(bodies.every(isCompacted)).toBe(true);
+    expect(bodies.map(isCompacted)).toEqual([true, true]);
     const page = resultsOf(last, (c) => c.name === "read_skill" && c.args.reference !== undefined);
     const b = breakdown(run.sent[run.peak], run.key);
     // A skill with a `## Gates` section is shortened to its head and the
@@ -638,12 +652,12 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     expect(oneGated, `one skill gated at the cap: ${n(oneGated)} tokens with MIN_REPLY, in a window of ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
     // No ceiling of its own: the window-fit checks above bound this prompt
     // more tightly than any ceiling would.
-    columns.push({ head: ["LM Studio at 32k", "after the guard"], b, reserve: REPLY_RESERVE });
+    columns.push({ head: ["LM Studio at 32k", "after compaction"], b, reserve: REPLY_RESERVE });
     notes.push(
-      `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): a request without MIN_REPLY free is shortened down to its newest result. ` +
+      `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): every request fits with MIN_REPLY free after the loop's own compaction, so the guard shortens nothing more. ` +
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
-        `On the last request both skills read arrive as ${n(Math.max(...bodies.map((t) => t.length)))}-character stubs; ` +
-        `the reference page ${page.every(isCompacted) ? "too" : "stays whole"}. ` +
+        `On the last request both skills read arrive as stubs of at most ${n(Math.max(...bodies.map((t) => t.length)))} characters; ` +
+        `the reference page ${page.every(isCompacted) ? "shortened" : "whole"}. ` +
         `One skill gated at the cap (${n(SKILL_STUB_MAX)}-character stub) leaves ${n(WINDOW - oneGated)} to spare past MIN_REPLY.`,
     );
   }, TURN_TIMEOUT);
@@ -651,7 +665,8 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
 
 // Tracked, not enforced (the header): each `it.fails` passes while its target
 // is missed, and fails once the turn meets it. Then turn it into a plain `it`,
-// in the change that met it, so the target holds from that change on.
+// in the change that met it, so the target holds from that change on. The
+// stretch goal is met (THY-63 R3 and R4): a plain `it`.
 describe("the headroom target (docs/pilot-context-design.md §5.8), tracked until R1-R5 land", () => {
   it.fails(
     `target: the worst local turn after compaction, with the reply reserve, fits ${n(HEADROOM_TARGET)} (20 % under ${n(WINDOW)}), in the method and skills-last orders`,
@@ -667,7 +682,8 @@ describe("the headroom target (docs/pilot-context-design.md §5.8), tracked unti
     TURN_TIMEOUT,
   );
 
-  it.fails(
+  // Met since THY-63 R3 and R4 together (31,534 of 32,768): enforced from then on.
+  it(
     `stretch: the worst local turn without compaction, with the reply reserve, fits ${n(WINDOW)}`,
     async () => {
       const { before } = await localTurn();

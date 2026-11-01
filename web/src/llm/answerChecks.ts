@@ -29,6 +29,12 @@
 // - **Only marks that were made.** An answer names a marked region by the id
 //   mark_region returned for it in this conversation (`unmadeMarks`): an id
 //   no call made points the user at nothing.
+// - **Only results that were returned.** A clause that writes numbers and
+//   names a tool credits them to that tool: the tool must have run in this
+//   reply (`uncalledSources`), whatever the clause's hedge ("illustrative",
+//   "approximately"). A model had listed the ΔPDF's strongest features "from
+//   dpdf_peaks" without calling it, its numbers traced only by chance to
+//   other results' within the rounding tolerance.
 //
 // A failed check sends the answer back once, with what to fix; what still
 // fails is noted under the reply.  The text checks are heuristic by design:
@@ -42,9 +48,16 @@ import { readAnswer, sourceNumbers, writtenNumbers, type Cue, type ReadOptions, 
 import { current, recomputedAt, type PipelineStage } from "./evidence";
 import { found, seen } from "./readings";
 import { fillReferences } from "./references";
-import { factsOf } from "./tools";
+import { REFERENCE } from "./references";
+import { factsOf, toolsWhere } from "./tools";
 import type { VerdictTopic } from "./tools/facts";
 import { verdicts, type CheckId, type ComputedVerdict } from "./verdicts";
+
+/**
+ * A distance in real space, as an answer writes it: a number, then Å (across
+ * a LaTeX "$"), and no exponent after it, so not Å⁻¹, Å$^{-1}$, Å^-1 or Å-1.
+ */
+const DISTANCE = String.raw`\d+(\.\d+)?\s*\$?\s*Å(?!\s*\$?\s*(⁻|\^|[-−]\s*1))`;
 
 // The tools that settle a topic declare it (their facts' `settles`, in the
 // registry); `evidence` names one of them, as the model is told.
@@ -146,10 +159,16 @@ export const TOPICS: readonly Topic[] = [
     id: "features",
     label: "the 3D-ΔPDF's pair correlations",
     evidence: "dpdf_peaks",
-    // Not the origin's self-correlation, which is no pair correlation.
-    subject: /\b(pair[- ]correlations?|(?<!self-)correlations?|(positive|negative) (features?|peaks?|lobes?))\b/i,
-    // A correlation named with a vector or a sign.
-    verdict: /⟨|\(\s*[-−]?\d|\[\s*[-−]?\d|\b(positive|negative)\b|\b\d+(\.\d+)?\s*Å(?!⁻)/i,
+    // Not the origin's self-correlation, which is no pair correlation. A
+    // feature is the ΔPDF's beside the ΔPDF's name or a distance in real
+    // space ("Feature 1: $\Delta r \approx 2.55$ Å"), not one of reciprocal
+    // space (Å⁻¹, however written).
+    subject: new RegExp(
+      `\\b(pair[- ]correlations?|(?<!self-)correlations?|(positive|negative) (features?|peaks?|lobes?))\\b|^(?=.*\\bfeatures?\\b)(?=.*(Δ\\s?PDF|delta-?pdf|Δ\\s*r\\b|\\\\Delta\\s*r\\b|${DISTANCE}))`,
+      "is",
+    ),
+    // A correlation named with a vector, a sign or a distance.
+    verdict: new RegExp(`⟨|\\(\\s*[-−]?\\d|\\[\\s*[-−]?\\d|\\b(positive|negative)\\b|${DISTANCE}`, "i"),
     stage: "pdf",
   },
 ];
@@ -569,6 +588,42 @@ export function untracedNumbers(text: string, sources: string): string[] {
   return out;
 }
 
+// ------------------------------------------------------------------ results never returned
+
+/** Every tool of the registry, by name. */
+const TOOL_NAMES: readonly string[] = toolsWhere(() => true);
+
+/**
+ * A clause that only says what to run (a plan, a condition, what comes next,
+ * what a step is for) credits no tool with a result. A hedge does not make a
+ * result any less claimed: "would", "approximately", "illustrative".
+ */
+const NOT_A_RESULT: readonly Cue[] = ["conditional", "plan", "sequence", "purpose"];
+
+/**
+ * The tools an answer credits with numbers that did not run in this reply:
+ * a clause that names a tool of the registry and writes a number, whatever
+ * its hedge, where no call of that tool in this reply returned a result.
+ * References are left to the reference check (unknownReferences); a clause
+ * that only plans or weighs a call is no claim. `said`: the clauses, as
+ * written, each once.
+ */
+export function uncalledSources(text: string, steps: readonly AgentStep[]): { tools: string[]; said: string[] } {
+  const ran = new Set(steps.filter((s) => s.status === "done").map((s) => s.name));
+  const tools: string[] = [];
+  const said: string[] = [];
+  for (const c of claimsOf(text)) {
+    if (c.question || NOT_A_RESULT.some((k) => c.cues.has(k))) continue;
+    const words = c.text.replace(REFERENCE, "");
+    if (!writtenNumbers(words).length) continue;
+    const named = TOOL_NAMES.filter((t) => !ran.has(t) && new RegExp(`(?<![A-Za-z0-9_])${t}(?![A-Za-z0-9_])`).test(words));
+    if (!named.length) continue;
+    for (const t of named) if (!tools.includes(t)) tools.push(t);
+    if (!said.includes(c.text)) said.push(c.text);
+  }
+  return { tools, said };
+}
+
 // ------------------------------------------------------------------ the check
 
 export interface AnswerIssues {
@@ -593,6 +648,10 @@ export interface AnswerIssues {
   // The mark ids the answer names as marks that no mark_region call in this
   // conversation made (unmadeMarks), as written.
   unmadeMarks: string[];
+  // The tools the answer credits with numbers that did not run in this reply
+  // (uncalledSources), and its clauses that do, as written.
+  uncalled: string[];
+  uncalledSaid: string[];
 }
 
 const unique = <T>(xs: T[]): T[] => [...new Set(xs)];
@@ -624,6 +683,7 @@ export function answerIssues(
   const notCurrent = untracedNumbers(written, sources);
   const nowhere = stale && notCurrent.length ? untracedNumbers(written, `${sources}\n${stale}`) : notCurrent;
   const questions = questionsForUser(steps);
+  const uncalled = uncalledSources(filled, steps);
   const issues: AnswerIssues = {
     missing,
     stale: staleTopics,
@@ -642,6 +702,8 @@ export function answerIssues(
     unasked: questions.filter((q) => !asksIt(filled, q)),
     assumed: questions.length ? unique(assumedModulation(filled)) : [],
     unmadeMarks: unmadeMarks(filled, steps, marksEarlier),
+    uncalled: uncalled.tools,
+    uncalledSaid: uncalled.said,
   };
   return issues.missing.length ||
     issues.stale.length ||
@@ -652,7 +714,8 @@ export function answerIssues(
     issues.overall ||
     issues.unasked.length ||
     issues.assumed.length ||
-    issues.unmadeMarks.length
+    issues.unmadeMarks.length ||
+    issues.uncalled.length
     ? issues
     : null;
 }
@@ -673,15 +736,37 @@ const staleNumbersLine = (xs: string[]): string =>
  * findings go back as often, worded to name no skill, no stage and no tool
  * the method would run next (withoutSkills, below).
  */
-export function issuesPrompt(issues: AnswerIssues, { skills = true }: { skills?: boolean } = {}): string {
-  if (!skills) return withoutSkills(issues);
+/**
+ * What a send-back asks of the model. `final`: the reply has no round of tool
+ * calls left (the revision is its last request, which offers no tools), so a
+ * finding that wants a call asks the model to leave the claim out, or say it
+ * was not measured, instead.
+ */
+export function issuesPrompt(issues: AnswerIssues, { skills = true, final = false }: { skills?: boolean; final?: boolean } = {}): string {
+  if (!skills) return withoutSkills(issues, final);
   const lines = ["Before this answer goes to the user, fix it:"];
-  for (const t of issues.missing) lines.push(`- It gives a verdict on ${t.label} without its evidence in this reply: call ${t.evidence}, and answer from its result.`);
+  for (const t of issues.missing) {
+    lines.push(
+      final
+        ? `- It gives a verdict on ${t.label} without its evidence in this reply, and no tool calls are left: leave that verdict out, or say it was not measured.`
+        : `- It gives a verdict on ${t.label} without its evidence in this reply: call ${t.evidence}, and answer from its result.`,
+    );
+  }
   for (const t of issues.stale) {
-    lines.push(`- It gives a verdict on ${t.label} from a measurement taken before the last run recomputed it: call ${t.evidence} again on the new outputs, and answer from that.`);
+    lines.push(
+      final
+        ? `- It gives a verdict on ${t.label} from a measurement taken before the last run recomputed it, and no tool calls are left: leave that verdict out, or say it was measured before that run.`
+        : `- It gives a verdict on ${t.label} from a measurement taken before the last run recomputed it: call ${t.evidence} again on the new outputs, and answer from that.`,
+    );
+  }
+  if (issues.uncalled.length) {
+    lines.push(
+      `- ${issues.uncalledSaid.map(quoted).join(", ")}: ${issues.uncalledSaid.length > 1 ? "these credit" : "this credits"} numbers to ${listed(issues.uncalled)}, which did not run in this reply, so ${issues.uncalled.length > 1 ? "they returned" : "it returned"} none of them. ` +
+        (final ? "No tool calls are left: leave those numbers out, or say they were not measured." : `Call ${issues.uncalled.length > 1 ? "them" : "it"} and answer from the result, or leave those numbers out.`),
+    );
   }
   if (issues.overall) {
-    lines.push(`- ${issues.overall}. That verdict is the checks', not yours: quote it as {{achieved}} and explain what it rests on${/did not all run/.test(issues.overall) ? " (call assess_stage with stage all first)" : ""}.`);
+    lines.push(`- ${issues.overall}. That verdict is the checks', not yours: quote it as {{achieved}} and explain what it rests on${!final && /did not all run/.test(issues.overall) ? " (call assess_stage with stage all first)" : ""}.`);
   }
   if (issues.unknownReferences.length) {
     lines.push(
@@ -703,7 +788,7 @@ export function issuesPrompt(issues: AnswerIssues, { skills = true }: { skills?:
   }
   if (issues.unmadeMarks.length) {
     lines.push(
-      `- ${marksNamed(issues.unmadeMarks)} no mark that mark_region made in this conversation: ${listed(issues.unmadeMarks)}. Cite a mark only by the id its call returned ("marked" in the result); to show a region not yet marked, call mark_region first.`,
+      `- ${marksNamed(issues.unmadeMarks)} no mark that mark_region made in this conversation: ${listed(issues.unmadeMarks)}. Cite a mark only by the id its call returned ("marked" in the result)${final ? ", or leave it out" : "; to show a region not yet marked, call mark_region first"}.`,
     );
   }
   lines.push("Then write the whole answer again.");
@@ -724,14 +809,21 @@ const quoted = (s: string): string => `“${s.length > QUOTE_MAX ? `${s.slice(0,
  * tool to call, no skill. Which check gives the evidence is the model's to
  * find. The numbers and the references it wrote are its own words too.
  */
-function withoutSkills(issues: AnswerIssues): string {
+function withoutSkills(issues: AnswerIssues, final: boolean): string {
   const lines = ["Before this answer goes to the user, fix it:"];
+  // With no round of calls left, no check can run: what wants one is left out.
+  const noneLeft = "No check can run any more in this reply: leave it out, or say it was not measured.";
   for (const s of issues.said.missing) {
-    lines.push(`- ${quoted(s)}: this verdict needs its evidence from a check run in this reply. Answer from that check's result.`);
+    lines.push(`- ${quoted(s)}: this verdict needs its evidence from a check run in this reply. ${final ? noneLeft : "Answer from that check's result."}`);
   }
   for (const s of issues.said.stale) {
     lines.push(
-      `- ${quoted(s)}: this verdict rests on a measurement taken before the last run recomputed what it measured. It needs its evidence from a check run in this reply, after that run; answer from that check's result.`,
+      `- ${quoted(s)}: this verdict rests on a measurement taken before the last run recomputed what it measured. It needs its evidence from a check run in this reply, after that run; ${final ? noneLeft.charAt(0).toLowerCase() + noneLeft.slice(1) : "answer from that check's result."}`,
+    );
+  }
+  if (issues.uncalledSaid.length) {
+    lines.push(
+      `- ${issues.uncalledSaid.map(quoted).join(", ")}: ${issues.uncalledSaid.length > 1 ? "these credit" : "this credits"} numbers to a check that did not run in this reply, so it returned none of them. ${final ? noneLeft : "Answer from a check run in this reply, or leave those numbers out."}`,
     );
   }
   if (issues.overall) {
@@ -782,5 +874,6 @@ export function issuesNote(issues: AnswerIssues): string {
   for (const q of issues.unasked) parts.push(`Not asked of you, though a result asks it: ${q}`);
   if (issues.assumed.length) parts.push(`Says as fact what only you can say: ${listed(issues.assumed.map(quoted))}.`);
   if (issues.unmadeMarks.length) parts.push(`Names ${issues.unmadeMarks.length > 1 ? "marks that were" : "a mark that was"} never made: ${listed(issues.unmadeMarks)}.`);
+  if (issues.uncalled.length) parts.push(`Credits numbers to tools that did not run in this reply: ${listed(issues.uncalled)}.`);
   return parts.join(" ");
 }

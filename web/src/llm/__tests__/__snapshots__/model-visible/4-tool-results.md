@@ -312,7 +312,7 @@ natively and runs only when the support has unsupported voxels.
 
 ## measure_reciprocal_cut {"plane":"h0l","value":1}
 
-1487 characters sent.
+2605 characters sent.
 
 ```json
 {
@@ -402,13 +402,14 @@ natively and runs only when the support has unsupported voxels.
     "floor_span_fraction": 0.125,
     "floor_judged_q": [2.17, 4.22]
   },
-  "notes": []
+  "notes": [],
+  "fields": "ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per raw ring: residual_fraction against the diffuse beside it (negative a dent, positive a ring left), significant beyond 3 × noise_fraction. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels: diffuse maxima, signal. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random, near 1 an artefact. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged."
 }
 ```
 
 ## measure_dpdf_cut {"plane":"xz","value":0}
 
-322 characters sent.
+712 characters sent.
 
 ```json
 {
@@ -423,7 +424,8 @@ natively and runs only when the support has unsupported voxels.
     "anisotropy_angle_deg": 0,
     "radial_trend": [8.68, 0.781, 0.302]
   },
-  "sigma_of": "this section outside the origin's disk, robust"
+  "sigma_of": "this section outside the origin's disk, robust",
+  "fields": "All in this section's robust σ outside the origin's disk. feature_snr: the strongest feature over background σ (≳ 5 is clear signal); strong_feature_fraction: voxels beyond 5σ; positive_fraction: 0.5 is balanced ±; anisotropy_ratio: 1 isotropic, above ~1.5 rods or sheets, along anisotropy_angle_deg in the plane; radial_trend: mean |ΔPDF| in the inner, middle and outer shells."
 }
 ```
 
