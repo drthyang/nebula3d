@@ -32,6 +32,7 @@ import { WASM_HEAP_CEILING_BYTES } from "../workers/heapReport";
 import {
   dataFolderLine,
   datasetKey,
+  desktopAppLink,
   leadLine,
   localCommands,
   nearLimitLine,
@@ -160,6 +161,7 @@ export interface HandoffCardProps {
 export function HandoffCard({ lead, heading, tone, fileName, device, detail, onDismiss }: HandoffCardProps) {
   const id = useId();
   const commands = localCommands().join("\n");
+  const app = desktopAppLink(device); // THY-50: null until the desktop app exists
   return (
     <section className={`handoff handoff--${tone}`} role="status" aria-labelledby={`${id}-lead`}>
       <div className="handoff-head">
@@ -179,6 +181,13 @@ export function HandoffCard({ lead, heading, tone, fileName, device, detail, onD
       <div className="handoff-body">
         <p className="handoff-route">{ROUTE_LINE}</p>
         {device === "mobile" && <p className="handoff-route">{PHONE_LINE}</p>}
+        {app && (
+          <p className="handoff-desktop">
+            <a href={app.href} target="_blank" rel="noopener noreferrer">
+              {app.label} ↗
+            </a>
+          </p>
+        )}
         <CopyCommands text={commands} />
         <p className="handoff-data">
           {dataFolderLine(fileName)}{" "}

@@ -11,6 +11,7 @@ import {
   aboutBytes,
   dataFolderLine,
   datasetKey,
+  desktopAppLink,
   fileKey,
   leadLine,
   localCommands,
@@ -209,5 +210,12 @@ describe("runLimitOf", () => {
     expect(runLimitOf(engineFailure, run({ terminal: "done" }))).toBeNull();
     expect(runLimitOf(engineFailure, run({ terminal: null }))).toBeNull(); // a run going
     expect(runLimitOf(engineFailure, run({ terminal: "cancelled" }))).toBeNull();
+  });
+});
+
+describe("desktopAppLink (the THY-50 hook)", () => {
+  it("gives no link until the desktop app exists, so the card shows the terminal route only", () => {
+    expect(desktopAppLink("desktop")).toBeNull();
+    expect(desktopAppLink("mobile")).toBeNull();
   });
 });

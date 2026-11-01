@@ -35,6 +35,24 @@ export const ROUTE_LINE =
 export const PHONE_LINE = "A desktop browser also takes larger volumes than a phone or tablet.";
 export const PRIVACY_LINE = "Your data stays on your computer either way.";
 
+/** A link the card shows above the terminal commands. */
+export interface DesktopAppLink {
+  href: string; // where the app is downloaded or opened
+  label: string; // the link's words, e.g. "Open in the desktop app"
+}
+
+/**
+ * THY-50 hook: the desktop app's link on the run-it-locally card. The app is
+ * built separately (THY-50); until it exists this returns null and the card
+ * shows no such link, only the terminal route. Return the link here (per
+ * platform, if need be: *device* is the card's device class) and the card
+ * shows it above the commands; nothing else needs to change.
+ */
+export function desktopAppLink(device: "desktop" | "mobile"): DesktopAppLink | null {
+  void device;
+  return null;
+}
+
 /**
  * Where the volume goes before the launch. The local console lists raw/*.nxs
  * (an .h5 is read the same once named .nxs); a regridded volume lives only in
