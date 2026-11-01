@@ -193,6 +193,23 @@ blocks instead (`_bootstrap`):
   seed (`BOOTSTRAP_SEED`): the same volume gives the same errors. Each
   replicate's ratio is Σ w_b D_b / Σ w_b N_b over the cubes' deviation and
   noise sums, for every class and reading at once.
+- **The cap (provisional).** A block bootstrap measures how much a sum
+  varies from region to region of the coverage. Where a class's extra
+  operations hold, that is noise. Where they fail, it also counts how
+  unevenly the breaking reaches over the coverage: textured powder rings
+  break a symmetry in a few thin shells, rods along lines. That unevenness
+  is a fixed property of the sample, not noise. On the demo without its
+  rods (61³; its rings textured about c* make it 4/mmm, m−3m rising 1.15×),
+  the excess of m−3m over its subgroup varies by 0.0013 over 16 noise
+  realisations, but its bootstrap spread is 0.032, and with that error the
+  rule would accept m−3m, a breaking above the tolerance. So the rule caps
+  the excess's error at the subgroup's own bootstrap error (`SE_CAP`):
+  where the class holds, the excess varies less than the subgroup's ratio
+  (about half on correlated noise; the cap never binds there in the tests),
+  and on the demo the capped error is 0.0018, near the true 0.0013. The
+  subgroup's error still honours correlated noise. The user is to confirm
+  the cap; without it a spatially concentrated breaking near the tolerance
+  passes on small volumes.
 - **What it reports.** The cubes resampled, Kish's effective number of cubes
   ((Σ N_b)² / Σ N_b², the cubes weighed by the noise floor they hold), the
   edge, the measured correlation length (Σ ρᵤ(k) per axis) and the variance
@@ -209,7 +226,8 @@ With δ = 10 % (`DELTA`) and z = 2 (`Z`), on each reading:
 1. **A class rises against a subgroup** when ρ(G) > (1 + δ)·ρ(H) and the
    excess ρ(G) − (1 + δ)·ρ(H) is more than z standard errors of that excess,
    its spread over the bootstrap's replicates of both ratios (the same
-   resamples, so what the two classes share cancels). H ranges over G's
+   resamples, so what the two classes share cancels), capped at H's own
+   (above). H ranges over G's
    candidate subgroups; G is weighed against the one with the lowest ρ. δ
    stays the floor: however small the standard error, a rise of 10 % or less
    is tolerated.
@@ -294,7 +312,9 @@ readings are the main ones.
   sample lacks, make a lower symmetry look higher: the domains' sum has the
   higher symmetry, and neither R_int nor χ² can tell them apart.
 - **Correlated voxels.** Handled by the block bootstrap; a correlation longer
-  than the cubes (capped on a small grid, noted) leaves the errors low.
+  than the cubes (capped on a small grid, noted) leaves the errors low. A
+  breaking's own unevenness over the coverage is kept out of the rule's
+  error by the cap at the subgroup's (provisional).
 - **Region-dependent systematic errors.** They reject classes falsely, toward
   the lower class; the common-subset flag points at them.
 - **Pseudo-symmetry within the noise.** A breaking under the tolerance is
@@ -368,6 +388,12 @@ The statistics, on volumes whose answer is known:
 - **χ²/dof.** 1.00–1.01 for the classes the 6/m crystal has, 3.7 (all) and
   2.3 (diffuse) for 6/mmm; 1.00 for every class and for whole |Q| shells on
   counting noise alone.
+- **A breaking in a few shells.** The demo without its rods (above): 4/mmm
+  suggested, m−3m rejected at 1.15× with the capped error 0.0018 (0.0013
+  over noise realisations); the paired bootstrap spread alone, 0.032, would
+  accept it. On the synthetic cubic volume of the browser check (81³, a gap
+  through K = 0, m−3m 1.11×) main suggests 4/mmm, the capped rule too, the
+  uncapped one m−3m.
 - **Determinism.** The same volume gives the same replicates and errors;
   another seed changes them within the resampling's spread.
 `tests/test_laue_compare_api.py` runs it through the endpoint and the

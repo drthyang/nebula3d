@@ -464,11 +464,35 @@ def test_correlated_noise_the_bootstrap_gives_the_spread_the_orbits_understate()
         se.append(float(np.std(g.replicates - (1 + DELTA) * h.replicates, ddof=1)))
     spread = float(np.std(excess, ddof=1))
     assert 0.7 * spread < float(np.mean(se)) < 1.6 * spread
+    # Where the class holds the cap at the subgroup's own error does not bind.
+    for r in runs:
+        g, h = r.candidate("mmm").all, r.candidate("2/m (b unique)").all
+        assert float(np.std(g.replicates - (1 + DELTA) * h.replicates, ddof=1)) < h.ratio_se
     # The blocks follow the correlation: longer than the white-noise minimum.
     boot = first.bootstrap
     assert boot["block_voxels"] > BLOCK_MIN and boot["replicates"] == REPLICATES
     assert all(0.5 < x < 0.9 for x in boot["correlation_voxels"])
     assert boot["blocks"] >= 64 and 0 < boot["effective_blocks"] <= boot["blocks"]
+
+
+def test_a_breaking_concentrated_in_a_few_shells_is_still_rejected(monkeypatch):
+    # The demo without its rods: its powder rings, textured about c*, break the
+    # cubic three-fold in thin shells only (4/mmm; m-3m 1.15x, above the 10 %).
+    # Over 16 noise seeds the excess varies by 0.0013; the bootstrap's paired
+    # spread is 0.032, the rings' uneven reach over the coverage, the
+    # subgroup's own 0.0018. Capped at the latter the rule rejects m-3m; the
+    # paired spread alone would accept it.
+    vol = demo_volume(61, extent=4.0, model=DemoModel(rod_amp=0.0))
+    cmp = compare_laue_classes(vol)
+    assert cmp.suggestion == "4/mmm"
+    m3m = cmp.candidate("m-3m")
+    sub = cmp.candidate(m3m.verdict_all.against)
+    assert m3m.verdict_all.rise == pytest.approx(1.15, abs=0.02) and m3m.verdict_all.rises
+    paired = float(np.std(m3m.all.replicates - (1 + DELTA) * sub.all.replicates, ddof=1))
+    assert paired > 10 * sub.all.ratio_se
+    assert m3m.verdict_all.se == pytest.approx(sub.all.ratio_se, rel=1e-12)
+    monkeypatch.setattr("nebula3d.analysis.laue_compare.SE_CAP", False)
+    assert compare_laue_classes(vol).suggestion == "m-3m"
 
 
 def test_white_noise_keeps_the_smallest_blocks_and_the_orbits_standard_error():

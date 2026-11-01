@@ -92,7 +92,9 @@ const BOOTSTRAP_HELP = (
     each orbit belongs to the cube of its representative under the largest class compared (a class&apos;s orbit and its
     subgroups&apos; orbits inside it stay together), and the cubes are resampled with replacement from a fixed seed. The
     cube&apos;s edge follows how far the residuals stay correlated (4 voxels at least). The rule weighs each class against its
-    subgroup on the same resamples, so what they share cancels. Effective: the cubes weighed by the data they hold.
+    subgroup on the same resamples, so what they share cancels, and caps that difference&apos;s error at the subgroup&apos;s own,
+    so how unevenly a real breaking reaches over the coverage is not taken for noise. Effective: the cubes weighed by the data
+    they hold.
   </>
 );
 

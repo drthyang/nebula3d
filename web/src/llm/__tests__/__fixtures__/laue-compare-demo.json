@@ -668,7 +668,7 @@
      "rises": true,
      "against": "2/m (b unique)",
      "rise": 1.51097,
-     "se": 0.0642911,
+     "se": 0.00379104,
      "judged": true
     },
     "diffuse": {
@@ -676,7 +676,7 @@
      "rises": true,
      "against": "2/m (c unique)",
      "rise": 1.53662,
-     "se": 0.0678985,
+     "se": 0.00300797,
      "judged": true
     },
     "common_all": {
@@ -684,7 +684,7 @@
      "rises": true,
      "against": "2/m (b unique)",
      "rise": 1.51097,
-     "se": 0.0642911,
+     "se": 0.00379104,
      "judged": true
     },
     "common_diffuse": {
@@ -692,7 +692,7 @@
      "rises": true,
      "against": "2/m (c unique)",
      "rise": 1.53662,
-     "se": 0.0678985,
+     "se": 0.00300797,
      "judged": true
     }
    }
@@ -773,7 +773,7 @@
      "rises": true,
      "against": "2/m (b unique)",
      "rise": 1.50335,
-     "se": 0.063335,
+     "se": 0.00379104,
      "judged": true
     },
     "diffuse": {
@@ -781,7 +781,7 @@
      "rises": true,
      "against": "2/m (c unique)",
      "rise": 1.52868,
-     "se": 0.0668926,
+     "se": 0.00300797,
      "judged": true
     },
     "common_all": {
@@ -789,7 +789,7 @@
      "rises": true,
      "against": "2/m (b unique)",
      "rise": 1.50335,
-     "se": 0.063335,
+     "se": 0.00379104,
      "judged": true
     },
     "common_diffuse": {
@@ -797,7 +797,7 @@
      "rises": true,
      "against": "2/m (c unique)",
      "rise": 1.52868,
-     "se": 0.0668926,
+     "se": 0.00300797,
      "judged": true
     }
    }

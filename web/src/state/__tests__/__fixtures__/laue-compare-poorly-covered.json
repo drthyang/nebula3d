@@ -264,7 +264,7 @@
      "rises": true,
      "against": "-1",
      "rise": 1.24034,
-     "se": 0.0421288,
+     "se": 0.010177,
      "judged": true
     },
     "diffuse": {
@@ -363,7 +363,7 @@
      "rises": true,
      "against": "-1",
      "rise": 2.42628,
-     "se": 0.215007,
+     "se": 0.010177,
      "judged": true
     },
     "diffuse": {
@@ -371,7 +371,7 @@
      "rises": true,
      "against": "-1",
      "rise": 1.6811,
-     "se": 0.0458895,
+     "se": 0.0103959,
      "judged": true
     },
     "common_all": {
@@ -379,7 +379,7 @@
      "rises": true,
      "against": "-3",
      "rise": 1.97413,
-     "se": 0.176133,
+     "se": 0.00891943,
      "judged": true
     },
     "common_diffuse": {
@@ -387,7 +387,7 @@
      "rises": true,
      "against": "-1",
      "rise": 1.57111,
-     "se": 0.0430685,
+     "se": 0.0103959,
      "judged": true
     }
    }
@@ -462,7 +462,7 @@
      "rises": true,
      "against": "-1",
      "rise": 2.41234,
-     "se": 0.210571,
+     "se": 0.010177,
      "judged": true
     },
     "diffuse": {
@@ -470,7 +470,7 @@
      "rises": true,
      "against": "-1",
      "rise": 1.68118,
-     "se": 0.0460993,
+     "se": 0.0103959,
      "judged": true
     },
     "common_all": {
@@ -478,7 +478,7 @@
      "rises": true,
      "against": "-3",
      "rise": 1.95699,
-     "se": 0.169065,
+     "se": 0.00891943,
      "judged": true
     },
     "common_diffuse": {
@@ -486,7 +486,7 @@
      "rises": true,
      "against": "-1",
      "rise": 1.56781,
-     "se": 0.0422217,
+     "se": 0.0103959,
      "judged": true
     }
    }
@@ -563,7 +563,7 @@
      "rises": true,
      "against": "-1",
      "rise": 1.2127,
-     "se": 0.0365835,
+     "se": 0.010177,
      "judged": true
     },
     "diffuse": {
@@ -668,7 +668,7 @@
      "rises": true,
      "against": "-1",
      "rise": 2.34675,
-     "se": 0.204854,
+     "se": 0.010177,
      "judged": true
     },
     "diffuse": {
@@ -676,7 +676,7 @@
      "rises": true,
      "against": "-1",
      "rise": 1.64064,
-     "se": 0.0443726,
+     "se": 0.0103959,
      "judged": true
     },
     "common_all": {
@@ -684,7 +684,7 @@
      "rises": true,
      "against": "2/m (c unique)",
      "rise": 2.01088,
-     "se": 0.180097,
+     "se": 0.00954537,
      "judged": true
     },
     "common_diffuse": {
@@ -692,7 +692,7 @@
      "rises": true,
      "against": "2/m (c unique)",
      "rise": 1.58644,
-     "se": 0.0452579,
+     "se": 0.0100274,
      "judged": true
     }
    }

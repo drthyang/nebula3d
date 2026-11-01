@@ -106,6 +106,12 @@ DELTA = 0.10
 #: small volume's noise does not reject a class.
 Z = 2.0
 
+#: Whether the rule caps the paired excess's error at the subgroup's own
+#: (:func:`_rises`).  Provisional, for the user to confirm: the block
+#: bootstrap alone also counts the uneven reach of a real breaking over the
+#: coverage, which near the tolerance accepts a broken class.
+SE_CAP = True
+
 #: The bootstrap's replicates: the standard error it gives is itself within
 #: about 1/√(2·200) = 5 % of its value from the resampling alone.
 REPLICATES = 200
@@ -1229,8 +1235,17 @@ def _effective_blocks(s: _Sums) -> float | None:
 def _rises(r: Reading, ref: Reading, delta: float,
            z: float) -> tuple[bool, float | None, float | None]:
     """Whether *r*'s ratio rises against *ref*'s by the rule, the rise, and the
-    standard error of the excess ρ − (1 + δ)·ρ_ref: over the bootstrap's
-    replicates of both (the same resamples), else *r*'s own standard error."""
+    standard error of the excess ρ − (1 + δ)·ρ_ref.
+
+    The error is the excess's spread over the bootstrap's replicates of both
+    ratios (the same resamples), at most the reference's own spread there
+    (``SE_CAP``): where the class's extra operations hold, the two ratios read
+    the same voxels and the same noise, and the excess varies less than the
+    reference does (about half, on correlated noise); a larger spread comes
+    from where they fail, the uneven reach of a real breaking over the
+    coverage (textured powder rings, rods), which is no noise and would
+    otherwise let a breaking above the tolerance through.  Without
+    replicates, *r*'s own standard error."""
     if r.ratio is None or ref.ratio is None or ref.ratio <= 0:
         return False, None, None
     rise = r.ratio / ref.ratio
@@ -1238,6 +1253,9 @@ def _rises(r: Reading, ref: Reading, delta: float,
     se: float | None = None
     if r.replicates is not None and ref.replicates is not None:
         se = _spread(r.replicates - (1.0 + delta) * ref.replicates)
+        cap = _spread(ref.replicates) if SE_CAP else None
+        if se is not None and cap is not None:
+            se = min(se, cap)
     if se is None:
         se = r.ratio_se
     return bool(excess > 0 and excess > z * (se or 0.0)), rise, se
