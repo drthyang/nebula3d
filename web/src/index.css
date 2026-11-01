@@ -1329,10 +1329,15 @@ input[type="range"]::-moz-range-track {
 /* the tail sweep's voxels (round 2 of the punch, THY-60) */
 .bragg-r2 { fill: rgba(255, 79, 216, 0.38); stroke: #ff4fd8; stroke-width: 0.8; }
 .bragg-r2-leg { width: 9px !important; height: 9px !important; border-radius: 2px !important; background: rgba(255, 79, 216, 0.38); border: 1px solid #ff4fd8; }
-/* the UB turn the punch read off its peaks: a line, details behind ? */
-.bragg-stat-ub { min-width: 0; }
-.bragg-stat-ub .bragg-stat-ub-line { white-space: normal; color: #cdd4df; }
-.bragg-stat-ub--warn .bragg-stat-ub-line { color: #e8b454; }
+/* the UB turn the punch read off its peaks: one line under the stats, the
+   details behind ?, in a bubble below the line and as wide as it allows (the
+   line sits near the top of the page, where a bubble above would leave it) */
+.bragg-ub-line { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; padding: 9px 14px; background: #101317; border: 1px solid #252c36; border-radius: 10px; font-size: 12px; line-height: 1.45; color: #cdd4df; }
+.bragg-ub-line--warn { color: #e8b454; }
+.bragg-ub-key { font: 600 9px/1 system-ui; letter-spacing: 0.07em; text-transform: uppercase; color: #6c7686; }
+.bragg-ub-line .helptip { position: static; }
+.bragg-ub-line .helptip-bubble { top: calc(100% + 6px); bottom: auto; left: 0; right: auto; width: min(460px, 100%); max-width: none; transform: none; }
+.bragg-ub-line .helptip-bubble::after { display: none; }
 .bragg-leg-row { display: flex; flex-wrap: wrap; gap: 6px 12px; }
 .bragg-hover { margin-left: auto; font-family: ui-monospace, monospace; color: #a8b1bf; }
 .bragg-ell-leg-fit { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 2.2px solid #7fd4ff; }
@@ -1961,6 +1966,26 @@ input[type="range"]::-moz-range-track {
   left: auto;
   right: 7px;
   transform: none;
+}
+/* the last run's turned-UB line under the punch's settings: its ? is
+   anchored to the line (above it, from its left edge, as wide as the line up
+   to 420 px), so it stays in the box at any width */
+.config-page .ub-turn-note {
+  position: relative;
+}
+.config-page .ub-turn-note .helptip {
+  position: static;
+  margin-left: 4px;
+}
+.config-page .ub-turn-note .helptip-bubble {
+  left: 0;
+  right: auto;
+  transform: none;
+  width: min(420px, 100%);
+  max-width: none;
+}
+.config-page .ub-turn-note .helptip-bubble::after {
+  display: none;
 }
 /* a switch's ? sits just after its label, anywhere in a box: its bubble is
    anchored to the switch's row instead (above it, from its left edge, as wide

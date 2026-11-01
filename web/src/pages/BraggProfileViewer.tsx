@@ -790,19 +790,19 @@ export function BraggProfileViewer() {
                 <span className="bragg-stat-eyebrow">|Q| range</span>
                 <span className="bragg-stat-row"><span className="bragg-stat-v">{qs.length ? `${Math.min(...qs).toFixed(1)}–${Math.max(...qs).toFixed(1)}` : "—"}</span><span className="bragg-stat-desc">Å⁻¹{padQ != null ? ` · floor ${padQ.toFixed(3)}` : ""}</span></span>
               </div>
-              {ubTurn && (
-                <div className={`bragg-stat bragg-stat-ub${ubTurn.tone === "warn" ? " bragg-stat-ub--warn" : ""}`}>
-                  <span className="bragg-stat-eyebrow">
-                    UB turn <HelpTip>{ubTurn.detail}</HelpTip>
-                  </span>
-                  <span className="bragg-stat-row"><span className="bragg-stat-desc bragg-stat-ub-line">{ubTurn.line}</span></span>
-                </div>
-              )}
               <div className="bragg-stat">
                 <span className="bragg-stat-eyebrow">Fit kind</span>
                 <span className="bragg-stat-row"><span className="bragg-stat-v bragg-stat-fit">{profile?.fit_covariance ? "covariance" : "moment"}</span><span className="bragg-stat-desc">{padQ != null ? `pad ${padQ.toFixed(3)} Å⁻¹` : ""}</span></span>
               </div>
             </div>
+
+            {ubTurn && (
+              <p className={`bragg-ub-line${ubTurn.tone === "warn" ? " bragg-ub-line--warn" : ""}`}>
+                <span className="bragg-ub-key">UB turn</span>
+                {ubTurn.line}
+                <HelpTip>{ubTurn.detail}</HelpTip>
+              </p>
+            )}
 
             {/* the slices get the wide column: scatter and peak table on the left,
                 the selected peak and the width histograms on the right */}
