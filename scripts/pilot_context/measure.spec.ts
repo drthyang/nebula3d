@@ -655,11 +655,9 @@ describe("9. what-ifs on the tools' results", () => {
     };
 
     // Done in THY-63 R1 (signed sizes, column tables, the terse criterion on
-    // later calls); what is left needs a description or a skill changed.
-    const peaks = await run("dpdf_peaks");
-    const p = JSON.parse(peaks) as Obj;
-    row("dpdf_peaks (dev control): reading → description (R2)", peaks, JSON.stringify({ ...p, reading: undefined }));
-
+    // later calls) and R2 (dpdf_peaks' reading in its description,
+    // configure_settings without its defaults); what is left needs a skill
+    // changed (R4).
     const qmax = await run("qmax_coverage");
     const q = JSON.parse(qmax) as Obj;
     row("qmax_coverage: band_check and reach_from folded into the verdict (band_check is named in reduction-qc: R4)", qmax, JSON.stringify({ ...q, band_check: undefined, reach_from: undefined }));
@@ -667,7 +665,7 @@ describe("9. what-ifs on the tools' results", () => {
     const settings = await run("configure_settings");
     add({ group: "whatif.reshape", name: "configure_settings as is", arm: "B", rate: "data", est: data(settings), text: settings });
     table(["reshape", "chars before", "chars after", "est. tokens saved", "share"], rows);
-    say(`configure_settings returns ${n(settings.length)} chars (${n(data(settings))} est. tokens); never cited on the dev run.`, "");
+    say(`configure_settings returns ${n(settings.length)} chars (${n(data(settings))} est. tokens) on the synthetic crystal: the settings off their defaults.`, "");
 
     // Tool descriptions capped: the most a cap could save (arm B, all 28).
     for (const cap of [600, 400, 300]) {

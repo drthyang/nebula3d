@@ -2,20 +2,20 @@
 // guard counts, against a 32k local context window, held to ceilings by
 // component (docs/pilot-context-design.md §5.8).
 //
-// VERDICT (measured 2026-11-01 with THY-63 R1's result formats, with
+// VERDICT (measured 2026-11-01 with THY-63 R2's tool contracts, with
 // scripts/measure_pilot_context.sh, which counts the same way): OVER 32k in
 // both configurations.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 43.8k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 43.0k + 6,144
-//   = 49.1k before the loop's compaction, and 40.9k to 45.2k after it, by the
-//   order the skills are read (40.9k in the method's order).
+//   about 41.8k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 41.2k + 6,144
+//   = 47.4k before the loop's compaction, and 39.1k to 43.4k after it, by the
+//   order the skills are read (39.1k in the method's order).
 // - A model LM Studio loaded with 32k gets the turn in only because the window
 //   guard then shortens the results down to the newest: the two skills just
 //   read reach the model as stubs of a few hundred characters.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (8.2k
+// to reply, and leaves free the 3k a model-visible addition must leave (10.0k
 // now). The estimate is conservative (every tool result, the skills' prose
 // included, counts at the data rate), but at the prose rate for the skills
 // the turn is still over 32k.
@@ -149,22 +149,22 @@ const CLAUDE_REPLY = 64_000;
 type Component = (typeof ROWS)[number];
 
 // Today's sizes, in estimated tokens (uncalibrated), rounded up: measured
-// 2026-11-01 with THY-63 R1's result formats (on main 65ef9485, THY-59's code
-// merged), and the same in scripts/measure_pilot_context.sh. R1 lowered the
-// results (9,087 -> 8,236) and every prompt but the skills-last order's after
-// compaction, which ub_check's new verdict raised by 80: a compacted result
-// keeps its verdict, and a column table is shortened as a list was.
+// 2026-11-01 with THY-63 R2's tool contracts (on main 056382ce, R1 merged),
+// and the same in scripts/measure_pilot_context.sh. R2 lowered the tools
+// offered for the TASK (7,162 -> 5,554), every tool's definition (7,982 ->
+// 6,139), the results (8,236 -> 8,091: dpdf_peaks' reading moved to its
+// description, texture_check's criterion added) and every prompt.
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 4_453, tools: 7_162, context: 2_382, skills: 20_758, results: 8_236 };
+const MEASURED: Record<Component, number> = { system: 4_453, tools: 5_554, context: 2_382, skills: 20_758, results: 8_091 };
 // Every tool's definition, as the console sends them (Claude).
-const MEASURED_ALL_TOOLS = 7_982;
+const MEASURED_ALL_TOOLS = 6_139;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 43_810,
-  localBefore: 42_990,
-  localSkillsFirst: 34_754,
-  localMethod: 34_792,
-  localSkillsLast: 39_055,
+  console: 41_822,
+  localBefore: 41_237,
+  localSkillsFirst: 33_146,
+  localMethod: 32_926,
+  localSkillsLast: 37_265,
 };
 
 // The room held for the queued model-visible features, by component, in
