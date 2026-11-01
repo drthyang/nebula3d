@@ -11,6 +11,7 @@ import { offLatticeBunching } from "../metrics/bunching";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
+import { ubTurnFacts } from "../metrics/ubTurn";
 import type { GridSlice } from "../metrics/sliceStats";
 import { operationSymmetry, pointGroup, sectionSymmetry, transpose } from "../metrics/symmetry";
 import { judge, pedestalOfVolume, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
@@ -311,6 +312,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     // The run's sharp peaks off the lattice bunched at one commensurate
     // fraction, as its record says: the facts and the question for the user.
     const bunching = offLatticeBunching(profile?.modulation);
+    // A UB turned in the reduction, as the run's record has it: only when significant (metrics/ubTurn.ts).
+    const ubTurn = ubTurnFacts(profile?.misorientation, profile?.tail_sweep);
     // The strongest leftover over the planes, with its plane.
     const strongest = cuts.reduce<Record<string, unknown> | null>((best, c, i) => {
       const p = leftovers[i]?.suspicious_peaks[0];
@@ -336,6 +339,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       fitted_peaks: profile?.has_profile ? profile.n_peaks : null,
       // Only when the run's record says so (metrics/bunching.ts).
       ...(bunching ? { off_lattice_bunching: bunching } : {}),
+      ...(ubTurn ? { ub_turn: ubTurn } : {}),
       per_plane: per((i) => ({
         leftover_peaks: leftovers[i]?.n_suspicious ?? null,
         at_nodes: leftovers[i]?.n_at_nodes ?? null,
@@ -398,7 +402,10 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
       const kept = e.leftover_on_protected_planes_sharp;
       const off = typeof sharp === "number" && typeof kept === "number" ? sharp - kept : v("leftover_off_lattice_sharp");
       const onProtected = typeof kept === "number" && kept > 0 ? ` (${kept} more on protected planes, kept)` : "";
-      return `${v("leftover_at_nodes")} missed at nodes · ${off} sharp off-lattice${onProtected} · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}`;
+      // A turn the punch acted on, named (metrics/ubTurn.ts).
+      const turn = e.ub_turn as { status?: string; deg?: number | null; sd?: number | null } | undefined;
+      const turned = turn?.status === "active" ? ` · UB turned ${turn.deg}° ± ${turn.sd}°` : "";
+      return `${v("leftover_at_nodes")} missed at nodes · ${off} sharp off-lattice${onProtected} · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}${turned}`;
     }
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;
