@@ -562,7 +562,8 @@ const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => voi
   { name: "run_log", args: {}, before: () => usePipelineStore.setState({ events: RUN_EVENTS, terminal: "done", running: false }) },
   { name: "compare_datasets", args: { kind: "reciprocal", plane: "hk0", value: 0 } },
   { name: "run_verdict", args: {} },
-  { name: "configure_settings", args: {} },
+  // Every setting, those at their defaults too (THY-63 R2).
+  { name: "configure_settings", args: { all: true } },
   { name: "update_settings", args: { changes: { punchMinSig: 6 } } },
   {
     name: "run_pipeline",

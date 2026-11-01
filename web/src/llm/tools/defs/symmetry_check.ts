@@ -71,7 +71,7 @@ export const symmetry_check: ChatTool = {
     reportable: true,
   },
   ...described(
-    description("symmetry_check")`Check that the 3D-ΔPDF keeps the symmetry its data were declared symmetrised with${evidence(" (with none declared the asymmetry is the data's own and is not judged)")}: the ΔPDF against its image under each operation of the declared point group, an operation and its product with the inversion one entry (equal on the centrosymmetric ΔPDF), those that move c included (none declared: the cell's in-plane ones), on the sections the operation maps onto sections (the x–y sections at z and −z, default z = 0, and the x–z and y–z sections through the origin), else on the voxels it maps from one onto another (tested_on says which; not_tested, any it cannot test), as the RMS of the difference over the RMS, the worst section's. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it${evidence("; a larger share means a stage broke it, or the sample lacks that operation")}. Which operations the sample has is the user's to say.`,
+    description("symmetry_check")`Does the 3D-ΔPDF keep the symmetry its data were declared symmetrised with? Each operation of the declared point group (none: the cell's in-plane ones): the RMS difference from the ΔPDF's image over its RMS, on the worst section it maps (x–y at ±z, default 0; x–z, y–z), else voxel by voxel (tested_on, not_tested). Returns ops, holds, verdict; a kept symmetry holds to about 1e-3${evidence("; more means a stage broke it, or the sample lacks it")}. Which operations the sample has is the user's to say.`,
   ),
   parameters: {
     type: "object",

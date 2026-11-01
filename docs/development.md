@@ -321,7 +321,7 @@ above) follows this rule:
    (left out, it is offered for every question); "always" needs a reason in
    its PR. Its description is at most 500 characters: what it answers, when
    to call it, and what it returns, with the method and the meaning of each
-   field in a skill, read on demand.
+   field in a skill, read on demand (`toolContracts.test.ts` holds the cap).
 
 ### The Pilot's tools
 
@@ -366,7 +366,14 @@ To add a tool:
    `<tool_name>` (a `ChatTool`) and nothing else, with its facts (below). A
    description that holds inference is written with `description("<tool_name>")`
    (`shared/describe.ts`) and the spans of `web/src/llm/inference.ts`, so that
-   validation arm C reads it without them. A tool that judges a check imports
+   validation arm C reads it without them. The description is a contract of
+   at most 500 characters (what the tool answers, its inputs, what it returns,
+   when to call it), each parameter's at most 80, and both arms are held to
+   it (`toolContracts.test.ts`); the method goes in a skill or an algorithm
+   page, and a threshold an answer may quote in the tool's result (its verdict
+   or criterion). update_settings alone adds a second paragraph, its catalogue
+   of settings. `docs/pilot-tools.md` keeps the method text the descriptions
+   held before. A tool that judges a check imports
    `judge` and `WORDS` from `verdicts/rules.ts`, never from the verdicts
    barrel: its readers import the registry back.
 2. Import it in `registry.ts` and put it in `CHAT_TOOLS` where the model should

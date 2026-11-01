@@ -37,12 +37,7 @@ export const regrid_refined_ub: ChatTool = {
     askedFor: namesRegrid,
   },
   description:
-    "Regrid the dataset's raw volume onto its refined UB, as a new dataset: the fit is ub_check's (the punch cell's " +
-    "Bragg nodes, q_max), and the volume resampled onto the refined UB is written as <stem>_regridded.nxs beside the " +
-    "raw file, never over a file. No pipeline is run. Only when the user's latest message asks for a regrid; " +
-    "otherwise refused. Nothing is written, and refusal gives code and reason, when the turn is under " +
-    "turn_threshold_deg, a symmetrised volume has no unsymmetrised source beside it, or the new file or dataset id " +
-    "exists. Returns the new dataset, the turn, the peaks' RMS before → after, and the measured voxels lost outside the old grid.",
+    "Regrid the raw volume onto its refined UB (ub_check's fit) as a new dataset, <stem>_regridded.nxs beside the raw file, never over one; no pipeline is run. Only when the user's latest message asks for a regrid. Refused, with code and reason, when the turn is under turn_threshold_deg, a symmetrised volume has no unsymmetrised source, or the file or dataset id exists. Returns the new dataset, the turn, the peaks' RMS before → after, and the measured voxels lost outside the old grid.",
   parameters: {
     type: "object",
     properties: { q_max: { type: "number", description: "The nodes' |Q| limit in Å⁻¹ (default: everything the box holds)" } },

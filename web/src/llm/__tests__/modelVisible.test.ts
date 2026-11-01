@@ -672,7 +672,6 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
       "## assess_stage {}",
       '## assess_stage {"stage":"flatten"}',
       `## assess_stage {"stage":"punch"} (${BUNCHED_NOTE})`,
-      "## dpdf_peaks {}",
       "## grain_check {}",
     ]);
     // The question for the user reads the same in both arms; its facts lose their remedy in arm C.

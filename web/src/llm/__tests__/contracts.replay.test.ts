@@ -63,6 +63,7 @@ const CALLS: Call[] = [
   // No check on this handle: the verdict before any (its words null).
   ["run_verdict", {}],
   ["configure_settings", {}],
+  ["configure_settings", { all: true }],
   ["show_in_viewer", { view: "cleanup", plane: "hk0", value: 0 }],
   ["show_in_viewer", { view: "dpdf", plane: "xy", value: 0 }],
   // A region inside the volume, and points of which one lies outside it (its clipped field).

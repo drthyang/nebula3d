@@ -11,7 +11,7 @@ export const consistency_details: ChatTool = {
   name: "consistency_details",
   facts: { label: "Read the back-FFT check", acts: null, offeredFor: ["pdf"], highlights: ["check"] },
   ...described(
-    description("consistency_details")`The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data)${evidence(", so r below 1 on unsymmetrised data is no fault")}. Neither says a feature is real.`,
+    description("consistency_details")`The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. pearson_r_even compares the round trip with the data's even part under Q → −Q, what the transform keeps: 1 when it is sound; r against the data is lower by the odd part (odd_share)${evidence(", no fault on unsymmetrised data")}. Neither says a feature is real.`,
   ),
   parameters: { type: "object", properties: {} },
   run: async (_args, { dataset }) => {

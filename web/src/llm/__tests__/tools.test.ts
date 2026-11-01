@@ -418,7 +418,7 @@ describe("update_settings", () => {
     });
 
     it("shows a blank Laue class as none chosen, not as a default", async () => {
-      const shown = (JSON.parse((await run("configure_settings", {})).text) as { settings: Record<string, unknown> }).settings;
+      const shown = (JSON.parse((await run("configure_settings", { all: true })).text) as { settings: Record<string, unknown> }).settings;
       expect(shown).toMatchObject({
         symmetryAverageEnabled: false,
         symmetryLaue: "(none chosen: the user's to set)",
@@ -527,7 +527,7 @@ describe("update_settings", () => {
       expect(usePipelineStore.getState()).toMatchObject({ modulationK: "0.2, 0, 1/2", modulationOrder: "2", modulationForm: "points", modulationHalfWidth: "0.05" });
       expect(JSON.parse(r.text).changed).toEqual([{ setting: "modulation", from: "default", to: "k = (0.2, 0, 1/2), order 2, points, ± 0.05 r.l.u." }]);
       // The line configure_settings shows reads back as the same declaration: no change.
-      const shown = (JSON.parse((await run("configure_settings", {})).text) as { settings: Record<string, unknown> }).settings;
+      const shown = (JSON.parse((await run("configure_settings", { all: true })).text) as { settings: Record<string, unknown> }).settings;
       expect(shown.modulation).toBe("k = (0.2, 0, 1/2), order 2, points, ± 0.05 r.l.u.");
       expect(shown).not.toHaveProperty("modulationK");
       const same = await after(said, { modulation: shown.modulation });
@@ -895,6 +895,22 @@ describe("assess_stage", () => {
 const NOTICE_DEFINITION =
   "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted.";
 const NOTICE = `${NOTICE_DEFINITION} Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.`;
+
+describe("configure_settings", () => {
+  it("lists the settings off their defaults and how many are at them; all lists every one (THY-63 R2)", async () => {
+    usePipelineStore.setState(usePipelineStore.getInitialState());
+    const every = JSON.parse((await run("configure_settings", { all: true })).text);
+    expect(every).not.toHaveProperty("at_default");
+    const n = Object.keys(every.settings).length;
+    expect(every.settings).toMatchObject({ punchMinSig: "(default)", symmetryLaue: "(none chosen: the user's to set)" });
+    expect(JSON.parse((await run("configure_settings", {})).text)).toEqual({ settings: {}, at_default: n });
+    usePipelineStore.setState({ punchMinSig: "6", flattenQ2: true });
+    const r = await run("configure_settings", {});
+    expect(JSON.parse(r.text)).toEqual({ settings: { punchMinSig: "6", flattenQ2: true }, at_default: n - 2 });
+    expect(r.summary).toBe(`2 settings off their defaults, ${n - 2} at them`);
+    usePipelineStore.setState(usePipelineStore.getInitialState());
+  });
+});
 
 describe("run_log", () => {
   it("returns the last run's lines, for one stage on request", async () => {
@@ -1725,6 +1741,7 @@ describe("texture_check", () => {
     expect(out).toEqual({
       n_holes: 125, n_judged: 125, median_fill_bias_sigma: 0, median_fill_bias_level: 0, above_fraction: 0, below_fraction: 0,
       above_floor_fraction: 0, below_floor_fraction: 0, systematic_fill_bias: false,
+      criterion: "systematic_fill_bias: 5 judged holes or more, 75 % of them past their range one way, with a median of 0.5σ and 0.2 of the local level or more.",
       // The cuts carry the azimuthal texture only.
       per_cut: ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"].map((c) => ({ cut: c, azimuthal_ratio: expect.any(Number) })),
     });
@@ -1773,6 +1790,7 @@ describe("texture_check", () => {
       not_judged: "grid too coarse: the nodes are 13 voxels apart, under 14: a hole reaches 3 voxels and its rim 4 more",
       median_fill_bias_sigma: null, median_fill_bias_level: null, above_fraction: null, below_fraction: null,
       above_floor_fraction: null, below_floor_fraction: null, systematic_fill_bias: null,
+      criterion: "systematic_fill_bias: 5 judged holes or more, 75 % of them past their range one way, with a median of 0.5σ and 0.2 of the local level or more.",
       per_cut: expect.any(Array),
     });
     expect(r.outcomes).toEqual([{ check: "texture", kind: "info", reasons: ["grid too coarse"], dataProblems: [], words: null }]);

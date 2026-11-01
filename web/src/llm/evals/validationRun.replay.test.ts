@@ -179,8 +179,8 @@ describe("validation runs back to back", () => {
     const fresh = await callTool({ dataset, datasets: [dataset] }, "current_view");
     expect(view).toEqual(JSON.parse(fresh.text));
     expect(view).not.toEqual(read(only(one, "current_view")));
-    // The default settings, not the first run's change.
-    expect((read(only(two, "configure_settings")).settings as Record<string, unknown>).flattenQ2).toBe(false);
+    // The default settings, not the first run's change: flattenQ2 at its default, so not listed (THY-63 R2).
+    expect(read(only(two, "configure_settings")).settings as Record<string, unknown>).not.toHaveProperty("flattenQ2");
     // No tuning run, trial or note, and no contrast: the second run made none, and found none.
     expect(useTuneStore.getState()).toMatchObject({ active: false, run: null, stages: [], error: null, finishedNote: null });
     expect(useDpdfStore.getState()).toMatchObject({ centered: false, limit: null });

@@ -103,11 +103,10 @@ const SHARED_WITH_THE_SKILLS = ["reduction-qc: say so, and that the orientation 
  */
 const TAKEN_OUT = [
   "after the trust checks", // dpdf_peaks: delta-pdf-interpretation's order
-  "(delta-pdf-interpretation)", // dpdf_peaks: the skill's name
   "a rising one wants flattenQ2", // the flatten's goal: reduction-qc's step 6
   "Use it when the shell floors climb", // flattenQ2's help: the same step
   "Raise it toward the data's coverage", // flattenFitQMax's help: the same step
-  "a UB error gives the same relative offset", // ub_check: reduction-qc's step 2
+  "An offset that changes with |Q| is no UB error", // ub_check: reduction-qc's step 2
   "read the method first: call read_skill", // the skill gate's refusal
   "read the method again: call read_skill", // its refusal in a later turn, for a skill read in an earlier one
   "call assess_stage with stage", // a send-back's next step

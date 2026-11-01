@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 105 spans in 32 texts or sets: reading 30, evidence 53, remedy 22.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 96 spans in 29 texts or sets: reading 29, evidence 45, remedy 22.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -207,12 +207,12 @@ Quote the numbers the tools return. Keep tool calls purposeful — a few well-ch
 
 ## tools/index.ts: compare_laue_classes's description
 
-3 spans: evidence 2, remedy 1.
+2 spans: evidence 1, remedy 1.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Which Laue class does the sample have? Compares every Laue class the cell's metric allows (the UB under the symmetry average's 2% check) and whose operations map the grid, by R_int on the raw volume as the symmetry average reads it (the run's edge trim first): Σ|I − ⟨I⟩| / Σ|I| over the orbits measured twice or more, on every measured voxel and on the diffuse (the punch cell's Bragg nodes masked), each also over its noise floor, the R_int counting noise alone gives on the same orbits (x_noise). A class rises against a subgroup when its x_noise exceeds the subgroup's by more than 10% and two standard errors of the difference; suggestion is the supported class with the most operations in every reading that can tell the classes apart⟦evidence: , none when even whole |Q| shells (no_symmetry) stay at the noise⟧. flag says when the diffuse supports less than every measured voxel⟦evidence: : averaging over the higher class would impose the Bragg peaks' symmetry on the diffuse⟧. A volume symmetrized already is refused. Seconds to minutes.⟦remedy:  Cite its classes, rule and flag when you suggest a Laue class; the class is the user's to set, and update_settings refuses it.⟧
+Which Laue class does the sample have? Compares by R_int every Laue class the cell's metric allows (within 2%) and whose operations map the grid, on the raw volume as the average reads it, on all measured voxels and the diffuse, each over its noise floor (x_noise). Returns classes, rule, suggestion (or none), flag⟦evidence:  (the diffuse supports less than the Bragg peaks)⟧. Refused on a symmetrised volume. Seconds to minutes.⟦remedy:  The class is the user's to set: cite classes, rule and flag when you suggest one.⟧
 ```
 
 ## tools/index.ts: consistency_details's description
@@ -222,37 +222,17 @@ Which Laue class does the sample have? Compares every Laue class the cell's metr
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. The transform keeps the real part, which is the data's even part under Q → −Q: pearson_r_even compares the round trip with that part and is 1 when the transform is sound, while r against the data is limited by the odd part (odd_share: counting noise on unsymmetrised data)⟦evidence: , so r below 1 on unsymmetrised data is no fault⟧. Neither says a feature is real.
-```
-
-## tools/index.ts: dpdf_peaks' reading
-
-1 span: evidence 1.
-
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
-
-```text
-Each entry: |r|, the largest size in σ with its sign, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk⟦evidence: ; features nearer the origin than the shortest interatomic distance are not pair correlations⟧.
+The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. pearson_r_even compares the round trip with the data's even part under Q → −Q, what the transform keeps: 1 when it is sound; r against the data is lower by the odd part (odd_share)⟦evidence: , no fault on unsymmetrised data⟧. Neither says a feature is real.
 ```
 
 ## tools/index.ts: dpdf_peaks's description
 
-3 spans: reading 2, evidence 1.
+2 spans: reading 1, evidence 1.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors)⟦evidence: : copies of one correlation under the crystal's symmetry, most likely⟧, though the grouping does not use the symmetry and two correlations can share a length.⟦reading:  Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf).⟧ What size is worth interpreting, and what a feature means, is the user's call⟦reading:  (delta-pdf-interpretation)⟧. Quote the vectors, signs and sizes it returns.
-```
-
-## tools/index.ts: grain_check's description
-
-1 span: evidence 1.
-
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
-
-```text
-Is there a second grain, and what are the sharp off-lattice peaks the punch's search found? It takes the punch's peak record, groups the off-lattice peaks into symmetry orbits (the declared point group), and tests the strongest two ways. Against the Bragg nodes: an orbit within a quarter of the node spacing of one is that peak displaced, and its offset over |Q| is a rotation angle (⟦evidence: symmetrising data whose UB is slightly off makes such copies; ⟧the angle is a lower bound). As a rotated copy of the Bragg lattice: a second grain is one rotation that indexes most strong orbits, judged against the same search at random directions; a rotation under 2° is the UB, not a grain. Run the punch first. Quote its verdict and numbers.
+The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed: + more pairs than the average structure, − fewer), n_vectors of one sign, length and size⟦evidence:  (likely symmetry copies)⟧, up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). ⟦reading: Use it after the trust checks (qmax_coverage, symmetry_check, assess_stage pdf). ⟧ What a feature means is the user's call.
 ```
 
 ## tools/index.ts: line_profile's description
@@ -272,7 +252,7 @@ Intensity along a straight line parallel to one axis through any stage volume⟦
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Mark a region in the console's slice views and move them to it, so the user sees what you found⟦remedy: : use it for a finding they should look at, such as satellites at h ± q, a ring left over, or a ΔPDF feature⟧. where: the stage whose output shows it: raw, rings, punch, backfill or flatten (reciprocal space; h, k, l in r.l.u.), or pdf (the 3D-ΔPDF; x, y, z in Å along a, b, c). shape: box or ellipsoid, with center and half_size (half-widths along the three axes), or points, with up to 12 positions. evidence: the calls in this conversation whose results show it, as tool or tool.field (dpdf_peaks.features.0). A region without evidence, empty, or outside the volume is not marked. The result says which views and cuts it was drawn on, cut to the volume. Cite the mark by its id (M1, …) in your answer.
+Mark a region in the slice views and move them to it, so the user sees a finding⟦remedy:  (satellites at h ± q, a ring left over, a ΔPDF feature)⟧. where: raw, rings, punch, backfill, flatten (h, k, l in r.l.u.) or pdf (x, y, z in Å along a, b, c). shape: box or ellipsoid (center, half_size), or points (up to 12). evidence: the calls showing it, as tool or tool.field (dpdf_peaks.features.0); none, or a region empty or outside the volume, marks nothing. Returns where it is drawn. Cite it by its id (M1, …).
 ```
 
 ## tools/index.ts: measure_reciprocal_cut's description
@@ -297,32 +277,22 @@ The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage
 
 ## tools/index.ts: symmetry_check's description
 
-2 spans: evidence 2.
+1 span: evidence 1.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Check that the 3D-ΔPDF keeps the symmetry its data were declared symmetrised with⟦evidence:  (with none declared the asymmetry is the data's own and is not judged)⟧: the ΔPDF against its image under each operation of the declared point group, an operation and its product with the inversion one entry (equal on the centrosymmetric ΔPDF), those that move c included (none declared: the cell's in-plane ones), on the sections the operation maps onto sections (the x–y sections at z and −z, default z = 0, and the x–z and y–z sections through the origin), else on the voxels it maps from one onto another (tested_on says which; not_tested, any it cannot test), as the RMS of the difference over the RMS, the worst section's. A symmetry the data were symmetrised with holds to about 1e-3 or better when the pipeline kept it⟦evidence: ; a larger share means a stage broke it, or the sample lacks that operation⟧. Which operations the sample has is the user's to say.
-```
-
-## tools/index.ts: texture_check's description
-
-3 spans: evidence 3.
-
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
-
-```text
-Check whether the punch and backfill printed a pattern of their own into reciprocal space. Fill bias, over every punch hole in 3-D: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly⟦evidence:  (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median)⟧; the part outside that range, signed, in the rim's σ and in units of the local diffuse level, and the shares of holes above and below it, and beyond it by a fifth of the level or more (above_floor_fraction, below_floor_fraction). Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture⟦evidence:  that the ΔPDF turns into features at lattice vectors⟧. Azimuthal texture, on a cut (default: the three principal planes through the origin): per |Q| shell, how much the sector means vary around the shell after the backfill against before the punch (unpunched voxels)⟦evidence: ; a ratio near 1 adds none⟧.
+Does the 3D-ΔPDF keep the symmetry its data were declared symmetrised with? Each operation of the declared point group (none: the cell's in-plane ones): the RMS difference from the ΔPDF's image over its RMS, on the worst section it maps (x–y at ±z, default 0; x–z, y–z), else voxel by voxel (tested_on, not_tested). Returns ops, holds, verdict; a kept symmetry holds to about 1e-3⟦evidence: ; more means a stage broke it, or the sample lacks it⟧. Which operations the sample has is the user's to say.
 ```
 
 ## tools/index.ts: ub_check's description
 
-2 spans: evidence 2.
+1 span: evidence 1.
 
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit⟦evidence: : a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it⟧. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit⟦evidence: : a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit⟧ (origin_shift_rlu, when ⟨connective: “that vector” → “its value after the fit”⟩ makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.
+Is the volume's UB right? Fits the UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first). Returns verdict, rms_start → rms, cell_start and cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file⟦evidence: . An offset that changes with |Q| is no UB error⟧. About 10 s.
 ```
 
 ## tools/index.ts: ub_check's reading

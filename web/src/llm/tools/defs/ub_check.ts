@@ -5,7 +5,7 @@ import { fetchUbCheck } from "../../../api/client";
 import type { UbCheck } from "../../../api/types";
 import { usePipelineStore } from "../../../state/pipelineStore";
 import { hklVolumeId, stageVolumeId } from "../../context/loadContext";
-import { built, connective, evidence, inference, joined } from "../../inference";
+import { built, evidence, inference, joined } from "../../inference";
 import { skillsOn } from "../../skills";
 import { judge } from "../../verdicts/rules";
 import { num } from "../shared/args";
@@ -53,7 +53,7 @@ export const ub_check: ChatTool = {
   // Reportable, as the other checks on the result are: the report runs it, and names what it finds (Q11).
   facts: { label: "Checked the UB", acts: null, offeredFor: ["punch", "lattice", "general"], settles: ["ub", "origin"], reportable: true },
   ...described(
-    description("ub_check")`Is the volume's UB right? On the raw volume it finds each Bragg node's peak (the punch cell gives the Bragg nodes: (2, 2, 2) on a doubled cell), measures its centre, and fits the UB that puts the centres back on their nodes, from low |Q| outward. A volume symmetrised under the operations it declares hides a misorientation as rings around the nodes, not shifts, so there it fits only the changes that commute with the operations (fit 'symmetric': for 6/mmm the scales of the hk plane and of l); otherwise the rotation and the cell together ('both'). radial is the peaks' median offset along Q from their nodes, relative to |Q|, per |Q| band and direction, before and after the fit${evidence(": a UB error gives the same relative offset at every |Q| along a direction, so one that changes with |Q| is not a UB error, and refining the UB only averages it")}. mean_offset_rlu is the peaks' mean offset from their nodes in r.l.u., before and after the fit${evidence(": a UB error averages out over the nodes and the fit removes it, while a shifted HKL origin moves every peak by one vector that stays after the fit")} (origin_shift_rlu, when ${connective("that vector", "its value after the fit")} makes most of the offset the fit leaves). About ten seconds on a full volume. Quote rms_start → rms, the cell before and after, the angle, what radial shows, and an origin shift when it gives one.`,
+    description("ub_check")`Is the volume's UB right? Fits the UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first). Returns verdict, rms_start → rms, cell_start and cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file${evidence(". An offset that changes with |Q| is no UB error")}. About 10 s.`,
   ),
   parameters: {
     type: "object",

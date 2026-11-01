@@ -49,7 +49,7 @@ export const line_profile: ChatTool = {
       along: { type: "string", enum: ALL_AXES, description: "The axis the line runs along" },
       at: {
         type: "object",
-        description: "The other two coordinates the line passes through (missing ones are 0), e.g. {\"K\": 0.333, \"L\": 0} for a line along H",
+        description: "The other two coordinates on the line (missing: 0), e.g. {\"K\": 0.333, \"L\": 0}",
         properties: Object.fromEntries(ALL_AXES.map((a) => [a, { type: "number" }])),
       },
       n_points: { type: "integer", minimum: 16, maximum: 128, description: "Points to return (block-averaged); default 64" },

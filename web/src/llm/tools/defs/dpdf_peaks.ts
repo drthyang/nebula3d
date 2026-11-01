@@ -5,9 +5,8 @@
 
 import { fetchDpdfFeatures } from "../../../api/client";
 import { dpdfVolumeId } from "../../context/loadContext";
-import { evidence, reading, written } from "../../inference";
+import { evidence, reading } from "../../inference";
 import { roundSig } from "../../metrics/sliceStats";
-import { skillsOn } from "../../skills";
 import { num } from "../shared/args";
 import { dpdfMeta, dpdfView } from "../shared/cuts";
 import { described, description } from "../shared/describe";
@@ -16,18 +15,13 @@ import { ToolArgError, type ChatTool } from "../types";
 // How many of a group's vectors the model reads (the group's n says how many there are).
 const PEAK_VECTORS = 4;
 
-// How dpdf_peaks' entries read; which of them are no pair correlations is inference (inference.ts).
-const PEAKS_READING = written("tools/index.ts: dpdf_peaks' reading")`Each entry: |r|, the largest size in σ with its sign, how many vectors (one per ± pair) share them, and up to ${PEAK_VECTORS} of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk${evidence(
-  "; features nearer the origin than the shortest interatomic distance are not pair correlations",
-)}.`;
-
 // The skill's order (the trust checks before the features) and its name are
 // inference here: with the skills off the description has neither.
 export const dpdf_peaks: ChatTool = {
   name: "dpdf_peaks",
   facts: { label: "Listed the ΔPDF's strongest features", acts: null, offeredFor: ["pdf"], settles: ["features"] },
   ...described(
-    description("dpdf_peaks")`The 3D-ΔPDF's strongest features, read from the whole volume rather than one section: its local extrema above min_sigma (default 5) robust σ of the volume outside the origin's disk, each with its vector in Å along a, b, c and in lattice units, its sign (+: more pairs at that vector than the average structure has, −: fewer) and its size in σ. The ΔPDF is centrosymmetric, so each ± pair is listed once. Extrema of one sign, length and size are one entry (n_vectors)${evidence(": copies of one correlation under the crystal's symmetry, most likely")}, though the grouping does not use the symmetry and two correlations can share a length.${reading(" Use it for the strongest pair correlations with their vectors and signs, after the trust checks (qmax_coverage, symmetry_check on symmetrised data, assess_stage pdf).")} What size is worth interpreting, and what a feature means, is the user's call${reading(" (delta-pdf-interpretation)")}. Quote the vectors, signs and sizes it returns.`,
+    description("dpdf_peaks")`The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed: + more pairs than the average structure, − fewer), n_vectors of one sign, length and size${evidence(" (likely symmetry copies)")}, up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). ${reading("Use it after the trust checks (qmax_coverage, symmetry_check, assess_stage pdf). ")} What a feature means is the user's call.`,
   ),
   parameters: {
     type: "object",
@@ -74,7 +68,6 @@ export const dpdf_peaks: ChatTool = {
       threshold_sigma: f.min_sigma,
       origin_disk_A: roundSig(f.origin_radius, 3),
       extrema_above_threshold: f.n_extrema,
-      reading: PEAKS_READING.text(skillsOn(ctx)),
     };
     const top = f.groups[0];
     const where = top ? `(${vec(top.vectors_rlu[0] ?? top.vectors[0], 3)!.join(", ")})${top.vectors_rlu[0] ? " r.l.u." : " Å"}` : "";

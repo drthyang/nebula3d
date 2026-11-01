@@ -26,7 +26,7 @@ export const dpdf_contrast: ChatTool = {
     offeredFor: ["pdf"],
   },
   description:
-    "Optimise the 3D-ΔPDF viewer's colour range, so the pair-correlation features carry the colour and the FFT ripple around them stays dim. Call it once, without arguments: it measures the three centre sections (xy, xz, yz through the origin; the origin's self-correlation disk left out), sets the limit at the 99.9th percentile of |ΔPDF|, the page's Auto, and lists what the 99.5th and 99.97th percentiles would give without applying them. Pass percentile (99–99.99) or limit_sigma only for a range the user asks for: a limit of a few σ colours the ripple, as the old Auto (the 97th percentile) did. reset returns the viewer to Auto. Quote the applied limit it returns.",
+    "Set the 3D-ΔPDF viewer's colour range so pair-correlation features carry the colour and the FFT ripple stays dim. Call it once without arguments: the limit is the 99.9th percentile of |ΔPDF| on the three centre sections (origin disk left out), the page's Auto. Returns the applied limit, and what the 99.5th and 99.97th percentiles would give. Pass percentile or limit_sigma only for a range the user asks for; reset returns to Auto.",
   parameters: {
     type: "object",
     properties: {
