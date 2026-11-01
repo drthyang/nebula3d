@@ -367,6 +367,23 @@ button {
   color: var(--text-3);
   white-space: nowrap;
 }
+/* Red during an in-browser run: a soft hint that opens the run-it-locally
+   card on the Execution page (components/LocalHandoff.tsx, NearLimitHint). */
+.mem-hint {
+  align-self: flex-start;
+  margin-top: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--mem-color);
+  cursor: pointer;
+}
+.mem-hint:hover {
+  text-decoration: underline;
+}
 /* The "?" beside the bar's title opens what the tooltip says as a card (for
    touch screens and the keyboard), in the gesture card's look (.gh-*). */
 .mem-head {
@@ -2757,6 +2774,161 @@ input[type="range"]::-moz-range-track {
   color: var(--red);
 }
 
+/* The run-it-locally card (components/LocalHandoff.tsx): where the in-browser
+   engine's limit shows itself, why in one line, then QUICKSTART's native
+   route with a copy button. Red for a failure, amber for an estimate or a
+   red memory bar. In the browser build only. */
+.handoff {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 10px 0 2px;
+  padding: 12px 14px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(239, 106, 106, 0.35);
+  background: var(--red-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.handoff--warn {
+  border-color: rgba(232, 180, 84, 0.35);
+  background: var(--amber-soft);
+}
+.handoff-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-width: 0;
+}
+.handoff-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font: 700 11px system-ui;
+  color: var(--red);
+  background: rgba(239, 106, 106, 0.16);
+}
+.handoff--warn .handoff-ico {
+  color: var(--amber);
+  background: rgba(232, 180, 84, 0.16);
+}
+.handoff-headtext {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.handoff-heading {
+  font: 700 12.5px/1.2 system-ui;
+  color: var(--red);
+}
+.handoff-lead {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+.handoff-close {
+  flex: none;
+  align-self: flex-start;
+  margin: -2px -4px 0 0;
+}
+/* aligned with the lead, past the icon */
+.handoff-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding-left: 31px;
+}
+.handoff-body p {
+  margin: 0;
+}
+.handoff-cmd {
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.handoff-cmd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 4px 3px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.handoff-cmd-label {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+/* a long line scrolls inside the box, never the page */
+.handoff-cmd-text {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font: 11.5px/1.6 var(--font-mono);
+  color: var(--text);
+  white-space: pre;
+}
+.handoff-data a,
+.handoff-desktop a {
+  color: var(--accent-hi);
+  white-space: nowrap;
+}
+.handoff-privacy {
+  color: var(--text-3);
+}
+.handoff-details summary,
+.exec-banner-details summary {
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.handoff-details pre,
+.exec-banner-details pre {
+  max-height: 220px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font: 11px/1.5 var(--font-mono);
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* a dismissed card leaves a way back where the failure happened */
+.handoff-reopen {
+  margin: 8px 0 2px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.handoff-reopen-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent-hi);
+  cursor: pointer;
+}
+.handoff-reopen-btn:hover {
+  text-decoration: underline;
+}
+@media (max-width: 520px) {
+  .handoff-body {
+    padding-left: 0;
+  }
+}
+
 /* Boot progress panel (shown during the one-time Pyodide WASM download) */
 .boot-panel {
   display: flex;
@@ -3055,6 +3227,8 @@ input[type="range"]::-moz-range-track {
 /* a failure the page can act on (the 3D-ΔPDF's window: "Symmetrize here") */
 .exec-banner-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
 .exec-banner-hint { font: 400 11.5px/1.4 system-ui; color: #8b94a3; }
+/* a known data error: its own words above, the traceback behind "Details" */
+.exec-banner-details { margin-top: 4px; min-width: 0; }
 
 /* body grid: stages | log */
 .exec-body {
@@ -7048,5 +7222,30 @@ html.kb-open .ai-side {
   .ai-resize-y span {
     width: 48px;
     height: 5px;
+  }
+}
+
+/* The run-it-locally card and the memory bar's hint on a touch screen: 44 px
+   targets (a ::before past the text, so the layout stays as it is). */
+@media (pointer: coarse) {
+  .handoff-copy {
+    min-height: 36px;
+    min-width: 64px;
+  }
+  :is(.mem-hint, .handoff-reopen-btn) {
+    position: relative;
+  }
+  :is(.mem-hint, .handoff-reopen-btn)::before {
+    content: "";
+    position: absolute;
+    left: -6px;
+    right: -6px;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+  .handoff-details summary,
+  .exec-banner-details summary {
+    padding: 10px 0;
   }
 }
