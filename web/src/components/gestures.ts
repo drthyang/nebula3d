@@ -74,7 +74,7 @@ export function gestureCard({ mac, touch }: { mac: boolean; touch: boolean }): G
         { id: "reset", name: "Reset", ways: [[glyph("double-tap", "double-tap")], [button("↺ Reset zoom")]] },
         { id: "box", name: "Box zoom", ways: [[button("Box zoom"), text("then"), glyph("drag", "drag a box")], [text("tap it again to cancel")]] },
       ],
-      note: "A tap reads the values under it; one finger scrolls the page.",
+      note: "A tap reads the values under it; one finger scrolls the page. Press and hold a control to read what it does.",
     };
   }
   return {
