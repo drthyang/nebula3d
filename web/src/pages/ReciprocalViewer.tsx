@@ -39,6 +39,8 @@ import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
 import { isReciprocal, useMarkStore, visibleMarks, WHERE_OUTPUT, type Mark } from "../state/markStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
+import { useTouchOnly } from "../components/usePlatform";
+import { readVerb } from "../components/viewerText";
 
 // The symmetrized volume (the optional stage 0's) is listed when it exists.
 const STAGE_ORDER = ["raw", "symmetrized", "ringremoved", "braggpunched", "backfilled", "flattened"];
@@ -65,6 +67,7 @@ function cachedAuto(s: Slice, scale: ScaleKind): AutoLevels {
 }
 
 export function ReciprocalViewer() {
+  const touch = useTouchOnly();
   const lit = useHighlightKeys();
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
@@ -418,7 +421,7 @@ export function ReciprocalViewer() {
               })}
             </>
           ) : (
-            <span className="muted">Hover a slice to read the same ({xAxis}, {yAxis}) in every stage.</span>
+            <span className="muted">{readVerb(touch)} a slice to read the same ({xAxis}, {yAxis}) in every stage.</span>
           )}
         </div>
       )}

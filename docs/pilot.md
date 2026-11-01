@@ -244,14 +244,27 @@ so it can move the viewer while the conversation stays in view. It never covers
 the page: it takes a column of the app's grid, and the page reflows into what is
 left (`web/src/components/PilotDock.tsx`, `web/src/state/dockLayout.ts`):
 
-- **Docked** (a window at least 1000 px wide, or 900 px held landscape): a
+- **Docked** (a window at least 1000 px wide, or 800 px held landscape, so a
+  phone on its side docks too: its sheet would be under 200 px tall): a
   column on the right, about 28 % of the window at first (360–480 px). Drag its
   left edge, or use the arrow keys on it, to resize it between 320 px and 55 %
   of the window (at most 720 px); double-click the edge for the default. The header's chevron
   collapses it to a 44 px rail that opens it again.
 - **Bottom sheet** (any narrower window): a sheet under the page,
   48 % of the window at first. Drag its handle to resize it between 30 % and
-  85 %; the chevron collapses it to a bar.
+  85 %; the chevron collapses it to a bar. Its one-click requests scroll
+  sideways in one row, and the transcript takes the height left, so the
+  composer stays at the sheet's foot however short the sheet is. On a short
+  screen (600 px or less) the docked column puts the requests in one row too.
+
+On a phone or tablet, typing to the Pilot brings up the on-screen keyboard,
+which the browser lays over the page rather than resizing it. While the
+Pilot's composer has focus and the keyboard is up, the console sizes itself to
+the part of the screen the keyboard leaves (`visualViewport`,
+`web/src/components/useKeyboardFrame.ts`): the page gives up its room first,
+and the panel keeps the conversation and the composer, hiding the connection
+bar, the requests and the toggles until the keyboard goes. A pinch zoom or a
+collapsing browser toolbar is not taken for a keyboard (`keyboardFrame.ts`).
 
 The width and the sheet's height are remembered (localStorage) when a drag
 ends. The page's own layouts respond to the width they are given, not the

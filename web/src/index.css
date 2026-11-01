@@ -395,16 +395,7 @@ button {
 .mem-card .gh-head + .mem-card-line {
   color: var(--text);
 }
-@media (pointer: coarse) {
-  .gh-trigger.mem-help {
-    width: 20px;
-    height: 20px;
-    font-size: 11px;
-  }
-  .gh-trigger.mem-help::before {
-    inset: -10px;
-  }
-}
+/* touch screens: 24 px with a 44 px hit area, under "Touch screens" at the end */
 :is(.sidebar-foot, .main-foot) .ver {
   display: inline-flex;
   align-items: center;
@@ -2806,7 +2797,9 @@ input[type="range"]::-moz-range-track {
     flex-direction: column;
     align-items: stretch;
   }
+  /* stacked, its 520 px basis would be a height: the track hugs its stages */
   .stage-track-wrap {
+    flex: none;
     width: 100%;
   }
   .data-actions {
@@ -4054,6 +4047,7 @@ body.ai-resizing iframe {
   align-items: center;
   gap: 10px;
   flex: 1;
+  min-width: 0; /* the model menu narrows, so the gear stays on the row */
 }
 .ai-model-select {
   margin-left: auto;
@@ -5350,6 +5344,16 @@ h6.md-h {
   .app.dock-sheet > .ai-side {
     height: var(--sheet-h);
   }
+  /* Open, the sheet's row is as tall as the user dragged it, unless the
+     window is shorter: then the page gives up its room first, then the
+     sheet. So with the on-screen keyboard up (html.kb-open, the shell then
+     as tall as what the keyboard leaves) the composer stays in view. */
+  .app.dock-sheet.dock-open {
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, var(--sheet-h));
+  }
+  .app.dock-sheet.dock-open > .ai-side {
+    height: auto;
+  }
   .sidebar {
     flex: none;
     flex-direction: row;
@@ -5624,7 +5628,7 @@ h6.md-h {
     gap: 8px;
   }
   .ai-model-select {
-    flex: 1 1 140px;
+    flex: 1 1 96px; /* leaves the 44 px gear on the row at 390 px */
     min-width: 0;
     max-width: none;
   }
@@ -5730,91 +5734,6 @@ h6.md-h {
   .readout-edits .readout-edit input.value-input {
     width: 76px;
     font-size: 16px;
-  }
-}
-
-/* — touch screens (iPhone, iPad): finger-sized targets, no tap flash — */
-@media (pointer: coarse) {
-  :is(button, select, input, label, summary, a) {
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-  }
-  input[type="range"] {
-    height: 6px;
-    margin: 11px 0;
-    border-radius: 3px;
-  }
-  input[type="range"]::-webkit-slider-thumb {
-    width: 22px;
-    height: 22px;
-  }
-  input[type="range"]::-moz-range-thumb {
-    width: 22px;
-    height: 22px;
-  }
-  .range-dual,
-  .range-dual input[type="range"] {
-    height: 28px;
-  }
-  .range-dual {
-    margin: 0;
-  }
-  .range-dual .range-track,
-  .range-dual .range-fill {
-    height: 6px;
-    border-radius: 3px;
-  }
-  .switch-track {
-    width: 40px;
-    height: 24px;
-    border-radius: 12px;
-  }
-  .switch-track::after {
-    width: 18px;
-    height: 18px;
-  }
-  .switch input:checked + .switch-track::after {
-    transform: translateX(16px);
-  }
-  .segmented button {
-    padding: 8px 14px;
-  }
-  .btn,
-  .exec-btn {
-    min-height: 40px;
-  }
-  .nav button {
-    min-height: 40px;
-  }
-  .helptip-icon {
-    width: 20px;
-    height: 20px;
-    font-size: 11px;
-  }
-  .bragg-sort button {
-    padding: 7px 12px;
-  }
-  .bragg-trow {
-    height: 38px;
-  }
-
-  .ai-chip,
-  .ai-vision-chip,
-  .ai-provider-tab {
-    padding-top: 8px;
-    padding-bottom: 8px;
-  }
-  .ai-gear {
-    width: 36px;
-    height: 36px;
-  }
-  .ai-send {
-    width: 38px;
-    height: 38px;
-  }
-  .import-banner-close {
-    width: 32px;
-    height: 32px;
   }
 }
 
@@ -6767,5 +6686,337 @@ h6.md-h {
   }
   .report-shell {
     border-radius: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   NEBULA Pilot on a phone or tablet (state/dockLayout.ts dockModeFor)
+   --------------------------------------------------------------------------- */
+/* As a bottom sheet the chips go in one row that scrolls sideways and the
+   transcript takes what is left, so the composer stays at the sheet's foot
+   however short it is dragged. Docked on a short screen (a phone held
+   landscape) the chips get the same row. */
+.ai-side[data-mode="sheet"] .ai-transcript {
+  min-height: 0;
+}
+.ai-side[data-mode="sheet"] .ai-reviews {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.ai-side[data-mode="sheet"] .ai-reviews::-webkit-scrollbar {
+  display: none;
+}
+.ai-side[data-mode="sheet"] .ai-reviews > * {
+  flex: none;
+}
+@media (max-height: 600px) {
+  /* there the panel scrolls (to the chips and the composer) rather than
+     leave a long answer a sliver */
+  .ai-side[data-mode="docked"] .ai-transcript {
+    min-height: 120px;
+  }
+  .ai-side[data-mode="docked"] .ai-reviews {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+  .ai-side[data-mode="docked"] .ai-reviews::-webkit-scrollbar {
+    display: none;
+  }
+  .ai-side[data-mode="docked"] .ai-reviews > * {
+    flex: none;
+  }
+}
+/* docked beside the page in landscape: clear the notch on the right */
+.ai-side[data-mode="docked"] {
+  padding-right: max(14px, env(safe-area-inset-right));
+}
+.ai-rail {
+  padding-right: env(safe-area-inset-right);
+}
+/* Typing to NEBULA Pilot with the on-screen keyboard up
+   (components/useKeyboardFrame.ts): the shell takes the part of the screen
+   the keyboard leaves, panned with it, and the panel keeps the conversation
+   and the composer only. */
+html.kb-open .app {
+  position: relative;
+  top: calc(var(--kb-top) / var(--ui-zoom));
+  height: calc(var(--kb-vh) / var(--ui-zoom));
+}
+html.kb-open .ai-side :is(.ai-topbar, .ai-reviews, .ai-toggles, .ai-conn-warn) {
+  display: none;
+}
+html.kb-open .ai-side {
+  padding-bottom: 8px; /* the keyboard covers the home indicator */
+}
+
+/* ---------------------------------------------------------------------------
+   Touch screens (iPhone, iPad; `pointer: coarse`): finger-sized targets.
+   Last in the file on purpose, so no base rule declared later overrides it.
+   Every control's hit area is at least 44 × 44 CSS px (Apple's guideline):
+   the control grows where that reads well, else a transparent ::before
+   widens the hit area around a visual that stays small.
+   scripts/responsive_audit.mjs measures it.
+   --------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  :is(button, select, input, label, summary, a, textarea) {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  /* a press held on a control shows its title (TouchTitles.tsx), not the
+     system's callout or a text selection */
+  :is(button, label, summary, [title]) {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .touch-title {
+    z-index: 70;
+    width: auto;
+    max-width: min(320px, calc(100vw - 16px));
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text);
+  }
+
+  /* buttons, chips, pills: a 44 px row */
+  :is(.btn, .exec-btn, .nav button, .ws-tool, .ai-chip, .ai-vision-chip, .ai-provider-tab,
+    .ai-clear, .ai-sheetbar button, .bragg-sort button, .qr-save-btn) {
+    min-height: 44px;
+  }
+  .bragg-sort button {
+    min-width: 44px;
+  }
+  .ws-head .ws-display-toggle {
+    min-height: 44px;
+  }
+  .segmented {
+    padding: 0;
+    gap: 0;
+  }
+  .segmented button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 14px;
+  }
+  .segmented.icons button {
+    padding: 0 12px;
+  }
+  .bragg-trow {
+    height: 44px;
+  }
+
+  /* form fields: 44 px tall */
+  :is(select, input[type="number"], input[type="text"]) {
+    min-height: 44px;
+  }
+  .ai-composer textarea {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  /* switches: the whole label is the target */
+  .switch {
+    min-width: 44px;
+    min-height: 44px;
+    padding-bottom: 0;
+    -webkit-user-select: none;
+  }
+  .switch-track {
+    width: 40px;
+    height: 24px;
+    border-radius: 12px;
+  }
+  .switch-track::after {
+    width: 18px;
+    height: 18px;
+  }
+  .switch input:checked + .switch-track::after {
+    transform: translateX(16px);
+  }
+  .cfg-advanced > summary {
+    min-height: 44px;
+  }
+  :is(.sidebar-foot, .main-foot) .foot-links a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* sliders: a 44 px tall input whose 6 px track and 24 px thumb are drawn
+     inside it, taking the 28 px of layout the slider had */
+  input[type="range"] {
+    height: 44px;
+    margin: -8px 0;
+    background: transparent;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) var(--p, 50%), var(--surface-3) var(--p, 50%));
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+    margin-top: -9px;
+  }
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) var(--p, 50%), var(--surface-3) var(--p, 50%));
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  .range-dual {
+    height: 28px;
+    margin: 0;
+  }
+  .range-dual input[type="range"] {
+    top: -8px;
+    height: 44px;
+    margin: 0;
+  }
+  .range-dual input[type="range"]::-webkit-slider-runnable-track,
+  .range-dual input[type="range"]::-moz-range-track {
+    background: none;
+  }
+  .range-dual .range-track,
+  .range-dual .range-fill {
+    height: 6px;
+    border-radius: 3px;
+  }
+
+  /* small round and icon buttons: a larger visual, then a ::before to 44 px */
+  .icon-btn {
+    position: relative;
+    width: 36px;
+    height: 36px;
+  }
+  :is(.icon-btn, .gh-trigger, .gh-close, .helptip, .lv-handle)::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .gh-trigger,
+  .gh-trigger.mem-help {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+  .gh-trigger.mem-help::before {
+    inset: auto;
+  }
+  .gh-close {
+    position: relative;
+    width: 32px;
+    height: 32px;
+  }
+  .helptip-icon {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+  .ai-panel-close,
+  .ai-gear,
+  .ai-send,
+  .import-banner-close {
+    width: 44px;
+    height: 44px;
+  }
+  /* the views' + / −: two separate 36 px buttons, 8 px apart, each with a
+     44 px hit area that does not reach into the other's */
+  .vf-zoom {
+    gap: 8px;
+    overflow: visible;
+    border: 0;
+    background: none;
+  }
+  .vf-zoom button {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: rgba(11, 13, 16, 0.72);
+  }
+  .vf-zoom button + button {
+    border-top: 1px solid var(--border-strong);
+  }
+  .vf-zoom button::before {
+    content: "";
+    position: absolute;
+    inset: -5px; /* from inside the 1 px border: 34 + 10 */
+  }
+
+  /* a slice view: one finger scrolls the page over it (a phone's views fill
+     its width), two pinch and move it (ViewFrame keeps their touchmove from
+     the page), a tap or a sideways drag reads values; with Box zoom armed the
+     finger draws the box */
+  .vf {
+    touch-action: pan-y;
+  }
+  .vf.vf--box {
+    touch-action: none;
+  }
+
+  .ai-gear {
+    flex: none;
+  }
+  /* the docked Pilot's edge: a 9 px strip with a 45 px hit area */
+  .ai-resize-x::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -18px;
+    right: -18px;
+  }
+  /* the collapsed rail's button: the rail's whole width, and over its left
+     border (not past the screen's edge, which would widen the page) */
+  .ai-rail button {
+    position: relative;
+    align-self: stretch;
+  }
+  .ai-rail button::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 0 -1px;
+  }
+
+  /* NEBULA Pilot's sheet handle: a 28 px bar whose hit area reaches 12 px
+     up over the page's edge */
+  .ai-resize-y {
+    position: relative;
+    z-index: 3;
+    height: 28px;
+  }
+  .ai-resize-y::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -12px;
+    bottom: -4px;
+  }
+  .ai-resize-y span {
+    width: 48px;
+    height: 5px;
   }
 }

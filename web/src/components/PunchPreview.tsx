@@ -68,7 +68,8 @@ import {
   type SliceGeom,
   type Viewport,
 } from "./viewport";
-import { HKL_GRID_LABEL, RESET_ZOOM_TITLE } from "./viewerText";
+import { useTouchOnly } from "./usePlatform";
+import { HKL_GRID_LABEL, readVerb, RESET_ZOOM_TITLE } from "./viewerText";
 import { UnitCellsSwitch, WorkspaceHeader } from "./WorkspaceHeader";
 
 const planeTitle = (p: (typeof PUNCH_PLANES)[number]) => `The ${p.title} plane, cut along ${p.cutLabel}`;
@@ -335,6 +336,7 @@ function pooled(parts: (Float32Array | undefined)[]): Float32Array | null {
 }
 
 export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts, onCut, bands, bandText, footprintText }: PunchPreviewProps) {
+  const touch = useTouchOnly();
   const tab = useConfigViewStore((s) => s.previewTab);
   const setTab = useConfigViewStore((s) => s.setPreviewTab);
   const views = useConfigViewStore((s) => s.views);
@@ -579,13 +581,15 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
               {hoverFrame.axisX} {(hover.p[0] / hoverFrame.geom.sx).toFixed(3)} · {hoverFrame.axisY}{" "}
               {(hover.p[1] / hoverFrame.geom.sy).toFixed(3)} · {hoverFrame.spec.cutAxis} {fmtCut(cutOf(hoverFrame.spec))}
             </b>
-            <span>{hovered === undefined ? "—" : Number.isFinite(hovered) ? fmtLevel(hovered) : "masked"}</span>
+            <span>
+              <i>I</i> {hovered === undefined ? "—" : Number.isFinite(hovered) ? fmtLevel(hovered) : "masked"}
+            </span>
           </>
         ) : wide ? (
-          <span className="muted">Hover a slice to read its intensity at (H, K, L).</span>
+          <span className="muted">{readVerb(touch)} a slice to read its intensity at (H, K, L).</span>
         ) : (
           <span className="muted">
-            Hover the slice to read its intensity at ({tabFrame.axisX}, {tabFrame.axisY}).
+            {readVerb(touch)} the slice to read its intensity at ({tabFrame.axisX}, {tabFrame.axisY}).
           </span>
         )}
       </div>

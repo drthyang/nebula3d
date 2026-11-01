@@ -40,10 +40,15 @@ describe("dockModeFor", () => {
     expect(dockModeFor(960, 600)).toBe("docked");
   });
 
+  it("docks on a phone held landscape, whose sheet would be too short", () => {
+    expect(dockModeFor(844, 390)).toBe("docked");
+    expect(dockModeFor(932, 430)).toBe("docked");
+    expect(dockModeFor(667, 375)).toBe("sheet"); // a small phone: a column would leave the page too little
+  });
+
   it("is a bottom sheet on portrait tablets and phones", () => {
     expect(dockModeFor(820, 1180)).toBe("sheet");
     expect(dockModeFor(390, 844)).toBe("sheet");
-    expect(dockModeFor(844, 390)).toBe("sheet"); // a phone, landscape: too narrow for a column
     expect(dockModeFor(950, 1000)).toBe("sheet");
   });
 });

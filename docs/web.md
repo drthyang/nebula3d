@@ -275,7 +275,7 @@ dataset pickers). Most views replace a standalone `examples/explore_*.py` viewer
 | **3D-ΔPDF** | `explore_delta_pdf_ortho.py` | Three real-space orthoslices (x_H–y_K, x_H–z_L, y_K–z_L) in the [viewer workspace](#viewer-workspace), each with its own cut slider, one shared ± colour range, a gray dashed unit-cell overlay and an optional [structure overlay](#structure-overlay) of interatomic vectors. Views open at ±40 Å. Hovering a view reads the ΔPDF, and the pair vectors under the pointer with the structure on. |
 | **Multi-volume** _(hidden in 0.3.0)_ | `explore_delta_pdf_multi.py` | Related ΔPDF files × the three planes as a square grid across the page, under the workspace header, sharing the cuts and one ± colour range (Auto as on 3D-ΔPDF, pooled over the files' centre sections). Each plane has one view shared by every file, zoomed and panned as in the [viewer workspace](#viewer-workspace), so the files are always compared at the same scale; views open at ±40 Å. Component retained; unrouted from the sidebar for now. |
 | **Q–R Band Transform** | `delta_pdf_consistency.py` | Back-FFT check: inverse-transforms the ΔPDF to reciprocal space and shows **data, ΔPDF, back-FFT and residual** as four views (focus layout, data large, by default), with agreement metrics (Pearson r, normalised RMS) in the header. Data, back-FFT and residual share one plane, cut, colour range and view; the residual has its own ± range on a diverging map. The ΔPDF plane follows the Q plane (H ↔ x, K ↔ y, L ↔ z) while *Link orientation* is on. **\|Q\|** and real-space **\|R\|** bands, each with its own *Apply* in the view footer, isolate which ranges support a signal; applying a band keeps both cuts. The \|Q\| band is drawn as its true contour on the r.l.u. axes: a circle for an orthogonal cell, a tilted ellipse (centred off the origin where the cut axis is not normal to the plane) for any other. The round trip transforms what the run transformed, as the run did: the volume the run's ΔPDF was made from, with its window, σ, shape and support, padding and subtractions, which the ΔPDF records (`source_file`, `transform_config`), over the full \|Q\| range and the band applied here. Without a record to follow it falls back: to the package defaults when the ΔPDF records no transform (none on disk, or one written before the record), and to the flattened volume, else the backfilled one, when no record names its input or that file is gone. The header says which, and why: "the run's window: hann", or "the default window, gaussian σ 0.4: no ΔPDF on disk for this dataset; the view falls back to …". |
-| **NEBULA Pilot** | — (new) | A column docked beside every page, which the page reflows beside, never over it: drag its edge to resize it, or collapse it to a slim rail (opened from the sidebar or the rail). In a window under 1000 px wide (900 px in landscape) it is a bottom sheet under the page instead. With *Follow* on, the figure it works on stays fully in view beside it. Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic) model. One **chat**: free questions, five one-click stage reviews, and two one-click requests (*Assess the run*, *Tune for the best result*), grounded in metrics computed in the browser. With **Tools** on, the model measures any cut, judges each stage on three planes, checks the punch and backfill for texture, the ΔPDF's window against the data coverage (and where the raw counts begin and end in \|Q\|) and the ΔPDF's symmetry, sets the ΔPDF view's contrast, reads the Bragg profile, back-FFT check and run log, compares datasets, opens the viewer beside the chat, and acts: it runs the pipeline (shown live on the Execution page and in the chat), changes settings, and tunes the pipeline one stage at a time, keeping the best settings for each. Optional vision opt-in attaches the rendered slice for image-capable models. |
+| **NEBULA Pilot** | — (new) | A column docked beside every page, which the page reflows beside, never over it: drag its edge to resize it, or collapse it to a slim rail (opened from the sidebar or the rail). In a window under 1000 px wide (800 px in landscape) it is a bottom sheet under the page instead. With *Follow* on, the figure it works on stays fully in view beside it. Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic) model. One **chat**: free questions, five one-click stage reviews, and two one-click requests (*Assess the run*, *Tune for the best result*), grounded in metrics computed in the browser. With **Tools** on, the model measures any cut, judges each stage on three planes, checks the punch and backfill for texture, the ΔPDF's window against the data coverage (and where the raw counts begin and end in \|Q\|) and the ΔPDF's symmetry, sets the ΔPDF view's contrast, reads the Bragg profile, back-FFT check and run log, compares datasets, opens the viewer beside the chat, and acts: it runs the pipeline (shown live on the Execution page and in the chat), changes settings, and tunes the pipeline one stage at a time, keeping the best settings for each. Optional vision opt-in attaches the rendered slice for image-capable models. |
 
 ### Viewer workspace
 
@@ -302,7 +302,8 @@ and zooms and pans by the same rules.
   the arrow keys to move; a double-click, 0 or *Reset zoom* to reset; *Box
   zoom* then a drag, Esc to cancel. ⌘ shows on Apple platforms, Ctrl
   elsewhere; a touch-only device (a coarse pointer with no hover) shows the
-  touch gestures instead: pinch, a two-finger drag, a double-tap. Esc, a
+  touch gestures instead: pinch, a two-finger drag, a double-tap, and a
+  note that a tap reads values and one finger scrolls the page. Esc, a
   click outside it or its × closes it, and focus returns to the **?**; it
   does not open on hover, where it would cover the display bar. Until the card has been opened once, the
   **?** carries a small dot (remembered by the browser); nothing opens by
@@ -319,7 +320,11 @@ and zooms and pans by the same rules.
   values: a dashed crosshair follows the pointer, on every linked view (the
   stages of Reciprocal cleanup, the Q–R page's Q views, the Bragg peak tiles),
   and the readout under the views gives the point and the values there. A
-  plain click on a view does nothing. The **Box zoom** tool is one toggle:
+  plain click on a view does nothing. A touch screen has no hover: there a
+  tap reads the values (the reading stays when the finger lifts), as does a
+  sideways drag, and the readout's hint says *Tap*; one finger dragged up or
+  down scrolls the page over a view (`touch-action: pan-y`; on a phone the
+  views fill the width), while two fingers pinch and move it. The **Box zoom** tool is one toggle:
   press it, drag a box on a view and the view zooms into the box, and the tool
   is put away (press it again, or Esc, to put it away unused). It is never
   remembered: a page opens with it put away. Zoom and pan need no tool; the
@@ -435,7 +440,7 @@ live at the end of `web/src/index.css`, under "Device layouts".
 | Screen | Viewport | Layout |
 | --- | --- | --- |
 | iPhone 18 Pro / Pro Max, portrait | 402 × 874 / 440 × 956 | The sidebar becomes a top bar: brand and dataset picker, then the views as a row of pills that scrolls sideways. Viewer panels stack one per row. Form text is 16 px, so Safari does not zoom in when a field gets focus. The API status, memory bar and version move to the end of each page. |
-| iPhone 18 Pro / Pro Max, landscape | 874 × 402 / 956 × 440 | The top bar is a single row. Panels go three to a row. Padding clears the Dynamic Island and the home indicator (`viewport-fit=cover`). |
+| iPhone 18 Pro / Pro Max, landscape | 874 × 402 / 956 × 440 | The top bar is a single row. Panels go three to a row. NEBULA Pilot docks beside the page rather than taking a sheet under 200 px tall. Padding clears the Dynamic Island and the home indicator (`viewport-fit=cover`). |
 | iPad Pro 11″ / 13″, portrait | 834 × 1210 / 1032 × 1376 | Top bar with the full row of views. Panels go three to a row, or two to a row when there are 2 or 4. Configure's punch boxes go two to a row. |
 | iPad Pro 11″ / 13″, landscape | 1210 × 834 / 1376 × 1032 | Sidebar, narrowed to 208 px. |
 | MacBook Pro 14″ / 16″ | 1512 × 982 / 1728 × 1117 | The baseline desktop layout. On short windows (≤ 920 px tall, e.g. the 14″) there is less vertical padding, so viewer panels start higher. |
@@ -444,8 +449,24 @@ live at the end of `web/src/index.css`, under "Device layouts".
 | 4K at 100 % (3840 × 2160) | ≥ 3200 wide | The whole console is scaled up 1.25–1.5× (CSS `zoom`), so it looks like the 150 % layout rather than tiny text. Browser zoom turns this off. |
 
 Narrower portrait tablets (600–799 px, e.g. iPad mini or Split View) show two
-panels to a row. On any touch screen (`pointer: coarse`), slider thumbs,
-switches, buttons and help icons are enlarged to finger size. The Configure stage sections use
+panels to a row. On any touch screen (`pointer: coarse`) every control's hit
+area is at least 44 × 44 CSS px, Apple's guideline: buttons, switches, tabs,
+selects and fields grow to 44 px tall, sliders are 44 px tall inputs whose
+6 px track and 24 px thumb are drawn inside the room they had, and where the
+visual must stay small (the help and gesture **?**, the colour-limit handles,
+the view header's icons, the views' + / −, the Pilot sheet's handle) a
+transparent `::before` widens the hit area. These rules are the last block of
+`web/src/index.css`, so no base rule declared later overrides them. A title
+tooltip never shows on a touch-only screen, so there a press held on a
+control for half a second opens its title as a small card beside it instead
+of acting, and a field's title opens when it takes focus; a tap elsewhere, a
+scroll or the field's blur closes it (`components/TouchTitles.tsx`).
+`scripts/responsive_audit.mjs` checks the layouts: every page on the phone,
+iPad and desktop sizes, with NEBULA Pilot's drawer open and closed, for a
+document taller or wider than the window, `.main`'s sideways overflow,
+elements wider than their card, clipped text, controls off-screen, title-only
+information and tap targets under 44 px (`PW=<playwright-core> node
+scripts/responsive_audit.mjs <url> <out-dir>`). The Configure stage sections use
 container queries, so their columns follow the width they actually get,
 including the narrower column in the 4K side-by-side layout: the punch's boxes
 go one, two or four to a row, backfill, background correction and 3D-ΔPDF sit

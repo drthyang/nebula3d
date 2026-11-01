@@ -13,7 +13,8 @@
 //              (the view fills it) a plain wheel zooms.  A sideways scroll is
 //              the page's.
 //   drag     — a middle-button or Shift drag pans, and a two-finger touch drag
-//              pans and pinches (iPad Safari's GestureEvents for that pinch are
+//              pans and pinches (one finger scrolls the page vertically, and
+//              a tap or a sideways drag reads values, as a hover does) (iPad Safari's GestureEvents for that pinch are
 //              ignored, so it zooms once); the view's centre stays on the data
 //              (`bounds`), so it cannot be dragged off screen
 //   double-click — returns to `fit` (the full view), as do a double-tap on a
@@ -220,12 +221,20 @@ export function ViewFrame({
       e.preventDefault();
       gesture.current = null;
     };
+    // On a touch screen one finger scrolls the page over a view (index.css,
+    // touch-action: pan-y) while two pinch and move the view: their touchmove
+    // is kept from the browser, so it starts no scroll and the pointers stay ours.
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1 && e.cancelable) e.preventDefault();
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("gesturestart", onGestureStart);
     el.addEventListener("gesturechange", onGestureChange);
     el.addEventListener("gestureend", onGestureEnd);
     return () => {
       ro.disconnect();
+      el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("gesturestart", onGestureStart);
       el.removeEventListener("gesturechange", onGestureChange);
@@ -258,6 +267,11 @@ export function ViewFrame({
       setBox(null);
     } else {
       drag.current = { x0: p[0], y0: p[1], v0: viewport, moved: false, pan: e.button === 1 || e.shiftKey };
+      // A touch has no hover: the tap itself reads the values under it.
+      if (e.pointerType !== "mouse") {
+        const { w, h } = rect();
+        onCursor?.(pixelToDisplay(viewport, p[0], p[1], w, h));
+      }
     }
   };
 
@@ -374,7 +388,9 @@ export function ViewFrame({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      onPointerLeave={() => {
+      onPointerLeave={(e) => {
+        // a lifted finger leaves too: the reading it tapped stays up
+        if (e.pointerType === "touch") return;
         if (!drag.current && !pinch.current) onCursor?.(null);
       }}
       onDoubleClick={onDoubleClick}
