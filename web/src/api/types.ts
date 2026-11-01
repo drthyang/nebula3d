@@ -783,6 +783,23 @@ export interface PipelineRunRequest {
   tuning?: TuningTrial; // a tuning trial: never writes to processed/
 }
 
+/** The Configure page's settings for a dataset, as a run would take them (POST /api/pipeline/stale). */
+export interface StaleOutputsRequest {
+  dataset_id: string;
+  flatten_enabled: boolean;
+  params: StageParamsIn;
+}
+
+/**
+ * Each output on disk that a run with those settings would make again, and
+ * why ("ringremoved" → "it was made with edge trim 1, now 2"): its record no
+ * longer matches the settings, or an output before it is made again. An
+ * output the run would reuse, or that is missing, is not listed.
+ */
+export interface StaleOutputs {
+  stale: Record<string, string>;
+}
+
 /** A tuning run's folder; `dataset_id` views its chain of kept outputs. */
 export interface TuningRun {
   run_id: string;

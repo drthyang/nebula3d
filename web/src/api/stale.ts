@@ -1,4 +1,9 @@
-// Which stage outputs are stale: older than an output upstream of them, so
+// Which stage outputs are stale. The backend decides it from each output's
+// record of what it was made from (its input, the edge trim, the symmetry and
+// its stage's settings: nebula3d.pipeline.resume_plan, POST
+// /api/pipeline/stale), which the Configure page's stage track shows
+// (trackStale). By the dates alone (staleOutputs, below, and the Execution
+// page): older than an output upstream of them, so
 // they were made before that stage last ran (the stage was re-run while this
 // one was switched off, or not part of the run) and no longer follow from it;
 // or made from an output that is itself stale (a stage re-run alone on a
@@ -52,4 +57,38 @@ export function staleOutputs(stages: readonly StageStatus[]): Map<string, string
     if (from && stale.has(from)) stale.set(name, from);
   });
   return stale;
+}
+
+/** Why an output on the Configure page's stage track is stale. */
+export type TrackStale =
+  // The backend's resume rule: a run with the page's settings makes it again,
+  // and this is why (its record names another edge trim, Laue class, input or
+  // setting, or an output before it is made again).
+  | { kind: "settings"; why: string }
+  // The dates alone (staleOutputs), while the backend has not answered: older
+  // than the output `after`, or made from it while it is stale (`chained`).
+  | { kind: "dates"; after: string; chained: boolean };
+
+/**
+ * The stage track's stale outputs. The backend's answer (`settings`, from
+ * POST /api/pipeline/stale) decides once it has come: it follows each
+ * output's record of what it was made from, which the dates cannot, and it is
+ * the rule the run itself follows, so an output it lists is made again by a
+ * run without Force and one it leaves out is reused. Until then, the dates.
+ */
+export function trackStale(
+  stages: readonly StageStatus[],
+  settings: Readonly<Record<string, string>> | undefined,
+): Map<string, TrackStale> {
+  const out = new Map<string, TrackStale>();
+  if (settings) {
+    for (const name of OUTPUT_ORDER) {
+      const why = settings[name];
+      if (why && stages.some((s) => s.name === name && s.exists)) out.set(name, { kind: "settings", why });
+    }
+    return out;
+  }
+  const dated = staleOutputs(stages);
+  for (const [name, after] of dated) out.set(name, { kind: "dates", after, chained: dated.has(after) });
+  return out;
 }

@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
-import { browseDataRoot, checkModulation, fetchDatasets, fetchMeta, fetchVolumeCoverage, setDataRoot } from "../api/client";
+import { browseDataRoot, checkModulation, fetchDatasets, fetchMeta, fetchStaleOutputs, fetchVolumeCoverage, setDataRoot } from "../api/client";
 import {
   bootPercent,
   engine,
@@ -15,7 +15,7 @@ import {
   type BootStatus,
 } from "../api/pyodideEngine";
 import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
-import type { Lattice, VolumeMeta } from "../api/types";
+import type { Lattice, StageParamsIn, VolumeMeta } from "../api/types";
 import { LaueCompare } from "../components/LaueCompare";
 import { PunchPreview } from "../components/PunchPreview";
 import { RingModelHelp } from "../components/RingModelHelp";
@@ -40,7 +40,7 @@ import {
 } from "../state/pipelineStore";
 import { useHighlightKeys } from "../llm/highlight";
 import { datasetName } from "../api/datasetName";
-import { staleOutputs } from "../api/stale";
+import { trackStale } from "../api/stale";
 import { useChatStore } from "../llm/chatStore";
 import { useMarkStore } from "../state/markStore";
 import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
@@ -536,6 +536,29 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     enabled: !PYODIDE_MODE || bootStatus.ready,
     staleTime: Infinity,
   });
+  // The outputs a run with these settings would make again, and why: the
+  // backend's resume rule, from each output's record of what it was made from
+  // (its input, the edge trim, the symmetry, its stage's settings). Asked a
+  // moment after the form settles and again when a run rewrites the outputs;
+  // in the browser build only once the engine is up, and never during a run.
+  const runParamsJson = usePipelineStore((st) => JSON.stringify(formToParams(st)));
+  const [staleAsk, setStaleAsk] = useState(runParamsJson);
+  useEffect(() => {
+    const t = setTimeout(() => setStaleAsk(runParamsJson), 300);
+    return () => clearTimeout(t);
+  }, [runParamsJson]);
+  const outputsKey = JSON.stringify((selectedDataset?.stages ?? []).map((x) => [x.name, x.exists, x.mtime ?? null]));
+  const hasOutputs = selectedDataset?.stages.some((x) => x.exists && x.name !== "raw") ?? false;
+  const staleQ = useQuery({
+    queryKey: ["stale-outputs", datasetId, staleAsk, s.flatten, outputsKey],
+    queryFn: () =>
+      fetchStaleOutputs({ dataset_id: datasetId ?? "", flatten_enabled: s.flatten, params: JSON.parse(staleAsk) as StageParamsIn }),
+    enabled: Boolean(datasetId) && hasOutputs && !s.busy && (!PYODIDE_MODE || bootStatus.ready),
+    // The last answer for this dataset stands while the next one comes.
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === datasetId ? prev : undefined),
+    staleTime: Infinity,
+    retry: false,
+  });
   const modulationChecked = modulationCheckQ.data;
   const modulationNote = !modulationChecked
     ? "The sample's modulation, a fact about the sample: the off-lattice search leaves alone the satellites G ± m·k it implies, or the planes through them."
@@ -705,11 +728,11 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     if (folderInputRef.current) folderInputRef.current.value = "";
   };
 
-  const stale = staleOutputs(selectedDataset?.stages ?? []);
+  const stale = trackStale(selectedDataset?.stages ?? [], hasOutputs ? staleQ.data?.stale : undefined);
   const stageStatus = DATASET_STAGE_BADGES.map((stage) => ({
     ...stage,
     exists: selectedDataset?.stages.some((s) => s.name === stage.key && s.exists) ?? false,
-    staleAfter: stale.get(stage.key),
+    stale: stale.get(stage.key),
   })).filter((stage) => stage.key !== "symmetrized" || stage.exists || s.symmetryAverageEnabled);
   const badgeLabel = (key: string) => DATASET_STAGE_BADGES.find((b) => b.key === key)?.label ?? key;
   const rootStatus = rootError
@@ -808,17 +831,19 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
           <div className="stage-track-wrap">
             <ol className="stage-track" aria-label="Pipeline outputs on disk">
               {stageStatus.map((stage) => {
-                const state = stage.staleAfter ? "stale" : stage.exists ? "ok" : "missing";
+                const state = stage.stale ? "stale" : stage.exists ? "ok" : "missing";
                 return (
                   <li
                     key={stage.key}
                     className={`stage-step ${state}`}
                     title={
-                      stage.staleAfter
-                        ? stale.has(stage.staleAfter)
-                          ? `${stage.group} · ${stage.label}: stale. It was made from ${badgeLabel(stage.staleAfter)}, which is itself stale; run the pipeline from the first stale stage with Force to update it.`
-                          : `${stage.group} · ${stage.label}: stale. It is older than ${badgeLabel(stage.staleAfter)}, so it was made before that stage last ran; run the pipeline from here with Force to update it.`
-                        : `${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`
+                      stage.stale?.kind === "settings"
+                        ? `${stage.group} · ${stage.label}: stale (${stage.stale.why}); the next run makes it again.`
+                        : stage.stale
+                          ? stage.stale.chained
+                            ? `${stage.group} · ${stage.label}: stale. It was made from ${badgeLabel(stage.stale.after)}, which is itself stale; run the pipeline from the first stale stage to update it.`
+                            : `${stage.group} · ${stage.label}: stale. It is older than ${badgeLabel(stage.stale.after)}, so it was made before that stage last ran; run the pipeline from here to update it.`
+                          : `${stage.group} · ${stage.label}: ${stage.exists ? "available" : "missing"}`
                     }
                   >
                     <span className="stage-node" aria-hidden="true" />

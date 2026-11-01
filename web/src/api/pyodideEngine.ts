@@ -40,6 +40,7 @@ import type {
   ShellFloors,
   Slice,
   SliceHeader,
+  StaleOutputs,
   TuningPromote,
   TuningRun,
   TuningTrial,
@@ -432,6 +433,10 @@ export const engine = {
   },
   dataset(datasetId: string): Promise<Dataset> {
     return jsonCall<Dataset>("dataset_json", [datasetId]);
+  },
+  // The outputs a run with these settings would make again (webbridge.stale_outputs_json).
+  staleOutputs(datasetId: string, paramsJson: string, flattenEnabled: boolean): Promise<StaleOutputs> {
+    return jsonCall<StaleOutputs>("stale_outputs_json", [datasetId, paramsJson, flattenEnabled]);
   },
   tuningStart(datasetId: string, firstStage: string): Promise<TuningRun> {
     return jsonCall<TuningRun>("tuning_start_json", [datasetId, firstStage]);

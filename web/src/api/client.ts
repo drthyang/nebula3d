@@ -24,6 +24,8 @@ import type {
   Slice,
   SliceHeader,
   StageParamsIn,
+  StaleOutputs,
+  StaleOutputsRequest,
   TuningPromote,
   TuningRun,
   UbCheck,
@@ -424,6 +426,13 @@ export async function runPipeline(req: PipelineRunRequest): Promise<JobOut> {
   });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return (await r.json()) as JobOut;
+}
+
+// The outputs a run with the Configure page's settings would make again, and
+// why (the backend's resume rule, nebula3d.pipeline.resume_plan).
+export function fetchStaleOutputs(req: StaleOutputsRequest): Promise<StaleOutputs> {
+  if (PYODIDE_MODE) return engine.staleOutputs(req.dataset_id, JSON.stringify(req.params), req.flatten_enabled);
+  return postJSON<StaleOutputs>("/api/pipeline/stale", req);
 }
 
 /** A job's status, or null when the server does not know it (it restarted since). */
