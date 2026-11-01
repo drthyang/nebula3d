@@ -2530,12 +2530,20 @@ input[type="range"]::-moz-range-track {
   justify-content: space-between;
   gap: 14px;
 }
-.data-actions {
+/* The page's top-level actions, above the cards: running on the left, the
+   session on the right; they wrap onto two rows on a narrow page. */
+.config-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex: none;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.config-toolbar-run,
+.config-toolbar-session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
 }
 .data-card-grid {
@@ -2821,11 +2829,11 @@ input[type="range"]::-moz-range-track {
     flex: none;
     width: 100%;
   }
-  .data-actions {
-    justify-content: flex-start;
+  .config-toolbar-run,
+  .config-toolbar-session {
     width: 100%;
   }
-  .data-actions .btn {
+  .config-toolbar .btn {
     width: auto;
     flex: 1 1 150px;
   }
