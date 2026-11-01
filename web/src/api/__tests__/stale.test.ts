@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { staleOutputs } from "../stale";
+import { staleOutputs, trackStale } from "../stale";
 import type { StageStatus } from "../types";
 
 const at = (written: Record<string, number | null>, source?: string): StageStatus[] =>
@@ -58,5 +58,35 @@ describe("staleOutputs", () => {
     const stale = staleOutputs(at({ raw: 0, ringremoved: 10, braggpunched: 20, backfilled: 21, flattened: 13, delta_pdf: 14 }));
     expect([...stale.entries()]).toEqual([["flattened", "backfilled"], ["delta_pdf", "backfilled"]]);
     expect(staleOutputs(at({ raw: 0, ringremoved: 10, braggpunched: 11, backfilled: 12, flattened: 13, delta_pdf: 14 }, null as unknown as string)).size).toBe(0);
+  });
+});
+
+describe("trackStale", () => {
+  const dated = at({ raw: 0, ringremoved: 10, braggpunched: 20, backfilled: 21, flattened: 13, delta_pdf: 14 });
+
+  it("goes by the dates until the backend answers", () => {
+    const track = trackStale(dated, undefined);
+    expect(track.get("flattened")).toEqual({ kind: "dates", after: "backfilled", chained: false });
+    expect(track.get("delta_pdf")).toEqual({ kind: "dates", after: "backfilled", chained: false });
+    // Made from a stale output, with no newer one upstream: chained.
+    const chained = trackStale(at({ raw: 0, ringremoved: 20, braggpunched: 11, backfilled: 30 }), undefined);
+    expect(chained.get("backfilled")).toEqual({ kind: "dates", after: "braggpunched", chained: true });
+  });
+
+  it("follows the backend's resume rule once it has answered, dates or not", () => {
+    // An edge trim changed: every output after the raw load is made again,
+    // though the dates are in order.
+    const inOrder = at({ raw: 0, ringremoved: 10, braggpunched: 11, backfilled: 12, flattened: 13, delta_pdf: 14 });
+    const why = "it was made with edge trim 1, now 2";
+    const track = trackStale(inOrder, { ringremoved: why, braggpunched: "its input is made again first" });
+    expect(track.get("ringremoved")).toEqual({ kind: "settings", why });
+    expect([...track.keys()]).toEqual(["ringremoved", "braggpunched"]);
+    // The run reuses what the backend leaves out, whatever the dates say.
+    expect(trackStale(dated, {}).size).toBe(0);
+  });
+
+  it("lists only outputs on disk", () => {
+    const some = at({ raw: 0, ringremoved: 10 });
+    expect([...trackStale(some, { ringremoved: "x", braggpunched: "y" }).keys()]).toEqual(["ringremoved"]);
   });
 });

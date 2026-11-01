@@ -19,10 +19,13 @@ it.  Each stage here calls the existing library primitives directly:
     5. pdf      → :func:`~nebula3d.analysis.compute_delta_pdf`
     6. pdf_check → :func:`pdf_consistency_check`
 
-:func:`run_pipeline` chains the stages with the same on-disk file naming, the
-skip-if-exists resume behaviour, and the stale-ΔPDF guard as the original script,
-and reports progress through an optional callback so a server (or CLI) can stream
-it.  Stage parameter defaults mirror the validated ``cc_on`` presets.
+:func:`run_pipeline` chains the stages with the same on-disk file naming as the
+original script, and reports progress through an optional callback so a server
+(or CLI) can stream it.  It resumes from the outputs on disk: each output records
+what it was made from (its input, the edge trim, the symmetry and its stage's
+settings), and an output whose record no longer matches the run is made again,
+with every output after it (:func:`resume_plan`).  Stage parameter defaults
+mirror the validated ``cc_on`` presets.
 
 The heavy diffraction maths is **not** reimplemented here — only the orchestration
 and the per-stage glue (build the model/params, call it, write the output).
@@ -150,6 +153,10 @@ __all__ = [
     "unconfirmed_rings_notice",
     "node_test_notice",
     "pipeline_paths",
+    "read_stage_record",
+    "resume_plan",
+    "stage_record",
+    "stage_staleness",
     "run_pipeline",
 ]
 
@@ -902,6 +909,231 @@ def _write_nebula3d_attrs(path: Path, **values: str) -> None:
             _set_text_attrs(grp, **values)
 
 
+# ---------------------------------------------------------------------------
+# Stage records: what each output was made from (the resume rule)
+# ---------------------------------------------------------------------------
+#: Each cleanup stage's record in its output: a JSON text attribute of the
+#: file's NEBULA3D group naming what the output was made from: the input it
+#: read (``source_file``) and that input's identity (``source``: the raw
+#: input's size and a sampled content digest, or a digest of the stage
+#: output's own record), the edge trim when it read the raw input, the
+#: symmetry setting, and the stage's own settings.  A resumed run reuses an
+#: output only while its record is the one the run would write now
+#: (:func:`resume_plan`); since each record holds a digest of its input's,
+#: a changed edge trim or Laue class reaches every output after it.  The ΔPDF
+#: keeps the same digest of its input as a run log (``source_record``).
+_STAGE_RECORD_ATTR = "stage_record"
+_STAGE_RECORD_VERSION = 1
+
+#: Bytes read at each of three places in the raw input (start, middle, end)
+#: for its content digest: a re-reduced or replaced file differs there, and a
+#: copy of the same file does not, whatever its date.  Hashing the whole file
+#: (hundreds of MB to GB) on every resume and settings change costs seconds.
+_RAW_SAMPLE_BYTES = 1 << 20
+
+#: The reason :func:`resume_plan` gives an output written before outputs
+#: recorded what they were made from: it cannot be checked, so it is made again.
+NO_RECORD_REASON = "it records no inputs (written by an earlier version)"
+
+
+def _canonical(obj: Mapping[str, Any]) -> dict[str, Any]:
+    """*obj* as JSON gives it back (tuples as lists, keys sorted), so a record
+    made now compares equal to one read from a file."""
+    out: dict[str, Any] = json.loads(json.dumps(obj, sort_keys=True, default=str))
+    return out
+
+
+def _digest(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+_RAW_DIGESTS: dict[tuple[str, int, int], str] = {}
+
+
+def _raw_identity(path: Path) -> dict[str, Any] | None:
+    """The raw input's identity: its size and a digest of its bytes at the
+    start, middle and end (:data:`_RAW_SAMPLE_BYTES` each), or None when it
+    cannot be read.  Not its date: copying a data folder re-dates it, and the
+    browser's copy of it is dated when it was loaded."""
+    try:
+        st = path.stat()
+        key = (str(path), st.st_size, st.st_mtime_ns)
+        if key not in _RAW_DIGESTS:
+            import hashlib
+
+            h = hashlib.sha256(str(st.st_size).encode("ascii"))
+            half = _RAW_SAMPLE_BYTES // 2
+            with path.open("rb") as fh:
+                for offset in sorted({0, max(0, st.st_size // 2 - half),
+                                      max(0, st.st_size - _RAW_SAMPLE_BYTES)}):
+                    fh.seek(offset)
+                    h.update(fh.read(_RAW_SAMPLE_BYTES))
+            _RAW_DIGESTS[key] = h.hexdigest()[:16]
+        return {"size": st.st_size, "sample_sha256": _RAW_DIGESTS[key]}
+    except OSError:
+        return None
+
+
+def _read_text_attr(path: Path, name: str) -> str | None:
+    """A text attribute of *path*'s NEBULA3D group, or None."""
+    import h5py
+
+    try:
+        with h5py.File(path, "r") as fh:
+            grp = fh.get(_FLATTEN_SETTINGS_GROUP)
+            raw = grp.attrs.get(name) if isinstance(grp, h5py.Group) else None
+    except OSError:
+        return None
+    if raw is None:
+        return None
+    return raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+
+
+def read_stage_record(path: str | Path) -> dict[str, Any] | None:
+    """What the stage that wrote the output *path* recorded it was made from
+    (see :data:`_STAGE_RECORD_ATTR`), or None when it records nothing: a file
+    no stage wrote, or one written before stages recorded their inputs."""
+    text = _read_text_attr(Path(path), _STAGE_RECORD_ATTR)
+    if text is None:
+        return None
+    try:
+        record = json.loads(text)
+    except ValueError:
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def _output_identity(path: Path) -> dict[str, Any]:
+    """A stage output's identity, as the stage after it records it: a digest
+    of its own record, which changes whenever anything it was made from does;
+    for an output that records nothing, its size and date."""
+    text = _read_text_attr(path, _STAGE_RECORD_ATTR)
+    if text is not None:
+        return {"record": _digest(text)}
+    try:
+        st = path.stat()
+    except OSError:
+        return {}
+    return {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def _symmetry_setting(p: PipelineParams) -> str | None:
+    """The run's symmetry setting (``p.symmetry``) as a record holds it: None,
+    ``"auto"`` (what the files declare: their records cover that), or the
+    operations, written one way."""
+    text = "" if p.symmetry is None else str(p.symmetry).strip()
+    if text.lower() in {"", "none"}:
+        return None
+    if text.lower() == "auto":
+        return "auto"
+    try:
+        return "; ".join(format_op(m) for m in parse_symmetry_ops(text))
+    except ValueError:
+        return text
+
+
+def _stage_settings(stage: str, p: PipelineParams) -> dict[str, Any]:
+    """The settings *stage*'s output depends on (``"symmetry_average"``,
+    ``"rings"`` … ``"flatten"``)."""
+    if stage == "symmetry_average":  # the closed group it averages over
+        return {"ops": symmetry_average_group(p.symmetry_average).ops_text}
+    own: dict[str, Any] = {"rings": p.rings, "punch": p.punch, "backfill": p.backfill,
+                           "flatten": p.flatten}
+    settings: dict[str, Any] = dataclasses.asdict(own[stage])
+    if stage == "punch":
+        modulation = Modulation.parse(p.modulation)
+        settings["modulation"] = (None if modulation is None
+                                  else dataclasses.asdict(modulation))
+    return settings
+
+
+def _source_identity(src: Path, p: PipelineParams, paths: PipelinePaths) -> dict[str, Any]:
+    """What a stage records of its input *src*: the raw input's identity,
+    with the edge trim the load takes off it; or the stage output's."""
+    if src == paths.input:
+        return {"raw": _raw_identity(src), "edge_trim": int(p.edge_trim)}
+    return _output_identity(src)
+
+
+def stage_record(stage: str, p: PipelineParams, src: str | Path,
+                 paths: PipelinePaths) -> dict[str, Any]:
+    """The record *stage* writes into its output when it reads *src* with
+    the settings *p* (:data:`_STAGE_RECORD_ATTR`)."""
+    src = Path(src)
+    record: dict[str, Any] = {
+        "version": _STAGE_RECORD_VERSION,
+        "stage": stage,
+        "source_file": src.name,
+        "source": _source_identity(src, p, paths),
+        "symmetry": _symmetry_setting(p),
+        "settings": _stage_settings(stage, p),
+    }
+    if src == paths.input:
+        record["edge_trim"] = int(p.edge_trim)
+    return _canonical(record)
+
+
+def _write_stage_record(path: Path, record: Mapping[str, Any]) -> None:
+    _write_nebula3d_attrs(path, **{_STAGE_RECORD_ATTR: json.dumps(record, sort_keys=True)})
+
+
+def _older_than(path: Path, src: Path) -> bool:
+    """Whether *path* was written before *src* (False when either is not there)."""
+    try:
+        return path.stat().st_mtime < src.stat().st_mtime
+    except OSError:
+        return False
+
+
+def _record_difference(recorded: Mapping[str, Any], expected: Mapping[str, Any],
+                       src: Path) -> str | None:
+    """Why the output's *recorded* inputs are not the *expected* ones (None
+    when they are): the first thing that differs, in words.  The identity of
+    an input that is not there (the raw input of a folder holding only the
+    processed outputs) is not compared."""
+    if recorded.get("version") != expected.get("version"):
+        return "it was recorded by another version"
+    if recorded.get("source_file") != expected.get("source_file"):
+        return f"it was made from {recorded.get('source_file')}, not {expected.get('source_file')}"
+    if recorded.get("edge_trim") != expected.get("edge_trim"):
+        return (f"it was made with edge trim {recorded.get('edge_trim')}, "
+                f"now {expected.get('edge_trim')}")
+    if src.exists() and recorded.get("source") != expected.get("source"):
+        return f"{src.name} changed since it was made"
+    if recorded.get("symmetry") != expected.get("symmetry"):
+        return "it was made with another symmetry setting"
+    if recorded.get("settings") != expected.get("settings"):
+        was, now = recorded.get("settings") or {}, expected.get("settings") or {}
+        changed = sorted(k for k in set(was) | set(now) if was.get(k) != now.get(k))
+        if changed == ["ops"]:  # the symmetry average's closed group
+            return "it was averaged over another Laue class"
+        shown = ", ".join(changed[:3]) + (", …" if len(changed) > 3 else "")
+        return f"it was made with other settings ({shown})"
+    return None
+
+
+def stage_staleness(stage: str, p: PipelineParams, src: str | Path, out: str | Path,
+                    paths: PipelinePaths) -> str | None:
+    """Why the existing output *out* of the cleanup *stage* would not follow
+    from its input *src* with the settings *p* (None when it does, and a
+    resumed run reuses it).
+
+    It does not when it records no inputs (:data:`NO_RECORD_REASON`), when it
+    is older than a stage output it reads (made before that stage last ran),
+    or when its record differs from the one the stage would write now
+    (:func:`stage_record`): another input, edge trim, symmetry or settings.
+    """
+    src, out = Path(src), Path(out)
+    recorded = read_stage_record(out)
+    if recorded is None:
+        return NO_RECORD_REASON
+    if src != paths.input and _older_than(out, src):
+        return f"it is older than {src.name}"
+    return _record_difference(recorded, stage_record(stage, p, src, paths), src)
+
+
 def share_ring_removal(out: HKLVolume, input_mask: np.ndarray, symmetry: GridSymmetry, *,
                        progress: ProgressFn | None = None) -> None:
     """Make the ring stage's output as symmetric as its input, in place.
@@ -927,15 +1159,17 @@ def finish_ring_stage(out: HKLVolume, input_mask: np.ndarray, p: PipelineParams,
                       progress: ProgressFn | None = None) -> None:
     """Finish the ring stage: make its output *out* as symmetric as its input
     *src* (the symmetry it declares, or the raw input's: :func:`share_ring_removal`
-    with *input_mask*, the input's mask), save it, declare its symmetry, and
-    write the ring diagnostics.  Shared by :func:`run_pipeline` and the
-    browser's out-of-band ring stage (``nebula3d.webbridge.run_async``)."""
+    with *input_mask*, the input's mask), save it, declare its symmetry, record
+    what it was made from (:func:`stage_record`), and write the ring
+    diagnostics.  Shared by :func:`run_pipeline` and the browser's out-of-band
+    ring stage (``nebula3d.webbridge.run_async``)."""
     symmetry = input_symmetry(out, p, src, fallback=paths.input, progress=progress,
                               stage="rings")
     if symmetry is not None:
         share_ring_removal(out, input_mask, symmetry, progress=progress)
     nebula3d.save(out, paths.ringremoved)
     _declare_symmetry(paths.ringremoved, symmetry)
+    _write_stage_record(paths.ringremoved, stage_record("rings", p, src, paths))
     ring_diagnostics = getattr(out, "_ring_diagnostics", None)
     if ring_diagnostics is not None:
         write_global_ring_diagnostics(ring_diagnostics, paths.ring_diagnostics_json)
@@ -1150,33 +1384,21 @@ def read_symmetry_average(path: str | Path) -> dict[str, Any] | None:
     return record if isinstance(record, dict) else None
 
 
-def _symmetrized_is_current(path: Path, input_path: Path, group: LaueGroup,
-                            edge_trim: int, allow_metric_change: bool = False) -> bool:
-    """Whether the symmetry average's output *path* was made from *input_path*
-    (not older than it) over *group* with this *edge_trim*: its record and
-    declared operations say, so an output made over another Laue class is
-    made again rather than reused.  One made despite a metric change (its
-    record's ``metric_warning``) is not current for a run that does not allow
-    one: that run refuses, as it would have made none."""
-    if not path.exists():
-        return False
-    try:
-        if input_path.exists() and path.stat().st_mtime < input_path.stat().st_mtime:
-            return False
-    except OSError:
-        pass
-    record = read_symmetry_average(path)
-    if record is None or record.get("source_file") != input_path.name:
-        return False
-    if record.get("edge_trim") != int(edge_trim):
-        return False
-    if record.get("metric_warning") and not allow_metric_change:
-        return False
-    try:
-        ops = read_symmetry_ops(path)
-    except (OSError, ValueError):
-        return False
-    return ops is not None and "; ".join(format_op(m) for m in ops) == group.ops_text
+def _symmetrized_staleness(p: PipelineParams, paths: PipelinePaths) -> str | None:
+    """Why the symmetry average's existing output would not follow from the
+    raw input with the settings *p* (None when it does): its record
+    (:func:`stage_staleness`) names another input, edge trim, symmetry or
+    Laue class, so an output made over another Laue class is made again
+    rather than reused.  One made despite a metric change (its average's
+    ``metric_warning``) does not follow for a run that does not allow one:
+    that run refuses, as it would have made none."""
+    reason = stage_staleness("symmetry_average", p, paths.input, paths.symmetrized, paths)
+    if reason is not None:
+        return reason
+    averaged = read_symmetry_average(paths.symmetrized) or {}
+    if averaged.get("metric_warning") and not p.symmetry_average.allow_metric_change:
+        return "it was averaged despite a metric change, which this run does not allow"
+    return None
 
 
 def _write_symmetry_average(path: Path, group: LaueGroup, record: dict[str, Any]) -> None:
@@ -2227,14 +2449,19 @@ def delta_pdf_settings_from_config(config: str) -> dict[str, Any]:
 def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
                        source_name: str, out_path: Path,
                        r_band: tuple[float, float] | None = None,
-                       transform_config: str | None = None) -> None:
+                       transform_config: str | None = None, *,
+                       source_record: str | None = None,
+                       edge_trim: int | None = None) -> None:
     """Write the ΔPDF as a Mantid MDHistoWorkspace NeXus file.
 
     The layout of :func:`nebula3d.io.save_delta_pdf` (read back by
     :func:`nebula3d.io.load_delta_pdf`): data + x/y/z axes, the source
     volume's UB and unit cell in the oriented lattice (unit-cell gridlines,
     and each section drawn at its real angle), and the provenance as run logs
-    — the same values ``examples/delta_pdf.py`` writes.
+    — the same values ``examples/delta_pdf.py`` writes.  A run's ΔPDF also
+    records its input's identity (*source_record*, :func:`_pdf_source_record`)
+    and, made from the raw input, the *edge_trim* its load took, so a resumed
+    run tells when it no longer follows from them.
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2260,6 +2487,8 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
             "subtract_mean": int(p.subtract_mean),
             "transform_config": (transform_config if transform_config is not None
                                  else delta_pdf_transform_config(p)),
+            **({"source_record": source_record} if source_record is not None else {}),
+            **({"edge_trim": int(edge_trim)} if edge_trim is not None else {}),
         })
 
 
@@ -2753,27 +2982,67 @@ def _passed_through_notice(p: PipelineParams, stage: str, src: Path) -> str | No
     return f"{_stage_names(off)} disabled: the {_STAGE_NAMES[stage]} reads {Path(src).name}"
 
 
-def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str,
-                    src_path: Path | None = None) -> bool:
-    """Whether *pdf_path* was made from *expected_src* with *expected_config*
-    (its provenance only — the ΔPDF array is not read; either file layout),
-    and, given the input's *src_path*, is not older than that input: a ΔPDF
-    older than its input was made from what the input held before a stage
-    upstream last ran (the ΔPDF switched off then), so it is stale whatever
-    its name and settings say."""
+def _pdf_source_record(src: Path, p: PipelineParams, paths: PipelinePaths) -> str:
+    """The ΔPDF's record of its input *src* (its ``source_record`` log): a
+    digest of the input's identity as a cleanup stage records it
+    (:func:`stage_record`), with the symmetry setting when it is the raw input,
+    whose load trims the coverage edge across symmetry orbits."""
+    identity: dict[str, Any] = {"source": _source_identity(src, p, paths)}
+    if src == paths.input:
+        identity["symmetry"] = _symmetry_setting(p)
+    return _digest(json.dumps(_canonical(identity), sort_keys=True))
+
+
+def _pdf_staleness(pdf_path: Path, expected_src: str, expected_config: str,
+                   src_path: Path | None = None, *,
+                   expected_record: str | None = None,
+                   edge_trim: int | None = None) -> str | None:
+    """Why the existing ΔPDF *pdf_path* would not follow from its input (None
+    when it does): made from another file than *expected_src*, or with
+    another *expected_config* (its provenance only — the ΔPDF array is not
+    read; either file layout); older than its input *src_path* (made from
+    what the input held before a stage upstream last ran, the ΔPDF switched
+    off then); or, given the *expected_record* of its input
+    (:func:`_pdf_source_record`), recording another one, or none.  The raw
+    input's *edge_trim*, when it transforms the raw input, names an edge trim
+    that changed.  An input that is not there is not compared."""
     if not pdf_path.exists():
-        return False
+        return "it is missing"
     try:
         if src_path is not None and pdf_path.stat().st_mtime < src_path.stat().st_mtime:
-            return False
+            return f"it is older than {src_path.name}"
     except OSError:
         pass  # the input is not there to compare with: the provenance decides
     try:
         logs = load_delta_pdf(pdf_path, read_data=False).logs
     except Exception:
-        return False
-    return (logs.get("source_file", "") == expected_src
-            and logs.get("transform_config", "") == expected_config)
+        return "its file cannot be read"
+    if logs.get("source_file", "") != expected_src:
+        made_from = logs.get("source_file", "") or "another file"
+        return f"it was made from {made_from}, not {expected_src}"
+    if logs.get("transform_config", "") != expected_config:
+        return "it was made with other ΔPDF settings"
+    if expected_record is None:
+        return None
+    if not logs.get("source_record"):
+        return NO_RECORD_REASON
+    if src_path is not None and not src_path.exists():
+        return None
+    if edge_trim is not None and str(logs.get("edge_trim", "")) != str(edge_trim):
+        return f"it was made with edge trim {logs.get('edge_trim', 'unrecorded')}, now {edge_trim}"
+    if str(logs.get("source_record")) != expected_record:
+        name = src_path.name if src_path is not None else expected_src
+        return f"{name} changed since it was made"
+    return None
+
+
+def _pdf_is_current(pdf_path: Path, expected_src: str, expected_config: str,
+                    src_path: Path | None = None, *,
+                    expected_record: str | None = None,
+                    edge_trim: int | None = None) -> bool:
+    """Whether the ΔPDF *pdf_path* follows from its input (:func:`_pdf_staleness`)."""
+    return _pdf_staleness(pdf_path, expected_src, expected_config, src_path,
+                          expected_record=expected_record, edge_trim=edge_trim) is None
 
 
 # ---------------------------------------------------------------------------
@@ -2877,6 +3146,117 @@ def _stage_input(stage: str, p: PipelineParams, paths: PipelinePaths,
     return paths.input
 
 
+#: :func:`resume_plan`'s reasons for a stage computed whatever its output holds.
+FORCED_REASON = "forced"
+MISSING_REASON = "no output yet"
+
+
+def _pdf_reason(p: PipelineParams, paths: PipelinePaths, pdf_input: Path,
+                configs: Collection[str]) -> str | None:
+    """Why the ΔPDF on disk would not follow from *pdf_input* with the run's
+    settings (None when it does, made with one of the transform *configs*)."""
+    raw = pdf_input == paths.input
+    record = _pdf_source_record(pdf_input, p, paths)
+    reasons = [_pdf_staleness(paths.delta_pdf, pdf_input.name, config, pdf_input,
+                              expected_record=record,
+                              edge_trim=int(p.edge_trim) if raw else None)
+               for config in configs]
+    return None if None in reasons else reasons[0]
+
+
+def resume_plan(
+    input_path: str | Path,
+    params: PipelineParams | None = None,
+    *,
+    proc_dir: str | Path | None = None,
+    stages: Sequence[str] = STAGES,
+    force: bool = False,
+    force_from: str | None = None,
+    inputs: Mapping[str, Path] | None = None,
+    pdf_configs: Collection[str] | None = None,
+) -> dict[str, str]:
+    """Which stages :func:`run_pipeline` computes with these arguments, and why.
+
+    The single source of truth for the resume rule, shared by
+    ``run_pipeline`` itself, by the browser's out-of-band ring stage
+    (:func:`ring_stage_pending`) and by the Configure page's stage track,
+    which shows the outputs a run would make again.  Each stage it computes
+    maps to the reason: :data:`FORCED_REASON`, :data:`MISSING_REASON`, or
+    why its output on disk no longer follows from its input and settings:
+    its record says it was made from another input, edge trim, symmetry or
+    settings, or it records nothing (:func:`stage_staleness`,
+    :func:`_pdf_staleness`), or the stage before it is computed again, so
+    its input changes.  A stage it reuses, or does not run, is left out.
+
+    *pdf_configs*: the ΔPDF transform configs a ΔPDF on disk may carry and
+    follow (default: the run's own, :func:`delta_pdf_transform_config`); the
+    browser's WebGPU ΔPDF stamps its own as well.
+    """
+    p = params or PipelineParams()
+    p, _ = resolve_symmetry_average(p, input_path)
+    selected = [s for s in STAGES if s in set(stages)]
+    paths = _run_paths(input_path, p, proc_dir=proc_dir)
+    outputs = {"symmetry_average": paths.symmetrized, "rings": paths.ringremoved,
+               "punch": paths.braggpunched, "backfill": paths.backfilled,
+               "flatten": paths.flattened}
+    made_by = {path: stage for stage, path in outputs.items()}
+    plan: dict[str, str] = {}
+
+    def forced(stage: str) -> bool:
+        if force:
+            return True
+        return (force_from is not None and force_from in STAGES
+                and STAGES.index(stage) >= STAGES.index(force_from))
+
+    def input_made_again(src: Path) -> str | None:
+        up = made_by.get(src)
+        return (f"its input {src.name} is made again first"
+                if up is not None and up in plan else None)
+
+    for stage in _CLEANUP_STAGES:
+        if stage not in selected or not p.stage_enabled(stage):
+            continue
+        out = outputs[stage]
+        if forced(stage):
+            plan[stage] = FORCED_REASON
+            continue
+        if not out.exists():
+            plan[stage] = MISSING_REASON
+            continue
+        src = _stage_input(stage, p, paths, selected, inputs)
+        reason = input_made_again(src)
+        if reason is None:
+            try:
+                reason = (_symmetrized_staleness(p, paths) if stage == "symmetry_average"
+                          else stage_staleness(stage, p, src, out, paths))
+            except SymmetryAverageError:
+                continue  # no Laue class to average over: the run refuses first
+        if reason is not None:
+            plan[stage] = reason
+
+    if "pdf" in selected:
+        pdf_input = _stage_input("pdf", p, paths, selected, inputs)
+        if forced("pdf"):
+            plan["pdf"] = FORCED_REASON
+        elif not paths.delta_pdf.exists():
+            plan["pdf"] = MISSING_REASON
+        else:
+            configs = (pdf_configs if pdf_configs is not None
+                       else (delta_pdf_transform_config(p.delta_pdf),))
+            reason = input_made_again(pdf_input) or _pdf_reason(p, paths, pdf_input, configs)
+            if reason is not None:
+                plan["pdf"] = reason
+    if "pdf_check" in selected and p.pdf_check_enabled:
+        if forced("pdf_check"):
+            plan["pdf_check"] = FORCED_REASON
+        elif "pdf" in plan:
+            plan["pdf_check"] = f"its input {paths.delta_pdf.name} is made again first"
+        elif not (paths.pdf_check_json.exists()
+                  and (paths.pdf_check_png.exists() or not p.pdf_check_figure)):
+            plan["pdf_check"] = MISSING_REASON
+    return plan
+
+
 def ring_stage_pending(
     input_path: str | Path,
     params: PipelineParams | None = None,
@@ -2885,24 +3265,20 @@ def ring_stage_pending(
     stages: Sequence[str] = STAGES,
     force: bool = False,
     force_from: str | None = None,
+    inputs: Mapping[str, Path] | None = None,
 ) -> bool:
     """Would :func:`run_pipeline` (re)compute the ring stage with these args?
 
-    The single source of truth for the stage-1 resume gate, shared by
-    ``run_pipeline`` itself and by callers that run the ring stage out-of-band
-    (the browser's ``webbridge.run_async`` fan-out) — so resume/force semantics
-    can never drift between the two.
+    The stage-1 resume gate of callers that run the ring stage out-of-band
+    (the browser's ``webbridge.run_async`` fan-out), from :func:`resume_plan`,
+    the rule ``run_pipeline`` itself follows — so resume/force semantics can
+    never drift between the two.
     """
     p = params or PipelineParams()
     if "rings" not in set(stages) or not p.rings_enabled:
         return False
-    paths = _run_paths(input_path, p, proc_dir=proc_dir)
-    if force:
-        return True
-    if force_from is not None and force_from in STAGES \
-            and STAGES.index("rings") >= STAGES.index(force_from):
-        return True
-    return not paths.ringremoved.exists()
+    return "rings" in resume_plan(input_path, p, proc_dir=proc_dir, stages=stages,
+                                  force=force, force_from=force_from, inputs=inputs)
 
 
 def run_pipeline(
@@ -2979,6 +3355,19 @@ def run_pipeline(
         return _stage_input(stage, p, paths, selected, inputs)
 
     pdf_input = stage_input("pdf")
+    # What this run computes, and why (resume_plan): forced, missing, or an
+    # output that no longer follows from its input and settings.  The rest is
+    # reused.
+    plan = resume_plan(input_path, p, proc_dir=proc_dir, stages=stages,
+                       force=force, force_from=force_from, inputs=inputs)
+
+    def stale_notice(stage: str, path: Path) -> None:
+        # The log line of an output computed again because it is stale, as the
+        # ΔPDF's has read since before the validation froze (docs/evals.md,
+        # "The freeze"); why it is stale is on the Configure page's stage track.
+        reason = plan.get(stage)
+        if reason is not None and reason not in (FORCED_REASON, MISSING_REASON):
+            _emit(progress, stage, "progress", None, f"{path.name} stale — recomputing")
 
     def forced(stage: str) -> bool:
         if force:
@@ -3028,15 +3417,11 @@ def run_pipeline(
     # --- stage 0: symmetry average (optional) -------------------------------
     if runs("symmetry_average"):
         group = symmetry_average_group(p.symmetry_average)
-        current = _symmetrized_is_current(paths.symmetrized, paths.input, group,
-                                          p.edge_trim, p.symmetry_average.allow_metric_change)
-        if current and not forced("symmetry_average"):
+        if "symmetry_average" not in plan:
             _emit(progress, "symmetry_average", "skip", None,
                   f"{paths.symmetrized.name} exists")
         else:
-            if paths.symmetrized.exists() and not current:
-                _emit(progress, "symmetry_average", "progress", None,
-                      f"{paths.symmetrized.name} stale — recomputing")
+            stale_notice("symmetry_average", paths.symmetrized)
             # The raw input's coverage edge is trimmed before the average, so
             # its barely normalised voxels are pooled into no orbit.
             vol = load_input(paths.input, p, progress=progress,
@@ -3044,8 +3429,10 @@ def run_pipeline(
             out = symmetrize(vol, p.symmetry_average, progress=progress, group=group)
             averaged = dict(getattr(out, "_symmetry_average", {}),
                             source_file=paths.input.name, edge_trim=int(p.edge_trim))
+            made_from = stage_record("symmetry_average", p, paths.input, paths)
             nebula3d.save(out, paths.symmetrized)
             _write_symmetry_average(paths.symmetrized, group, averaged)
+            _write_stage_record(paths.symmetrized, made_from)
             carry, carry_path = out, paths.symmetrized
             del vol, out  # `carry` hands the output onward
     elif want("symmetry_average") and symmetry_notice is not None:
@@ -3055,12 +3442,11 @@ def run_pipeline(
 
     # --- stage 1: rings -----------------------------------------------------
     if runs("rings"):
-        if not ring_stage_pending(input_path, p, proc_dir=proc_dir,
-                                  stages=stages, force=force,
-                                  force_from=force_from):
+        if "rings" not in plan:
             _emit(progress, "rings", "skip", None,
                   f"{paths.ringremoved.name} exists")
         else:
+            stale_notice("rings", paths.ringremoved)
             src = stage_source("rings")
             vol = stage_load(src, "rings")
             out = remove_rings(vol, p.rings, progress=progress)
@@ -3072,11 +3458,13 @@ def run_pipeline(
 
     # --- stage 2: punch -----------------------------------------------------
     if runs("punch"):
-        if paths.braggpunched.exists() and not forced("punch"):
+        if "punch" not in plan:
             _emit(progress, "punch", "skip", None,
                   f"{paths.braggpunched.name} exists")
         else:
+            stale_notice("punch", paths.braggpunched)
             src = stage_source("punch")
+            made_from = stage_record("punch", p, src, paths)
             vol = stage_load(src, "punch")
             symmetry = input_symmetry(vol, p, src, fallback=paths.input,
                                       progress=progress, stage="punch")
@@ -3091,6 +3479,7 @@ def run_pipeline(
             out = punch_bragg(vol, p.punch, progress=progress, **facts)
             nebula3d.save(out, paths.braggpunched)
             _declare_symmetry(paths.braggpunched, symmetry)
+            _write_stage_record(paths.braggpunched, made_from)
             punch_record = getattr(out, "_punched", None)
             if punch_record is not None:
                 _write_punched(paths.braggpunched, punch_record)
@@ -3105,11 +3494,13 @@ def run_pipeline(
 
     # --- stage 3: backfill --------------------------------------------------
     if runs("backfill"):
-        if paths.backfilled.exists() and not forced("backfill"):
+        if "backfill" not in plan:
             _emit(progress, "backfill", "skip", None,
                   f"{paths.backfilled.name} exists")
         else:
+            stale_notice("backfill", paths.backfilled)
             src = stage_source("backfill")
+            made_from = stage_record("backfill", p, src, paths)
             vol = stage_load(src, "backfill")
             # A volume reloaded from disk lost the punch record punch_bragg
             # attached; read it back from the punch artifact (by name: it may
@@ -3130,6 +3521,7 @@ def run_pipeline(
                    else backfill(vol, p.backfill, progress=progress, symmetry=symmetry))
             nebula3d.save(out, paths.backfilled)
             _declare_symmetry(paths.backfilled, symmetry)
+            _write_stage_record(paths.backfilled, made_from)
             carry, carry_path = out, paths.backfilled
             del vol, out  # free the input; `carry` hands the output onward
     elif want("backfill"):
@@ -3137,11 +3529,13 @@ def run_pipeline(
 
     # --- stage 4: flatten (optional) ---------------------------------------
     if runs("flatten"):
-        if paths.flattened.exists() and not forced("flatten"):
+        if "flatten" not in plan:
             _emit(progress, "flatten", "skip", None,
                   f"{paths.flattened.name} exists")
         else:
+            stale_notice("flatten", paths.flattened)
             src = stage_source("flatten")
+            made_from = stage_record("flatten", p, src, paths)
             vol = stage_load(src, "flatten")
             out = flatten(vol, p.flatten, progress=progress)
             symmetry = input_symmetry(out, p, src, fallback=paths.input,
@@ -3157,6 +3551,7 @@ def run_pipeline(
             nebula3d.save(out, paths.flattened)
             _write_flatten_settings(paths.flattened, p.flatten)
             _declare_symmetry(paths.flattened, symmetry)
+            _write_stage_record(paths.flattened, made_from)
             carry, carry_path = out, paths.flattened
             del vol, out  # free the input; `carry` hands the output onward
     elif want("flatten"):
@@ -3166,23 +3561,22 @@ def run_pipeline(
     dpdf_obj: DeltaPDF | None = None     # in-memory ΔPDF if (re)computed here
     pdf_vol: HKLVolume | None = None     # its input volume, for the check stage
     if want("pdf"):
-        expected_config = delta_pdf_transform_config(p.delta_pdf)
-        is_current = _pdf_is_current(paths.delta_pdf, pdf_input.name,
-                                     expected_config, pdf_input)
-        if is_current and not forced("pdf"):
+        if "pdf" not in plan:
             _emit(progress, "pdf", "skip", None,
                   f"{paths.delta_pdf.name} is current")
         else:
-            if paths.delta_pdf.exists() and not is_current:
-                _emit(progress, "pdf", "progress", None,
-                      f"{paths.delta_pdf.name} stale — recomputing")
+            stale_notice("pdf", paths.delta_pdf)
+            source_record = _pdf_source_record(pdf_input, p, paths)
             notice = _passed_through_notice(p, "pdf", pdf_input)
             if notice is not None:
                 _emit(progress, "pdf", "progress", None, notice)
             pdf_vol = stage_load(pdf_input, "pdf")
             dpdf_obj = delta_pdf(pdf_vol, p.delta_pdf, progress=progress)
             write_delta_pdf_h5(dpdf_obj, pdf_vol, p.delta_pdf,
-                               pdf_input.name, paths.delta_pdf)
+                               pdf_input.name, paths.delta_pdf,
+                               source_record=source_record,
+                               edge_trim=(int(p.edge_trim) if pdf_input == paths.input
+                                          else None))
             # sigma is unused by the ΔPDF and the back-FFT check that follow;
             # free it so it does not sit under the check's inverse-FFT transient.
             if _low_memory():

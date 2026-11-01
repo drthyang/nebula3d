@@ -164,10 +164,16 @@ better input. An unsymmetrized viewer export declares the identity alone
 
 ## Resume
 
-Like every stage, the symmetry average keeps its output when it exists and the
-run does not force it. It is made again when its record does not match the
-run: another Laue class, another input or an input newer than it, or another
-edge trim ("… stale — recomputing"), never reused for the wrong class.
+Like every stage, the symmetry average keeps its output when it exists, the
+run does not force it, and its record matches the run
+(`nebula3d.pipeline.resume_plan`). It is made again when it does not: another
+Laue class, another input (the raw file's size and sampled content, not its
+date), another edge trim or symmetry setting, or an output written before
+outputs recorded their inputs ("… stale — recomputing"), never reused for the
+wrong class. Every output after it records a digest of its record, so the ring
+removal, the punch, the backfill, the flatten and the ΔPDF are made again with
+it, without Force; the Configure page's stage track marks them stale as soon
+as the setting changes.
 
 ## Verification
 

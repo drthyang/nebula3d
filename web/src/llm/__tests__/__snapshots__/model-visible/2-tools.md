@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 27915 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 27957 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -569,7 +569,7 @@ Parameters:
 ## 24. run_pipeline
 
 ```text
-Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does: it writes the dataset's stage outputs, and the console shows the run on its Execution page while it goes. Without from_stage, outputs that already exist are reused (unless the user switched Force on), so it computes what is missing. With from_stage, that stage and every enabled stage after it are recomputed: use it after update_settings. A run takes seconds to minutes. Returns how it ended, which stages were computed or reused, and the outputs that now exist; measure them afterwards.
+Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does: it writes the dataset's stage outputs, and the console shows the run on its Execution page while it goes. Without from_stage, outputs that still follow from the current settings and inputs are reused (unless the user switched Force on), and the rest are recomputed. With from_stage, that stage and every enabled stage after it are recomputed: use it after update_settings. A run takes seconds to minutes. Returns how it ended, which stages were computed or reused, and the outputs that now exist; measure them afterwards.
 ```
 
 Parameters:
@@ -581,7 +581,7 @@ Parameters:
     "from_stage": {
       "type": "string",
       "enum": ["rings", "punch", "backfill", "flatten", "pdf"],
-      "description": "Recompute from this stage on; omit to compute only what is missing"
+      "description": "Recompute from this stage on; omit to compute only what is missing or stale"
     }
   }
 }

@@ -708,6 +708,20 @@ class PipelineRunRequest(BaseModel):
     tuning: TuningTrialIn | None = None
 
 
+class StaleOutputsIn(BaseModel):
+    """The Configure page's settings for a dataset, as a run would take them."""
+    dataset_id: str
+    flatten_enabled: bool = True
+    params: StageParamsIn = StageParamsIn()
+
+
+class StaleOutputsOut(BaseModel):
+    """Each output on disk that a run with those settings would make again,
+    and why (``ringremoved`` → "it was made with edge trim 1, now 2"); an
+    output it would reuse, or that is missing, is not listed."""
+    stale: dict[str, str]
+
+
 class LaueCompareIn(BaseModel):
     """The run's settings (the edge trim, the punch cell and footprint), any
     custom classes to compare beside the presets, and a token to poll the
