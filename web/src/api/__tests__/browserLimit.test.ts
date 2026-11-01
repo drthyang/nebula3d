@@ -8,6 +8,7 @@ import {
   BrowserLimitError,
   checkBeforeRun,
   classifyBrowserLimit,
+  classifyRunError,
   errorDetail,
   limitFromReport,
   LIMIT_TRAPS,
@@ -17,6 +18,7 @@ import {
   type GateReport,
   type LimitKind,
 } from "../browserLimit";
+import { DATA_ERRORS, parseDataError } from "../dataError";
 
 const GiB = 1024 ** 3;
 
@@ -190,6 +192,91 @@ describe("classifyBrowserLimit", () => {
       detail: GATE_DESKTOP,
     });
     expect(classifyBrowserLimit(GATE_PHONE)).toMatchObject({ needBytes: 1.5e9, shape: [201, 201, 151], device: "mobile" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Data errors (dataError.ts): known Python errors that say what to change.
+// ---------------------------------------------------------------------------
+
+// nebula3d.analysis.delta_pdf.WINDOW_SUPPORT_MESSAGE, opening.
+const WINDOW_MSG =
+  "No measured region around Q = 0 for the 3D-ΔPDF window. Unmeasured voxels open to the box edge reach the origin, " +
+  "so a window shrunk to the coverage has no room left. Symmetrize here: switch on the symmetry average (stage 0).";
+const ORIGIN_MSG =
+  "The 3D-ΔPDF takes the centre voxel of each axis (index n // 2) as Q = 0, but on this grid H has no bin centred at 0: " +
+  "its centre index 50 of 100 sits at +0.05 r.l.u., +0.5 of its 0.1 step. Re-bin the volume with a bin centred at Q = 0.";
+const SYM_MSG = "Laue class 'q/mmm': unknown Laue class";
+
+const DATA: [string, string, string, string][] = [
+  // [what, the error as it came, its class, its own message]
+  ["a WindowSupportError in the browser", traceback(`nebula3d.analysis.delta_pdf.WindowSupportError: ${WINDOW_MSG}`), "WindowSupportError", WINDOW_MSG],
+  ["a WindowSupportError from the local version", `WindowSupportError: ${WINDOW_MSG}`, "WindowSupportError", WINDOW_MSG],
+  ["an FFTOriginError in the browser", traceback(`nebula3d.analysis.delta_pdf.FFTOriginError: ${ORIGIN_MSG}`), "FFTOriginError", ORIGIN_MSG],
+  ["an FFTOriginError from the local version", `FFTOriginError: ${ORIGIN_MSG}`, "FFTOriginError", ORIGIN_MSG],
+  [
+    "a SymmetryAverageError raised from another error",
+    traceback(
+      "KeyError: 'q/mmm'",
+      "",
+      "The above exception was the direct cause of the following exception:",
+      "",
+      "Traceback (most recent call last):",
+      '  File "/lib/python3.12/site-packages/nebula3d/pipeline.py", line 993, in _laue_ops',
+      "    raise SymmetryAverageError(f\"Laue class {params.laue!r}: {exc}\") from exc",
+      `nebula3d.pipeline.SymmetryAverageError: ${SYM_MSG}`,
+    ),
+    "SymmetryAverageError",
+    SYM_MSG,
+  ],
+  [
+    "a data error whose words name memory",
+    traceback("nebula3d.pipeline.SymmetryAverageError: the operations need more memory than the grid; out of memory is not the cause"),
+    "SymmetryAverageError",
+    "the operations need more memory than the grid; out of memory is not the cause",
+  ],
+];
+
+describe("data errors", () => {
+  it.each(DATA)("knows %s, by its own message", (_what, text, name, message) => {
+    expect(parseDataError(text)).toEqual({ name, message, detail: text });
+    expect(classifyRunError(new Error(text))).toEqual({ kind: "data", error: { name, message, detail: text } });
+    // Never the run-it-locally card: the local version would stop the same way.
+    expect(classifyBrowserLimit(text)).toBeNull();
+  });
+
+  it("has a message in these tests for every data error", () => {
+    expect(DATA_ERRORS.filter((e) => !DATA.some(([, , name]) => name === e.name)).map((e) => e.name)).toEqual([]);
+  });
+
+  it.each([
+    ["a traceback that only quotes one in its source", traceback("ValueError: bad cell").replace("    data = np.empty(shape, dtype)", "    raise WindowSupportError(WINDOW_SUPPORT_MESSAGE)")],
+    [
+      "a data error that caused another failure",
+      traceback(
+        `nebula3d.analysis.delta_pdf.WindowSupportError: ${WINDOW_MSG}`,
+        "",
+        "During handling of the above exception, another exception occurred:",
+        "",
+        "Traceback (most recent call last):",
+        '  File "/lib/python3.12/site-packages/nebula3d/pipeline.py", line 90, in _stage',
+        "RuntimeError: cleanup failed",
+      ),
+    ],
+    ["a look-alike class name", "MyWindowSupportErrorX: nope"],
+    ["the class name with no message", "WindowSupportError:"],
+    ["a plain ValueError", traceback("ValueError: force_from='x'; choose one of ('rings', 'punch')")],
+    ["nothing", ""],
+  ])("leaves alone %s", (_what, text) => {
+    expect(parseDataError(text)).toBeNull();
+  });
+
+  it("sorts a run's failure into the three classes", () => {
+    expect(classifyRunError(new Error(traceback("MemoryError")))).toMatchObject({ kind: "limit", limit: { kind: "memory" } });
+    expect(classifyRunError(markWorkerStopped(new Error("")))).toMatchObject({ kind: "limit", limit: { kind: "worker" } });
+    expect(classifyRunError(`FFTOriginError: ${ORIGIN_MSG}`)).toMatchObject({ kind: "data", error: { name: "FFTOriginError" } });
+    expect(classifyRunError(new Error(traceback("KeyError: 'nope'")))).toEqual({ kind: "other" });
+    expect(classifyRunError(undefined)).toEqual({ kind: "other" });
   });
 });
 

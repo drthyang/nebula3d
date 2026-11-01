@@ -12,6 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import type { Tab } from "../state/navStore";
 import { fetchMeta } from "../api/client";
+import { parseDataError } from "../api/dataError";
 import { useDatasets } from "../api/hooks";
 import { NearLimitHandoff, RunFailureHandoff } from "../components/LocalHandoff";
 import { queryClient } from "../api/queryClient";
@@ -207,6 +208,9 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
     idle: { text: "No run", icon: "▷" },
   };
   const lastError = [...events].reverse().find((e) => e.status === "error")?.message;
+  // A known data error (api/dataError.ts): its own words in the banner, the
+  // traceback behind "Details". Any other failure shows as it came.
+  const dataError = phase === "error" ? parseDataError(lastError) : null;
   // The coverage left the ΔPDF's window no room at Q = 0: the symmetry
   // average fills the gaps from their equivalents. "Symmetrize here" switches
   // it on with the class already chosen, else the one declared for the volume
@@ -471,8 +475,14 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
                 {interruptedStage ? STAGE_LABELS[interruptedStage] : "Pipeline"} failed
               </span>
               <span className="exec-banner-body">
-                {lastError ?? "The run stopped with an error — see the event log below for details."}
+                {dataError?.message ?? lastError ?? "The run stopped with an error — see the event log below for details."}
               </span>
+              {dataError && dataError.detail.trim() !== dataError.message && (
+                <details className="exec-banner-details">
+                  <summary>Details</summary>
+                  <pre>{dataError.detail}</pre>
+                </details>
+              )}
               {offerSymmetrize && (
                 <span className="exec-banner-actions">
                   <button type="button" className="exec-btn exec-btn-primary" onClick={() => void symmetrizeHere()}>

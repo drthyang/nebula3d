@@ -18,6 +18,12 @@
 //
 // A new 32-bit trap is one more entry in LIMIT_TRAPS, with its message in the
 // tests (api/__tests__/browserLimit.test.ts).
+//
+// A known data error (dataError.ts: WindowSupportError, FFTOriginError, …) is
+// never the limit, whatever its words: the local version would stop the same
+// way. classifyRunError sorts a run's failure into the three classes.
+
+import { parseDataError, type DataError } from "./dataError";
 
 export type LimitKind =
   | "gate" // the size gate refused the volume (at load, or its estimate before a run)
@@ -198,6 +204,7 @@ export function classifyBrowserLimit(err: unknown): BrowserLimit | null {
   if (!text || !text.trim()) {
     return mark(err, "workerStopped") === true ? { ...NOTHING_KNOWN, kind: "worker", detail: "" } : null;
   }
+  if (parseDataError(text)) return null; // the data's or the settings', not the engine's
   const searched = exceptionText(text);
   const trap = LIMIT_TRAPS.find((t) => t.pattern.test(searched));
   if (!trap) {
@@ -241,4 +248,17 @@ export async function checkBeforeRun(
   } catch {
     return null;
   }
+}
+
+/** A run's failure, sorted: the engine's limit, a known data error, or anything else. */
+export type RunErrorClass =
+  | { kind: "limit"; limit: BrowserLimit } // the run-it-locally card
+  | { kind: "data"; error: DataError } // its own message, the traceback behind "Details"
+  | { kind: "other" }; // shown as it always was
+
+export function classifyRunError(err: unknown): RunErrorClass {
+  const limit = classifyBrowserLimit(err);
+  if (limit) return { kind: "limit", limit };
+  const error = parseDataError(errorText(err));
+  return error ? { kind: "data", error } : { kind: "other" };
 }
