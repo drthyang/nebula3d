@@ -1,11 +1,10 @@
 // The interactive frame around one slice view: one zoom model on every slice
-// view, the same as the NeXus Viewer's.  A left click or drag acts by the
-// click mode (state/workspaceStore.ts):
-//   navigate — hover reads values; a click (or drag) calls onNavigate
-//   box      — the one-shot box-zoom tool: a drag zooms into the box, then the
-//              mode returns to Navigate (Esc on the view cancels it)
-// Zoom and pan work in every mode, as on an embedded map ("cooperative"
-// gestures):
+// view, the same as the NeXus Viewer's.  Hovering reads values: the pointer's
+// point goes to onCursor, and the crosshair follows it in every linked view.
+// A plain left click or drag does nothing, unless the one-shot box-zoom tool is
+// armed (state/workspaceStore.ts): then a drag zooms into the box and puts the
+// tool away (Esc on the view cancels it).
+// Zoom and pan need no mode, as on an embedded map ("cooperative" gestures):
 //   wheel    — when the page around the view can scroll, a plain wheel (or a
 //              two-finger scroll) scrolls the page and a hint says "Use Ctrl +
 //              scroll to zoom" (⌘ on macOS); Ctrl/⌘ + wheel zooms about the
@@ -14,7 +13,8 @@
 //              (the view fills it) a plain wheel zooms.  A sideways scroll is
 //              the page's.
 //   drag     — a middle-button or Shift drag pans, and a two-finger touch drag
-//              pans and pinches (iPad Safari's GestureEvents for that pinch are
+//              pans and pinches (one finger scrolls the page vertically, and
+//              a tap or a sideways drag reads values, as a hover does) (iPad Safari's GestureEvents for that pinch are
 //              ignored, so it zooms once); the view's centre stays on the data
 //              (`bounds`), so it cannot be dragged off screen
 //   double-click — returns to `fit` (the full view), as do a double-tap on a
@@ -103,7 +103,6 @@ interface Props {
   axes: AxisSpec;
   cursor: [number, number] | null; // display point under the pointer in any linked view
   onCursor?: (p: [number, number] | null) => void;
-  onNavigate?: (X: number, Y: number) => void;
   children: ReactNode;
 }
 
@@ -120,7 +119,6 @@ export function ViewFrame({
   axes,
   cursor,
   onCursor,
-  onNavigate,
   children,
 }: Props) {
   const mode = useWorkspaceStore((s) => s.clickMode);
@@ -223,12 +221,20 @@ export function ViewFrame({
       e.preventDefault();
       gesture.current = null;
     };
+    // On a touch screen one finger scrolls the page over a view (index.css,
+    // touch-action: pan-y) while two pinch and move the view: their touchmove
+    // is kept from the browser, so it starts no scroll and the pointers stay ours.
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1 && e.cancelable) e.preventDefault();
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("wheel", onWheel, { passive: false });
     el.addEventListener("gesturestart", onGestureStart);
     el.addEventListener("gesturechange", onGestureChange);
     el.addEventListener("gestureend", onGestureEnd);
     return () => {
       ro.disconnect();
+      el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("gesturestart", onGestureStart);
       el.removeEventListener("gesturechange", onGestureChange);
@@ -247,7 +253,7 @@ export function ViewFrame({
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    // The left button acts by the mode; the middle one (or Shift) pans in any mode.
+    // The left button draws a box when the box zoom is armed; the middle one (or Shift) pans.
     if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
     if (e.button === 1) e.preventDefault(); // no autoscroll
     const p = local(e);
@@ -261,6 +267,11 @@ export function ViewFrame({
       setBox(null);
     } else {
       drag.current = { x0: p[0], y0: p[1], v0: viewport, moved: false, pan: e.button === 1 || e.shiftKey };
+      // A touch has no hover: the tap itself reads the values under it.
+      if (e.pointerType !== "mouse") {
+        const { w, h } = rect();
+        onCursor?.(pixelToDisplay(viewport, p[0], p[1], w, h));
+      }
     }
   };
 
@@ -286,7 +297,6 @@ export function ViewFrame({
     if (!dr.moved) return;
     if (dr.pan) emit(panBy(dr.v0, p[0] - dr.x0, p[1] - dr.y0, w, h));
     else if (mode === "box") setBox([dr.x0, dr.y0, p[0], p[1]]);
-    else onNavigate?.(pt[0], pt[1]);
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
@@ -305,15 +315,13 @@ export function ViewFrame({
     if (dr.pan) {
       // panned (or a click with the pan button): nothing more
     } else if (mode === "box") {
-      // One box zooms, then the tool hands back to Navigate; a click without a
-      // drag leaves it armed.
+      // One box zooms, then the tool is put away; a click without a drag
+      // leaves it armed.
       if (dr.moved && box) {
         const a = pixelToDisplay(dr.v0, dr.x0, dr.y0, w, h);
         onViewport(settle(boxViewport(a, pt, limit, w, h)));
-        setMode("navigate");
+        setMode("none");
       }
-    } else if (!dr.moved) {
-      onNavigate?.(pt[0], pt[1]);
     }
     setBox(null);
     // A second tap close to the first, in time and place: back to the full view.
@@ -331,7 +339,7 @@ export function ViewFrame({
   };
 
   const reset = () => (onReset ? onReset() : onViewport(fit));
-  // Double-click: back to the full view, in any mode (the NeXus Viewer's meaning);
+  // Double-click: back to the full view, the box zoom armed or not (the NeXus Viewer's meaning);
   // not again for the dblclick a browser may send after a double-tap.
   const onDoubleClick = () => {
     if (performance.now() - tapReset.current < 600) return;
@@ -345,7 +353,7 @@ export function ViewFrame({
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return; // the browser's own shortcuts (Ctrl + is the page zoom)
     if (e.key === "Escape" && mode === "box") {
-      setMode("navigate");
+      setMode("none");
       setBox(null);
       drag.current = null;
       e.preventDefault();
@@ -373,14 +381,16 @@ export function ViewFrame({
   return (
     <div
       ref={ref}
-      className={`vf vf--${mode}`}
+      className={`vf${mode === "box" ? " vf--box" : ""}`}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      onPointerLeave={() => {
+      onPointerLeave={(e) => {
+        // a lifted finger leaves too: the reading it tapped stays up
+        if (e.pointerType === "touch") return;
         if (!drag.current && !pinch.current) onCursor?.(null);
       }}
       onDoubleClick={onDoubleClick}

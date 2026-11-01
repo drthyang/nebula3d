@@ -21,7 +21,7 @@ import dataclasses
 from typing import TYPE_CHECKING
 
 from nebula3d.modulation import Modulation
-from nebula3d.pipeline import PipelineParams
+from nebula3d.pipeline import PipelineParams, symmetry_average_group
 
 if TYPE_CHECKING:
     from nebula3d.server.schemas import PipelineRunRequest, StageParamsIn
@@ -68,6 +68,22 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     sp = req.params
 
     # The stages' switches: a stage switched off passes its input through.
+    if sp.symmetry_average_enabled is not None:
+        p.symmetry_average_enabled = bool(sp.symmetry_average_enabled)
+    if sp.symmetry_average_laue is not None:
+        laue = str(sp.symmetry_average_laue).strip()
+        p.symmetry_average = dataclasses.replace(p.symmetry_average, laue=laue or None)
+    if sp.symmetry_average_reaverage is not None:
+        p.symmetry_average = dataclasses.replace(
+            p.symmetry_average, reaverage=bool(sp.symmetry_average_reaverage))
+    if sp.symmetry_average_allow_metric_change is not None:
+        p.symmetry_average = dataclasses.replace(
+            p.symmetry_average,
+            allow_metric_change=bool(sp.symmetry_average_allow_metric_change))
+    if p.symmetry_average_enabled and p.symmetry_average.laue:
+        # A Laue class the viewer would not read fails now, before any work
+        # (one left blank may still be right: an input symmetrized already).
+        symmetry_average_group(p.symmetry_average)
     if sp.rings_enabled is not None:
         p.rings_enabled = bool(sp.rings_enabled)
     if sp.punch_enabled is not None:
@@ -75,7 +91,12 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     if sp.backfill_enabled is not None:
         p.backfill_enabled = bool(sp.backfill_enabled)
     if sp.edge_trim is not None:
-        p.edge_trim = int(sp.edge_trim)
+        # Voxel layers off the raw coverage edge: the NeXus Viewer's "Edge
+        # erosion r", whose field takes 0 to 10 (the page offers 0 to 3).
+        trim = float(sp.edge_trim)
+        if trim != int(trim) or not 0 <= trim <= 10:
+            raise ValueError(f"edge_trim takes 0 to 10 voxel layers, not {sp.edge_trim!r}")
+        p.edge_trim = int(trim)
     if sp.rings_n_patches is not None:
         p.rings = dataclasses.replace(p.rings, n_patches=sp.rings_n_patches)
     if sp.rings_n_fourier is not None:

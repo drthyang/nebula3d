@@ -12,7 +12,7 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 27 tools (26 with the skills off: no `read_skill`), which run in the
+calls 28 tools (27 with the skills off: no `read_skill`), which run in the
 browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
@@ -21,7 +21,13 @@ browser against the same API the viewers use:
   `compare_datasets`, `configure_settings`, `run_log`, and `run_verdict` (the
   run's verdict as `{{achieved}}` would give it now, read before writing).
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
-  `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`.
+  `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`,
+  and `compare_laue_classes`, the evidence for a Laue class: every class the
+  cell allows compared by R_int on the raw volume, on all measured voxels and
+  on the diffuse, with the suggestion, its rule and the flag
+  ([laue_compare.md](algorithms/laue_compare.md)). The system prompt asks
+  for it before the model suggests a class, which stays yours to set; a
+  local model is offered it for a question about symmetry.
 - **Display:** `dpdf_contrast`, and `mark_region`, which marks a region in the
   slice views for you to look at (below).
 - **Acting:** `update_settings`, `run_pipeline`, `tune_pipeline`,
@@ -84,8 +90,13 @@ Each is described under [How it works](#how-it-works).
   or a "cell" alone name nothing, nor does a bare "yes" (say which: "yes, it
   has that modulation"), while a question that names a fact names it.
   `tune/catalog.ts` lists the words; the modulation's are provisional, yours
-  to confirm. The magnetic ion and the |Q| band the model cannot change at
-  all.
+  to confirm. The raw edge trim (`edgeTrim`, 0 to 3 voxel layers) is under
+  the same gate though no fact about the sample: it decides which measured
+  voxels every stage reads, so the model changes it only when your latest
+  message names it ("edge trim", "edge erosion", "coverage edge", or "trim"
+  with "edge"), and never in a tuning run. The magnetic ion, the |Q| band and
+  the symmetry average's settings (the Laue class above all) the model
+  cannot change at all.
 - **The questions only you can answer are asked, never answered for you.**
   When a run's sharp peaks off the lattice bunch at one commensurate
   fraction, as the satellites of a modulation nobody declared would, the
@@ -233,14 +244,27 @@ so it can move the viewer while the conversation stays in view. It never covers
 the page: it takes a column of the app's grid, and the page reflows into what is
 left (`web/src/components/PilotDock.tsx`, `web/src/state/dockLayout.ts`):
 
-- **Docked** (a window at least 1000 px wide, or 900 px held landscape): a
+- **Docked** (a window at least 1000 px wide, or 800 px held landscape, so a
+  phone on its side docks too: its sheet would be under 200 px tall): a
   column on the right, about 28 % of the window at first (360–480 px). Drag its
   left edge, or use the arrow keys on it, to resize it between 320 px and 55 %
   of the window (at most 720 px); double-click the edge for the default. The header's chevron
   collapses it to a 44 px rail that opens it again.
 - **Bottom sheet** (any narrower window): a sheet under the page,
   48 % of the window at first. Drag its handle to resize it between 30 % and
-  85 %; the chevron collapses it to a bar.
+  85 %; the chevron collapses it to a bar. Its one-click requests scroll
+  sideways in one row, and the transcript takes the height left, so the
+  composer stays at the sheet's foot however short the sheet is. On a short
+  screen (600 px or less) the docked column puts the requests in one row too.
+
+On a phone or tablet, typing to the Pilot brings up the on-screen keyboard,
+which the browser lays over the page rather than resizing it. While the
+Pilot's composer has focus and the keyboard is up, the console sizes itself to
+the part of the screen the keyboard leaves (`visualViewport`,
+`web/src/components/useKeyboardFrame.ts`): the page gives up its room first,
+and the panel keeps the conversation and the composer, hiding the connection
+bar, the requests and the toggles until the keyboard goes. A pinch zoom or a
+collapsing browser toolbar is not taken for a keyboard (`keyboardFrame.ts`).
 
 The width and the sheet's height are remembered (localStorage) when a drag
 ends. The page's own layouts respond to the width they are given, not the

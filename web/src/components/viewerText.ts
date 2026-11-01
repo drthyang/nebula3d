@@ -1,17 +1,15 @@
 // The viewer pages' shared control text, in one place so every page names and
 // explains a control the same way: one plain line per tooltip, the details
-// behind the click modes' "?".  UI text only — nothing here is read by the
+// behind the "?" beside the Box zoom tool.  UI text only — nothing here is read by the
 // in-app agent.
 
 import { fmtLevel, type ScaleKind } from "./colorScale";
 
-/** The "?" beside the click modes: it opens the gesture card (GestureHint.tsx, gestures.ts). */
+/** The "?" beside the Box zoom tool: it opens the gesture card (GestureHint.tsx, gestures.ts). */
 export const GESTURE_HINT_TITLE = "Zoom, move and reset: the gestures";
 
-export const CLICK_MODE_TITLES = {
-  navigate: "Navigate: hover reads values; on 3D-ΔPDF a click moves the other two cuts",
-  box: "Box zoom: drag a box on a view to zoom into it, then back to Navigate",
-} as const;
+/** The Box zoom tool's toggle: armed, one box dragged on a view zooms into it. */
+export const BOX_ZOOM_TITLE = "Box zoom: drag a box on a view to zoom into it; Esc or a second press cancels";
 
 /** What Auto sets, one line per kind of data (the Auto button's tooltip). */
 export const AUTO_TITLES = {
@@ -36,6 +34,9 @@ export const UNIT_CELL_TITLES = {
   both: "Dashed lines at integer h, k, l on the Q views, at the cell edges on the ΔPDF view",
 } as const;
 
+/** The switch's name where it draws only integer h, k, l on the raw volume: the Configure preview. */
+export const HKL_GRID_LABEL = "HKL grid";
+
 export const RESET_ZOOM_TITLE = "Reset zoom (double-click the view, or 0)";
 
 export const STRUCTURE_TITLE = "Mark the structure's interatomic vectors on the ΔPDF";
@@ -48,3 +49,6 @@ export const DISPLAY_TOGGLE_TITLE = "Colour settings: colormap, range, scale, Au
 export function displaySummaryText(d: { symmetric?: boolean; scale?: ScaleKind; lv: { levels: { hi: number } } }): string {
   return d.symmetric ? `±${fmtLevel(Math.abs(d.lv.levels.hi))}` : (d.scale ?? "lin");
 }
+
+/** The readout hints' verb: a touch screen has no hover, a tap reads (ViewFrame). */
+export const readVerb = (touch: boolean): string => (touch ? "Tap" : "Hover");

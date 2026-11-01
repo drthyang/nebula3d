@@ -247,3 +247,31 @@ def test_fill_texture_holds_no_volume_sized_array(monkeypatch):
     assert lean.median_fill_bias_level == native.median_fill_bias_level
     assert peak_big < 0.6 * big[2].nbytes
     assert peak_big - peak_small < 0.4 * (big[2].nbytes - small[2].nbytes)
+
+
+def test_symmetry_average_holds_no_volume_sized_array():
+    # The symmetry average (pipeline stage 0) works a slab of H planes at a
+    # time, in place, and touches only each slab's orbit representatives and
+    # their images: what it holds is fixed by the slab, not the grid.  On a
+    # grid 1.5 times as fine (3.4 times the voxels) the traced peak grows by
+    # under 15 % of the float32 data it gained (6 to 9 % measured), on the
+    # L-separate path (6/mmm) and the general one (m-3m).  A second volume, or
+    # a volume-sized index array, would be several times that.
+    from nebula3d.symmetry import GridSymmetry, laue_group, symmetry_average
+    from nebula3d.utils import ub_from_lattice
+
+    def case(n, laue):
+        rng = np.random.default_rng(n)
+        ub = (ub_from_lattice(4.2, 4.2, 6.8, 90, 90, 120) if laue == "6/mmm"
+              else ub_from_lattice(5.0, 5.0, 5.0))
+        vol = HKLVolume.from_arrays(rng.random((n, n, n), dtype=np.float32), (-4, 4), (-4, 4),
+                                    (-4, 4), ub_matrix=ub, dtype=np.float32)
+        vol.mask = rng.random(vol.data.shape) > 0.3
+        return vol, GridSymmetry.for_volume(vol, laue_group(laue).ops)
+
+    for laue in ("6/mmm", "m-3m"):
+        small, small_sym = case(97, laue)
+        big, big_sym = case(145, laue)
+        _, peak_small = _traced_peak(symmetry_average, small, small_sym, slab_voxels=1 << 16)
+        _, peak_big = _traced_peak(symmetry_average, big, big_sym, slab_voxels=1 << 16)
+        assert peak_big - peak_small < 0.15 * (big.data.nbytes - small.data.nbytes), laue

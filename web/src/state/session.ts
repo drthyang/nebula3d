@@ -80,6 +80,7 @@ export interface Session {
 
 // The pipeline stage that writes each output.
 export const OUTPUT_STAGE: Record<string, string> = {
+  symmetrized: "symmetry_average",
   ringremoved: "rings",
   braggpunched: "punch",
   backfilled: "backfill",

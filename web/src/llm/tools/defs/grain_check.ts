@@ -1,9 +1,9 @@
 // grain_check: whether there is a second grain, and what the punch's sharp
 // off-lattice peaks are.
 
-import { fetchBraggProfile, fetchMeta } from "../../../api/client";
+import { fetchBraggProfile } from "../../../api/client";
 import { usePipelineStore } from "../../../state/pipelineStore";
-import { hklVolumeId, safe, stageVolumeId } from "../../context/loadContext";
+import { declaringMeta, safe } from "../../context/loadContext";
 import { evidence } from "../../inference";
 import { grainCheck, shownGrains } from "../../metrics/grains";
 import { skillsOn } from "../../skills";
@@ -33,8 +33,8 @@ export const grain_check: ChatTool = {
     const { dataset } = ctx;
     const top = Math.round(num(args, "top", 40));
     if (!(top >= 8 && top <= 120)) throw new ToolArgError("top must be within [8, 120]");
-    const rawId = stageVolumeId(dataset, "raw") ?? hklVolumeId(dataset);
-    const [profile, meta] = await Promise.all([safe(fetchBraggProfile(dataset.id)), rawId ? safe(fetchMeta(rawId)) : null]);
+    // The punch's volume declares the symmetry its peaks were found under, else the raw file does.
+    const [profile, meta] = await Promise.all([safe(fetchBraggProfile(dataset.id)), declaringMeta(dataset, "braggpunched")]);
     if (!profile?.has_profile) throw new Error("no punch record yet: run the punch first");
     if (!meta?.ub_matrix) throw new Error("the raw volume carries no UB matrix");
     const peaks = profile.peaks

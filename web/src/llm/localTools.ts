@@ -20,7 +20,7 @@ const ABOUT: [Exclude<AskedAbout, "general">, RegExp][] = [
   ["flatten", /flatten|background|floors?\b|incoherent|b·q|q²|magnetic|form factor/i],
   ["pdf", /Δ\s?pdf|delta.?pdf|\bpdf\b|real.?space|window|apodi|\bband\b|q.?max|fft|transform|consistency|features?\b|correlations?\b/i],
   ["lattice", /\bub\b|orient|lattice|\bcell\b|grains?\b|twin|tilt/i],
-  ["symmetry", /symmetr|6\/mmm|\bmmm\b|equivalen|hexagonal|six.?fold/i],
+  ["symmetry", /symmetr|\blaue\b|\br_?int\b|point.?group|6\/mmm|\bmmm\b|equivalen|hexagonal|six.?fold/i],
   ["coverage", /coverage|measured|counts? (end|stop)|\|q\|/i],
   ["compare", /compar|temperature|other datasets?|between datasets/i],
 ];

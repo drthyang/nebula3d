@@ -7,7 +7,9 @@
 //     and those the agent opened to show a setting it changed (for the visit:
 //     the agent's reveal is not the user's choice to remember);
 //   - each plane's zoom (a viewport in Å⁻¹, as on the viewer pages) and the
-//     preview's colour limits, for the dataset they were set on, for the visit.
+//     preview's colour limits, for the dataset they were set on, for the visit;
+//   - a stage section to bring into view once, asked from another page (the
+//     Execution page's "Symmetrize here").
 // The preview's colormap and scale are the viewer pages' own (viewerStore),
 // one setting across the console; its limits are its own, since the raw volume
 // it shows spans other values than the cleaned stage the cleanup page scales from.
@@ -28,7 +30,7 @@ export const PREVIEW_TAB_KEY = "nebula3d.configPreviewTab";
 export const ADVANCED_OPEN_KEY = "nebula3d.configAdvancedOpen";
 
 /** The stages with advanced settings to fold away. */
-export const ADVANCED_STAGES = ["rings", "punch", "flatten", "pdf"] as const;
+export const ADVANCED_STAGES = ["symmetry_average", "rings", "punch", "flatten", "pdf"] as const;
 export type AdvancedStage = (typeof ADVANCED_STAGES)[number];
 
 const isPlane = (v: unknown): v is PunchPlane => typeof v === "string" && (PREVIEW_PLANES as readonly string[]).includes(v);
@@ -88,6 +90,9 @@ interface ConfigViewState {
   setView: (dataset: string, plane: PunchPlane, v: Viewport | null) => void;
   levels: ManualLevels | null; // the preview's colour limits; null → Auto
   setLevels: (l: ManualLevels | null) => void;
+  // A stage section to bring into view the next time the page shows (once).
+  focusStage: string | null;
+  setFocusStage: (stage: string | null) => void;
 }
 
 export const useConfigViewStore = create<ConfigViewState>((set) => ({
@@ -124,4 +129,6 @@ export const useConfigViewStore = create<ConfigViewState>((set) => ({
     }),
   levels: null,
   setLevels: (levels) => set({ levels }),
+  focusStage: null,
+  setFocusStage: (focusStage) => set({ focusStage }),
 }));

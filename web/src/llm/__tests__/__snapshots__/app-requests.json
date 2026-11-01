@@ -145,6 +145,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "compare_laue_classes",
+      "description": "compare_laue_classes.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "radial_profile",
       "description": "radial_profile.",
       "input_schema": {
@@ -439,6 +448,15 @@
      {
       "name": "ub_check",
       "description": "ub_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "compare_laue_classes",
+      "description": "compare_laue_classes.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -723,6 +741,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "compare_laue_classes",
+      "description": "compare_laue_classes.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "radial_profile",
       "description": "radial_profile.",
       "input_schema": {
@@ -1017,6 +1044,15 @@
      {
       "name": "ub_check",
       "description": "ub_check.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "compare_laue_classes",
+      "description": "compare_laue_classes.",
       "input_schema": {
        "type": "object",
        "properties": {}

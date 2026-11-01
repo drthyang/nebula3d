@@ -1,15 +1,16 @@
 // What a left click or drag on a slice does, shared by every viewer page:
-//   navigate — read values; on the 3D-ΔPDF page a click moves the other two cuts
-//   box      — the box-zoom tool, armed by its button: one drag zooms into the
-//              box, then the views are back in Navigate
-// Zoom and pan need no mode: in every mode the views behave like an embedded
-// map — Ctrl/⌘ + wheel or a pinch zooms about the pointer (a plain wheel too
-// when the page cannot scroll), a Shift, middle-button or two-finger drag pans,
-// and a double-click returns to the full view (components/ViewFrame.tsx).
+//   none — nothing: hover reads values and draws the crosshair, which follows
+//          the pointer in every linked view
+//   box  — the box-zoom tool, armed by its button: one drag zooms into the box,
+//          then the tool is put away (back to none)
+// Zoom and pan need no mode: the views behave like an embedded map —
+// Ctrl/⌘ + wheel or a pinch zooms about the pointer (a plain wheel too when
+// the page cannot scroll), a Shift, middle-button or two-finger drag pans, and
+// a double-click returns to the full view (components/ViewFrame.tsx).
 //
-// The box zoom is a one-shot tool, so no mode is remembered: a page always
-// opens in Navigate. Browsers that stored one of the old Navigate · Zoom · Move
-// modes have it dropped.
+// The box zoom is a one-shot tool, so nothing is remembered: a page always
+// opens with it put away. Browsers that stored one of the old Navigate · Zoom ·
+// Move modes have it dropped.
 //
 // On phones the header's display row folds behind a toggle (WorkspaceHeader);
 // whether it is open is one setting for every page, remembered per browser.
@@ -19,19 +20,19 @@
 
 import { create } from "zustand";
 
-export type ClickMode = "navigate" | "box";
+export type ClickMode = "none" | "box";
 
 /** Where the old click modes were remembered; read once to drop them. */
 export const LEGACY_CLICK_MODE_KEY = "nebula3d.clickMode";
 
-/** The mode a page opens in: Navigate, whatever an older version stored ("zoom", "move"). */
+/** The mode a page opens in: none (the box zoom put away), whatever an older version stored ("navigate", "zoom", "move"). */
 export function initialClickMode(): ClickMode {
   try {
     if (localStorage.getItem(LEGACY_CLICK_MODE_KEY) !== null) localStorage.removeItem(LEGACY_CLICK_MODE_KEY);
   } catch {
     /* storage unavailable */
   }
-  return "navigate";
+  return "none";
 }
 
 /** Where the phone header's display row remembers being open ("1") or closed. */

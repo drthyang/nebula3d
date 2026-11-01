@@ -16,6 +16,8 @@ import { ViewerImportBanner } from "./components/ViewerImportBanner";
 import { MemoryBar } from "./components/MemoryBar";
 import { PilotDock } from "./components/PilotDock";
 import { useDockLayout } from "./components/useDockLayout";
+import { TouchTitles } from "./components/TouchTitles";
+import { useKeyboardFrame } from "./components/useKeyboardFrame";
 import { useAgentHighlights } from "./llm/highlight";
 import { useRememberedConfig } from "./state/configMemory";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
@@ -77,11 +79,22 @@ const NAV: { id: Tab; label: string; short?: string; desc?: string; icon: ReactN
 // Source repository; its README is the entry point to the documentation.
 const REPO_URL = "https://github.com/drthyang/nebula3d";
 
-// API status, memory, version, copyright and documentation links.  Sits at the
-// foot of the sidebar; in the compact top-bar layout the sidebar copy is hidden
-// and the one at the end of <main> shows instead (see "Device layouts" in
-// index.css).
-function ConsoleFoot({ className, apiUp }: { className: string; apiUp: boolean }) {
+/** The version badge: beside the name at the top; in the compact top bar, which
+ *  hides the name, in the foot at the end of <main> instead. */
+function VersionBadge() {
+  return (
+    <span className="ver" title="NEBULA3D version">
+      <span className="ver-num">v0.4.0</span>
+      <span className="ver-tag">dev</span>
+    </span>
+  );
+}
+
+// API status, memory, copyright and documentation links (and, in the compact
+// layout, the version).  Sits at the foot of the sidebar; in the compact
+// top-bar layout the sidebar copy is hidden and the one at the end of <main>
+// shows instead (see "Device layouts" in index.css).
+function ConsoleFoot({ className, apiUp, version = false }: { className: string; apiUp: boolean; version?: boolean }) {
   return (
     <footer className={className}>
       <span className="api-status">
@@ -93,10 +106,7 @@ function ConsoleFoot({ className, apiUp }: { className: string; apiUp: boolean }
             : "API offline"}
       </span>
       <MemoryBar />
-      <span className="ver">
-        <span className="ver-num">v0.4.0</span>
-        <span className="ver-tag">dev</span>
-      </span>
+      {version && <VersionBadge />}
       <span className="foot-links">
         <a href={`${REPO_URL}#readme`} target="_blank" rel="noopener noreferrer">
           About &amp; documentation
@@ -135,6 +145,7 @@ export function App() {
   // so it can open a viewer next to the conversation.
   const dockOpen = useNavStore((s) => s.dockOpen);
   const dock = useDockLayout();
+  useKeyboardFrame();
   useAgentHighlights();
   useRememberedConfig();
   const setDockOpen = useNavStore((s) => s.setDockOpen);
@@ -175,6 +186,7 @@ export function App() {
           </span>
           <span className="brand-name">
             <b>nebula3d</b>
+            <VersionBadge />
           </span>
         </div>
 
@@ -253,10 +265,11 @@ export function App() {
         </header>
         <ViewerImportBanner onLoaded={showConfig} />
         {renderPage(tab, setTab)}
-        <ConsoleFoot className="main-foot" apiUp={apiUp} />
+        <ConsoleFoot className="main-foot" apiUp={apiUp} version />
       </main>
 
       <PilotDock mode={dock.mode} open={dockOpen} />
+      <TouchTitles />
     </div>
   );
 }

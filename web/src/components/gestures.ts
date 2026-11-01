@@ -9,6 +9,8 @@
 //            wheel, which scrolls the page (or zooms, when it cannot scroll)
 //   reset  — double-click (and double-tap on a touch screen), 0, Reset zoom
 //   box    — the Box zoom button, then one drag; Esc or a second press puts it away
+//   read   — on touch, a tap (or a sideways drag) reads values, and one finger
+//            scrolls the page over a view (touch-action: pan-y)
 // Touch-only devices get the touch gestures; everything else the mouse,
 // trackpad and keyboard ones, with ⌘ on Apple platforms and Ctrl elsewhere.
 
@@ -72,6 +74,7 @@ export function gestureCard({ mac, touch }: { mac: boolean; touch: boolean }): G
         { id: "reset", name: "Reset", ways: [[glyph("double-tap", "double-tap")], [button("↺ Reset zoom")]] },
         { id: "box", name: "Box zoom", ways: [[button("Box zoom"), text("then"), glyph("drag", "drag a box")], [text("tap it again to cancel")]] },
       ],
+      note: "A tap reads the values under it; one finger scrolls the page. Press and hold a control to read what it does.",
     };
   }
   return {

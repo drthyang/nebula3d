@@ -5,9 +5,12 @@
 
 This is the in-process, testable home for the six-stage workflow that
 ``examples/run_pipeline.py`` previously drove by shelling out to per-stage example
-scripts with environment-variable parameters.  Each stage here calls the existing
-library primitives directly:
+scripts with environment-variable parameters, and the optional stage 0 before
+it.  Each stage here calls the existing library primitives directly:
 
+    0. symmetry_average → :func:`~nebula3d.symmetry.symmetry_average` (optional,
+                  off by default: averages an unsymmetrized volume over its
+                  Laue class, by the NeXus Viewer's rules)
     1. rings    → :class:`~nebula3d.preprocessing.PatchedRadialRingModel`
                   (+ :func:`~nebula3d.preprocessing.confirm_ring_shells_across_h`)
     2. punch    → :class:`~nebula3d.analysis.BraggRemover`
@@ -95,12 +98,26 @@ from nebula3d.preprocessing.radial_background import (
 from nebula3d.preprocessing.radial_background import (
     _offset_q_magnitude as _plane_offset_q_magnitude,
 )
-from nebula3d.symmetry import GridSymmetry, parse_symmetry_ops, read_symmetry_ops
+from nebula3d.symmetry import (
+    METRIC_TOLERANCE,
+    GridSymmetry,
+    LaueGroup,
+    check_uniform_axes,
+    format_op,
+    group_label,
+    laue_group,
+    metric_change,
+    parse_symmetry_ops,
+    read_symmetry_ops,
+    symmetry_average,
+)
 
 if TYPE_CHECKING:
     from nebula3d.analysis.bragg import _BraggProfile
 
 __all__ = [
+    "SymmetryAverageParams",
+    "SymmetryAverageError",
     "RingParams",
     "PunchParams",
     "BackfillParams",
@@ -110,6 +127,11 @@ __all__ = [
     "PipelinePaths",
     "STAGES",
     "default_modulation",
+    "declared_group",
+    "resolve_symmetry_average",
+    "symmetry_average_group",
+    "symmetrize",
+    "read_symmetry_average",
     "remove_rings",
     "punch_bragg",
     "backfill",
@@ -143,7 +165,7 @@ Status = Literal["start", "progress", "done", "skip", "error"]
 ProgressFn = Callable[[str, Status, float | None, str], None]
 
 STAGES: tuple[str, ...] = (
-    "rings", "punch", "backfill", "flatten", "pdf", "pdf_check")
+    "symmetry_average", "rings", "punch", "backfill", "flatten", "pdf", "pdf_check")
 
 
 def _emit(progress: ProgressFn | None, stage: str, status: Status,
@@ -615,6 +637,33 @@ class PunchParams:
 
 
 @dataclass
+class SymmetryAverageParams:
+    """Stage 0 — symmetry averaging (:func:`symmetrize`), off by default.
+
+    An unsymmetrized volume is averaged over its Laue class by the NeXus
+    Viewer's rules (:func:`nebula3d.symmetry.symmetry_average`): every voxel
+    takes the equal-weight mean of the measured voxels among its symmetry
+    equivalents, so coverage gaps fill from their equivalents.  Its output
+    declares the operations as the viewer's export does (``symmetry_ops``), and
+    the stages after it treat equivalent voxels alike.
+    """
+
+    # The Laue class: a preset of nebula3d.symmetry.LAUE_PRESETS by name
+    # ("6/mmm", "m-3m", "2/m (b unique)") or generators in the viewer's syntax
+    # ("h+k,-h,l; -k,-h,-l; -h,-k,-l").  The sample's to declare: None is none
+    # chosen, which the stage refuses unless the input is symmetrized already.
+    laue: str | None = None
+    # An input that declares a symmetry (a NeXus Viewer export) was averaged
+    # already, and passes through unless this asks to average it again.
+    reaverage: bool = False
+    # Operations that change the cell's metric by more than 2 % are no
+    # symmetries of the lattice, and the stage refuses them; this averages over
+    # them anyway ("Proceed despite the metric change"), with a warning in the
+    # log and in the stage's record.  The user's to set, never the Pilot's.
+    allow_metric_change: bool = False
+
+
+@dataclass
 class BackfillParams:
     """Backfill of punched Bragg holes (``backfill_bragg``)."""
 
@@ -707,6 +756,7 @@ def default_modulation() -> Modulation | None:
 class PipelineParams:
     """All stage parameters plus the cleanup stages' on/off switches."""
 
+    symmetry_average: SymmetryAverageParams = field(default_factory=SymmetryAverageParams)
     rings: RingParams = field(default_factory=RingParams)
     punch: PunchParams = field(default_factory=PunchParams)
     backfill: BackfillParams = field(default_factory=BackfillParams)
@@ -718,6 +768,9 @@ class PipelineParams:
     # and the switched-off stage's own output file is neither written nor
     # removed.  Unlike a stage merely left out of run_pipeline's `stages`, a
     # partial re-run, which reads that stage's output on disk.
+    # Stage 0, the symmetry average, is the one off by default: whether a
+    # volume may be averaged, and over which Laue class, is the user's call.
+    symmetry_average_enabled: bool = False
     rings_enabled: bool = True
     punch_enabled: bool = True
     backfill_enabled: bool = True
@@ -772,8 +825,10 @@ class PipelineParams:
 
     def stage_enabled(self, stage: str) -> bool:
         """Whether the run's settings switch *stage* on: a cleanup stage's
-        switch (``rings_enabled`` … ``flatten_enabled``), True for the others."""
+        switch (``symmetry_average_enabled``, ``rings_enabled`` …
+        ``flatten_enabled``), True for the others."""
         return {
+            "symmetry_average": self.symmetry_average_enabled,
             "rings": self.rings_enabled,
             "punch": self.punch_enabled,
             "backfill": self.backfill_enabled,
@@ -782,21 +837,35 @@ class PipelineParams:
 
 
 def input_symmetry(vol: HKLVolume, p: PipelineParams, input_path: str | Path, *,
+                   fallback: str | Path | None = None,
                    progress: ProgressFn | None = None,
                    stage: str = "rings") -> GridSymmetry | None:
     """The symmetry of the run's input (``p.symmetry``) on *vol*'s grid.
 
-    ``"auto"`` reads the operations *input_path* declares; when they do not
-    map the grid onto itself the run goes on without them and says so.  A run
-    resumed from processed files whose raw input is gone declares none.
-    ``None`` when there is no symmetry to apply.
+    ``"auto"`` reads the operations *input_path* declares — the stage's own
+    input: the raw input, or a stage output, which declares the symmetry its
+    data carry (the symmetry average's output, and every stage after it that
+    applied one) — else those *fallback* declares (the raw input, for stage
+    outputs written before they declared it).  When they do not map the grid
+    onto itself the run goes on without them and says so.  A file that is not
+    there declares none, so a run resumed from processed files whose raw input
+    is gone declares none.  ``None`` when there is no symmetry to apply.
     """
     if p.symmetry is None or str(p.symmetry).strip().lower() in {"", "none"}:
         return None
     auto = str(p.symmetry).strip().lower() == "auto"
-    if auto and not Path(input_path).exists():
-        return None
-    ops = read_symmetry_ops(input_path) if auto else parse_symmetry_ops(str(p.symmetry))
+    source = Path(input_path)
+    if auto:
+        ops = None
+        for path in (input_path, fallback):
+            if path is None or not Path(path).exists():
+                continue
+            ops = read_symmetry_ops(path)
+            if ops is not None:
+                source = Path(path)
+                break
+    else:
+        ops = parse_symmetry_ops(str(p.symmetry))
     if ops is None:
         return None
     try:
@@ -805,8 +874,32 @@ def input_symmetry(vol: HKLVolume, p: PipelineParams, input_path: str | Path, *,
         if not auto:
             raise
         _emit(progress, stage, "progress", None,
-              f"ignoring the symmetry {Path(input_path).name} declares: {exc}")
+              f"ignoring the symmetry {source.name} declares: {exc}")
         return None
+
+
+def _declare_symmetry(path: Path, symmetry: GridSymmetry | None) -> None:
+    """Declare in the output *path* the symmetry its data carry, as the NeXus
+    Viewer's export does (``symmetry``, ``symmetry_ops``): a stage that applied
+    one keeps the data symmetric, so the stages after it, and the viewers,
+    read it there.  Nothing for no symmetry or the identity alone."""
+    if symmetry is None or symmetry.order < 2:
+        return
+    _write_nebula3d_attrs(path, symmetry=group_label(symmetry.ops),
+                          symmetry_ops="; ".join(format_op(m) for m in symmetry.ops))
+
+
+def _write_nebula3d_attrs(path: Path, **values: str) -> None:
+    """Text attributes of *path*'s NEBULA3D group (a volume :func:`nebula3d.save`
+    wrote), scalar strings as Mantid writes them."""
+    import h5py
+
+    from nebula3d.io.mantid_nxs import _set_text_attrs
+
+    with h5py.File(path, "a") as fh:
+        grp = fh.get(_FLATTEN_SETTINGS_GROUP)
+        if isinstance(grp, h5py.Group):
+            _set_text_attrs(grp, **values)
 
 
 def share_ring_removal(out: HKLVolume, input_mask: np.ndarray, symmetry: GridSymmetry, *,
@@ -829,6 +922,25 @@ def share_ring_removal(out: HKLVolume, input_mask: np.ndarray, symmetry: GridSym
           f"ring removal averaged over {symmetry.order} symmetry operations ({n:,} voxels)")
 
 
+def finish_ring_stage(out: HKLVolume, input_mask: np.ndarray, p: PipelineParams,
+                      src: str | Path, paths: PipelinePaths, *,
+                      progress: ProgressFn | None = None) -> None:
+    """Finish the ring stage: make its output *out* as symmetric as its input
+    *src* (the symmetry it declares, or the raw input's: :func:`share_ring_removal`
+    with *input_mask*, the input's mask), save it, declare its symmetry, and
+    write the ring diagnostics.  Shared by :func:`run_pipeline` and the
+    browser's out-of-band ring stage (``nebula3d.webbridge.run_async``)."""
+    symmetry = input_symmetry(out, p, src, fallback=paths.input, progress=progress,
+                              stage="rings")
+    if symmetry is not None:
+        share_ring_removal(out, input_mask, symmetry, progress=progress)
+    nebula3d.save(out, paths.ringremoved)
+    _declare_symmetry(paths.ringremoved, symmetry)
+    ring_diagnostics = getattr(out, "_ring_diagnostics", None)
+    if ring_diagnostics is not None:
+        write_global_ring_diagnostics(ring_diagnostics, paths.ring_diagnostics_json)
+
+
 def load_input(path: str | Path, p: PipelineParams, *,
                progress: ProgressFn | None = None, stage: str = "rings") -> HKLVolume:
     """Load the raw input in the run's precision and trim its coverage edge.
@@ -846,6 +958,235 @@ def load_input(path: str | Path, p: PipelineParams, *,
               f"trimmed {n:,} voxels at the edge of the measured coverage "
               f"(edge_trim={p.edge_trim}{shared})")
     return vol
+
+
+# ---------------------------------------------------------------------------
+# Stage 0 — symmetry average (optional)
+# ---------------------------------------------------------------------------
+class SymmetryAverageError(ValueError):
+    """The symmetry average cannot run as asked: no Laue class, one the viewer
+    would not read, operations that do not map the grid onto itself or are no
+    symmetries of the cell.  The message says why and what to change."""
+
+
+#: The symmetry average's record in its output: a JSON text attribute of the
+#: file's NEBULA3D group (what was asked and what came of it), beside the
+#: ``symmetry`` and ``symmetry_ops`` it declares (:func:`read_symmetry_average`).
+_SYMMETRY_AVERAGE_ATTR = "symmetry_average"
+
+
+def symmetry_average_group(params: SymmetryAverageParams) -> LaueGroup:
+    """The Laue group the symmetry average averages over: *params*' Laue class,
+    closed as the NeXus Viewer closes it (:func:`nebula3d.symmetry.laue_group`).
+
+    :class:`SymmetryAverageError` without a Laue class, for one the viewer
+    would not read, and for the identity alone (Laue class 1), which averages
+    nothing.
+    """
+    if params.laue is None or not str(params.laue).strip():
+        raise SymmetryAverageError(
+            "The symmetry average needs the sample's Laue class: choose a preset such as "
+            "6/mmm, or give generators such as h+k,-h,l; -k,-h,-l; -h,-k,-l.")
+    try:
+        group = laue_group(params.laue)
+    except ValueError as exc:
+        raise SymmetryAverageError(f"Laue class {params.laue!r}: {exc}") from exc
+    if group.order < 2:
+        raise SymmetryAverageError(
+            "Laue class 1, the identity alone, averages nothing: choose the sample's Laue "
+            "class, or switch the symmetry average off.")
+    return group
+
+
+def symmetrize(vol: HKLVolume, params: SymmetryAverageParams | None = None, *,
+               progress: ProgressFn | None = None,
+               group: LaueGroup | None = None) -> HKLVolume:
+    """Average *vol* over its Laue class, **in place**, and return it.
+
+    The NeXus Viewer's rules throughout (:func:`nebula3d.symmetry.symmetry_average`):
+    the generators closed into a group, the operations exact on the grid, and
+    every voxel the equal-weight mean of the measured voxels among its
+    equivalents, an orbit with any measured voxel measured.  Refused
+    (:class:`SymmetryAverageError`) when the axes are not uniform, an operation
+    does not map the grid onto itself, or the operations change the cell's
+    metric by more than :data:`~nebula3d.symmetry.METRIC_TOLERANCE` (2 %, the
+    viewer's warning: they are then no symmetries of this lattice, and the
+    average would pool voxels at different |Q|) — unless
+    ``allow_metric_change`` asks to proceed anyway, which the log and the
+    record (``metric_warning``) then say.  Without a UB (the identity,
+    NEBULA3D's "unknown") the metric is not checked.  What was done is attached
+    as ``vol._symmetry_average`` (the stage writes it into its output).
+    """
+    params = params or SymmetryAverageParams()
+    group = group if group is not None else symmetry_average_group(params)
+    _emit(progress, "symmetry_average", "start", 0.0,
+          f"symmetry average over {group.label} ({group.order} operations)")
+    try:
+        check_uniform_axes(vol)
+        sym = GridSymmetry.for_volume(vol, group.ops)
+    except ValueError as exc:
+        raise SymmetryAverageError(
+            f"The {group.label} operations cannot average this volume: {exc}. They must send "
+            "voxel centres onto voxel centres: equal steps along the axes an operation "
+            "mixes (H and K for the hexagonal, trigonal and tetragonal classes, all three "
+            "for the cubic ones) and a bin centred at 0 on each axis. Re-bin the volume, or "
+            "choose a Laue class whose operations fit its grid.") from exc
+    ub = np.asarray(vol.ub_matrix, dtype=np.float64)
+    change = None if np.array_equal(ub, np.eye(3)) else metric_change(group.ops, ub)
+    warning = None
+    if change is not None and change > METRIC_TOLERANCE:
+        if not params.allow_metric_change:
+            raise SymmetryAverageError(
+                f"The {group.label} operations change this cell's metric by up to "
+                f"{100 * change:.0f}% (more than {100 * METRIC_TOLERANCE:g}%): they are not "
+                "symmetries of this lattice, and averaging over them would pool voxels at "
+                "different |Q|. Check the Laue class and its setting (the trigonal and "
+                "hexagonal classes are on hexagonal axes), or, to average over them anyway, "
+                "switch on \"Proceed despite the metric change\" (the symmetry average's "
+                "Advanced settings).")
+        warning = (f"the {group.label} operations change this cell's metric by up to "
+                   f"{100 * change:.0f}% (more than {100 * METRIC_TOLERANCE:g}%): they are not "
+                   "symmetries of this lattice, and voxels at different |Q| were pooled; "
+                   "averaged anyway, as \"Proceed despite the metric change\" asked")
+        _emit(progress, "symmetry_average", "progress", None, f"⚠ {warning}")
+    stats = symmetry_average(vol, sym)
+    record: dict[str, Any] = {
+        "laue": group.label, "generators": group.generators, "order": group.order,
+        "metric_change": change, "measured_before": stats.measured_before,
+        "measured_after": stats.measured_after, "filled": stats.filled,
+        "orbits": stats.orbits, "r_int": stats.r_int,
+        "sigma_defaulted": stats.sigma_defaulted,
+    }
+    if warning is not None:
+        record["metric_warning"] = warning[0].upper() + warning[1:] + "."
+    setattr(vol, "_symmetry_average", record)
+    metric = ("metric not checked: no UB" if change is None
+              else f"metric (UB) kept to {100 * change:.2f}%" if warning is None
+              else f"⚠ metric (UB) changed by up to {100 * change:.0f}%, averaged anyway "
+                   "as asked")
+    agree = ("" if stats.r_int is None
+             else f"; measured equivalents agreed to R_int = {stats.r_int:.3f}")
+    _emit(progress, "symmetry_average", "done", 1.0,
+          f"averaged over {group.label}: {group.order} operations, pooled with equal weight "
+          f"({metric}); {stats.measured_before:,} measured voxels, {stats.filled:,} more "
+          f"filled from their equivalents{agree}")
+    return vol
+
+
+def declared_group(path: str | Path) -> tuple[str, int] | None:
+    """The name and order of the symmetry the file *path* declares it was
+    averaged over (its ``symmetry`` and ``symmetry_ops``), or None when it
+    declares none or is not there.  The identity alone (an unsymmetrized
+    NeXus Viewer export declares ``h,k,l``) declares none."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        ops = read_symmetry_ops(path)
+    except (OSError, ValueError):
+        return None
+    if ops is None or len(ops) < 2:
+        return None
+    import h5py
+
+    from nebula3d.io.hkl_reader import declared_attrs
+
+    raw: object = None
+    try:
+        with h5py.File(path, "r") as fh:
+            attrs = declared_attrs(fh)
+            raw = attrs.get("symmetry") if attrs is not None else None
+    except OSError:
+        raw = None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", "replace")
+    label = str(raw).strip() if raw is not None else ""
+    return (label or group_label(ops)), len(ops)
+
+
+def resolve_symmetry_average(
+    p: PipelineParams, input_path: str | Path,
+) -> tuple[PipelineParams, str | None]:
+    """The settings a run of *input_path* takes for the symmetry average.
+
+    An input that declares a symmetry was averaged already (a NeXus Viewer
+    export): unless ``reaverage`` asks for another average, the stage passes it
+    through, as if switched off, and its declared symmetry applies to the
+    stages after it.  Returns the settings (*p* itself when nothing changes)
+    and the log line that says so (None when nothing changes).
+    """
+    if not p.symmetry_average_enabled or p.symmetry_average.reaverage:
+        return p, None
+    declared = declared_group(input_path)
+    if declared is None:
+        return p, None
+    label, order = declared
+    laue = p.symmetry_average.laue
+    asked = (f"; switch on \"Average again\" to average it over {str(laue).strip()} as well"
+             if laue and str(laue).strip() else "")
+    notice = (f"{Path(input_path).name} declares {label} ({order} operations): it is "
+              f"symmetrized already, so the symmetry average passes it through{asked}")
+    return dataclasses.replace(p, symmetry_average_enabled=False), notice
+
+
+def read_symmetry_average(path: str | Path) -> dict[str, Any] | None:
+    """What the symmetry average that wrote *path* did (its record: the Laue
+    class, the metric change, the voxels measured before and after, R_int, the
+    input it read and the edge trim it took), or None when *path* records none."""
+    import h5py
+
+    try:
+        with h5py.File(path, "r") as fh:
+            grp = fh.get(_FLATTEN_SETTINGS_GROUP)
+            raw = grp.attrs.get(_SYMMETRY_AVERAGE_ATTR) if isinstance(grp, h5py.Group) else None
+    except OSError:
+        return None
+    if raw is None:
+        return None
+    try:
+        record = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else str(raw))
+    except ValueError:
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def _symmetrized_is_current(path: Path, input_path: Path, group: LaueGroup,
+                            edge_trim: int, allow_metric_change: bool = False) -> bool:
+    """Whether the symmetry average's output *path* was made from *input_path*
+    (not older than it) over *group* with this *edge_trim*: its record and
+    declared operations say, so an output made over another Laue class is
+    made again rather than reused.  One made despite a metric change (its
+    record's ``metric_warning``) is not current for a run that does not allow
+    one: that run refuses, as it would have made none."""
+    if not path.exists():
+        return False
+    try:
+        if input_path.exists() and path.stat().st_mtime < input_path.stat().st_mtime:
+            return False
+    except OSError:
+        pass
+    record = read_symmetry_average(path)
+    if record is None or record.get("source_file") != input_path.name:
+        return False
+    if record.get("edge_trim") != int(edge_trim):
+        return False
+    if record.get("metric_warning") and not allow_metric_change:
+        return False
+    try:
+        ops = read_symmetry_ops(path)
+    except (OSError, ValueError):
+        return False
+    return ops is not None and "; ".join(format_op(m) for m in ops) == group.ops_text
+
+
+def _write_symmetry_average(path: Path, group: LaueGroup, record: dict[str, Any]) -> None:
+    """Declare in the stage's output the operations it averaged over, as the
+    NeXus Viewer's export does (``symmetry``: the class's name or "custom";
+    ``symmetry_ops``: the closed group; ``source_file``), and record what was
+    done (``symmetry_average``, JSON)."""
+    _write_nebula3d_attrs(path, symmetry=group.label, symmetry_ops=group.ops_text,
+                          source_file=str(record.get("source_file", "")),
+                          **{_SYMMETRY_AVERAGE_ATTR: json.dumps(record, sort_keys=True)})
 
 
 # ---------------------------------------------------------------------------
@@ -2358,11 +2699,13 @@ def _write_consistency_figure(rows: list, out_png: Path) -> None:
 
 
 #: The cleanup stages, in order: each reads the output of the last one before
-#: it that the run's settings switch on (PipelineParams.stage_enabled).
-_CLEANUP_STAGES: tuple[str, ...] = ("rings", "punch", "backfill", "flatten")
+#: it that the run's settings switch on (PipelineParams.stage_enabled).  The
+#: symmetry average comes first, and is off by default.
+_CLEANUP_STAGES: tuple[str, ...] = ("symmetry_average", "rings", "punch", "backfill", "flatten")
 
 #: Each stage's name in the run's log.
 _STAGE_NAMES: dict[str, str] = {
+    "symmetry_average": "symmetry average",
     "rings": "ring removal",
     "punch": "Bragg punch",
     "backfill": "backfill",
@@ -2398,7 +2741,8 @@ def _passed_through_notice(p: PipelineParams, stage: str, src: Path) -> str | No
             if stage in _CLEANUP_STAGES else len(_CLEANUP_STAGES))
     off: list[str] = []
     for prev in reversed(_CLEANUP_STAGES[:upto]):
-        if p.stage_enabled(prev):
+        # The symmetry average is off by default: no news when it is.
+        if p.stage_enabled(prev) or prev == "symmetry_average":
             break
         off.insert(0, prev)
     if not off:
@@ -2440,6 +2784,8 @@ class PipelinePaths:
     """Chained on-disk artifacts for one input volume (names match run_pipeline)."""
 
     input: Path
+    # The symmetry average's output (stage 0, off by default).
+    symmetrized: Path
     ringremoved: Path
     ring_diagnostics_json: Path
     braggpunched: Path
@@ -2449,7 +2795,7 @@ class PipelinePaths:
     delta_pdf: Path
     # The volume the ΔPDF transforms: the output of the last cleanup stage
     # switched on (flattened with the flatten on, else backfilled, …), the raw
-    # input with all four off.
+    # input with all of them off.
     pdf_input: Path
     pdf_check_json: Path
     pdf_check_png: Path
@@ -2458,7 +2804,8 @@ class PipelinePaths:
 def pipeline_paths(input_path: str | Path, *, proc_dir: str | Path | None = None,
                    flatten_enabled: bool = True, rings_enabled: bool = True,
                    punch_enabled: bool = True,
-                   backfill_enabled: bool = True) -> PipelinePaths:
+                   backfill_enabled: bool = True,
+                   symmetry_average_enabled: bool = False) -> PipelinePaths:
     """Resolve the chained output paths for ``input_path``.
 
     Names match ``examples/run_pipeline.py`` exactly so the viewers and the
@@ -2468,15 +2815,17 @@ def pipeline_paths(input_path: str | Path, *, proc_dir: str | Path | None = None
     """
     inp = Path(input_path)
     proc = Path(proc_dir) if proc_dir is not None else Path("data/processed")
+    sym = proc / f"{inp.stem}_symmetrized.h5"
     ring = proc / f"{inp.stem}_ringremoved.h5"
     punch = proc / f"{ring.stem}_braggpunched.h5"
     fill = proc / f"{punch.stem}_backfilled.h5"
     flat = proc / f"{fill.stem}_flattened.h5"
     pdf = proc / f"{fill.stem}_delta_pdf.h5"
-    switched_on = ((rings_enabled, ring), (punch_enabled, punch),
-                   (backfill_enabled, fill), (flatten_enabled, flat))
+    switched_on = ((symmetry_average_enabled, sym), (rings_enabled, ring),
+                   (punch_enabled, punch), (backfill_enabled, fill),
+                   (flatten_enabled, flat))
     return PipelinePaths(
-        input=inp, ringremoved=ring,
+        input=inp, symmetrized=sym, ringremoved=ring,
         ring_diagnostics_json=proc / f"{ring.stem}_diagnostics.json",
         braggpunched=punch,
         bragg_profile_json=proc / f"{punch.stem}_profile.json",
@@ -2491,6 +2840,7 @@ def _run_paths(input_path: str | Path, p: PipelineParams, *,
                proc_dir: str | Path | None = None) -> PipelinePaths:
     """:func:`pipeline_paths` with the stages' switches of *p*."""
     return pipeline_paths(input_path, proc_dir=proc_dir,
+                          symmetry_average_enabled=p.symmetry_average_enabled,
                           rings_enabled=p.rings_enabled,
                           punch_enabled=p.punch_enabled,
                           backfill_enabled=p.backfill_enabled,
@@ -2511,8 +2861,9 @@ def _stage_input(stage: str, p: PipelineParams, paths: PipelinePaths,
     its run's), or, when there is none, the walk goes on.  The raw input when
     nothing before *stage* gives a volume.
     """
-    outputs = {"rings": paths.ringremoved, "punch": paths.braggpunched,
-               "backfill": paths.backfilled, "flatten": paths.flattened}
+    outputs = {"symmetry_average": paths.symmetrized, "rings": paths.ringremoved,
+               "punch": paths.braggpunched, "backfill": paths.backfilled,
+               "flatten": paths.flattened}
     upto = (_CLEANUP_STAGES.index(stage)
             if stage in _CLEANUP_STAGES else len(_CLEANUP_STAGES))
     for prev in reversed(_CLEANUP_STAGES[:upto]):
@@ -2614,6 +2965,8 @@ def run_pipeline(
     p = params or PipelineParams()
     if force_from is not None and force_from not in STAGES:
         raise ValueError(f"force_from={force_from!r}; choose one of {STAGES}")
+    # An input symmetrized already passes the symmetry average through.
+    p, symmetry_notice = resolve_symmetry_average(p, input_path)
 
     selected = [s for s in STAGES if s in set(stages)]
     paths = _run_paths(input_path, p, proc_dir=proc_dir)
@@ -2672,6 +3025,34 @@ def run_pipeline(
             return load_input(src, p, progress=progress, stage=stage)
         return nebula3d.load(src, dtype=p.np_dtype())
 
+    # --- stage 0: symmetry average (optional) -------------------------------
+    if runs("symmetry_average"):
+        group = symmetry_average_group(p.symmetry_average)
+        current = _symmetrized_is_current(paths.symmetrized, paths.input, group,
+                                          p.edge_trim, p.symmetry_average.allow_metric_change)
+        if current and not forced("symmetry_average"):
+            _emit(progress, "symmetry_average", "skip", None,
+                  f"{paths.symmetrized.name} exists")
+        else:
+            if paths.symmetrized.exists() and not current:
+                _emit(progress, "symmetry_average", "progress", None,
+                      f"{paths.symmetrized.name} stale — recomputing")
+            # The raw input's coverage edge is trimmed before the average, so
+            # its barely normalised voxels are pooled into no orbit.
+            vol = load_input(paths.input, p, progress=progress,
+                             stage="symmetry_average")
+            out = symmetrize(vol, p.symmetry_average, progress=progress, group=group)
+            averaged = dict(getattr(out, "_symmetry_average", {}),
+                            source_file=paths.input.name, edge_trim=int(p.edge_trim))
+            nebula3d.save(out, paths.symmetrized)
+            _write_symmetry_average(paths.symmetrized, group, averaged)
+            carry, carry_path = out, paths.symmetrized
+            del vol, out  # `carry` hands the output onward
+    elif want("symmetry_average") and symmetry_notice is not None:
+        # Off by default, so silent when off; an input symmetrized already
+        # passes through, and the log says so.
+        _emit(progress, "symmetry_average", "skip", None, symmetry_notice)
+
     # --- stage 1: rings -----------------------------------------------------
     if runs("rings"):
         if not ring_stage_pending(input_path, p, proc_dir=proc_dir,
@@ -2680,17 +3061,10 @@ def run_pipeline(
             _emit(progress, "rings", "skip", None,
                   f"{paths.ringremoved.name} exists")
         else:
-            vol = load_input(paths.input, p, progress=progress)
+            src = stage_source("rings")
+            vol = stage_load(src, "rings")
             out = remove_rings(vol, p.rings, progress=progress)
-            symmetry = input_symmetry(out, p, paths.input, progress=progress,
-                                      stage="rings")
-            if symmetry is not None:
-                share_ring_removal(out, vol.mask, symmetry, progress=progress)
-            nebula3d.save(out, paths.ringremoved)
-            ring_diagnostics = getattr(out, "_ring_diagnostics", None)
-            if ring_diagnostics is not None:
-                write_global_ring_diagnostics(
-                    ring_diagnostics, paths.ring_diagnostics_json)
+            finish_ring_stage(out, vol.mask, p, src, paths, progress=progress)
             carry, carry_path = out, paths.ringremoved
             del vol, out  # free the input; `carry` hands the output onward
     elif want("rings"):
@@ -2702,9 +3076,10 @@ def run_pipeline(
             _emit(progress, "punch", "skip", None,
                   f"{paths.braggpunched.name} exists")
         else:
-            vol = stage_load(stage_source("punch"), "punch")
-            symmetry = input_symmetry(vol, p, paths.input, progress=progress,
-                                      stage="punch")
+            src = stage_source("punch")
+            vol = stage_load(src, "punch")
+            symmetry = input_symmetry(vol, p, src, fallback=paths.input,
+                                      progress=progress, stage="punch")
             # The sample's facts, beside the stage's settings: its symmetry
             # and its modulation (each only when there is one).
             facts: dict[str, Any] = {}
@@ -2715,6 +3090,7 @@ def run_pipeline(
                 facts["modulation"] = modulation
             out = punch_bragg(vol, p.punch, progress=progress, **facts)
             nebula3d.save(out, paths.braggpunched)
+            _declare_symmetry(paths.braggpunched, symmetry)
             punch_record = getattr(out, "_punched", None)
             if punch_record is not None:
                 _write_punched(paths.braggpunched, punch_record)
@@ -2748,11 +3124,12 @@ def run_pipeline(
                           f"fill each hole from its own surroundings")
                 setattr(vol, "_punched", record)
                 del record
-            symmetry = input_symmetry(vol, p, paths.input, progress=progress,
-                                      stage="backfill")
+            symmetry = input_symmetry(vol, p, src, fallback=paths.input,
+                                      progress=progress, stage="backfill")
             out = (backfill(vol, p.backfill, progress=progress) if symmetry is None
                    else backfill(vol, p.backfill, progress=progress, symmetry=symmetry))
             nebula3d.save(out, paths.backfilled)
+            _declare_symmetry(paths.backfilled, symmetry)
             carry, carry_path = out, paths.backfilled
             del vol, out  # free the input; `carry` hands the output onward
     elif want("backfill"):
@@ -2764,10 +3141,11 @@ def run_pipeline(
             _emit(progress, "flatten", "skip", None,
                   f"{paths.flattened.name} exists")
         else:
-            vol = stage_load(stage_source("flatten"), "flatten")
+            src = stage_source("flatten")
+            vol = stage_load(src, "flatten")
             out = flatten(vol, p.flatten, progress=progress)
-            symmetry = input_symmetry(out, p, paths.input, progress=progress,
-                                      stage="flatten")
+            symmetry = input_symmetry(out, p, src, fallback=paths.input,
+                                      progress=progress, stage="flatten")
             if symmetry is not None:
                 # The pedestal is a function of |Q| from the refined UB, which
                 # is not exactly symmetric (|a*| and |b*| differ slightly, γ* ≠ 60°):
@@ -2778,6 +3156,7 @@ def run_pipeline(
                       f"({n:,} voxels)")
             nebula3d.save(out, paths.flattened)
             _write_flatten_settings(paths.flattened, p.flatten)
+            _declare_symmetry(paths.flattened, symmetry)
             carry, carry_path = out, paths.flattened
             del vol, out  # free the input; `carry` hands the output onward
     elif want("flatten"):

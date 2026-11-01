@@ -17,11 +17,13 @@ import { modulationRequest } from "./modulation";
 
 // Mirrors nebula3d.pipeline.STAGES (incl. the 6th back-FFT consistency check) so the
 // Execution stepper and log show every stage the backend streams progress for.
+// The symmetry average is stage 0: optional, and off by default.
 export const STAGES = [
-  "rings", "punch", "backfill", "flatten", "pdf", "pdf_check",
+  "symmetry_average", "rings", "punch", "backfill", "flatten", "pdf", "pdf_check",
 ] as const;
 
 export const STAGE_LABELS: Record<string, string> = {
+  symmetry_average: "Symmetry average",
   rings: "Ring removal",
   punch: "Bragg punch",
   backfill: "Backfill",
@@ -30,9 +32,10 @@ export const STAGE_LABELS: Record<string, string> = {
   pdf_check: "Consistency check",
 };
 
-// step number (1-based) of each stage, to tie config groups to the stepper
+// The number of each stage, to tie config groups to the stepper: the symmetry
+// average is stage 0, the ring removal stage 1.
 export const STAGE_NO: Record<string, number> = Object.fromEntries(
-  STAGES.map((s, i) => [s, i + 1]),
+  STAGES.map((s, i) => [s, i]),
 );
 
 export type PunchPlane = "hk" | "hl" | "kl";
@@ -43,12 +46,26 @@ export interface PipelineConfig {
   // Per-stage "Enable stage" switches (stage 4's is `flatten`). The run sends
   // them as the stages' switches (formToParams, and flatten_enabled): a stage
   // switched off is not run, and the next stage reads what came before it.
+  // Stage 0, the symmetry average, is off by default.
+  symmetryAverageEnabled: boolean;
   ringsEnabled: boolean;
   punchEnabled: boolean;
   backfillEnabled: boolean;
   flatten: boolean;
   pdfEnabled: boolean;
   force: boolean;
+  // The symmetry average's Laue class, the sample's to declare (state/laue.ts):
+  // a preset name ("6/mmm") or generators ("h+k,-h,l; -h,-k,-l"); blank = none
+  // chosen. Whether an input that declares a symmetry is averaged again; and
+  // whether the run proceeds when the operations change the cell's metric by
+  // more than 2 % ("Proceed despite the metric change": refused otherwise).
+  symmetryLaue: string;
+  symmetryReaverage: boolean;
+  symmetryAllowMetricChange: boolean;
+  // Voxel layers taken off the raw input's coverage edge at load, whether or
+  // not the symmetry average is on (the NeXus Viewer's "Edge erosion r",
+  // the same rule): "0" to "3"; blank = the backend default, 1.
+  edgeTrim: string;
   ringModel: string; // "pooled" | "global_v2" | "patched" | "parametric"
   ringRadialMode: string; // parametric: "rolling" | "peaks"
   ringNPatches: string;
@@ -170,12 +187,17 @@ function closeStream() {
 }
 
 export const usePipelineStore = create<PipelineState>((set, get) => ({
+  symmetryAverageEnabled: false,
   ringsEnabled: true,
   punchEnabled: true,
   backfillEnabled: true,
   flatten: true,
   pdfEnabled: true,
   force: false,
+  symmetryLaue: "",
+  symmetryReaverage: false,
+  symmetryAllowMetricChange: false,
+  edgeTrim: "",
   ringModel: "pooled",
   ringRadialMode: "rolling",
   ringNPatches: "",
@@ -452,6 +474,7 @@ async function afterDrop(jobId: string, set: Setter, get: Getter, drops: number)
 // its input through, so the next stage reads what came before it.
 export function enabledStages(s: PipelineConfig): string[] {
   return [
+    s.symmetryAverageEnabled && "symmetry_average",
     s.ringsEnabled && "rings",
     s.punchEnabled && "punch",
     s.backfillEnabled && "backfill",
@@ -459,6 +482,17 @@ export function enabledStages(s: PipelineConfig): string[] {
     s.pdfEnabled && "pdf",
     s.pdfEnabled && "pdf_check",
   ].filter((x): x is string => Boolean(x));
+}
+
+/** The raw coverage-edge trim the backend takes when none is sent: 1 voxel layer (PipelineParams.edge_trim). */
+export const DEFAULT_EDGE_TRIM = 1;
+/** The layers the page offers (the NeXus Viewer's edge erosion takes the same rule). */
+export const EDGE_TRIM_LAYERS = [0, 1, 2, 3] as const;
+
+/** The edge trim the form asks for, in voxel layers: blank (or anything else) is the default. */
+export function edgeTrimLayers(s: Pick<PipelineConfig, "edgeTrim">): number {
+  const n = Number(s.edgeTrim);
+  return s.edgeTrim !== "" && (EDGE_TRIM_LAYERS as readonly number[]).includes(n) ? n : DEFAULT_EDGE_TRIM;
 }
 
 // Convert the editable form values into the curated StageParamsIn the pipeline
@@ -471,6 +505,16 @@ export function formToParams(s: PipelineConfig): StageParamsIn {
     punch_enabled: s.punchEnabled,
     backfill_enabled: s.backfillEnabled,
   };
+  // The symmetry average, off by default, only when switched on.
+  if (s.symmetryAverageEnabled) {
+    params.symmetry_average_enabled = true;
+    if (s.symmetryLaue.trim()) params.symmetry_average_laue = s.symmetryLaue.trim();
+    if (s.symmetryReaverage) params.symmetry_average_reaverage = true;
+    if (s.symmetryAllowMetricChange) params.symmetry_average_allow_metric_change = true;
+  }
+  // The raw coverage-edge trim, when it is not the backend's default (1 layer).
+  const trim = edgeTrimLayers(s);
+  if (trim !== DEFAULT_EDGE_TRIM) params.edge_trim = trim;
   if (s.ringModel) params.rings_model = s.ringModel;
   if (s.ringNPatches) params.rings_n_patches = Number(s.ringNPatches);
   if (s.ringNFourier) params.rings_n_fourier = Number(s.ringNFourier);

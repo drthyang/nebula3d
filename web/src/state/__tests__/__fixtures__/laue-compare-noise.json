@@ -1,0 +1,508 @@
+{
+ "id": "noise.raw",
+ "volume": "noise.nxs",
+ "edge_trim": 1,
+ "candidates": [
+  {
+   "laue": "-1",
+   "generators": "-h,-k,-l",
+   "order": 2,
+   "ops": "h,k,l; -h,-k,-l",
+   "metric_change": 0.0,
+   "subgroups": [],
+   "maximal_subgroups": [],
+   "depth": 0,
+   "all": {
+    "r_int": 0.0559839,
+    "noise": 0.056395,
+    "ratio": 0.992711,
+    "ratio_se": 0.00612651,
+    "orbits": 14895,
+    "voxels": 29790,
+    "pairs": 14895
+   },
+   "diffuse": {
+    "r_int": 0.0559367,
+    "noise": 0.0563915,
+    "ratio": 0.991935,
+    "ratio_se": 0.00625443,
+    "orbits": 14354,
+    "voxels": 28708,
+    "pairs": 14354
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": null,
+     "rise": null,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": null,
+     "rise": null,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "2/m (b unique)",
+   "generators": "-h,k,-l; -h,-k,-l",
+   "order": 4,
+   "ops": "h,k,l; -h,k,-l; -h,-k,-l; h,-k,l",
+   "metric_change": 1.22465e-16,
+   "subgroups": [
+    "-1"
+   ],
+   "maximal_subgroups": [
+    "-1"
+   ],
+   "depth": 1,
+   "all": {
+    "r_int": 0.0681679,
+    "noise": 0.0686483,
+    "ratio": 0.993002,
+    "ratio_se": 0.0049885,
+    "orbits": 7695,
+    "voxels": 29790,
+    "pairs": 43695
+   },
+   "diffuse": {
+    "r_int": 0.0682031,
+    "noise": 0.0686855,
+    "ratio": 0.992976,
+    "ratio_se": 0.0050906,
+    "orbits": 7392,
+    "voxels": 28708,
+    "pairs": 42202
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00029,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00105,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "2/m (c unique)",
+   "generators": "-h,-k,l; -h,-k,-l",
+   "order": 4,
+   "ops": "h,k,l; -h,-k,l; -h,-k,-l; h,k,-l",
+   "metric_change": 1.22465e-16,
+   "subgroups": [
+    "-1"
+   ],
+   "maximal_subgroups": [
+    "-1"
+   ],
+   "depth": 1,
+   "all": {
+    "r_int": 0.0682939,
+    "noise": 0.0686483,
+    "ratio": 0.994837,
+    "ratio_se": 0.00494546,
+    "orbits": 7695,
+    "voxels": 29790,
+    "pairs": 43695
+   },
+   "diffuse": {
+    "r_int": 0.0683127,
+    "noise": 0.0686855,
+    "ratio": 0.994572,
+    "ratio_se": 0.00504783,
+    "orbits": 7392,
+    "voxels": 28708,
+    "pairs": 42202
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00214,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00266,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "mmm",
+   "generators": "-h,-k,l; -h,k,-l; -h,-k,-l",
+   "order": 8,
+   "ops": "h,k,l; -h,-k,l; -h,k,-l; -h,-k,-l; h,-k,-l; h,k,-l; h,-k,l; -h,k,l",
+   "metric_change": 1.22465e-16,
+   "subgroups": [
+    "-1",
+    "2/m (b unique)",
+    "2/m (c unique)"
+   ],
+   "maximal_subgroups": [
+    "2/m (b unique)",
+    "2/m (c unique)"
+   ],
+   "depth": 2,
+   "all": {
+    "r_int": 0.0737208,
+    "noise": 0.074047,
+    "ratio": 0.995595,
+    "ratio_se": 0.00457978,
+    "orbits": 4095,
+    "voxels": 29790,
+    "pairs": 98595
+   },
+   "diffuse": {
+    "r_int": 0.0737572,
+    "noise": 0.0740983,
+    "ratio": 0.995397,
+    "ratio_se": 0.00466553,
+    "orbits": 3911,
+    "voxels": 28708,
+    "pairs": 95498
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.0029,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00349,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "4/m",
+   "generators": "k,-h,l; -h,-k,-l",
+   "order": 8,
+   "ops": "h,k,l; k,-h,l; -h,-k,-l; -h,-k,l; -k,h,-l; h,k,-l; -k,h,l; k,-h,-l",
+   "metric_change": 1.22465e-16,
+   "subgroups": [
+    "-1",
+    "2/m (c unique)"
+   ],
+   "maximal_subgroups": [
+    "2/m (c unique)"
+   ],
+   "depth": 2,
+   "all": {
+    "r_int": 0.0744693,
+    "noise": 0.0744069,
+    "ratio": 1.00084,
+    "ratio_se": 0.00463571,
+    "orbits": 3855,
+    "voxels": 29790,
+    "pairs": 102255
+   },
+   "diffuse": {
+    "r_int": 0.0744577,
+    "noise": 0.0744243,
+    "ratio": 1.00045,
+    "ratio_se": 0.00473399,
+    "orbits": 3701,
+    "voxels": 28708,
+    "pairs": 98738
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00819,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00858,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "4/mmm",
+   "generators": "k,-h,l; h,-k,-l; -h,-k,-l",
+   "order": 16,
+   "ops": "h,k,l; k,-h,l; h,-k,-l; -h,-k,-l; -h,-k,l; -k,-h,-l; -k,h,-l; k,h,-l; -h,k,l; -h,k,-l; -k,h,l; -k,-h,l; h,k,-l; k,h,l; h,-k,l; k,-h,-l",
+   "metric_change": 1.22465e-16,
+   "subgroups": [
+    "-1",
+    "2/m (b unique)",
+    "2/m (c unique)",
+    "mmm",
+    "4/m"
+   ],
+   "maximal_subgroups": [
+    "mmm",
+    "4/m"
+   ],
+   "depth": 3,
+   "all": {
+    "r_int": 0.0767505,
+    "noise": 0.076778,
+    "ratio": 0.999642,
+    "ratio_se": 0.0044036,
+    "orbits": 2175,
+    "voxels": 29790,
+    "pairs": 204735
+   },
+   "diffuse": {
+    "r_int": 0.0767542,
+    "noise": 0.0768137,
+    "ratio": 0.999225,
+    "ratio_se": 0.00448687,
+    "orbits": 2069,
+    "voxels": 28708,
+    "pairs": 198626
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00698,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00735,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "m-3",
+   "generators": "k,l,h; -h,-k,l; -h,k,-l; -h,-k,-l",
+   "order": 24,
+   "ops": "h,k,l; k,l,h; -h,-k,l; -h,k,-l; -h,-k,-l; l,h,k; -k,l,-h; k,-l,-h; -k,-l,-h; -k,-l,h; h,-k,-l; h,k,-l; -l,-h,k; k,l,-h; h,-k,l; -l,h,-k; k,-l,h; -h,k,l; l,-h,-k; -k,l,h; -l,-h,-k; l,h,-k; l,-h,k; -l,h,k",
+   "metric_change": 1.22465e-16,
+   "subgroups": [
+    "-1",
+    "2/m (b unique)",
+    "2/m (c unique)",
+    "mmm"
+   ],
+   "maximal_subgroups": [
+    "mmm"
+   ],
+   "depth": 3,
+   "all": {
+    "r_int": 0.077869,
+    "noise": 0.0778899,
+    "ratio": 0.999732,
+    "ratio_se": 0.00439723,
+    "orbits": 1375,
+    "voxels": 29790,
+    "pairs": 324615
+   },
+   "diffuse": {
+    "r_int": 0.077855,
+    "noise": 0.0779054,
+    "ratio": 0.999354,
+    "ratio_se": 0.00448975,
+    "orbits": 1311,
+    "voxels": 28708,
+    "pairs": 314498
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00707,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00748,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "m-3m",
+   "generators": "k,l,h; k,-h,l; -h,-k,-l",
+   "order": 48,
+   "ops": "h,k,l; k,l,h; k,-h,l; -h,-k,-l; l,h,k; -h,l,k; -k,-l,-h; l,-k,h; -h,-k,l; -k,h,-l; h,-l,k; -l,k,-h; -l,-h,-k; h,-l,-k; h,k,-l; -h,l,-k; l,k,-h; -k,h,l; -k,l,-h; -l,k,h; k,-h,-l; -l,-k,h; k,-l,h; l,-k,-h; -k,-l,h; -l,-h,k; k,l,-h; l,h,-k; k,-l,-h; -k,l,h; h,l,-k; l,-h,-k; k,h,-l; -h,-l,k; -l,h,k; -k,-h,l; h,-k,-l; -h,k,l; -h,k,-l; h,-k,l; -l,h,-k; l,-h,k; -k,-h,-l; k,h,l; -l,-k,-h; l,k,h; -h,-l,-k; h,l,k",
+   "metric_change": 1.22465e-16,
+   "subgroups": [
+    "-1",
+    "2/m (b unique)",
+    "2/m (c unique)",
+    "mmm",
+    "4/m",
+    "4/mmm",
+    "m-3"
+   ],
+   "maximal_subgroups": [
+    "4/mmm",
+    "m-3"
+   ],
+   "depth": 4,
+   "all": {
+    "r_int": 0.0785905,
+    "noise": 0.0786539,
+    "ratio": 0.999194,
+    "ratio_se": 0.00420458,
+    "orbits": 815,
+    "voxels": 29790,
+    "pairs": 601815
+   },
+   "diffuse": {
+    "r_int": 0.0785542,
+    "noise": 0.0786725,
+    "ratio": 0.998496,
+    "ratio_se": 0.00427844,
+    "orbits": 769,
+    "voxels": 28708,
+    "pairs": 585650
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00653,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00661,
+     "judged": true
+    }
+   }
+  }
+ ],
+ "refused": [
+  {
+   "laue": "-3",
+   "order": 6,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "-3m1",
+   "order": 12,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "-31m",
+   "order": 12,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "6/m",
+   "order": 12,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "6/mmm",
+   "order": 24,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  }
+ ],
+ "isotropic": {
+  "all": {
+   "r_int": 0.079619,
+   "noise": 0.0797211,
+   "ratio": 0.998719,
+   "ratio_se": 0.00352269,
+   "orbits": 25,
+   "voxels": 29790,
+   "pairs": 29322512
+  },
+  "diffuse": {
+   "r_int": 0.0795813,
+   "noise": 0.0797177,
+   "ratio": 0.998289,
+   "ratio_se": 0.00344244,
+   "orbits": 23,
+   "voxels": 28708,
+   "pairs": 27505699
+  }
+ },
+ "bragg": {
+  "cell": [
+   1,
+   1,
+   1
+  ],
+  "radius_q": 0.25,
+  "asked_q": 0.25,
+  "origin_radius_q": 0.3,
+  "from": "the punch's largest node ellipsoid: 2 \u00d7 0.115 \u00c5\u207b\u00b9 + 0.02 \u00c5\u207b\u00b9 margin",
+  "closed_under": "m-3m",
+  "voxels": 1083,
+  "share": 0.0363533,
+  "shell_width_q": 0.167552
+ },
+ "measured": 29791,
+ "sigma": "measured",
+ "rule": {
+  "delta": 0.1,
+  "z": 2.0,
+  "text": "Each class's R_int is read in units of its noise floor (the R_int counting noise alone gives on the same orbits, from \u03c3). A class rises against a subgroup when that ratio exceeds the subgroup's by more than 10% and by more than 2 standard errors; it is supported when it rises against none of its candidate subgroups and all of them are supported. A reading tells the classes apart only when pooling whole |Q| shells rises against the lowest class by the same test. The suggestion is the supported class with the most operations in every reading that tells them apart."
+ },
+ "readings": {
+  "all": {
+   "tells_apart": false,
+   "isotropic_rise": 1.00605,
+   "cannot_judge": null,
+   "suggests": null
+  },
+  "diffuse": {
+   "tells_apart": false,
+   "isotropic_rise": 1.00641,
+   "cannot_judge": null,
+   "suggests": null
+  }
+ },
+ "suggestion": null,
+ "suggested_by": {
+  "all": null,
+  "diffuse": null
+ },
+ "reason": "No meaningful preference: pooling whole |Q| shells, which no class can exceed, raises R_int only 1.01\u00d7 over the lowest class's in units of the noise floor (R_int / noise floor 0.99\u20131.00), within the counting noise, so the data cannot tell the classes apart.",
+ "disagreement": null,
+ "notes": [],
+ "limits": "Twinning or several domains related by an operation the sample lacks make a lower symmetry look higher: the domains' sum has the higher symmetry, and R_int alone cannot tell them apart. Only the presets' settings are compared (the four-fold along c, the two-fold along b or c); a sample with its unique axis elsewhere needs custom generators. The diffuse reading masks a sphere around each Bragg node, not the punch itself."
+}

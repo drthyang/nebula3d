@@ -52,18 +52,19 @@ from nebula3d.core import HKLVolume
 from nebula3d.pipeline import (
     STAGES,
     delta_pdf_transform_config,
+    finish_ring_stage,
     pdf_consistency_check,
-    pipeline_paths,
     remove_rings_async,
+    resolve_symmetry_average,
     ring_stage_pending,
     run_pipeline,
     write_delta_pdf_h5,
 )
 from nebula3d.pipeline import load_input as _load_run_input
-from nebula3d.preprocessing import write_global_ring_diagnostics
 from nebula3d.server import consistency as _cons
 from nebula3d.server import datasets as _ds
 from nebula3d.server import deltapdf as _dpdf
+from nebula3d.server import laue as _laue
 from nebula3d.server import modulation as _mod
 from nebula3d.server import regrid as _regrid
 from nebula3d.server import rings as _rings
@@ -90,6 +91,7 @@ __all__ = [
     "volume_slice",
     "volume_coverage_json",
     "volume_ub_check_json",
+    "volume_laue_compare_json",
     "dataset_regrid_json",
     "volume_ring_isotropy_json",
     "volume_shell_floors_json",
@@ -748,12 +750,16 @@ async def run_async(
         def cb(stage: str, status: str, fraction: float | None, message: str) -> None:
             progress(stage, status, fraction, message)  # type: ignore[misc]
 
+    # The switches as run_pipeline takes them: an input symmetrized already
+    # passes the symmetry average through (run_pipeline decides it again, and
+    # logs it, from `params`).
+    effective, _ = resolve_symmetry_average(params, _S.input)
     executor = None
     pool = _ring_pool_js()
     if (
         pool is not None
         and params.rings.ring_model.strip().lower() in {"patched", "parametric"}
-        and ring_stage_pending(_S.input, params, proc_dir=proc_dir,
+        and ring_stage_pending(_S.input, effective, proc_dir=proc_dir,
                                stages=stages, force=bool(force),
                                force_from=force_from)
     ):
@@ -779,24 +785,30 @@ async def run_async(
             force=bool(force), force_from=force_from, progress=cb, inputs=inputs,
         )
     else:
-        # Ring stage out-of-band (mirrors run_pipeline's stage-1 block: save
-        # the artifact + optional diagnostics sidecar), then the remaining CPU
-        # stages in one call with the ring output handed over in memory.
-        paths = pipeline_paths(_S.input, proc_dir=proc_dir,
-                               flatten_enabled=params.flatten_enabled)
+        # The symmetry average first (it is in-process anyway), then the ring
+        # stage out-of-band, as run_pipeline's stage-1 block runs it (from the
+        # volume the chain hands it, finished by the same finish_ring_stage),
+        # then the remaining CPU stages in one call with the ring output
+        # handed over in memory.
+        from nebula3d.pipeline import _run_paths, _stage_input  # noqa: PLC0415
+
+        if "symmetry_average" in cpu_stages:
+            run_pipeline(
+                _S.input, params, proc_dir=proc_dir, stages=("symmetry_average",),
+                force=bool(force), force_from=force_from, progress=cb, inputs=inputs,
+            )
+        paths = _run_paths(_S.input, effective, proc_dir=proc_dir)
         paths.delta_pdf.parent.mkdir(parents=True, exist_ok=True)
-        vol = _load_run_input(paths.input, params, progress=cb)
-        out = await remove_rings_async(vol, params.rings, progress=cb,
+        src = _stage_input("rings", effective, paths, cpu_stages, inputs)
+        vol = (_load_run_input(paths.input, effective, progress=cb) if src == paths.input
+               else nebula3d.load(src, dtype=effective.np_dtype()))
+        out = await remove_rings_async(vol, effective.rings, progress=cb,
                                        plane_executor=executor)
+        finish_ring_stage(out, vol.mask, effective, src, paths, progress=cb)
         del vol
-        nebula3d.save(out, paths.ringremoved)
-        ring_diagnostics = getattr(out, "_ring_diagnostics", None)
-        if ring_diagnostics is not None:
-            write_global_ring_diagnostics(
-                ring_diagnostics, paths.ring_diagnostics_json)
         run_pipeline(
             _S.input, params, proc_dir=proc_dir,
-            stages=tuple(st for st in cpu_stages if st != "rings"),
+            stages=tuple(st for st in cpu_stages if st not in ("symmetry_average", "rings")),
             force=bool(force), force_from=force_from, progress=cb,
             carry_in=(paths.ringremoved, out), inputs=inputs,
         )
@@ -805,7 +817,7 @@ async def run_async(
         done = False
         try:
             done = await _run_pdf_stages_gpu(
-                params, stages, bool(force), force_from, cb, gpu,
+                effective, stages, bool(force), force_from, cb, gpu,
                 proc_dir=proc_dir, inputs=inputs)
         except FFTOriginError:
             raise  # the grid, not the GPU: the CPU FFT would refuse it too
@@ -1239,6 +1251,34 @@ def volume_ub_check_json(volume_id: str, cell: str = "1,1,1",
     return _json({**m, "id": volume_id})
 
 
+def volume_laue_compare_json(volume_id: str, params_json: str = "{}", extra_json: str = "[]",
+                             progress: Callable[[float, str], None] | None = None) -> str:
+    """Every candidate Laue class of an HKL stage compared by R_int, with the
+    rule's suggestion (mirrors POST /api/volumes/{id}/laue-compare: the same
+    payload, and the same refusal of a volume symmetrized already).
+
+    *params_json* is the run's curated ``StageParamsIn`` (its edge trim, punch
+    cell and punch footprint), *extra_json* a list of custom classes to compare
+    beside the presets, *progress* ``(fraction, message)`` — the worker posts
+    it as the comparison's progress.  The volume is read in the browser's
+    float32, as a run reads it; the viewers' cached volumes are dropped first,
+    as a run drops them, since the comparison holds its own copy.
+    """
+    stage = _resolve(volume_id, "hkl")
+    params = build_params(_make_request(params_json, True))
+    _apply_browser_precision(params, params_json)
+    extra = json.loads(extra_json) if extra_json else []
+    _clear_caches()
+
+    def cb(fraction: float, message: str) -> None:
+        if progress is not None:
+            progress(float(fraction), str(message))
+
+    out = _laue.laue_compare(stage.path, params, extra=[str(x) for x in extra or []],
+                             progress=cb)
+    return _json({**out, "id": volume_id})
+
+
 def dataset_regrid_json(dataset_id: str, cell: str = "1,1,1", q_max: float | None = None,
                         symmetrise: bool = False) -> str:
     """Regrid a dataset's raw volume onto its refined UB, as a new dataset
@@ -1335,14 +1375,15 @@ def dpdf_slice(volume_id: str, plane: str, value: float) -> bytes:
 
 
 def dpdf_features_json(volume_id: str, min_sigma: float = 5.0, limit: int = 12) -> str:
-    """The ΔPDF's strongest extrema, grouped by the point group the dataset's
-    raw file declares, else by sign, length and size (mirrors
+    """The ΔPDF's strongest extrema, grouped by the point group its data were
+    symmetrised with (declared by the volume it was made from, or the
+    dataset's raw file), else by sign, length and size (mirrors
     GET /api/deltapdf/{id}/features)."""
     if not float(min_sigma) > 0 or int(limit) < 1:
         raise ValueError("min_sigma must be positive and limit at least 1")
     stage = _resolve(volume_id, "delta_pdf")
     m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit),
-                            declared_by=_ds.raw_input_of(_require_cfg(), volume_id))
+                            declared_by=_ds.symmetry_declared_by(_require_cfg(), volume_id))
     return _json({**m, "id": volume_id})
 
 

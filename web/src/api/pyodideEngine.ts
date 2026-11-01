@@ -28,6 +28,7 @@ import {
   parseGateReport,
   type GateReport,
 } from "./browserLimit";
+import { RUN_STAGES } from "../workers/pyodideShared";
 import { isMobileDevice } from "./device";
 import { clearMainHeap, setMainHeap } from "./engineMemory";
 import { clearFailedRun, clearRefusedLoad, setFailedRun, setRefusedLoad } from "./limitSignals";
@@ -39,6 +40,8 @@ import type {
   Dataset,
   DeltaPdfMeta,
   DpdfFeatures,
+  LaueComparison,
+  LaueProgress,
   ModulationCheck,
   RegridResult,
   RingDiagnostics,
@@ -59,10 +62,12 @@ export { ringPoolStatus, subscribeRingPool } from "./ringPool";
 
 export const PYODIDE_MODE = import.meta.env.VITE_DATA_MODE === "pyodide";
 
-// Pipeline stages — exposed so callers can iterate them for display purposes.
-export const ENGINE_STAGES = [
-  "rings", "punch", "backfill", "flatten", "pdf", "pdf_check",
-] as const;
+// Pipeline stages — exposed so callers can iterate them for display purposes
+// (nebula3d.pipeline.STAGES; the symmetry average, stage 0, first).
+export const ENGINE_STAGES = RUN_STAGES;
+
+// The progress events of a Laue-class comparison carry this stage name.
+export const LAUE_COMPARE_STAGE = "laue_compare";
 
 // ---------------------------------------------------------------------------
 // Boot status (observable — drives the boot progress panel in the Configure UI)
@@ -313,6 +318,27 @@ async function jsonCall<T>(method: string, args: unknown[]): Promise<T> {
   ) as T;
 }
 
+// A JSON call that reports its progress: the worker passes the bridge method a
+// callback, whose calls arrive as progress events of `stage` (as a run's do).
+async function jsonCallWithProgress<T>(
+  method: string,
+  args: unknown[],
+  stage: string,
+  onProgress?: (p: { fraction: number | null; message: string }) => void,
+): Promise<T> {
+  await ensureBooted();
+  const unsub = onProgress
+    ? subscribeProgress((ev) => {
+        if (ev.stage === stage) onProgress({ fraction: ev.fraction, message: ev.message });
+      })
+    : (): boolean => false;
+  try {
+    return JSON.parse((await rpc("json_call", { method, args, progress: stage })) as string) as T;
+  } finally {
+    unsub();
+  }
+}
+
 async function sliceCall(method: string, args: unknown[]): Promise<Slice> {
   await ensureBooted();
   const u8 = (await rpc("slice_call", { method, args })) as Uint8Array;
@@ -475,6 +501,11 @@ export const engine = {
   },
   ubCheck(volumeId: string, cell: string, qMax: number | null): Promise<UbCheck> {
     return jsonCall<UbCheck>("volume_ub_check_json", [volumeId, cell, qMax]);
+  },
+  // Every candidate Laue class compared by R_int (webbridge.volume_laue_compare_json),
+  // with the run's settings; its progress arrives as the "laue_compare" stage's.
+  laueCompare(volumeId: string, paramsJson: string, extraJson: string, onProgress?: (p: LaueProgress) => void): Promise<LaueComparison> {
+    return jsonCallWithProgress<LaueComparison>("volume_laue_compare_json", [volumeId, paramsJson, extraJson], LAUE_COMPARE_STAGE, onProgress);
   },
   // The new file goes into the workspace's raw/ and is registered as an input
   // there (webbridge.dataset_regrid_json): it lives in the worker's memory

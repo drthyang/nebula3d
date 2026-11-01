@@ -41,6 +41,11 @@ describe("touch", () => {
     expect(ways(c, "reset")[0]).toBe("double-tap");
     expect(c.rows.flatMap((r) => r.ways.flat()).some((t) => t.t === "key")).toBe(false);
   });
+
+  it("says a tap reads values, as no hover can on a touch screen", () => {
+    expect(gestureCard({ mac: true, touch: true }).note).toMatch(/tap reads/);
+    expect(gestureCard({ mac: true, touch: true }).note).toMatch(/press and hold/i); // the touch path to every title
+  });
 });
 
 describe("only what the views do", () => {

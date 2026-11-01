@@ -1,6 +1,6 @@
-// The click modes after THY-38: Navigate plus the one-shot box zoom. Nothing is
-// remembered, and a mode an older version stored ("zoom", "move") opens as
-// Navigate and is dropped from storage.
+// The click mode: the one-shot box zoom, armed or put away ("none"; Navigate is
+// gone). Nothing is remembered, and a mode an older version stored ("navigate",
+// "zoom", "move") opens with the box zoom put away and is dropped from storage.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,17 +27,17 @@ describe("click mode", () => {
   beforeEach(() => vi.stubGlobal("localStorage", memoryStorage()));
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each(["move", "zoom", "navigate", "box", "nonsense"])("opens in Navigate when %s was stored, and drops it", async (stored) => {
+  it.each(["move", "zoom", "navigate", "box", "nonsense"])("opens with the box zoom put away when %s was stored, and drops it", async (stored) => {
     localStorage.setItem("nebula3d.clickMode", stored);
     const { useWorkspaceStore, LEGACY_CLICK_MODE_KEY } = await freshStore();
-    expect(useWorkspaceStore.getState().clickMode).toBe("navigate");
+    expect(useWorkspaceStore.getState().clickMode).toBe("none");
     expect(localStorage.getItem(LEGACY_CLICK_MODE_KEY)).toBeNull();
   });
 
-  it("opens in Navigate without storage", async () => {
+  it("opens with the box zoom put away without storage", async () => {
     vi.stubGlobal("localStorage", undefined);
     const { useWorkspaceStore } = await freshStore();
-    expect(useWorkspaceStore.getState().clickMode).toBe("navigate");
+    expect(useWorkspaceStore.getState().clickMode).toBe("none");
   });
 
   it("arms the box zoom without remembering it", async () => {
@@ -45,8 +45,11 @@ describe("click mode", () => {
     useWorkspaceStore.getState().setClickMode("box");
     expect(useWorkspaceStore.getState().clickMode).toBe("box");
     expect(localStorage.length).toBe(0);
+    useWorkspaceStore.getState().setClickMode("none");
+    expect(useWorkspaceStore.getState().clickMode).toBe("none");
+    useWorkspaceStore.getState().setClickMode("box");
     const again = await freshStore();
-    expect(again.useWorkspaceStore.getState().clickMode).toBe("navigate");
+    expect(again.useWorkspaceStore.getState().clickMode).toBe("none");
   });
 });
 

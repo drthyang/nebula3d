@@ -2,7 +2,7 @@
 
 `buildChatMessages(context, [], TASK, null, { tools: true })` over the synthetic context, as `armSetup("B")` passes it on; TASK is the validation task (evals/validation.ts). A chat question takes TASK's place in the last message.
 
-Tools offered (27): read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region.
+Tools offered (28): read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -158,6 +158,7 @@ Asked whether the UB is right, or why the Bragg peaks sit off their nodes, call 
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps: say so, and that the orientation needs the unsymmetrised file. A relative offset along
 Q that changes with |Q| is not a UB error, whatever the fit returns.
+Before you suggest a Laue class for the symmetry average, call compare_laue_classes and quote its suggestion, rule and flag: the class is the user's to set.
 assess_stage pdf gives the back-FFT r and RMS; run_log says what a stage did or why it
 failed. When a change improves one number, check that it did not break another: a higher
 ΔPDF feature SNR with a lower back-FFT r, or with Qmax past the coverage, is ripple, not

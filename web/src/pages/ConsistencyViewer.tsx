@@ -31,7 +31,8 @@ import { clampHalf, displayToSlice, extentBounds, fitViewport, sampleIndex, type
 import { useWorkspaceLayout } from "../components/useWorkspaceLayout";
 import { LayoutControl, Workspace } from "../components/Workspace";
 import { UnitCellsSwitch, WorkspaceHeader } from "../components/WorkspaceHeader";
-import { AUTO_TITLES, STRUCTURE_TITLE } from "../components/viewerText";
+import { useTouchOnly } from "../components/usePlatform";
+import { AUTO_TITLES, readVerb, STRUCTURE_TITLE } from "../components/viewerText";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
 import { isReciprocal, useMarkStore, visibleMarks } from "../state/markStore";
@@ -84,6 +85,7 @@ const settingsDetail = (s: ConsistencySettings) =>
     .join("; ");
 
 export function ConsistencyViewer() {
+  const touch = useTouchOnly();
   const checkLit = useGlow("check");
   const pdfLit = useGlow("pdf");
   const datasetsQ = useDatasets();
@@ -546,7 +548,7 @@ export function ConsistencyViewer() {
         </div>
       </div>
 
-      {/* ── Workspace header (shared order): click mode · unit cells · structure │ orientation ··· layout, then Q and R display ── */}
+      {/* ── Workspace header (shared order): Box zoom (?) · unit cells · structure │ orientation ··· layout, then Q and R display ── */}
       <WorkspaceHeader
         overlays={
           <>
@@ -866,7 +868,7 @@ export function ConsistencyViewer() {
               );
             })()
           ) : (
-            <span className="muted">Hover a slice to read values; Data, Back-FFT and Residual share one crosshair.</span>
+            <span className="muted">{readVerb(touch)} a slice to read values; Data, Back-FFT and Residual share one crosshair.</span>
           )}
         </div>
       )}

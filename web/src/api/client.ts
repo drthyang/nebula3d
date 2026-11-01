@@ -10,6 +10,8 @@ import type {
   DeltaPdfMeta,
   DpdfFeatures,
   JobOut,
+  LaueComparison,
+  LaueProgress,
   ModulationCheck,
   ModulationCheckIn,
   PipelineRunRequest,
@@ -21,6 +23,7 @@ import type {
   ShellFloors,
   Slice,
   SliceHeader,
+  StageParamsIn,
   TuningPromote,
   TuningRun,
   UbCheck,
@@ -171,6 +174,49 @@ export async function fetchUbCheck(volumeId: string, cell: [number, number, numb
     throw new Error(detail ?? `${r.status} ${r.statusText}: ${url}`);
   }
   return (await r.json()) as UbCheck;
+}
+
+/** How often the page asks a native comparison how far it has come. */
+const LAUE_POLL_MS = 400;
+
+/**
+ * Every candidate Laue class of a raw volume compared by R_int, with the
+ * rule's suggestion (docs/algorithms/laue_compare.md): the volume read as the
+ * symmetry average reads it, with the run's `params` (its edge trim, punch
+ * cell and punch footprint), and `extra` custom classes beside the presets.
+ * `onProgress` hears how far it has come: natively by polling the run's
+ * token, in the browser from the worker's progress events. A volume
+ * symmetrized already is refused, with why.
+ */
+export async function compareLaueClasses(
+  volumeId: string,
+  params: StageParamsIn,
+  extra: string[] = [],
+  onProgress?: (p: LaueProgress) => void,
+): Promise<LaueComparison> {
+  if (PYODIDE_MODE) return engine.laueCompare(volumeId, JSON.stringify(params), JSON.stringify(extra), onProgress);
+  const url = `/api/volumes/${encodeURIComponent(volumeId)}/laue-compare`;
+  const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  let done = false;
+  if (onProgress) {
+    void (async () => {
+      while (!done) {
+        await new Promise((resolve) => setTimeout(resolve, LAUE_POLL_MS));
+        if (done) break;
+        try {
+          const p = await getJSON<LaueProgress & { running: boolean }>(`${url}/progress?token=${encodeURIComponent(token)}`);
+          if (p.running && !done) onProgress({ fraction: p.fraction, message: p.message });
+        } catch {
+          // A missed poll costs one update; the comparison itself goes on.
+        }
+      }
+    })();
+  }
+  try {
+    return await postJSON<LaueComparison>(url, { params, extra, token });
+  } finally {
+    done = true;
+  }
 }
 
 /**

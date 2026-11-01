@@ -113,8 +113,9 @@ def test_select_input_runs_the_named_dataset_not_the_last_loaded(tmp_path):
 def test_run_streams_progress_for_every_stage(ran_pipeline):
     _id, _datasets, events = ran_pipeline
     stages_seen = {ev[0] for ev in events}
-    # Every pipeline stage should have emitted at least one progress event.
-    assert set(webbridge.run.__globals__["STAGES"]).issubset(stages_seen)
+    # Every pipeline stage should have emitted at least one progress event,
+    # but the symmetry average: off by default, it says nothing.
+    assert (set(webbridge.run.__globals__["STAGES"]) - {"symmetry_average"}).issubset(stages_seen)
     assert any(status == "done" for _s, status, _f, _m in events)
 
 
@@ -675,7 +676,7 @@ def test_run_async_without_pool_delegates(tmp_path):
     assert datasets[0]["id"] == dataset_id
     assert by_name["delta_pdf"]["exists"]
     stages_seen = {ev[0] for ev in events}
-    assert set(webbridge.STAGES).issubset(stages_seen)
+    assert (set(webbridge.STAGES) - {"symmetry_average"}).issubset(stages_seen)
 
 
 def test_run_async_with_pool_matches_sync_run(tmp_path, monkeypatch):
@@ -742,6 +743,66 @@ def test_run_async_pool_skipped_when_rings_current(tmp_path, monkeypatch):
     asyncio.run(webbridge.run_async(
         "", "{}", flatten_enabled=True, force=False, progress=progress))
     assert any(status == "skip" for st, status, _f, _m in events if st == "rings")
+
+
+# ---------------------------------------------------------------------------
+# the symmetry average (stage 0), switched on from params_json
+# ---------------------------------------------------------------------------
+_SYMMETRIZE = {"symmetry_average_enabled": True, "symmetry_average_laue": "4/mmm"}
+
+
+def test_run_with_the_symmetry_average_switched_on(tmp_path):
+    """The page switches stage 0 on with a Laue class in params_json: it runs
+    before the ring removal, its output is listed between raw and the ring
+    removal, and the volumes after it declare its operations."""
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=25)  # 4/mmm: the rods break the cubic 3-fold
+    events: list[tuple] = []
+    datasets = json.loads(webbridge.run(
+        "symmetry_average,rings", json.dumps(_SYMMETRIZE), flatten_enabled=True,
+        force=True, progress=lambda *a: events.append(a)))
+    stages = datasets[0]["stages"]
+    assert [s["name"] for s in stages][:3] == ["raw", "symmetrized", "ringremoved"]
+    by_name = {s["name"]: s for s in stages}
+    assert by_name["symmetrized"]["exists"] and by_name["ringremoved"]["exists"]
+    assert any(e[0] == "symmetry_average" and e[1] == "done" and "4/mmm" in e[3]
+               for e in events)
+    for stage in ("symmetrized", "ringremoved"):
+        meta = json.loads(webbridge.volume_meta_json(f"{dataset_id}.{stage}"))
+        assert meta["symmetry"] == "4/mmm" and len(meta["symmetry_ops"]) == 16
+
+
+def test_run_async_with_pool_rings_the_symmetrized_volume(tmp_path, monkeypatch):
+    """The out-of-band ring stage reads what the symmetry average wrote and
+    finishes as run_pipeline's does (the removal shared over the orbits): the
+    same ring output as the sync run, bit for bit."""
+    import asyncio
+
+    import nebula3d
+    from tests.test_ring_parallel import FakeExecutor
+
+    params = json.dumps({"rings_model": "patched", **_SYMMETRIZE})
+    webbridge.setup(workdir=str(tmp_path / "a"))
+    webbridge.make_demo_input(n=25)
+    webbridge.run("symmetry_average,rings", params, flatten_enabled=True, force=True)
+    ring_a = nebula3d.load(next((tmp_path / "a" / "processed").glob("*_ringremoved.h5")))
+
+    monkeypatch.setattr(webbridge, "_ring_pool_js", lambda: object())
+    monkeypatch.setattr(webbridge, "_JsPlaneExecutor",
+                        lambda pool, progress=None: FakeExecutor(n_workers=3))
+    webbridge.setup(workdir=str(tmp_path / "b"))
+    webbridge.make_demo_input(n=25)
+    events: list[tuple] = []
+    asyncio.run(webbridge.run_async("symmetry_average,rings", params, flatten_enabled=True,
+                                    force=True, progress=lambda *a: events.append(a)))
+    processed = tmp_path / "b" / "processed"
+    ring_b = nebula3d.load(next(processed.glob("*_ringremoved.h5")))
+    assert next(processed.glob("*_symmetrized.h5")).exists()
+    assert any("3-way" in ev[3] for ev in events if ev[0] == "rings")
+    assert any("averaged over 16 symmetry operations" in ev[3] for ev in events
+               if ev[0] == "rings")
+    assert np.array_equal(ring_a.data, ring_b.data)
+    assert np.array_equal(ring_a.mask, ring_b.mask)
 
 
 # ---------------------------------------------------------------------------
@@ -969,6 +1030,14 @@ def test_the_bridge_handles_every_worker_message_type():
     assert set(_bridge_module().WORKER_TYPES) == set(types)
 
 
+def test_the_bridge_runs_every_stage_of_the_pipeline():
+    # A stage missing from its list would be dropped from the replays' runs,
+    # as one missing from the worker's is from the browser's.
+    from nebula3d.pipeline import STAGES
+
+    assert tuple(_bridge_module().STAGES) == STAGES
+
+
 def test_the_stdio_bridge_answers_every_message_type(tmp_path):
     from nebula3d.demo import demo_volume
 
@@ -1001,7 +1070,9 @@ def test_the_stdio_bridge_answers_every_message_type(tmp_path):
             "force": True, "forceFrom": None, "stages": None, "tuningRun": None,
             "tuningTrial": None})
         assert reply["type"] == "result", reply
-        assert {e["stage"] for e in events if e["type"] == "progress"} >= set(webbridge.STAGES)
+        # Every stage streams progress, but the symmetry average: off by default.
+        assert ({e["stage"] for e in events if e["type"] == "progress"}
+                >= set(webbridge.STAGES) - {"symmetry_average"})
         assert {d["id"] for d in json.loads(reply["payload"])} == {"small", "synthetic-rocksalt"}
         answered.add("run_pipeline")
 

@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BraggProfile, Dataset, VolumeMeta, VolumeTexture } from "../../api/types";
+import type { BraggProfile, Dataset, LaueComparison, VolumeMeta, VolumeTexture } from "../../api/types";
 import { useAgentEdits } from "../../state/agentEdits";
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useMarkStore } from "../../state/markStore";
@@ -20,6 +20,8 @@ import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type T
 import { offLatticeBunching } from "../metrics/bunching";
 import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
 import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
+import braggOverDiffuse from "../../state/__tests__/__fixtures__/laue-compare-bragg-over-diffuse.json";
+import hex6m from "../../state/__tests__/__fixtures__/laue-compare-hex-6m.json";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -32,6 +34,7 @@ const api = vi.hoisted(() => ({
   fetchProtectedLabels: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
+  compareLaueClasses: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
   fetchVolumeTexture: vi.fn(),
 }));
@@ -370,6 +373,89 @@ describe("update_settings", () => {
     const range = await run("update_settings", { changes: { punchMinSig: 1000 } });
     expect(range.text).toMatch(/punchMinSig must be within/);
     expect(usePipelineStore.getState().punchMinSig).toBe("");
+  });
+
+  // The symmetry average (pipeline stage 0): the sample's Laue class, and
+  // whether to average at all, are the user's to set on the Configure page.
+  // update_settings refuses them whatever the user said; the model suggests.
+  describe("the symmetry average, which the user sets", () => {
+    const refusal = (key: string) => `${key} is the user's to set, on the Configure page: suggest a Laue class to the user, with your evidence, and let them set it.`;
+    const OFF = { symmetryAverageEnabled: false, symmetryLaue: "", symmetryReaverage: false, symmetryAllowMetricChange: false, punchMinSig: "" };
+    beforeEach(() => usePipelineStore.setState(OFF));
+
+    it("refuses the Laue class and the switch, even when the user names them", async () => {
+      for (const said of [undefined, "Set the Laue class to 6/mmm and switch the symmetry average on."]) {
+        const r = await callTool({ ...ctx, userMessage: said }, "update_settings", { changes: { symmetryLaue: "6/mmm", symmetryAverageEnabled: true } });
+        expect(r.ok).toBe(false);
+        expect(r.text).toBe(`Error: ${refusal("symmetryLaue")} ${refusal("symmetryAverageEnabled")}`);
+        expect(usePipelineStore.getState()).toMatchObject(OFF);
+      }
+    });
+
+    it("refuses to proceed despite a metric change, whatever the user said", async () => {
+      const said = "Proceed despite the metric change: average over 6/mmm anyway.";
+      const r = await callTool({ ...ctx, userMessage: said }, "update_settings", { changes: { symmetryAllowMetricChange: true } });
+      expect(r.ok).toBe(false);
+      expect(r.text).toBe(`Error: ${refusal("symmetryAllowMetricChange")}`);
+      expect(usePipelineStore.getState()).toMatchObject(OFF);
+    });
+
+    it("makes the call's other changes, and says what it refused", async () => {
+      const r = await run("update_settings", { changes: { punchMinSig: 6, symmetryReaverage: true } });
+      expect(r.ok, r.text).toBe(true);
+      expect(usePipelineStore.getState()).toMatchObject({ punchMinSig: "6", symmetryReaverage: false });
+      expect(JSON.parse(r.text)).toEqual({
+        changed: [{ setting: "punchMinSig", from: 5, to: 6 }],
+        refused: [{ setting: "symmetryReaverage", why: refusal("symmetryReaverage") }],
+        rerun_from: "punch",
+      });
+      expect(r.summary).toBe("punchMinSig 5 → 6; refused, the user's to set: symmetryReaverage");
+    });
+
+    it("shows a blank Laue class as none chosen, not as a default", async () => {
+      const shown = (JSON.parse((await run("configure_settings", {})).text) as { settings: Record<string, unknown> }).settings;
+      expect(shown).toMatchObject({
+        symmetryAverageEnabled: false,
+        symmetryLaue: "(none chosen: the user's to set)",
+        symmetryReaverage: false,
+        symmetryAllowMetricChange: false,
+      });
+    });
+  });
+
+  // The raw edge trim (tune/catalog.ts, USER_CHOICE_PARAMS), a data choice no
+  // fact about the sample, changes under the same gate: only when the user's
+  // latest message names it.
+  describe("the raw edge trim, which only the user's request changes", () => {
+    const refusal = "edgeTrim is the user's to choose: ask the user, and change it once they name it.";
+    const after = (said: string | undefined, changes: Args) =>
+      callTool({ ...ctx, userMessage: said, skillsRead: new Set(["reduction-qc", "bragg-node-audit"]) }, "update_settings", { changes });
+    beforeEach(() => usePipelineStore.setState({ edgeTrim: "", punchMinSig: "" }));
+
+    it("refuses a change the user's latest message does not name", async () => {
+      for (const said of [undefined, "Take it to a 3D-ΔPDF you would trust.", "Fix the edges of the plot."]) {
+        const r = await after(said, { edgeTrim: 2 });
+        expect(r.ok).toBe(false);
+        expect(r.text).toBe(`Error: ${refusal}`);
+        expect(usePipelineStore.getState().edgeTrim).toBe("");
+      }
+      const mixed = await after("Raise the punch significance to 6.", { punchMinSig: 6, edgeTrim: 2 });
+      expect(mixed.ok).toBe(true);
+      expect(mixed.summary).toBe("punchMinSig 5 → 6; refused, the user's to choose: edgeTrim");
+    });
+
+    it("makes the change once the user names it, and checks the value", async () => {
+      const r = await after("Trim two voxel layers off the coverage edge.", { edgeTrim: 2 });
+      expect(r.ok, r.text).toBe(true);
+      expect(JSON.parse(r.text)).toEqual({ changed: [{ setting: "edgeTrim", from: 1, to: 2 }], rerun_from: "rings" });
+      expect(usePipelineStore.getState().edgeTrim).toBe("2");
+      // Back to the default: the field's blank.
+      await after("Set the edge trim back to 1.", { edgeTrim: 1 });
+      expect(usePipelineStore.getState().edgeTrim).toBe("");
+      const bad = await after("Use an edge trim of 5.", { edgeTrim: 5 });
+      expect(bad.ok).toBe(false);
+      expect(bad.text).toMatch(/edgeTrim takes 0 to 3 voxel layers/);
+    });
   });
 
   // The facts about the sample (tune/catalog.ts, SAMPLE_PARAMS) change only
@@ -1207,6 +1293,63 @@ describe("grain_check", () => {
   it("says so when there is no punch record yet", async () => {
     api.fetchBraggProfile.mockResolvedValue({ has_profile: false, peaks: [] });
     expect((await run("grain_check", {})).text).toMatch(/no punch record yet/);
+  });
+});
+
+describe("compare_laue_classes", () => {
+  const HEX = hex6m as unknown as LaueComparison;
+  const FLAG = braggOverDiffuse as unknown as LaueComparison;
+  beforeEach(() => usePipelineStore.setState({ edgeTrim: "", symmetryLaue: "", punchSupercellH: "", punchSupercellK: "", punchSupercellL: "" }));
+
+  it("compares the raw volume's classes with the run's settings, and returns the table compactly", async () => {
+    api.compareLaueClasses.mockResolvedValue(HEX);
+    usePipelineStore.setState({ edgeTrim: "2", punchSupercellH: "2", punchSupercellK: "2", punchSupercellL: "2" });
+    const progress = vi.fn();
+    const r = await callTool(ctx, "compare_laue_classes", {}, { progress });
+    expect(r.ok, r.text).toBe(true);
+    const [id, params, extra] = api.compareLaueClasses.mock.lastCall!;
+    expect(id).toBe("demo.raw");
+    expect(params).toMatchObject({ edge_trim: 2, punch_supercell_h: 2, punch_supercell_k: 2, punch_supercell_l: 2 });
+    expect(extra).toEqual([]);
+    const out = JSON.parse(r.text);
+    expect(out.suggestion).toBe("6/m");
+    expect(out.classes.map((c: { class: string }) => c.class)).toEqual(["-1", "2/m (c unique)", "-3", "-3m1", "-31m", "6/m", "6/mmm"]);
+    const sixMmm = out.classes.find((c: { class: string }) => c.class === "6/mmm");
+    expect(sixMmm.contains).toEqual(["-3m1", "-31m", "6/m"]);
+    expect(sixMmm.verdict).toMatch(/^rose \d\.\d+× against /);
+    expect(sixMmm.r_int).toHaveLength(2);
+    expect(out.classes[0].contains).toBeUndefined();
+    expect(out.flag).toBeNull();
+    expect(out.rule).toMatch(/more than 10% and 2 standard errors/);
+    expect(out.refused).toContain("mmm: metric changes 100%");
+    expect(r.summary).toBe("suggests 6/m");
+  });
+
+  it("compares the form's custom class beside the presets", async () => {
+    api.compareLaueClasses.mockResolvedValue(HEX);
+    usePipelineStore.setState({ symmetryLaue: "h+k,-h,l" });
+    await run("compare_laue_classes", {});
+    expect(api.compareLaueClasses.mock.lastCall![2]).toEqual(["h+k,-h,l"]);
+    usePipelineStore.setState({ symmetryLaue: "6/m" });
+    await run("compare_laue_classes", {});
+    expect(api.compareLaueClasses.mock.lastCall![2]).toEqual([]);
+  });
+
+  it("says when the diffuse supports less than every measured voxel", async () => {
+    api.compareLaueClasses.mockResolvedValue(FLAG);
+    const r = await run("compare_laue_classes", {});
+    const out = JSON.parse(r.text);
+    expect(out.suggestion).toBe("4/mmm");
+    expect(out.suggested_by).toEqual({ all: "m-3m", diffuse: "4/mmm" });
+    expect(out.flag).toMatch(/diffuse alone supports only 4\/mmm/);
+    expect(r.summary).toBe("suggests 4/mmm; flag: the diffuse supports only 4/mmm");
+  });
+
+  it("passes the backend's refusal of a volume symmetrized already on", async () => {
+    api.compareLaueClasses.mockRejectedValue(new Error("demo.nxs declares 6/mmm (24 operations): it is symmetrized already"));
+    const r = await run("compare_laue_classes", {});
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/symmetrized already/);
   });
 });
 

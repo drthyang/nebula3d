@@ -18,9 +18,14 @@ export const SHEET_MIN = 0.3;
 export const SHEET_MAX = 0.85;
 export const SHEET_DEFAULT = 0.48;
 
-/** Docked beside the page when it is wide enough, else a bottom sheet. */
+/**
+ * Docked beside the page when it is wide enough, else a bottom sheet. A phone
+ * held landscape (844 × 390 and up) docks too: its sheet would be under 200 px
+ * tall, too short for the composer and the chips, while a column leaves the
+ * page about 480 px.
+ */
 export function dockModeFor(width: number, height: number): DockMode {
-  return width >= 1000 || (width >= 900 && width > height) ? "docked" : "sheet";
+  return width >= 1000 || (width >= 800 && width > height) ? "docked" : "sheet";
 }
 
 /**

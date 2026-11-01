@@ -180,6 +180,65 @@ export const REGRID_REFUSED = "A regrid writes a new dataset, which only the use
  */
 export const regridRefusal = (): string => `${REGRID_REFUSED}: nothing was written. Ask the user, and regrid once they ask for it.`;
 
+// The symmetry average (pipeline stage 0): whether to average the volume over
+// the sample's Laue class, and over which, is the user's to set, on the
+// Configure page. update_settings never sets them, whatever the user's latest
+// message says: the model may suggest a class, with its evidence (the cell's
+// metric, how well the equivalents agree), and the user applies it.
+export const SYMMETRY_AVERAGE_SETTINGS = ["symmetryAverageEnabled", "symmetryLaue", "symmetryReaverage", "symmetryAllowMetricChange"] as const;
+
+/** What a refusal of a change to the symmetry average says (findings.ts reads it). */
+export const SYMMETRY_AVERAGE_REFUSED = "is the user's to set, on the Configure page";
+
+/** update_settings' refusal of a change to the symmetry average's `key`; like sampleFactRefusal it names no skill, stage or tool. */
+export const symmetryAverageRefusal = (key: string): string =>
+  `${key} ${SYMMETRY_AVERAGE_REFUSED}: suggest a Laue class to the user, with your evidence, and let them set it.`;
+
+// The raw coverage-edge trim (the NeXus Viewer's "Edge erosion r"): which
+// measured voxels the whole run reads, a data choice that is no threshold to
+// trade against a metric, so it is never tuned. Like a fact about the sample,
+// update_settings changes it only when the user's latest message names it
+// (namesUserChoice); unlike the symmetry average's settings, it then does, as
+// the user's own request carried out.
+/** A setting only the user's request changes, by name: the raw edge trim. */
+const EDGE_TRIM_PARAM: SampleParam = {
+  key: "edgeTrim",
+  stage: "rings",
+  help: "Voxel layers taken off the raw input's coverage edge at load, whether or not the symmetry average is on (the NeXus Viewer's edge erosion): 0 to 3, default 1.",
+  allowed: "0–3",
+  fields: ["edgeTrim"],
+  // "edge trim", "edge erosion", "coverage edge", edge_trim, or "trim" with "edge" in one message.
+  names: [/\bedge[- ]?trim(?:s|med|ming)?\b/i, /\bedge[- ]erosion\b/i, /\bcoverage[- ]edge\b/i, /\bedge_trim\b/i, [/\btrim(?:s|med|ming)?\b/i, /\bedges?\b/i]],
+  read: (s) => {
+    const n = Number(s.edgeTrim);
+    return s.edgeTrim !== "" && [0, 1, 2, 3].includes(n) ? n : 1;
+  },
+  write: (value) => {
+    const n = typeof value === "string" ? Number(value.trim()) : Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 3) throw new ProposalError(`edgeTrim takes 0 to 3 voxel layers, not ${JSON.stringify(value)}`);
+    return { edgeTrim: n === 1 ? "" : String(n) };
+  },
+};
+
+/** The settings only the user's request changes that are no fact about the sample: the raw edge trim. */
+export const USER_CHOICE_PARAMS: SampleParam[] = [EDGE_TRIM_PARAM];
+
+/** Whether `key` is one of them (USER_CHOICE_PARAMS). */
+export const isUserChoice = (key: string): boolean => USER_CHOICE_PARAMS.some((p) => p.key === key);
+
+/** Whether `message`, the user's latest, names the setting `key`, by its key or one of its names. */
+export function namesUserChoice(message: string, key: string): boolean {
+  const p = USER_CHOICE_PARAMS.find((q) => q.key === key);
+  if (!p) return false;
+  return namedIn(message, [new RegExp(`\\b${p.key}\\b`, "i"), ...p.names]);
+}
+
+/** What a refusal of a change to such a setting says (findings.ts reads it). */
+export const USER_CHOICE_REFUSED = "is the user's to choose";
+
+/** update_settings' refusal of a change to `key` that the user's latest message does not name; it names no skill, stage or tool. */
+export const userChoiceRefusal = (key: string): string => `${key} ${USER_CHOICE_REFUSED}: ask the user, and change it once they name it.`;
+
 /** What a refusal of a change to a fact about the sample says, whatever the fact (findings.ts reads it). */
 export const SAMPLE_FACT_REFUSED = "is a fact about the sample, which only the user sets";
 

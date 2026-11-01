@@ -130,6 +130,11 @@ class VolumeMetaOut(BaseModel):
     # The point group the file declares its data were symmetrised with.
     symmetry: str | None = None
     symmetry_ops: list[list[list[int]]] | None = None
+    # The Laue class declared *for* a file that declares none itself (by a
+    # symmetrized export beside it naming it as its source, or a regrid's
+    # record): {"symmetry", "symmetry_ops", "from"}, what the symmetry
+    # average (stage 0) can take for it; None otherwise.
+    declared_for: dict[str, Any] | None = None
     # "measured": σ came with the data; "estimated": √|I|, and sigma_note says
     # when that leaves a significance in σ meaningless (normalized values).
     sigma: str = "measured"
@@ -331,6 +336,84 @@ class UbCheckOut(BaseModel):
     mean_offset_rlu: UbMeanOffsetOut | None = None
 
 
+class LaueReadingOut(BaseModel):
+    """R_int of one Laue class (or of whole |Q| shells) on one set of voxels
+    (see analysis.laue_compare.Reading)."""
+    r_int: float | None
+    noise: float | None  # the noise floor: R_int from counting noise alone
+    ratio: float | None  # r_int / noise
+    ratio_se: float | None
+    orbits: int  # orbits with two measured members or more
+    voxels: int  # their measured members
+    pairs: int  # pairs of measured equivalents they hold
+
+
+class LaueVerdictOut(BaseModel):
+    """What the rule made of a class in one reading."""
+    supported: bool
+    rises: bool  # its own rise fails the rule (not only a subgroup's)
+    against: str | None  # the candidate subgroup it was weighed against
+    rise: float | None  # its ratio over that subgroup's
+    judged: bool = True
+
+
+class LaueCandidateOut(BaseModel):
+    laue: str
+    generators: str
+    order: int
+    ops: str
+    metric_change: float | None
+    subgroups: list[str]
+    maximal_subgroups: list[str]
+    depth: int
+    all: LaueReadingOut | None
+    diffuse: LaueReadingOut | None
+    verdict: dict[str, LaueVerdictOut | None]
+
+
+class LaueRefusedOut(BaseModel):
+    laue: str
+    order: int
+    reason: str  # "metric" | "grid"
+    detail: str
+    metric_change: float | None = None
+
+
+class LaueRuleOut(BaseModel):
+    delta: float
+    z: float
+    text: str
+
+
+class LaueCompareOut(BaseModel):
+    """Candidate Laue classes compared by R_int (analysis.laue_compare): the
+    table, the classes refused, the |Q|-shell reference, the Bragg
+    neighbourhood the diffuse reading leaves out, the rule and its suggestion."""
+    id: str
+    volume: str
+    edge_trim: int
+    candidates: list[LaueCandidateOut]
+    refused: list[LaueRefusedOut]
+    isotropic: dict[str, LaueReadingOut]
+    bragg: dict[str, Any]
+    measured: int
+    sigma: str
+    rule: LaueRuleOut
+    readings: dict[str, dict[str, Any]]
+    suggestion: str | None
+    suggested_by: dict[str, str | None]
+    reason: str
+    disagreement: str | None
+    notes: list[str]
+    limits: str
+
+
+class LaueProgressOut(BaseModel):
+    fraction: float | None
+    message: str
+    running: bool
+
+
 class DpdfFeatureGroupOut(BaseModel):
     """The copies of one correlation: extrema of one sign that are images of one
     another under the declared point group, or of one sign, length and size
@@ -492,6 +575,16 @@ class StageParamsIn(BaseModel):
     rings_enabled: bool | None = None
     punch_enabled: bool | None = None
     backfill_enabled: bool | None = None
+    # Stage 0, the symmetry average (PipelineParams.symmetry_average): off
+    # unless switched on (None: off).  Its Laue class, the sample's to
+    # declare: a preset name ("6/mmm") or generators ("h+k,-h,l; -h,-k,-l");
+    # whether an input that declares a symmetry already is averaged again; and
+    # whether to proceed when the operations change the cell's metric by more
+    # than 2 % (refused otherwise; the run then records a warning).
+    symmetry_average_enabled: bool | None = None
+    symmetry_average_laue: str | None = None
+    symmetry_average_reaverage: bool | None = None
+    symmetry_average_allow_metric_change: bool | None = None
     # Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
     edge_trim: int | None = None
     rings_n_patches: int | None = None
@@ -613,6 +706,15 @@ class PipelineRunRequest(BaseModel):
     # A tuning trial: the stage runs into tuning/<run>/trials/<trial>/ and
     # reads its inputs from the run, never writing to processed/.
     tuning: TuningTrialIn | None = None
+
+
+class LaueCompareIn(BaseModel):
+    """The run's settings (the edge trim, the punch cell and footprint), any
+    custom classes to compare beside the presets, and a token to poll the
+    progress under (GET .../laue-compare/progress)."""
+    params: StageParamsIn = StageParamsIn()
+    extra: list[str] = []
+    token: str | None = None
 
 
 class TuningRunIn(BaseModel):

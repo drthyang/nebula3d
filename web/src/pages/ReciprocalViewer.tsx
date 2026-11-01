@@ -39,10 +39,14 @@ import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
 import { isReciprocal, useMarkStore, visibleMarks, WHERE_OUTPUT, type Mark } from "../state/markStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
+import { useTouchOnly } from "../components/usePlatform";
+import { readVerb } from "../components/viewerText";
 
-const STAGE_ORDER = ["raw", "ringremoved", "braggpunched", "backfilled", "flattened"];
+// The symmetrized volume (the optional stage 0's) is listed when it exists.
+const STAGE_ORDER = ["raw", "symmetrized", "ringremoved", "braggpunched", "backfilled", "flattened"];
 const STAGE_LABELS: Record<string, string> = {
   raw: "Raw",
+  symmetrized: "Symmetrized",
   ringremoved: "Ring-removed",
   braggpunched: "Bragg-punched",
   backfilled: "Backfilled",
@@ -63,6 +67,7 @@ function cachedAuto(s: Slice, scale: ScaleKind): AutoLevels {
 }
 
 export function ReciprocalViewer() {
+  const touch = useTouchOnly();
   const lit = useHighlightKeys();
   const datasetsQ = useDatasets();
   const datasets = useMemo(() => datasetsQ.data ?? [], [datasetsQ.data]);
@@ -266,7 +271,7 @@ export function ReciprocalViewer() {
         <span className="qr-desc">Each stage strips one artifact, leaving the diffuse signal</span>
       </div>
 
-      {/* ── Workspace header (shared order): click mode · unit cells │ plane · cut ··· layout, then the display bar ── */}
+      {/* ── Workspace header (shared order): Box zoom (?) · unit cells │ plane · cut ··· layout, then the display bar ── */}
       <WorkspaceHeader
         overlays={<UnitCellsSwitch kind="hkl" />}
         nav={
@@ -416,7 +421,7 @@ export function ReciprocalViewer() {
               })}
             </>
           ) : (
-            <span className="muted">Hover a slice to read the same ({xAxis}, {yAxis}) in every stage.</span>
+            <span className="muted">{readVerb(touch)} a slice to read the same ({xAxis}, {yAxis}) in every stage.</span>
           )}
         </div>
       )}

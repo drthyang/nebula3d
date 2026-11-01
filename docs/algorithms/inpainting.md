@@ -125,10 +125,25 @@ voxels reach a p99 about two orders of magnitude above the interior's, and
 maxima far beyond it, while one voxel further in they match the interior.
 Left in, they enter the ΔPDF directly and, as
 Dirichlet data, light up any `laplace` hole that touches them. Trimmed voxels
-become unmeasured coverage: masked and zeroed, as the loader leaves them. The
-volume's own faces are not an edge. In a symmetrised volume
-(`PipelineParams.symmetry`) a voxel is trimmed when any equivalent voxel is,
-see *Symmetrised Volumes* in `bragg_cleanup.md`. `method="q_shell"`
+become unmeasured coverage: masked and zeroed, as the loader leaves them.
+
+The rule is the NeXus Viewer's mask "Edge erosion r" (`js/mask.js`
+`edgeMask`), voxel for voxel: a voxel is unmeasured when it is masked or its
+value is not finite; every measured voxel within r voxels of an unmeasured one
+(Chebyshev distance, the (2r + 1)³ box) is trimmed; the volume's own faces are
+not an edge. `tests/test_edge_trim.py` holds the stage's input to what the
+viewer's own code keeps (run under node by `scripts/viewer_edge_trim_fixture.py`,
+pinned in `tests/fixtures/viewer_edge_trim.json`) on the demo crystal, a cubic
+and a hexagonal cell with gaps, holes and NaN voxels, for r = 0 to 3; the
+viewer's synthetic examples agree too. Until 2026-10, a voxel whose mask said
+measured but whose value was NaN did not count as unmeasured here, so its
+neighbours were kept where the viewer trims them. The Configure page offers
+*Edge trim* in the symmetry average's section (0 to 3 voxel layers, 1 by
+default), and it applies to the raw input whether or not that stage is on. In a
+symmetrised volume (`PipelineParams.symmetry`) a voxel is trimmed when any
+equivalent voxel is, see *Symmetrised Volumes* in `bragg_cleanup.md`: the one
+case the viewer has no counterpart for, as it erodes only the volume it is
+about to average, which is never symmetrized. `method="q_shell"`
 (the robust radial level at the same `|Q|`) is kept only for comparison: it is
 biased at the lattice nodes and leaves ΔPDF artefacts at the lattice vectors
 (see [bragg_cleanup.md](bragg_cleanup.md)).
@@ -138,8 +153,10 @@ RBF and biharmonic relaxation — was removed, together with the older ring-shel
 fill (`backfill_ring_shells`) that used it. TV assumes a piecewise-constant image
 and leaves staircase artefacts in structured diffuse scattering, and every
 symmetry copy of a punched Bragg node is itself punched, so there is nothing
-valid to copy. Coverage gaps are best filled by symmetrising the data (e.g. in
-Mantid) before it reaches the pipeline; what symmetry cannot reach stays
+valid to copy. Coverage gaps are best filled by symmetrising the data: the
+pipeline's own [symmetry average](symmetry_average.md) (stage 0, off by
+default) does it by the NeXus Viewer's rules, or the viewer (or Mantid) does it
+before the data reach the pipeline; what symmetry cannot reach stays
 unmeasured (see *What is filled* above).
 
 ---

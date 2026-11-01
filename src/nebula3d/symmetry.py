@@ -17,12 +17,20 @@ are exact on the grid, where the data were symmetrised, so the decisions are
 made invariant there (:meth:`GridSymmetry.orbit_any`).  Values computed voxel
 by voxel — a backfill solved on an index-space stencil — are made invariant
 the same way, by averaging them over each orbit (:meth:`GridSymmetry.orbit_mean`).
+
+A volume that was *not* symmetrised can be, here (:func:`symmetry_average`,
+the pipeline's optional first stage), by the NeXus Viewer's rules: the Laue
+class's generators closed into a group (:data:`LAUE_PRESETS`,
+:func:`laue_operations`), the operations exact on the grid, the metric check
+against the UB (:func:`metric_change`), and each orbit's measured voxels
+pooled with equal weight.
 """
 
 from __future__ import annotations
 
+import math
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +40,37 @@ from numpy.typing import ArrayLike, NDArray
 from nebula3d.core import HKLVolume, low_memory
 
 _TERM = re.compile(r"([+-]?)(\d*)([hkl])")
+
+#: The Laue classes the NeXus Viewer offers (its ``js/symmetry.js`` PRESETS,
+#: verbatim and in its order): a name and generators in hkl form, trigonal and
+#: hexagonal classes on hexagonal axes.  ``"1"`` is the identity alone.
+LAUE_PRESETS: tuple[tuple[str, str], ...] = (
+    ("1", "None"),
+    ("-1", "-h,-k,-l"),
+    ("2/m (b unique)", "-h,k,-l; -h,-k,-l"),
+    ("2/m (c unique)", "-h,-k,l; -h,-k,-l"),
+    ("mmm", "-h,-k,l; -h,k,-l; -h,-k,-l"),
+    ("4/m", "k,-h,l; -h,-k,-l"),
+    ("4/mmm", "k,-h,l; h,-k,-l; -h,-k,-l"),
+    ("-3", "k,-h-k,l; -h,-k,-l"),
+    ("-3m1", "k,-h-k,l; h,-h-k,-l; -h,-k,-l"),
+    ("-31m", "k,-h-k,l; -k,-h,-l; -h,-k,-l"),
+    ("6/m", "h+k,-h,l; -h,-k,-l"),
+    ("6/mmm", "h+k,-h,l; -k,-h,-l; -h,-k,-l"),
+    ("m-3", "k,l,h; -h,-k,l; -h,k,-l; -h,-k,-l"),
+    ("m-3m", "k,l,h; k,-h,l; -h,-k,-l"),
+)
+
+#: The largest relative change of the reciprocal metric under the operations
+#: that still counts as a symmetry of the cell (the NeXus Viewer warns above it,
+#: :func:`metric_change`): 2 %.
+METRIC_TOLERANCE = 0.02
+
+#: A point group has at most 48 operations (m-3m).
+MAX_ORDER = 48
+
+_IDENTITY = np.eye(3, dtype=np.int64)
+_GENERATOR_TERM = re.compile(r"([+-]?)(\d*)\*?([a-z])")
 
 
 def parse_symmetry_ops(text: str) -> tuple[NDArray[np.int64], ...]:
@@ -368,3 +407,567 @@ def _or_pullback(
               & (src[2] >= 0) & (src[2] < nl))
         block = out[lo:lo + 8]
         block[ok] |= mask[src[0][ok], src[1][ok], src[2][ok]]
+
+
+# ---------------------------------------------------------------------------
+# Symmetry averaging, by the NeXus Viewer's rules
+# ---------------------------------------------------------------------------
+# The viewer (js/symmetry.js and js/export.js) is the reference: the same
+# generator syntax and group closure (in its order), the same grid and metric
+# checks, and the same pooling, so a volume averaged here equals the one its
+# export writes, voxel for voxel (tests/test_symmetry_average.py pins that
+# against the viewer's own code).
+
+
+def _key(m: NDArray[np.int64]) -> tuple[int, ...]:
+    return tuple(int(x) for x in np.asarray(m).ravel())
+
+
+def _det3(m: NDArray[np.int64]) -> int:
+    """The determinant of an integer 3×3 matrix, exactly."""
+    a = [[int(x) for x in row] for row in m]
+    return (a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
+            - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+            + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]))
+
+
+def _parse_generator(text: str) -> NDArray[np.int64]:
+    """One operation, as the NeXus Viewer's ``parseOp`` reads it."""
+    src = re.sub(r"\s+", "", text).lower()
+    parts = src.split(",")
+    if len(parts) != 3 or any(not p for p in parts):
+        raise ValueError(f'"{text}" needs three comma-separated components.')
+    real = re.search(r"[xyz]", src) is not None
+    if real and re.search(r"[hkl]", src) is not None:
+        raise ValueError(f'"{text}" mixes h,k,l with x,y,z.')
+    names = "xyz" if real else "hkl"
+    m = np.zeros((3, 3), dtype=np.int64)
+    for row, part in enumerate(parts):
+        pos = 0
+        while pos < len(part):
+            match = _GENERATOR_TERM.match(part, pos)
+            if match is None:
+                break
+            sign, count, name = match.groups()
+            col = names.find(name)
+            if col < 0:
+                raise ValueError(f'Unknown symbol "{name}" in "{text}".')
+            m[row, col] += (-1 if sign == "-" else 1) * (int(count) if count else 1)
+            pos = match.end()
+        if pos != len(part):
+            raise ValueError(f'Cannot read "{part}" in "{text}". Use integer combinations '
+                             "such as h-k or -2l; translations are not allowed.")
+    r = m.T.copy() if real else m
+    det = _det3(r)
+    if abs(det) != 1:
+        raise ValueError(f'"{text}" has determinant {det}; a point operation must have '
+                         "determinant ±1.")
+    return r
+
+
+def parse_generators(text: str) -> tuple[NDArray[np.int64], ...]:
+    """The operations in *text*, as the NeXus Viewer's ``parseOps`` reads them.
+
+    Operations are separated by ``;`` or new lines and written like coordinate
+    triplets acting on reflections, ``h+k,-h,l`` (row ``i`` gives the new
+    ``h'_i``, so ``(h', k', l') = R·(h, k, l)``).  Real-space triplets such as
+    ``x-y,x,z`` are taken as ``R = Wᵀ``.  Integer coefficients only (``-2l``,
+    ``2*h``), no translations, and ``|det R| = 1``.  ``None`` (any case) and
+    empty text name no operation, so they give an empty tuple: the identity
+    alone once closed (:func:`close_group`).  ``ValueError`` with the viewer's
+    message for anything else.
+    """
+    pieces = (s.strip() for s in re.split(r"[;\n]", str(text)))
+    return tuple(_parse_generator(s) for s in pieces if s and s.lower() != "none")
+
+
+def close_group(generators: Sequence[ArrayLike]) -> tuple[NDArray[np.int64], ...]:
+    """The smallest group containing *generators*, in the NeXus Viewer's order.
+
+    As its ``closeGroup``: the identity, then each new generator, then the
+    products ``a·b`` of every pair of the operations so far, pass after pass
+    until a pass adds none.  The order is that of the viewer's index maps, so
+    the sums of :func:`symmetry_average` add in its order too.  ``ValueError``
+    past :data:`MAX_ORDER` operations (not a crystallographic point group).
+    """
+    ops: list[NDArray[np.int64]] = [_IDENTITY.copy()]
+    keys = {_key(_IDENTITY)}
+
+    def add(m: NDArray[np.int64]) -> bool:
+        key = _key(m)
+        if key in keys:
+            return False
+        if len(ops) >= MAX_ORDER:
+            raise ValueError(f"These operations generate more than {MAX_ORDER} operations, so "
+                             "they are not a crystallographic point group.")
+        keys.add(key)
+        ops.append(m)
+        return True
+
+    for g in generators:
+        add(np.asarray(g, dtype=np.int64))
+    grew = True
+    while grew:
+        grew = False
+        for a in list(ops):
+            for b in list(ops):
+                grew = add(a @ b) or grew
+    return tuple(ops)
+
+
+def format_op(m: ArrayLike) -> str:
+    """``"h+k,-h,l"``: an operation as the NeXus Viewer writes it (``formatOp``),
+    the form of the ``symmetry_ops`` attribute (:func:`parse_symmetry_ops`)."""
+    return _triplet(np.asarray(m, dtype=np.int64))
+
+
+def group_label(ops: Sequence[ArrayLike]) -> str:
+    """The name the NeXus Viewer gives the group *ops*: the Laue class of
+    :data:`LAUE_PRESETS` with the same operations, else ``"custom"``."""
+    key = frozenset(_key(np.asarray(m)) for m in ops)
+    for name, gens in LAUE_PRESETS:
+        if frozenset(_key(m) for m in close_group(parse_generators(gens))) == key:
+            return name
+    return "custom"
+
+
+@dataclass(frozen=True)
+class LaueGroup:
+    """A Laue class to average over: its ``label`` (the preset it matches, else
+    ``"custom"``, :func:`group_label`), the ``generators`` it was given as, and
+    the closed group ``ops`` in the viewer's order, identity first."""
+
+    label: str
+    generators: str
+    ops: tuple[NDArray[np.int64], ...]
+
+    @property
+    def order(self) -> int:
+        return len(self.ops)
+
+    @property
+    def ops_text(self) -> str:
+        """The group as the viewer's export writes ``symmetry_ops``."""
+        return "; ".join(format_op(m) for m in self.ops)
+
+
+def laue_group(spec: str) -> LaueGroup:
+    """The Laue class *spec* names: a preset of :data:`LAUE_PRESETS` by its
+    name (``"6/mmm"``, ``"2/m (b unique)"``; any case), or generators in the
+    syntax of :func:`parse_generators` (``"h+k,-h,l; -k,-h,-l; -h,-k,-l"``),
+    closed into a group (:func:`close_group`).
+
+    ``ValueError`` for empty text, a name that is no preset (text without a
+    comma), or generators the viewer would not read.
+    """
+    text = str(spec if spec is not None else "").strip()
+    if not text:
+        raise ValueError("Choose a Laue class: a preset such as 6/mmm, or generators "
+                         "such as h+k,-h,l; -k,-h,-l; -h,-k,-l.")
+    gens = next((g for name, g in LAUE_PRESETS if name.lower() == text.lower()), None)
+    if gens is None and "," not in text and text.lower() != "none":
+        names = ", ".join(name for name, _ in LAUE_PRESETS)
+        raise ValueError(f'"{text}" is not a Laue class here: choose one of {names}, or '
+                         "give generators such as h+k,-h,l; -h,-k,-l.")
+    generators = gens if gens is not None else text
+    ops = close_group(parse_generators(generators))
+    return LaueGroup(label=group_label(ops), generators=generators, ops=ops)
+
+
+def metric_change(ops: Sequence[ArrayLike], ub_matrix: ArrayLike) -> float:
+    """The largest change of the reciprocal metric under *ops*, relative to its
+    largest element: ``max |RᵀG*R − G*| / max |G*|`` with ``G* = UBᵀ·UB``.
+
+    The NeXus Viewer's ``metricChange`` ("Metric (UB) kept to x %"): 0 for true
+    symmetries of the cell, small but not 0 for a pseudo-symmetric one (6/mmm
+    changes a slightly distorted hexagonal cell by 0.8 %), large for operations
+    of another setting.  Above :data:`METRIC_TOLERANCE` they are not symmetries
+    of this lattice.  Scale-free, so the UB's 2π does not matter.
+    """
+    ub = np.asarray(ub_matrix, dtype=np.float64)
+    g = ub.T @ ub
+    scale = float(np.abs(g).max())
+    worst = 0.0
+    for m in ops:
+        r = np.asarray(m, dtype=np.float64)
+        worst = max(worst, float(np.abs(r.T @ g @ r - g).max()) / scale)
+    return worst
+
+
+@dataclass(frozen=True)
+class AverageStats:
+    """What :func:`symmetry_average` did.
+
+    ``measured_before`` counts the voxels it pooled (measured and finite),
+    ``measured_after`` the voxels measured after it: those, and every voxel an
+    equivalent of which was measured.  ``orbits`` are the orbits it averaged.
+    ``r_int`` is the agreement of the measured equivalents before averaging,
+    ``Σ|I − ⟨I⟩| / Σ|I|`` over the measured voxels of the orbits measured at
+    least twice (crystallography's R_int, over voxels), ``None`` without such
+    an orbit.  ``sigma_defaulted`` counts the voxels whose σ is √|mean|
+    because no member of their orbit had a known σ (0 when σ was estimated
+    to begin with).
+    """
+
+    order: int
+    measured_before: int
+    measured_after: int
+    orbits: int
+    r_int: float | None
+    sigma_defaulted: int
+
+    @property
+    def filled(self) -> int:
+        """Voxels measured only at an equivalent position, filled by symmetry."""
+        return self.measured_after - self.measured_before
+
+
+def check_uniform_axes(vol: HKLVolume) -> None:
+    """``ValueError`` unless every axis of *vol* has uniform bins, as the NeXus
+    Viewer's ``indexMaps`` requires (to 10⁻⁴ of a step): symmetry operations
+    are integer maps on bin indices only on a uniform grid."""
+    for name, axis in zip("HKL", (vol.h_axis, vol.k_axis, vol.l_axis)):
+        a = np.asarray(axis, dtype=np.float64)
+        if a.size < 3:
+            continue
+        step = (a[-1] - a[0]) / (a.size - 1)
+        if np.abs(np.diff(a) - step).max() > 1e-4 * abs(step):
+            raise ValueError(f"Axis {name} has non-uniform bins; symmetry averaging needs "
+                             "uniform bins.")
+
+
+def _images(r: NDArray[np.int64], t: NDArray[np.int64], i: NDArray[np.intp],
+            j: NDArray[np.intp], k: NDArray[np.intp],
+            ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.intp]]:
+    """The index image ``R·(i, j, k) + t`` (any broadcastable shapes), in intp."""
+    rr = [[int(x) for x in row] for row in r]
+    tt = [int(x) for x in t]
+    return tuple(  # type: ignore[return-value]
+        (rr[a][0] * i + rr[a][1] * j + rr[a][2] * k + tt[a]).astype(np.intp, copy=False)
+        for a in range(3))
+
+
+def _representatives(sym: GridSymmetry, lo: int, hi: int) -> NDArray[np.bool_]:
+    """Which voxels of H planes ``lo:hi`` are their orbit's representative:
+    the member with the smallest flat (C-order) index among those on the grid,
+    so each orbit is taken once, from there (the viewer's rule)."""
+    nh, nk, nl = sym.shape
+    rep = np.ones((hi - lo, nk, nl), dtype=bool)
+    i = np.arange(lo, hi, dtype=np.intp)[:, None]
+    j = np.arange(nk, dtype=np.intp)[None, :]
+    lidx = np.arange(nl, dtype=np.intp)
+    if all(_l_separate(r) for r, _t in sym.index_ops):
+        # L maps to ±L alone: whether an image precedes the voxel is decided by
+        # its (H, K) image, and only where those coincide by its L image.
+        zero = np.zeros(1, dtype=np.intp)
+        for r, t in sym.index_ops[1:]:
+            si, sj, _ = _images(r, t, i, j, zero[:, None])
+            on = (si >= 0) & (si < nh) & (sj >= 0) & (sj < nk)
+            before = on & ((si < i) | ((si == i) & (sj < j)))
+            same = on & (si == i) & (sj == j)
+            sl = int(r[2, 2]) * lidx + int(t[2])
+            lon = (sl >= 0) & (sl < nl)
+            rep &= ~((before[:, :, None] & lon) | (same[:, :, None] & (lon & (sl < lidx))))
+        return rep
+    i3, j3, l3 = i[:, :, None], j[:, :, None], lidx[None, None, :]
+    for r, t in sym.index_ops[1:]:
+        si, sj, sl = _images(r, t, i3, j3, l3)
+        on = ((si >= 0) & (si < nh) & (sj >= 0) & (sj < nk) & (sl >= 0) & (sl < nl))
+        before = (si < i3) | ((si == i3) & ((sj < j3) | ((sj == j3) & (sl < l3))))
+        rep &= ~(on & before)
+    return rep
+
+
+# ---------------------------------------------------------------------------
+# One slab's orbits: the pass the average and the Laue comparison share
+# ---------------------------------------------------------------------------
+# The orbits are visited a slab of H planes at a time, each from its
+# representative (:func:`_representatives`), through its images on the grid
+# in the group's order (:func:`_orbit_images`); a member counts when it is
+# measured — its mask True and its value finite — and the orbit's mean is the
+# equal-weight mean of those (:func:`orbit_terms`).  :func:`symmetry_average`
+# writes the means back; :mod:`nebula3d.analysis.laue_compare` reads the
+# agreement of each orbit's members (R_int) for every candidate Laue class,
+# with this same code, so the two cannot count orbits differently.
+
+
+def _on_grid(si: NDArray[np.intp], sj: NDArray[np.intp], sl: NDArray[np.intp],
+             shape: tuple[int, int, int]) -> NDArray[np.bool_]:
+    """Whether each index image lies on the grid."""
+    return ((si >= 0) & (si < shape[0]) & (sj >= 0) & (sj < shape[1])
+            & (sl >= 0) & (sl < shape[2]))
+
+
+def slab_planes(sym: GridSymmetry, slab_voxels: int = 1 << 20) -> int:
+    """H planes per slab, for about *slab_voxels* voxels a slab: a quarter of
+    that for a group with an operation that mixes L with H and K, whose
+    representative test holds three index arrays per operation."""
+    _nh, nk, nl = sym.shape
+    planes = max(1, int(slab_voxels) // max(1, nk * nl))
+    if not all(_l_separate(r) for r, _t in sym.index_ops):
+        planes = max(1, planes // 4)
+    return planes
+
+
+def slab_orbits(sym: GridSymmetry, lo: int, hi: int,
+                ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.intp]]:
+    """The orbits whose representative lies in H planes ``lo:hi``, by the
+    representatives' voxel indices (the member with the smallest flat index
+    among those on the grid, :func:`_representatives`): every orbit of the
+    grid in exactly one slab."""
+    ri, rj, rl = np.nonzero(_representatives(sym, lo, hi))
+    return ((ri + lo).astype(np.intp, copy=False), rj.astype(np.intp, copy=False),
+            rl.astype(np.intp, copy=False))
+
+
+def _orbit_images(
+    sym: GridSymmetry, ri: NDArray[np.intp], rj: NDArray[np.intp], rl: NDArray[np.intp],
+    select: NDArray[np.bool_] | None = None,
+) -> Iterator[tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.intp], NDArray[np.intp]]]:
+    """Per operation, in the group's order: which representatives' images lie
+    on the grid (their positions, of those *select* keeps) and the images.  A
+    member on a symmetry element is the image of its representative under
+    several operations, once per operation."""
+    for r, t in sym.index_ops:
+        si, sj, sl = _images(r, t, ri, rj, rl)
+        on = _on_grid(si, sj, sl, sym.shape)
+        if select is not None:
+            on &= select
+        pos = np.flatnonzero(on)
+        del on
+        # Only the images on the grid stay alive while the caller works.
+        si, sj, sl = si[pos], sj[pos], sl[pos]
+        yield pos, si, sj, sl
+
+
+#: E|X| / σ for a normal X of mean 0: what the mean absolute deviation of a
+#: voxel from its orbit's mean is, in units of its standard deviation, when
+#: the members differ by counting noise alone.
+_MEAN_ABS_NORMAL = math.sqrt(2.0 / math.pi)
+
+
+@dataclass
+class OrbitTerms:
+    """One measured mask's sums over a slab of orbits (:func:`orbit_terms`).
+
+    Per orbit, over its measured members (mask True, value finite), each
+    member once per operation that maps the representative onto it, so every
+    sum is ``stab`` times the sum over distinct members: ``total`` of the
+    values and ``count`` of the members; ``mean`` (the equal-weight mean,
+    ``total / count``) where ``has`` (a member measured); ``twice`` where at
+    least two distinct members are measured (``count ≥ 2·stab``).  With σ,
+    ``var2`` sums σ² and ``known`` counts the members it was known for.  On
+    the ``twice`` orbits, ``dev`` sums |I − ⟨I⟩| and ``mag`` sums |I|: R_int's
+    terms; ``noise`` sums the expected |I − ⟨I⟩| from σ alone,
+    √(2/π)·sd(I − ⟨I⟩) with sd² = σᵢ²(1 − 2/n) + Σσ²/n² for n measured
+    members of independent errors.  ``None`` where not asked for.
+    """
+
+    total: NDArray[np.float64]
+    count: NDArray[np.int32]
+    mean: NDArray[np.float64]
+    has: NDArray[np.bool_]
+    twice: NDArray[np.bool_]
+    var2: NDArray[np.float64] | None = None
+    known: NDArray[np.int32] | None = None
+    dev: NDArray[np.float64] | None = None
+    mag: NDArray[np.float64] | None = None
+    noise: NDArray[np.float64] | None = None
+
+    def r_int_sums(self, stab: NDArray[np.int32]) -> tuple[float, float]:
+        """R_int's numerator and denominator over this slab: Σ|I − ⟨I⟩| and
+        Σ|I| over the measured members of the orbits measured at least twice,
+        each distinct member once."""
+        if self.dev is None or self.mag is None or not self.twice.any():
+            return 0.0, 0.0
+        tw = self.twice
+        return (float((self.dev[tw] / stab[tw]).sum()),
+                float((self.mag[tw] / stab[tw]).sum()))
+
+
+def orbit_terms(
+    data: NDArray[np.floating], masks: Sequence[NDArray[np.bool_]], sym: GridSymmetry,
+    ri: NDArray[np.intp], rj: NDArray[np.intp], rl: NDArray[np.intp], *,
+    sigma: NDArray[np.floating] | None = None, sigma_unknown_abs: bool = False,
+    deviations: bool = True, noise: bool = False,
+) -> tuple[NDArray[np.int32], list[OrbitTerms]]:
+    """Sums over the measured members of the orbits ``(ri, rj, rl)`` represent
+    (:func:`slab_orbits`), for each of *masks*: one :class:`OrbitTerms` per
+    mask, and ``stab``, how many operations map each representative onto
+    itself.
+
+    A member counts for a mask when the mask is True there and its value is
+    finite (the measured-voxel rule of :func:`symmetry_average`).  The values
+    are summed in float64 over the images in the group's order.  With
+    *sigma*, σ² is summed over the members whose σ is finite (``known``
+    counts them); *sigma_unknown_abs* takes |I| for a σ that is not (√|I|,
+    the loader's estimate), so every measured member has one.  *deviations*
+    adds a second pass over the orbits measured at least twice for R_int's
+    terms, and *noise* (with *sigma*) their counting-noise expectation.  The
+    work holds a few arrays of the representatives' length, never one of the
+    volume's.
+    """
+    n = ri.size
+    stab = np.zeros(n, dtype=np.int32)
+    total = [np.zeros(n, dtype=np.float64) for _ in masks]
+    count = [np.zeros(n, dtype=np.int32) for _ in masks]
+    var2 = [np.zeros(n, dtype=np.float64) for _ in masks] if sigma is not None else None
+    known = [np.zeros(n, dtype=np.int32) for _ in masks] if sigma is not None else None
+    # 1. Sum each orbit's measured values over its images, in the group's order.
+    for pos, si, sj, sl in _orbit_images(sym, ri, rj, rl):
+        v = data[si, sj, sl].astype(np.float64)
+        finite = np.isfinite(v)
+        stab[pos] += (si == ri[pos]) & (sj == rj[pos]) & (sl == rl[pos])
+        var = None
+        if sigma is not None:
+            var = np.square(sigma[si, sj, sl].astype(np.float64))
+            if sigma_unknown_abs:
+                var = np.where(np.isfinite(var), var, np.abs(v))
+        for m, mask in enumerate(masks):
+            ok = mask[si, sj, sl] & finite
+            total[m][pos] += np.where(ok, v, 0.0)
+            count[m][pos] += ok
+            if var is not None and var2 is not None and known is not None:
+                kn = ok & np.isfinite(var)
+                var2[m][pos] += np.where(kn, var, 0.0)
+                known[m][pos] += kn
+    terms = []
+    for m in range(len(masks)):
+        has = count[m] > 0
+        mean = np.zeros(n, dtype=np.float64)
+        mean[has] = total[m][has] / count[m][has]
+        terms.append(OrbitTerms(
+            total=total[m], count=count[m], mean=mean, has=has,
+            twice=has & (count[m] >= 2 * stab),
+            var2=None if var2 is None else var2[m],
+            known=None if known is None else known[m]))
+    if not deviations:
+        return stab, terms
+    # 2. How far the measured members were from their mean (R_int), on the
+    #    orbits measured at least twice (count / stab distinct members).
+    want = np.zeros(n, dtype=bool)
+    for t in terms:
+        want |= t.twice
+    if not want.any():
+        return stab, terms
+    for t in terms:
+        t.dev = np.zeros(n, dtype=np.float64)
+        t.mag = np.zeros(n, dtype=np.float64)
+        if noise and sigma is not None:
+            t.noise = np.zeros(n, dtype=np.float64)
+    members = {id(t): (t.count / np.maximum(stab, 1)) for t in terms} if noise else {}
+    for pos, si, sj, sl in _orbit_images(sym, ri, rj, rl, want):
+        v = data[si, sj, sl].astype(np.float64)
+        finite = np.isfinite(v)
+        var = None
+        if noise and sigma is not None:
+            var = np.square(sigma[si, sj, sl].astype(np.float64))
+            if sigma_unknown_abs:
+                var = np.where(np.isfinite(var), var, np.abs(v))
+        for t, mask in zip(terms, masks):
+            ok = mask[si, sj, sl] & finite & t.twice[pos]
+            t.dev[pos] += np.where(ok, np.abs(v - t.mean[pos]), 0.0)  # type: ignore[index]
+            t.mag[pos] += np.where(ok, np.abs(v), 0.0)  # type: ignore[index]
+            if var is not None and t.noise is not None and t.var2 is not None:
+                nn = members[id(t)][pos]
+                spread = t.var2[pos] / np.maximum(stab[pos], 1)  # Σσ² over distinct members
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    sd2 = var * (1.0 - 2.0 / nn) + spread / (nn * nn)
+                use = ok & np.isfinite(var)
+                t.noise[pos] += np.where(use, _MEAN_ABS_NORMAL * np.sqrt(np.maximum(
+                    np.where(use, sd2, 0.0), 0.0)), 0.0)
+    return stab, terms
+
+
+def symmetry_average(
+    vol: HKLVolume, sym: GridSymmetry, *, slab_voxels: int = 1 << 20,
+) -> AverageStats:
+    """Average *vol* over the group *sym*, **in place**, by the NeXus Viewer's
+    rules (its export, ``symmetrizeForExport``).
+
+    Each orbit (its members on the grid) is visited once, from its
+    representative, the member with the smallest flat index.  Its measured
+    members — ``mask`` and finite — are pooled with equal weight: their values
+    are summed in float64 over the images ``g·x`` in the group's order
+    (*sym*'s, :func:`close_group`'s for a Laue class), a member on a symmetry
+    element once per operation that maps the representative onto it, so sum
+    and count scale alike, and the mean is written to every member on the
+    grid, in the volume's dtype.  ``mask`` is then True on every member of an
+    orbit with a measured member; an orbit without one is left unmeasured as
+    the loader leaves it (0, σ 0, masked).  σ is the mean's,
+    ``√(Σσ²)/n`` over the n members whose σ is known, else (and when σ was
+    only estimated, :attr:`HKLVolume.sigma_estimated`) √|mean|.
+
+    The volume's float32 values give the viewer's result bit for bit (its
+    volume is float32, its sums float64) when its flat order is this one, as
+    in the files it and NEBULA3D write (D0 = L).  The work goes a slab of H
+    planes at a time and touches only each slab's representatives and their
+    images, so it holds no volume-sized temporary (the browser's heap).
+    Operations must map the grid onto itself (:meth:`GridSymmetry.for_volume`).
+    """
+    data, mask = vol.data, vol.mask
+    if data.shape != sym.shape or mask.shape != sym.shape:
+        raise ValueError(f"volume shape {data.shape} != grid shape {sym.shape}")
+    if not vol.sigma.flags.writeable or vol.sigma.shape != data.shape:
+        vol.sigma = np.array(np.broadcast_to(vol.sigma, data.shape), dtype=data.dtype)
+    sigma = vol.sigma
+    measured_sigma = not vol.sigma_estimated
+    nh = sym.shape[0]
+    planes = slab_planes(sym, slab_voxels)
+
+    before = 0
+    for lo in range(0, nh, planes):
+        block = data[lo:lo + planes]
+        before += int(np.count_nonzero(mask[lo:lo + planes] & np.isfinite(block)))
+
+    orbits = defaulted = 0
+    dev_sum = abs_sum = 0.0
+    for lo in range(0, nh, planes):
+        ri, rj, rl = slab_orbits(sym, lo, min(nh, lo + planes))
+        if ri.size == 0:
+            continue
+        n = ri.size
+        # 1–2. Each orbit's measured values summed over its images, in the
+        #      group's order, and R_int's terms (orbit_terms, shared with the
+        #      Laue comparison).
+        stab, (terms,) = orbit_terms(data, (mask,), sym, ri, rj, rl,
+                                     sigma=sigma if measured_sigma else None)
+        has, mean = terms.has, terms.mean
+        slab_dev, slab_abs = terms.r_int_sums(stab)
+        dev_sum += slab_dev
+        abs_sum += slab_abs
+        value = mean.astype(data.dtype)
+        if terms.var2 is not None and terms.known is not None:
+            # The viewer's export writes σ² of the mean, or √|mean| without a
+            # known σ, which loads back as written.
+            var2, known = terms.var2, terms.known
+            err = np.sqrt(np.abs(mean))
+            some = has & (known > 0)
+            err[some] = np.sqrt(var2[some] * stab[some]) / known[some]
+            short = has & (known == 0)
+        else:
+            # An estimated σ is √|I| of the values as stored, as the loader
+            # takes it (from the export's errors_squared = |data|).
+            err = np.sqrt(np.abs(value.astype(np.float64)))
+            short = np.zeros(n, dtype=bool)
+        err[~has] = 0.0
+        err_out = err.astype(sigma.dtype)
+        orbits += int(np.count_nonzero(has))
+        # 3. Write the mean to every member on the grid (and unmeasure the
+        #    orbits with no measured member, as the loader leaves them).
+        members = np.zeros(n, dtype=np.int32)
+        for pos, si, sj, sl in _orbit_images(sym, ri, rj, rl):
+            data[si, sj, sl] = value[pos]
+            sigma[si, sj, sl] = err_out[pos]
+            mask[si, sj, sl] = has[pos]
+            members[pos] += 1
+        if short.any():
+            defaulted += int((members[short] // stab[short]).sum())
+        # Free this slab's arrays before the next slab's pass allocates its own.
+        del stab, terms, has, mean, value, err, err_out, short, members
+    after = 0
+    for lo in range(0, nh, planes):
+        after += int(np.count_nonzero(mask[lo:lo + planes]))
+    return AverageStats(
+        order=sym.order, measured_before=before, measured_after=after, orbits=orbits,
+        r_int=(dev_sum / abs_sum) if abs_sum > 0 else None, sigma_defaulted=defaulted)

@@ -126,6 +126,7 @@ button {
   gap: 18px;
   min-height: 0;
   overflow-y: auto;
+  position: relative; /* clip its absolutely placed descendants too (see .main) */
 }
 
 .brand {
@@ -148,7 +149,21 @@ button {
 .brand-name {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   line-height: 1.15;
+}
+/* the version under the name: a smaller badge than the foot's */
+.brand-name .ver {
+  padding: 1px 3px 1px 6px;
+  gap: 5px;
+}
+.brand-name .ver-num {
+  font-size: 10px;
+}
+.brand-name .ver-tag {
+  font-size: 8px;
+  padding: 1px 5px;
 }
 .brand-name b {
   font-size: 15px;
@@ -411,34 +426,30 @@ button {
 .mem-card .gh-head + .mem-card-line {
   color: var(--text);
 }
-@media (pointer: coarse) {
-  .gh-trigger.mem-help {
-    width: 20px;
-    height: 20px;
-    font-size: 11px;
-  }
-  .gh-trigger.mem-help::before {
-    inset: -10px;
-  }
+/* The version badge: beside the name at the top (.brand), or in the foot at
+   the end of <main> in the compact top bar, which hides the name. */
+.main-foot .ver {
+  display: none; /* shown only where the top bar hides the name (below) */
+  align-self: flex-start;
 }
-:is(.sidebar-foot, .main-foot) .ver {
+.ver {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  align-self: flex-start;
+  flex: none;
   padding: 3px 4px 3px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
 }
-:is(.sidebar-foot, .main-foot) .ver-num {
+.ver-num {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--text-2);
 }
-:is(.sidebar-foot, .main-foot) .ver-tag {
+.ver-tag {
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -473,6 +484,10 @@ button {
   flex-direction: column;
   min-width: 0;
   overflow-y: auto;
+  /* The containing block of its absolutely placed descendants (the switches'
+     hidden checkboxes, help bubbles): without it they hang off the body, past
+     this scroll box, and stretch the document so the whole app scrolls. */
+  position: relative;
   /* the page layouts answer to this width, not the window's: with NEBULA
      Pilot docked beside it, the page reflows */
   container: main / inline-size;
@@ -838,6 +853,7 @@ input[type="range"]::-moz-range-track {
 
 /* switch */
 .switch {
+  position: relative; /* holds its hidden checkbox */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1389,6 +1405,256 @@ input[type="range"]::-moz-range-track {
   line-height: 1.4;
   color: var(--text-3);
 }
+/* a setting the run will refuse (the symmetry average's Laue class) */
+.config-note--error {
+  color: var(--red);
+}
+/* one it will run with a warning (proceeding despite the metric change) */
+.config-note--warn {
+  color: var(--amber);
+}
+.config-note .btn-sm {
+  vertical-align: baseline;
+}
+/* the symmetry average's closed group, folded */
+.cfg-ops {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.cfg-ops summary {
+  cursor: pointer;
+  width: max-content;
+}
+.cfg-ops code {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  word-spacing: 0.3em;
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+}
+/* a box of a stage that applies whether or not the stage is on (the raw edge
+   trim; the Laue comparison, read before switching the average on) */
+.cfg-stage--off .cfg-box.cfg-box--always {
+  opacity: 1;
+}
+/* a box as wide as its stage's grid (the Laue comparison's table) */
+.cfg-stage-grid > .cfg-box--wide {
+  grid-column: 1 / -1;
+}
+
+/* "Compare Laue classes": the button, R_int's one line and its ?, the progress,
+   the verdict, the table (indented by the chain of subgroups), its caption */
+.laue-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.laue-compare-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.laue-compare-head .btn {
+  flex: none;
+}
+.laue-compare-line {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+.laue-compare-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.laue-compare-message {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.laue-verdict {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.laue-verdict--none {
+  color: var(--text-3);
+}
+.laue-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.laue-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.laue-table th {
+  padding: 0 6px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+.laue-table td {
+  padding: 4px 6px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.laue-table .num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+.laue-row {
+  cursor: pointer;
+}
+.laue-row:hover td {
+  background: var(--surface-3);
+}
+.laue-row--suggested td {
+  background: var(--green-soft);
+}
+.laue-row--current td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.laue-class {
+  white-space: nowrap;
+}
+.laue-indent {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding-left: calc(var(--depth, 0) * 10px);
+}
+.laue-chain {
+  color: var(--text-3);
+  font-size: 10px;
+}
+.laue-pick {
+  padding: 0;
+  font: 600 12px var(--font-mono);
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.laue-pick:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+.laue-row--current .laue-pick {
+  color: var(--accent-hi);
+}
+.laue-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 15px;
+  border-radius: 8px;
+  color: var(--green);
+  background: var(--green-soft);
+  vertical-align: 1px;
+}
+.laue-cell {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.laue-rint {
+  display: block;
+  color: var(--text);
+}
+.laue-detail {
+  display: block;
+  font-size: 10px;
+  color: var(--text-3);
+}
+.laue-cell--rose .laue-detail,
+.laue-cell--below .laue-detail {
+  color: var(--red);
+}
+.laue-cell--flag .laue-detail {
+  color: var(--amber);
+}
+.laue-cell--flag .laue-rint::after {
+  content: " ⚠";
+  color: var(--amber);
+}
+.laue-ref td {
+  color: var(--text-3);
+  font-style: italic;
+}
+.laue-ref .laue-rint {
+  color: var(--text-3);
+}
+.laue-refused td {
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: normal;
+}
+.laue-orbits-short {
+  display: none;
+}
+.laue-refused td:first-child {
+  font-family: var(--font-mono);
+}
+.laue-caption {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+/* phones: each cell's figure without its words, compact orbits, names that
+   wrap, a smaller indent: the table at the card's width (390 px viewport) */
+@container main (max-width: 480px) {
+  .laue-table {
+    font-size: 11px;
+  }
+  .laue-table th,
+  .laue-table td {
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+  .laue-table th {
+    white-space: normal;
+    letter-spacing: 0.02em;
+  }
+  .laue-class {
+    white-space: normal;
+  }
+  .laue-indent {
+    padding-left: calc(var(--depth, 0) * 5px);
+  }
+  .laue-pick {
+    font-size: 11px;
+    text-align: left;
+  }
+  .laue-tail,
+  .laue-orbits-full {
+    display: none;
+  }
+  .laue-orbits-short {
+    display: inline;
+  }
+  .laue-badge {
+    display: block;
+    width: max-content;
+    margin: 2px 0 0;
+  }
+}
 .config-grid-3 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -1494,7 +1760,7 @@ input[type="range"]::-moz-range-track {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
-/* — the gesture card (GestureHint.tsx): the "?" beside the click modes — */
+/* — the gesture card (GestureHint.tsx): the "?" beside the Box zoom tool — */
 .gh {
   position: relative;
   display: inline-flex;
@@ -1740,8 +2006,9 @@ input[type="range"]::-moz-range-track {
 }
 
 /* Configure: the preview card (components/PunchPreview.tsx) — the viewer
-   pages' header, then one slice view whose plane its tabs pick, the punch
-   drawn over it, and the hover readout. */
+   pages' header, then the three planes side by side on a wide card or one
+   slice view whose plane its tabs pick, the punch drawn over them, and the
+   hover readout. */
 .cfg-preview {
   display: flex;
   flex-direction: column;
@@ -1802,7 +2069,8 @@ input[type="range"]::-moz-range-track {
   justify-content: space-between;
   gap: 4px 14px;
 }
-.cfg-preview-foot .punch-legend {
+.cfg-preview-foot .punch-legend,
+.cfg-preview-key .punch-legend {
   margin-top: 0;
   justify-content: flex-start;
 }
@@ -1816,6 +2084,32 @@ input[type="range"]::-moz-range-track {
 }
 .ws-readout.cfg-preview-readout {
   background: var(--surface-2);
+}
+/* a wide card (≥ 1100 px, components/previewLayout.ts): the three planes side
+   by side, each about square with its cut under it, the legend once below */
+.cfg-preview-planes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.cfg-preview-plane .view-body {
+  flex: none;
+  aspect-ratio: 1 / 1;
+  max-height: 70vh;
+}
+.cfg-plane-title {
+  font: 600 12px var(--font-mono);
+}
+.cfg-preview-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 14px;
+  padding: 8px 11px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
 /* Configure: the 3D-ΔPDF Workflow card — one section per stage, in the order
@@ -2248,16 +2542,25 @@ input[type="range"]::-moz-range-track {
 }
 .data-card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
 }
-.data-actions {
+/* The page's top-level actions, above the cards: running on the left, the
+   session on the right; they wrap onto two rows on a narrow page. */
+.config-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex: none;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.config-toolbar-run,
+.config-toolbar-session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
 }
 .data-card-grid {
@@ -2316,12 +2619,16 @@ input[type="range"]::-moz-range-track {
    a line that is solid where both neighbours exist.  Available is the quiet
    default (a filled node, no word); only stale or missing say so. */
 .stage-track-wrap {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 520px;
+  /* room for every stage's name on one row; when the buttons beside it leave
+     less, they wrap below the track (.data-card-head wraps) */
+  min-width: min(520px, 100%);
 }
 .stage-track {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* one column per stage, however many there are (7 with Symmetrized) */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2405,6 +2712,7 @@ input[type="range"]::-moz-range-track {
 /* On a narrow card the track runs down: node, then name and flag on its row. */
 @container main (max-width: 560px) {
   .stage-track {
+    grid-auto-flow: row;
     grid-template-columns: 1fr;
     row-gap: 10px;
   }
@@ -2533,14 +2841,16 @@ input[type="range"]::-moz-range-track {
     flex-direction: column;
     align-items: stretch;
   }
+  /* stacked, its 520 px basis would be a height: the track hugs its stages */
   .stage-track-wrap {
+    flex: none;
     width: 100%;
   }
-  .data-actions {
-    justify-content: flex-start;
+  .config-toolbar-run,
+  .config-toolbar-session {
     width: 100%;
   }
-  .data-actions .btn {
+  .config-toolbar .btn {
     width: auto;
     flex: 1 1 150px;
   }
@@ -2759,6 +3069,9 @@ input[type="range"]::-moz-range-track {
 .exec-banner.error .exec-banner-title { color: #e8645a; }
 .exec-banner.cancelled .exec-banner-title { color: #cdd4df; }
 .exec-banner-body { font: 400 12px/1.5 system-ui; color: #a8b1bf; }
+/* a failure the page can act on (the 3D-ΔPDF's window: "Symmetrize here") */
+.exec-banner-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
+.exec-banner-hint { font: 400 11.5px/1.4 system-ui; color: #8b94a3; }
 
 /* body grid: stages | log */
 .exec-body {
@@ -3778,6 +4091,7 @@ body.ai-resizing iframe {
   align-items: center;
   gap: 10px;
   flex: 1;
+  min-width: 0; /* the model menu narrows, so the gear stays on the row */
 }
 .ai-model-select {
   margin-left: auto;
@@ -5074,6 +5388,16 @@ h6.md-h {
   .app.dock-sheet > .ai-side {
     height: var(--sheet-h);
   }
+  /* Open, the sheet's row is as tall as the user dragged it, unless the
+     window is shorter: then the page gives up its room first, then the
+     sheet. So with the on-screen keyboard up (html.kb-open, the shell then
+     as tall as what the keyboard leaves) the composer stays in view. */
+  .app.dock-sheet.dock-open {
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, var(--sheet-h));
+  }
+  .app.dock-sheet.dock-open > .ai-side {
+    height: auto;
+  }
   .sidebar {
     flex: none;
     flex-direction: row;
@@ -5348,7 +5672,7 @@ h6.md-h {
     gap: 8px;
   }
   .ai-model-select {
-    flex: 1 1 140px;
+    flex: 1 1 96px; /* leaves the 44 px gear on the row at 390 px */
     min-width: 0;
     max-width: none;
   }
@@ -5379,6 +5703,9 @@ h6.md-h {
   .brand-name,
   .sidebar-dataset-label {
     display: none;
+  }
+  .main-foot .ver {
+    display: inline-flex;
   }
   .nav {
     --nav-bleed: 12px; /* = the bar's gap, so it never overlaps the dataset picker */
@@ -5457,93 +5784,8 @@ h6.md-h {
   }
 }
 
-/* — touch screens (iPhone, iPad): finger-sized targets, no tap flash — */
-@media (pointer: coarse) {
-  :is(button, select, input, label, summary, a) {
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-  }
-  input[type="range"] {
-    height: 6px;
-    margin: 11px 0;
-    border-radius: 3px;
-  }
-  input[type="range"]::-webkit-slider-thumb {
-    width: 22px;
-    height: 22px;
-  }
-  input[type="range"]::-moz-range-thumb {
-    width: 22px;
-    height: 22px;
-  }
-  .range-dual,
-  .range-dual input[type="range"] {
-    height: 28px;
-  }
-  .range-dual {
-    margin: 0;
-  }
-  .range-dual .range-track,
-  .range-dual .range-fill {
-    height: 6px;
-    border-radius: 3px;
-  }
-  .switch-track {
-    width: 40px;
-    height: 24px;
-    border-radius: 12px;
-  }
-  .switch-track::after {
-    width: 18px;
-    height: 18px;
-  }
-  .switch input:checked + .switch-track::after {
-    transform: translateX(16px);
-  }
-  .segmented button {
-    padding: 8px 14px;
-  }
-  .btn,
-  .exec-btn {
-    min-height: 40px;
-  }
-  .nav button {
-    min-height: 40px;
-  }
-  .helptip-icon {
-    width: 20px;
-    height: 20px;
-    font-size: 11px;
-  }
-  .bragg-sort button {
-    padding: 7px 12px;
-  }
-  .bragg-trow {
-    height: 38px;
-  }
-
-  .ai-chip,
-  .ai-vision-chip,
-  .ai-provider-tab {
-    padding-top: 8px;
-    padding-bottom: 8px;
-  }
-  .ai-gear {
-    width: 36px;
-    height: 36px;
-  }
-  .ai-send {
-    width: 38px;
-    height: 38px;
-  }
-  .import-banner-close {
-    width: 32px;
-    height: 32px;
-  }
-}
-
 /* ---------------------------------------------------------------------------
-   viewer workspace — after the NeXus Viewer: a header with the click mode,
+   viewer workspace — after the NeXus Viewer: a header with the Box zoom tool,
    plane / cut and layout, a display bar (colour range, scale, Auto,
    Brightness), then the views in a grid, focus or single layout.
    --------------------------------------------------------------------------- */
@@ -5603,6 +5845,35 @@ h6.md-h {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+/* The Box zoom tool: one toggle, as tall as a segmented control and lit like
+   its pressed button while armed (DisplayBar's BoxZoomTool). */
+.ws-tool {
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.ws-tool:hover {
+  color: var(--text);
+  border-color: var(--text-3);
+}
+.ws-tool.on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+/* a finger-sized target on touch screens (after the rule above, which it overrides) */
+@media (pointer: coarse) {
+  .ws-tool {
+    min-height: 44px;
+    padding: 0 14px;
+  }
 }
 /* A display group (Q or R) wraps onto the next line as a whole. */
 .ws-display-group {
@@ -5726,12 +5997,17 @@ h6.md-h {
   display: grid;
   gap: 10px;
 }
+/* Six views (Reciprocal cleanup with the Symmetrized stage) read 3 × 2, in
+   pipeline order row by row: Raw · Symmetrized · Ring-removed, then
+   Bragg-punched · Backfilled · Background-corrected. */
+.ws--grid[data-n="6"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ws--grid[data-n="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .ws--grid[data-n="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .ws--grid[data-n="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ws--grid[data-n="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 /* Focus: the large view on the left; with four others they sit 2 × 2 beside it
-   (each about half its size), with two or three they stack in one column. */
+   (each about half its size), with five 2 × 3, with two or three they stack in
+   one column. */
 .ws--focus {
   height: clamp(480px, calc(100dvh - 300px), 900px);
   grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr);
@@ -5744,6 +6020,12 @@ h6.md-h {
   grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 .ws--focus[data-n="5"] > :not(.primary) { grid-column: auto; }
+/* Six views: the five others 2 × 3 beside the large one. */
+.ws--focus[data-n="6"] {
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+.ws--focus[data-n="6"] > :not(.primary) { grid-column: auto; }
 .ws--focus[data-n="3"],
 .ws--focus[data-n="2"] {
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
@@ -5935,17 +6217,18 @@ h6.md-h {
   opacity: 1;
 }
 
-/* the interactive frame around a slice */
+/* the interactive frame around a slice: the crosshair cursor over the
+   crosshair it draws (zoom-in while the box zoom is armed) */
 .vf {
   position: absolute;
   inset: 0;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+  cursor: crosshair;
 }
 .vf:focus { outline: none; }
 .vf:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: -2px; }
-.vf--navigate { cursor: crosshair; }
 .vf--box { cursor: zoom-in; }
 .vf-overlay {
   position: absolute;
@@ -6261,6 +6544,7 @@ h6.md-h {
 /* A narrower page (a smaller screen, or NEBULA Pilot docked beside it): five
    views in one row get too small to read; wrap them. */
 @container main (max-width: 1050px) {
+  .ws--grid[data-n="6"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ws--grid[data-n="5"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ws--grid[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -6449,5 +6733,337 @@ h6.md-h {
   }
   .report-shell {
     border-radius: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   NEBULA Pilot on a phone or tablet (state/dockLayout.ts dockModeFor)
+   --------------------------------------------------------------------------- */
+/* As a bottom sheet the chips go in one row that scrolls sideways and the
+   transcript takes what is left, so the composer stays at the sheet's foot
+   however short it is dragged. Docked on a short screen (a phone held
+   landscape) the chips get the same row. */
+.ai-side[data-mode="sheet"] .ai-transcript {
+  min-height: 0;
+}
+.ai-side[data-mode="sheet"] .ai-reviews {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.ai-side[data-mode="sheet"] .ai-reviews::-webkit-scrollbar {
+  display: none;
+}
+.ai-side[data-mode="sheet"] .ai-reviews > * {
+  flex: none;
+}
+@media (max-height: 600px) {
+  /* there the panel scrolls (to the chips and the composer) rather than
+     leave a long answer a sliver */
+  .ai-side[data-mode="docked"] .ai-transcript {
+    min-height: 120px;
+  }
+  .ai-side[data-mode="docked"] .ai-reviews {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+  .ai-side[data-mode="docked"] .ai-reviews::-webkit-scrollbar {
+    display: none;
+  }
+  .ai-side[data-mode="docked"] .ai-reviews > * {
+    flex: none;
+  }
+}
+/* docked beside the page in landscape: clear the notch on the right */
+.ai-side[data-mode="docked"] {
+  padding-right: max(14px, env(safe-area-inset-right));
+}
+.ai-rail {
+  padding-right: env(safe-area-inset-right);
+}
+/* Typing to NEBULA Pilot with the on-screen keyboard up
+   (components/useKeyboardFrame.ts): the shell takes the part of the screen
+   the keyboard leaves, panned with it, and the panel keeps the conversation
+   and the composer only. */
+html.kb-open .app {
+  position: relative;
+  top: calc(var(--kb-top) / var(--ui-zoom));
+  height: calc(var(--kb-vh) / var(--ui-zoom));
+}
+html.kb-open .ai-side :is(.ai-topbar, .ai-reviews, .ai-toggles, .ai-conn-warn) {
+  display: none;
+}
+html.kb-open .ai-side {
+  padding-bottom: 8px; /* the keyboard covers the home indicator */
+}
+
+/* ---------------------------------------------------------------------------
+   Touch screens (iPhone, iPad; `pointer: coarse`): finger-sized targets.
+   Last in the file on purpose, so no base rule declared later overrides it.
+   Every control's hit area is at least 44 × 44 CSS px (Apple's guideline):
+   the control grows where that reads well, else a transparent ::before
+   widens the hit area around a visual that stays small.
+   scripts/responsive_audit.mjs measures it.
+   --------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  :is(button, select, input, label, summary, a, textarea) {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  /* a press held on a control shows its title (TouchTitles.tsx), not the
+     system's callout or a text selection */
+  :is(button, label, summary, [title]) {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .touch-title {
+    z-index: 70;
+    width: auto;
+    max-width: min(320px, calc(100vw - 16px));
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text);
+  }
+
+  /* buttons, chips, pills: a 44 px row */
+  :is(.btn, .exec-btn, .nav button, .ws-tool, .ai-chip, .ai-vision-chip, .ai-provider-tab,
+    .ai-clear, .ai-sheetbar button, .bragg-sort button, .qr-save-btn) {
+    min-height: 44px;
+  }
+  .bragg-sort button {
+    min-width: 44px;
+  }
+  .ws-head .ws-display-toggle {
+    min-height: 44px;
+  }
+  .segmented {
+    padding: 0;
+    gap: 0;
+  }
+  .segmented button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 14px;
+  }
+  .segmented.icons button {
+    padding: 0 12px;
+  }
+  .bragg-trow {
+    height: 44px;
+  }
+
+  /* form fields: 44 px tall */
+  :is(select, input[type="number"], input[type="text"]) {
+    min-height: 44px;
+  }
+  .ai-composer textarea {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  /* switches: the whole label is the target */
+  .switch {
+    min-width: 44px;
+    min-height: 44px;
+    padding-bottom: 0;
+    -webkit-user-select: none;
+  }
+  .switch-track {
+    width: 40px;
+    height: 24px;
+    border-radius: 12px;
+  }
+  .switch-track::after {
+    width: 18px;
+    height: 18px;
+  }
+  .switch input:checked + .switch-track::after {
+    transform: translateX(16px);
+  }
+  .cfg-advanced > summary {
+    min-height: 44px;
+  }
+  :is(.sidebar-foot, .main-foot) .foot-links a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* sliders: a 44 px tall input whose 6 px track and 24 px thumb are drawn
+     inside it, taking the 28 px of layout the slider had */
+  input[type="range"] {
+    height: 44px;
+    margin: -8px 0;
+    background: transparent;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) var(--p, 50%), var(--surface-3) var(--p, 50%));
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+    margin-top: -9px;
+  }
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent) var(--p, 50%), var(--surface-3) var(--p, 50%));
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  .range-dual {
+    height: 28px;
+    margin: 0;
+  }
+  .range-dual input[type="range"] {
+    top: -8px;
+    height: 44px;
+    margin: 0;
+  }
+  .range-dual input[type="range"]::-webkit-slider-runnable-track,
+  .range-dual input[type="range"]::-moz-range-track {
+    background: none;
+  }
+  .range-dual .range-track,
+  .range-dual .range-fill {
+    height: 6px;
+    border-radius: 3px;
+  }
+
+  /* small round and icon buttons: a larger visual, then a ::before to 44 px */
+  .icon-btn {
+    position: relative;
+    width: 36px;
+    height: 36px;
+  }
+  :is(.icon-btn, .gh-trigger, .gh-close, .helptip, .lv-handle)::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .gh-trigger,
+  .gh-trigger.mem-help {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+  .gh-trigger.mem-help::before {
+    inset: auto;
+  }
+  .gh-close {
+    position: relative;
+    width: 32px;
+    height: 32px;
+  }
+  .helptip-icon {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+  .ai-panel-close,
+  .ai-gear,
+  .ai-send,
+  .import-banner-close {
+    width: 44px;
+    height: 44px;
+  }
+  /* the views' + / −: two separate 36 px buttons, 8 px apart, each with a
+     44 px hit area that does not reach into the other's */
+  .vf-zoom {
+    gap: 8px;
+    overflow: visible;
+    border: 0;
+    background: none;
+  }
+  .vf-zoom button {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: rgba(11, 13, 16, 0.72);
+  }
+  .vf-zoom button + button {
+    border-top: 1px solid var(--border-strong);
+  }
+  .vf-zoom button::before {
+    content: "";
+    position: absolute;
+    inset: -5px; /* from inside the 1 px border: 34 + 10 */
+  }
+
+  /* a slice view: one finger scrolls the page over it (a phone's views fill
+     its width), two pinch and move it (ViewFrame keeps their touchmove from
+     the page), a tap or a sideways drag reads values; with Box zoom armed the
+     finger draws the box */
+  .vf {
+    touch-action: pan-y;
+  }
+  .vf.vf--box {
+    touch-action: none;
+  }
+
+  .ai-gear {
+    flex: none;
+  }
+  /* the docked Pilot's edge: a 9 px strip with a 45 px hit area */
+  .ai-resize-x::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -18px;
+    right: -18px;
+  }
+  /* the collapsed rail's button: the rail's whole width, and over its left
+     border (not past the screen's edge, which would widen the page) */
+  .ai-rail button {
+    position: relative;
+    align-self: stretch;
+  }
+  .ai-rail button::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 0 -1px;
+  }
+
+  /* NEBULA Pilot's sheet handle: a 28 px bar whose hit area reaches 12 px
+     up over the page's edge */
+  .ai-resize-y {
+    position: relative;
+    z-index: 3;
+    height: 28px;
+  }
+  .ai-resize-y::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -12px;
+    bottom: -4px;
+  }
+  .ai-resize-y span {
+    width: 48px;
+    height: 5px;
   }
 }

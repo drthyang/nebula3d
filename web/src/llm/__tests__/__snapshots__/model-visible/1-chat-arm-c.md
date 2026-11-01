@@ -2,7 +2,7 @@
 
 `buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup("C")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section, its other sections and the context's prose without their inference (inference.ts; 6-inference.md lists each span left out), and read_skill is not offered. The rest is arm B's.
 
-Tools offered (26): describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region.
+Tools offered (27): describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -127,6 +127,7 @@ and ask_user is a question for the user.
 ub_check fits
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps.
+compare_laue_classes compares the Laue classes by R_int.
 assess_stage pdf gives the back-FFT r and RMS; run_log says what a stage did or why it
 failed. When a change improves one number, check that it did not break another.
 Verdicts come from the tools: assess_stage gives each stage's verdict and the rule behind it,

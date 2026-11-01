@@ -21,11 +21,10 @@ import { installGpuGlobal } from "../gpu";
 import type { NebulaGpu } from "../gpu";
 import { startHeapReporter, wasmHeapBytes } from "./heapReport";
 import type { HeapReporter } from "./heapReport";
-import { loadPyodideRuntime, resolveWheelUrl } from "./pyodideShared";
+import { loadPyodideRuntime, resolveWheelUrl, RUN_STAGES } from "./pyodideShared";
 import type { PyodideAPI, PyProxy } from "./pyodideShared";
 import { addRingPort, installRingPoolGlobal } from "./ringPoolClient";
 
-const STAGES = ["rings", "punch", "backfill", "flatten", "pdf", "pdf_check"] as const;
 
 // Typed postMessage bypassing the DOM Window vs DedicatedWorkerGlobalScope mismatch.
 type PostFn = (data: unknown, transfer?: Transferable[]) => void;
@@ -51,7 +50,10 @@ export type WorkerRequest =
       tuningRun: string | null;
       tuningTrial: string | null;
     }
-  | { id: number; type: "json_call"; method: string; args: unknown[] }
+  // `progress`: the call reports its progress, as a run does: the bridge
+  // method takes a (fraction, message) callback after its arguments, and each
+  // call of it is posted as a progress event of that stage.
+  | { id: number; type: "json_call"; method: string; args: unknown[]; progress?: string }
   | { id: number; type: "slice_call"; method: string; args: unknown[] };
 
 // ---------------------------------------------------------------------------
@@ -197,8 +199,8 @@ async function dispatch(req: WorkerRequest): Promise<void> {
         // run_async is a Python coroutine — Pyodide surfaces it as a thenable,
         // so awaiting it here lets the ring stage fan out over the worker pool
         // (self.nebulaRingPool) while this dispatch stays suspended.
-        const selected = stages ?? STAGES;
-        const stagesCsv = STAGES.filter((st) => selected.includes(st)).join(",");
+        const selected = stages ?? RUN_STAGES;
+        const stagesCsv = RUN_STAGES.filter((st) => selected.includes(st)).join(",");
         const json = await (bridge!.run_async as (...a: unknown[]) => Promise<string>)(
           stagesCsv,
           paramsJson,
@@ -214,7 +216,15 @@ async function dispatch(req: WorkerRequest): Promise<void> {
       }
 
       case "json_call": {
-        const result = (bridge![req.method] as (...a: unknown[]) => string)(...req.args);
+        const args = [...req.args];
+        const stage = req.progress;
+        if (stage) {
+          args.push((fraction: number, message: string): void => {
+            post({ id: null, type: "progress", stage, status: "progress", fraction, message });
+            heap?.report();
+          });
+        }
+        const result = (bridge![req.method] as (...a: unknown[]) => string)(...args);
         reply(result);
         break;
       }

@@ -186,6 +186,82 @@ export interface UbCheck {
   mean_offset_rlu?: { before: (number | null)[]; after: (number | null)[]; standard_error: (number | null)[]; n: number } | null;
 }
 
+/** R_int of one Laue class (or of whole |Q| shells) on one set of voxels (analysis.laue_compare.Reading). */
+export interface LaueReading {
+  r_int: number | null; // Σ|I − ⟨I⟩| / Σ|I| over the orbits measured twice or more
+  noise: number | null; // the noise floor: what counting noise alone gives on the same orbits
+  ratio: number | null; // r_int / noise
+  ratio_se: number | null;
+  orbits: number; // orbits with two measured members or more
+  voxels: number; // their measured members
+  pairs: number; // the pairs of measured equivalents they hold
+}
+
+/** What the rule made of a class in one reading. */
+export interface LaueVerdict {
+  supported: boolean;
+  rises: boolean; // its own rise fails the rule (not only a subgroup's)
+  against: string | null; // the candidate subgroup it was weighed against
+  rise: number | null; // its ratio over that subgroup's
+  judged: boolean;
+}
+
+export interface LaueCandidate {
+  laue: string;
+  generators: string;
+  order: number;
+  ops: string;
+  metric_change: number | null; // relative change of the cell's metric under its operations; null without a UB
+  subgroups: string[];
+  maximal_subgroups: string[]; // the chain the table draws
+  depth: number; // the longest chain of candidate subgroups below it
+  all: LaueReading | null;
+  diffuse: LaueReading | null;
+  verdict: { all: LaueVerdict | null; diffuse: LaueVerdict | null };
+}
+
+/**
+ * Every candidate Laue class compared by R_int, on all measured voxels and on
+ * the diffuse (the Bragg nodes masked), with the rule's suggestion
+ * (POST /api/volumes/{id}/laue-compare, the bridge's volume_laue_compare_json;
+ * docs/algorithms/laue_compare.md). A suggestion only: the class is the user's.
+ */
+export interface LaueComparison {
+  id: string;
+  volume: string;
+  edge_trim: number;
+  candidates: LaueCandidate[];
+  refused: { laue: string; order: number; reason: "metric" | "grid" | string; detail: string; metric_change: number | null }[];
+  isotropic: { all: LaueReading; diffuse: LaueReading }; // whole |Q| shells: no symmetry
+  bragg: {
+    cell: number[];
+    radius_q: number;
+    asked_q: number;
+    origin_radius_q: number;
+    from: string;
+    closed_under: string | null;
+    voxels: number;
+    share: number | null;
+    shell_width_q: number;
+  };
+  measured: number;
+  sigma: "measured" | "estimated";
+  rule: { delta: number; z: number; text: string };
+  readings: Record<"all" | "diffuse", { tells_apart: boolean; isotropic_rise: number | null; cannot_judge: string | null; suggests: string | null }>;
+  suggestion: string | null;
+  suggested_by: Record<"all" | "diffuse", string | null>;
+  reason: string;
+  disagreement: string | null;
+  notes: string[];
+  limits: string;
+}
+
+/** A comparison's progress, as the page shows it. */
+export interface LaueProgress {
+  fraction: number | null;
+  message: string;
+}
+
 /**
  * A dataset's raw volume regridded onto its refined UB, as a new dataset beside
  * it, or why nothing was written (POST /api/datasets/{id}/regrid, the bridge's
@@ -236,6 +312,10 @@ export interface VolumeMeta {
   // The point group the file declares its data were symmetrised with.
   symmetry?: string | null;
   symmetry_ops?: number[][][] | null;
+  // The Laue class declared *for* a file that declares none itself: by a
+  // symmetrized NeXus Viewer export beside it naming it as its source, or a
+  // regrid's record. What "Symmetrize here" takes for the symmetry average.
+  declared_for?: { symmetry: string; symmetry_ops: number[][][]; from: string } | null;
   // "measured": σ came with the data; "estimated": √|I|. sigma_note says when
   // that leaves a significance in σ meaningless (normalized values).
   sigma?: "measured" | "estimated";
@@ -584,6 +664,15 @@ export interface StageParamsIn {
   rings_enabled?: boolean;
   punch_enabled?: boolean;
   backfill_enabled?: boolean;
+  // Stage 0, the symmetry average (omitted: off): its Laue class, the
+  // sample's to declare (a preset name or generators), and whether an input
+  // that declares a symmetry already is averaged again.
+  symmetry_average_enabled?: boolean;
+  symmetry_average_laue?: string;
+  symmetry_average_reaverage?: boolean;
+  // Proceed when the operations change the cell's metric by more than 2 %
+  // (refused otherwise); the run then records a warning.
+  symmetry_average_allow_metric_change?: boolean;
   // Voxel layers trimmed off the edge of the measured coverage at load (0 = none).
   edge_trim?: number;
   rings_n_patches?: number;
