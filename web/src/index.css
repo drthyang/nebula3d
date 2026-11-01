@@ -149,7 +149,21 @@ button {
 .brand-name {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   line-height: 1.15;
+}
+/* the version under the name: a smaller badge than the foot's */
+.brand-name .ver {
+  padding: 1px 3px 1px 6px;
+  gap: 5px;
+}
+.brand-name .ver-num {
+  font-size: 10px;
+}
+.brand-name .ver-tag {
+  font-size: 8px;
+  padding: 1px 5px;
 }
 .brand-name b {
   font-size: 15px;
@@ -395,25 +409,30 @@ button {
 .mem-card .gh-head + .mem-card-line {
   color: var(--text);
 }
-/* touch screens: 24 px with a 44 px hit area, under "Touch screens" at the end */
-:is(.sidebar-foot, .main-foot) .ver {
+/* The version badge: beside the name at the top (.brand), or in the foot at
+   the end of <main> in the compact top bar, which hides the name. */
+.main-foot .ver {
+  display: none; /* shown only where the top bar hides the name (below) */
+  align-self: flex-start;
+}
+.ver {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  align-self: flex-start;
+  flex: none;
   padding: 3px 4px 3px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
 }
-:is(.sidebar-foot, .main-foot) .ver-num {
+.ver-num {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--text-2);
 }
-:is(.sidebar-foot, .main-foot) .ver-tag {
+.ver-tag {
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -5439,6 +5458,9 @@ h6.md-h {
   .brand-name,
   .sidebar-dataset-label {
     display: none;
+  }
+  .main-foot .ver {
+    display: inline-flex;
   }
   .nav {
     --nav-bleed: 12px; /* = the bar's gap, so it never overlaps the dataset picker */
