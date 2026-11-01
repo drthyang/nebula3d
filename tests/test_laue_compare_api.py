@@ -48,6 +48,15 @@ def test_the_endpoint_compares_the_classes_on_the_trimmed_raw_volume(hex_root):
     assert labels == ["-1", "2/m (c unique)", "-3", "-3m1", "-31m", "6/m", "6/mmm"]
     assert {x["laue"] for x in out["refused"]} >= {"mmm", "m-3m"}
     assert "10%" in out["rule"]["text"] and "Twinning" in out["limits"]
+    # The statistics of THY-59 reach the client: chi2/dof, both standard
+    # errors, the paired one in the verdict, the common subset, the bootstrap.
+    six = next(c for c in out["candidates"] if c["laue"] == "6/m")
+    assert six["all"]["chi2"] is not None and six["all"]["dof"] > 0
+    assert six["all"]["ratio_se"] > 0 and six["all"]["ratio_se_orbits"] > 0
+    assert six["verdict"]["all"]["se"] > 0
+    assert set(six["common"]) == {"all", "diffuse"} and six["verdict"]["common_all"]["judged"]
+    assert out["bootstrap"]["blocks"] > 0 and out["bootstrap"]["replicates"] == 200
+    assert out["common"]["lowest"] == "-1" and out["common"]["flag"] is None
     # The edge trim is the run's: none trims nothing (the volume is fully
     # measured, so the faces are its only edge, and they are none).
     r0 = client.post("/api/volumes/hex-6m.raw/laue-compare", json={"params": {"edge_trim": 0}})

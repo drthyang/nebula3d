@@ -1,20 +1,21 @@
 // How long NEBULA Pilot's worst realistic turn grows, in the tokens the context
-// guard counts, against a 32k local context window.
+// guard counts, against a 32k local context window, held to ceilings by
+// component (docs/pilot-context-design.md §5.8).
 //
-// VERDICT (measured 2026-10-19; re-pinned 2026-10-24 with the skill fact sync
-// on #17's skill text and the prompts of 1.6, dpdf_peaks' orbits of 4.4, and
-// main's tools through #73 and #90): OVER 32k in both configurations.
+// VERDICT (measured 2026-11-01 on main 8b9a865, with
+// scripts/measure_pilot_context.sh, which counts the same way): OVER 32k in
+// both configurations.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 42.7k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 42.5k + 6,144
-//   = 48.7k before the loop's compaction, and 39.3k to 43.4k after it, by the
-//   order the skills are read (39.6k in the method's order).
+//   about 44.7k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 43.8k + 6,144
+//   = 50.0k before the loop's compaction, and 40.9k to 45.1k after it, by the
+//   order the skills are read (40.9k in the method's order).
 // - A model LM Studio loaded with 32k gets the turn in only because the window
 //   guard then shortens the results down to the newest: the two skills just
 //   read reach the model as stubs of a few hundred characters.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (8.7k
+// to reply, and leaves free the 3k a model-visible addition must leave (7.4k
 // now). The estimate is conservative (every tool result, the skills' prose
 // included, counts at the data rate), but at the prose rate for the skills
 // the turn is still over 32k.
@@ -53,11 +54,27 @@
 // newest one (window.ts, agent.ts): measured on LM Studio loaded with 32k.
 //
 // Measurement only: no prompt, skill, tool description or loop setting is
-// changed here. The pins hold the current sizes within ±5 %: a change that
-// grows or shrinks the turn fails here, to be updated deliberately (PINNED, and
-// the verdict above). The breakdown is printed with the test's output (where
-// vitest detects an AI agent it hides a passing test's output: add
-// --reporter=default).
+// changed here. The sizes are held to CEILINGS, not pinned: a saving passes
+// without an edit here, and a growth past a ceiling fails.
+// - Each component of arm B's worst local request (before compaction) has a
+//   ceiling: today's size (MEASURED) plus the room RESERVED, by name, for the
+//   queued features THY-59 to THY-62 (docs/pilot-context-design.md §5.9).
+// - Each configuration's largest prompt has a ceiling: today's (MEASURED_PROMPT)
+//   plus every feature's room, so a change in what compaction keeps is caught too.
+// A model-visible change that needs more than the room left must cut as much
+// elsewhere, take a reserve line by its name (and say so in its PR), or get
+// the user's yes to raise the ceiling (docs/development.md, "The Pilot's token
+// budget"). The breakdown, the room left by component and the headroom target
+// below are printed with the test's output (where vitest detects an AI agent
+// it hides a passing test's output: add --reporter=default).
+//
+// The headroom target, 20 % under 32k for the worst local turn after
+// compaction with the reply reserve (§5.8), cannot hold until the leaner design
+// (R1-R5) lands: it is tracked, not enforced. Its test is marked `it.fails`:
+// it passes while the target is missed (printing the gap), and fails the day
+// the turn meets it, to be turned into a plain `it` then, so the target is
+// enforced from that change on. The stretch goal (the same turn fits 32k
+// without compaction) is tracked the same way.
 //
 // Hermetic and synthetic: no model is loaded, no backend or API is called, and
 // no measured data is used (the dev control is a synthetic case, its list
@@ -123,23 +140,76 @@ vi.mock("../provider/client", async (importOriginal) => ({
   loadedContext: model.loadedContext,
 }));
 
-// ---------------------------------------------------------------- the pins
+// ---------------------------------------------------------------- the ceilings
 
 const WINDOW = 32_768;
 // anthropic.ts's STREAM_MAX_TOKENS: Claude's reply cap on every streamed turn.
 const CLAUDE_REPLY = 64_000;
-const BAND = 0.05;
 
-// The current sizes (estimated prompt tokens, and with the reply reserve).
-// Update deliberately, with the verdict in the header, when the turn changes.
-const PINNED = {
-  console: { prompt: 42_736, total: 106_736 },
-  localBefore: { prompt: 42_533, total: 48_677 },
-  localSkillsFirst: { prompt: 33_137, total: 39_281 },
-  localMethod: { prompt: 33_417, total: 39_561 },
-  localSkillsLast: { prompt: 37_210, total: 43_354 },
-  lmStudio32k: { prompt: 28_646, total: 34_790 },
+type Component = (typeof ROWS)[number];
+
+// Today's sizes, in estimated tokens (uncalibrated), rounded up: measured
+// 2026-11-01 on main 8b9a865, and the same in scripts/measure_pilot_context.sh.
+// Arm B's worst local request, before the loop's compaction, by component:
+const MEASURED: Record<Component, number> = { system: 4_453, tools: 7_162, context: 2_382, skills: 20_758, results: 9_087 };
+// Every tool's definition, as the console sends them (Claude).
+const MEASURED_ALL_TOOLS = 7_988;
+// Each configuration's largest prompt.
+const MEASURED_PROMPT = {
+  console: 44_667,
+  localBefore: 43_841,
+  localSkillsFirst: 34_754,
+  localMethod: 34_800,
+  localSkillsLast: 38_975,
 };
+
+// The room held for the queued model-visible features, by component, in
+// estimated tokens (docs/pilot-context-design.md §5.9). Each line is spent by
+// the feature it names: its PR moves the line's tokens into MEASURED (or
+// keeps them here while its tokens are in flight) and states its cost from
+// scripts/measure_pilot_context.sh. Results and skills count at the data
+// rate (1.4 characters a token), definitions at the prose rate (3.5).
+const RESERVED: Record<string, { what: string; room: Partial<Record<Component, number>> }> = {
+  "THY-59": {
+    what: "Laue R_int statistics, measured on its branch: reduction-qc's new section, +2,139 characters (its result and description shrink by 22 and 21 characters, not credited)",
+    room: { skills: 1_528 },
+  },
+  "THY-60": {
+    what: "UB-aware punch, estimated: the turned-UB diagnosis and the tail sweep in the punch record, at most 400 characters of result and 100 of description",
+    room: { results: 270, tools: 30 },
+  },
+  "THY-61": {
+    what: "ring doublets, estimated: a doublet marker on shells_judged's entries, at most 200 characters",
+    room: { results: 150 },
+  },
+  "THY-62": {
+    what: "powder phases, estimated: a tool offered for the rings (a contract of at most 500 characters), its default result of at most 2,000 characters, and a gate line in a skill",
+    room: { tools: 150, results: 1_400, skills: 50 },
+  },
+};
+
+const reservedFor = (c: Component): number => Object.values(RESERVED).reduce((sum, r) => sum + (r.room[c] ?? 0), 0);
+const RESERVED_ALL = Object.values(RESERVED).reduce((sum, r) => sum + Object.values(r.room).reduce((a, b) => a + (b ?? 0), 0), 0);
+
+// The ceilings: today's size and the room reserved. The tools the TASK is not
+// offered reach the console only, so every tool's definition has its own.
+const CEILING: Record<Component, number> = {
+  system: MEASURED.system + reservedFor("system"),
+  tools: MEASURED.tools + reservedFor("tools"),
+  context: MEASURED.context + reservedFor("context"),
+  skills: MEASURED.skills + reservedFor("skills"),
+  results: MEASURED.results + reservedFor("results"),
+};
+const CEILING_ALL_TOOLS = MEASURED_ALL_TOOLS + reservedFor("tools");
+const CEILING_PROMPT = Object.fromEntries(Object.entries(MEASURED_PROMPT).map(([k, v]) => [k, v + RESERVED_ALL])) as Record<
+  keyof typeof MEASURED_PROMPT,
+  number
+>;
+
+// The headroom target (§5.8): the worst local turn after compaction, with the
+// reply reserve, in the method order and the skills-last order, fits 80 % of
+// 32k. Tracked, not enforced, until R1-R5 land (the header).
+const HEADROOM_TARGET = Math.floor(0.8 * WINDOW);
 
 // ---------------------------------------------------------------- the turn
 
@@ -314,17 +384,19 @@ function breakdown(s: Sent, key: string): Breakdown {
 
 const n = (x: number): string => Math.round(x).toLocaleString("en-US");
 
-function expectPinned(what: string, measured: number, pinned: number): void {
-  const [lo, hi] = [Math.floor(pinned * (1 - BAND)), Math.ceil(pinned * (1 + BAND))];
+function expectWithin(what: string, measured: number, ceiling: number): void {
   const why =
-    `${what}: ${n(measured)} tokens, outside ${n(pinned)} ± 5 % (${n(lo)} to ${n(hi)}). The worst turn changed size: ` +
-    "if that is intended, update PINNED in tokenBudget.test.ts and the verdict in its header, deliberately.";
-  expect(measured, why).toBeGreaterThanOrEqual(lo);
-  expect(measured, why).toBeLessThanOrEqual(hi);
+    `${what}: ${n(measured)} tokens, over its ceiling of ${n(ceiling)} by ${n(measured - ceiling)}. Cut as much elsewhere, ` +
+    "take a reserve line by its name (RESERVED in tokenBudget.test.ts, and say so in the PR), or get the user's yes to raise the ceiling " +
+    '(docs/development.md, "The Pilot\'s token budget").';
+  expect(measured, why).toBeLessThanOrEqual(ceiling);
 }
 
 // What the tests measured, printed as one table when they are done.
 const columns: { head: [string, string]; b: Breakdown; reserve: number }[] = [];
+// Each component's size against its ceiling, and the headroom target's gap.
+const room: { what: string; measured: number; ceiling: number }[] = [];
+const target: string[] = [];
 const notes: string[] = [];
 
 afterAll(() => {
@@ -352,6 +424,22 @@ afterAll(() => {
       ...table,
       "",
       ...notes,
+      ...(room.length
+        ? [
+            "",
+            "Ceilings (estimated tokens): today's size, the ceiling, the room left, and the room reserved in it for the queued features:",
+            ...room.map(
+              (r) => `  ${r.what.padEnd(40)}${n(r.measured).padStart(8)} of ${n(r.ceiling).padStart(7)}, ${n(r.ceiling - r.measured).padStart(6)} left`,
+            ),
+            ...Object.entries(RESERVED).map(
+              ([id, r]) =>
+                `  reserved for ${id}: ${Object.entries(r.room)
+                  .map(([c, t]) => `${c} ${n(t ?? 0)}`)
+                  .join(", ")} (${r.what})`,
+            ),
+          ]
+        : []),
+      ...(target.length ? ["", ...target] : []),
     ].join("\n"),
   );
 });
@@ -365,7 +453,23 @@ const TURN_TIMEOUT = 30_000;
 
 // What a model-visible addition must leave free under the run policy's minimum
 // context for a local live run: 3k.
-const HEADROOM = 3 * 1024;
+const POLICY_HEADROOM = 3 * 1024;
+
+/** Arm B's turn on a local model, driven once for the tests that read it: before the loop's compaction, and after it in each order. */
+let localTurnRuns: Promise<{ before: Awaited<ReturnType<typeof drive>>; after: Record<keyof typeof ORDERS, Awaited<ReturnType<typeof drive>>> }> | undefined;
+function localTurn() {
+  localTurnRuns ??= (async () => ({
+    // Before: the same loop with its soft budget out of reach.
+    before: await drive(OLLAMA, ORDERS.method, Infinity),
+    // After: the loop as it runs, the skills read in each order.
+    after: {
+      skillsFirst: await drive(OLLAMA, ORDERS.skillsFirst),
+      method: await drive(OLLAMA, ORDERS.method),
+      skillsLast: await drive(OLLAMA, ORDERS.skillsLast),
+    },
+  }))();
+  return localTurnRuns;
+}
 
 describe("the turn's dpdf_peaks result", () => {
   it("is the dev control's list at the tool's default call", async () => {
@@ -391,8 +495,9 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     const b = breakdown(run.sent[run.peak], run.key);
     expect(b.offered).toBe(CHAT_TOOLS.length);
     columns.push({ head: ["console (Claude)", "all tools"], b, reserve: CLAUDE_REPLY });
-    expectPinned("the console's prompt", b.prompt, PINNED.console.prompt);
-    expectPinned("the console's total", b.prompt + CLAUDE_REPLY, PINNED.console.total);
+    room.push({ what: "every tool's definition (the console)", measured: b.tools, ceiling: CEILING_ALL_TOOLS });
+    expectWithin("every tool's definition, as the console sends them", b.tools, CEILING_ALL_TOOLS);
+    expectWithin("the console's prompt", b.prompt, CEILING_PROMPT.console);
   }, TURN_TIMEOUT);
 
   it("arm B on a local model: the TASK's offer, before and after the loop's compaction", async () => {
@@ -401,14 +506,17 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     const called = [...new Set(ORDERS.method.map((c) => c.name))];
     const sentTools = CHAT_TOOLS.filter((t) => offer.includes(t.name) || called.includes(t.name)).length;
 
-    // Before: the same loop with its soft budget out of reach.
-    const before = await drive(OLLAMA, ORDERS.method, Infinity);
+    const { before, after } = await localTurn();
     expect(before.peak).toBe(before.sent.length - 1);
     const b = breakdown(before.sent[before.peak], before.key);
     expect(b.offered).toBe(sentTools);
     columns.push({ head: ["arm B, local", "before compaction"], b, reserve: REPLY_RESERVE });
-    expectPinned("arm B local, before compaction: prompt", b.prompt, PINNED.localBefore.prompt);
-    expectPinned("arm B local, before compaction: total", b.prompt + REPLY_RESERVE, PINNED.localBefore.total);
+    // Each component under its ceiling, and the whole request under the sum.
+    for (const r of ROWS) {
+      room.push({ what: ROW_LABEL[r], measured: b[r], ceiling: CEILING[r] });
+      expectWithin(`arm B local, before compaction: ${ROW_LABEL[r]}`, b[r], CEILING[r]);
+    }
+    expectWithin("arm B local, before compaction: prompt", b.prompt, CEILING_PROMPT.localBefore);
     // Past the soft budget, so the loop compacts.
     expect(b.prompt).toBeGreaterThan(SOFT_BUDGET);
     // The worst local turn, with the reply reserve, fits the run policy's
@@ -416,33 +524,25 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     const worst = b.prompt + REPLY_RESERVE;
     const min = RUN_POLICY.minLocalContextTokens;
     expect(worst, `the worst local turn, ${n(worst)} tokens, does not fit the run policy's minimum of ${n(min)}`).toBeLessThanOrEqual(min);
-    expect(min - worst, `the worst local turn leaves ${n(min - worst)} of the ${n(HEADROOM)} tokens of headroom under ${n(min)}`).toBeGreaterThanOrEqual(HEADROOM);
+    expect(min - worst, `the worst local turn leaves ${n(min - worst)} of the ${n(POLICY_HEADROOM)} tokens of headroom under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_HEADROOM);
     // The live-run rule holds everything, both skills read whole with a
     // `## Gates` section at its cap (GATES_MAX, readings/compact.ts) included:
     // each section adds at most GATES_MAX characters to its skill's text, and
     // the turn still leaves the headroom under the minimum (the manager's
     // decision on the user's delegation, 2026-10-24; review finding P5.3b).
     const gated = worst + estimateTokens((2 * GATES_MAX) / DATA_CHARS_PER_TOKEN, before.key);
-    expect(min - gated, `with two gated skills at the cap the worst local turn, ${n(gated)} tokens, leaves ${n(min - gated)} under ${n(min)}`).toBeGreaterThanOrEqual(HEADROOM);
+    expect(min - gated, `with two gated skills at the cap the worst local turn, ${n(gated)} tokens, leaves ${n(min - gated)} under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_HEADROOM);
 
     // After: the loop as it runs, the skills read in each order. The largest
     // request of the reply is what the window must hold.
-    const after: Record<keyof typeof ORDERS, Awaited<ReturnType<typeof drive>>> = {
-      skillsFirst: await drive(OLLAMA, ORDERS.skillsFirst),
-      method: await drive(OLLAMA, ORDERS.method),
-      skillsLast: await drive(OLLAMA, ORDERS.skillsLast),
-    };
     const peaks = Object.fromEntries(Object.entries(after).map(([o, run]) => [o, breakdown(run.sent[run.peak], run.key)])) as Record<
       keyof typeof ORDERS,
       Breakdown
     >;
     columns.push({ head: ["arm B, local", "after (method order)"], b: peaks.method, reserve: REPLY_RESERVE });
-    expectPinned("arm B local, skills read first: largest prompt", peaks.skillsFirst.prompt, PINNED.localSkillsFirst.prompt);
-    expectPinned("arm B local, skills read first: total", peaks.skillsFirst.prompt + REPLY_RESERVE, PINNED.localSkillsFirst.total);
-    expectPinned("arm B local, method order: largest prompt", peaks.method.prompt, PINNED.localMethod.prompt);
-    expectPinned("arm B local, method order: total", peaks.method.prompt + REPLY_RESERVE, PINNED.localMethod.total);
-    expectPinned("arm B local, skills read last: largest prompt", peaks.skillsLast.prompt, PINNED.localSkillsLast.prompt);
-    expectPinned("arm B local, skills read last: total", peaks.skillsLast.prompt + REPLY_RESERVE, PINNED.localSkillsLast.total);
+    expectWithin("arm B local, skills read first: largest prompt", peaks.skillsFirst.prompt, CEILING_PROMPT.localSkillsFirst);
+    expectWithin("arm B local, method order: largest prompt", peaks.method.prompt, CEILING_PROMPT.localMethod);
+    expectWithin("arm B local, skills read last: largest prompt", peaks.skillsLast.prompt, CEILING_PROMPT.localSkillsLast);
 
     // What compaction saved on the last request, and where the largest one fell.
     const order = (o: keyof typeof ORDERS) => {
@@ -464,7 +564,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       `Reply reserve: Claude ${n(CLAUDE_REPLY)} (anthropic.ts); a local run ${n(REPLY_RESERVE)} (REPLY_RESERVE: no cap is sent, the window plan keeps it free; ` +
         `a request is refused below MIN_REPLY ${n(MIN_REPLY)}).`,
       `The run policy's minimum for a local live run (RUN_POLICY): ${n(min)}; the worst local turn ${n(worst)} leaves ${n(min - worst)} ` +
-        `(at least ${n(HEADROOM)} must stay free); with both skills gated at the cap (${n(GATES_MAX)} characters each) it is ` +
+        `(at least ${n(POLICY_HEADROOM)} must stay free); with both skills gated at the cap (${n(GATES_MAX)} characters each) it is ` +
         `${n(gated)}, leaving ${n(min - gated)}.`,
     );
   }, TURN_TIMEOUT);
@@ -493,9 +593,9 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     const growth = Math.max(...bodies.map((t) => Math.max(0, SKILL_STUB_MAX - t.length)));
     const oneGated = b.prompt + estimateTokens(growth / DATA_CHARS_PER_TOKEN, run.key) + MIN_REPLY;
     expect(oneGated, `one skill gated at the cap: ${n(oneGated)} tokens with MIN_REPLY, in a window of ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
+    // No ceiling of its own: the window-fit checks above bound this prompt
+    // more tightly than any ceiling would.
     columns.push({ head: ["LM Studio at 32k", "after the guard"], b, reserve: REPLY_RESERVE });
-    expectPinned("LM Studio at 32k: largest prompt sent", b.prompt, PINNED.lmStudio32k.prompt);
-    expectPinned("LM Studio at 32k: total", b.prompt + REPLY_RESERVE, PINNED.lmStudio32k.total);
     notes.push(
       `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): a request without MIN_REPLY free is shortened down to its newest result. ` +
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
@@ -504,4 +604,37 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
         `One skill gated at the cap (${n(SKILL_STUB_MAX)}-character stub) leaves ${n(WINDOW - oneGated)} to spare past MIN_REPLY.`,
     );
   }, TURN_TIMEOUT);
+});
+
+// Tracked, not enforced (the header): each `it.fails` passes while its target
+// is missed, and fails once the turn meets it. Then turn it into a plain `it`,
+// in the change that met it, so the target holds from that change on.
+describe("the headroom target (docs/pilot-context-design.md §5.8), tracked until R1-R5 land", () => {
+  it.fails(
+    `target: the worst local turn after compaction, with the reply reserve, fits ${n(HEADROOM_TARGET)} (20 % under ${n(WINDOW)}), in the method and skills-last orders`,
+    async () => {
+      const { after } = await localTurn();
+      const worst = Math.max(after.method.prompts[after.method.peak], after.skillsLast.prompts[after.skillsLast.peak]) + REPLY_RESERVE;
+      target.push(
+        `Headroom target (tracked, §5.8): the worst local turn after compaction, ${n(worst)} with the reply reserve, against ${n(HEADROOM_TARGET)} ` +
+          `(20 % under ${n(WINDOW)}): ${worst > HEADROOM_TARGET ? `over by ${n(worst - HEADROOM_TARGET)}` : "met"}.`,
+      );
+      expect(worst).toBeLessThanOrEqual(HEADROOM_TARGET);
+    },
+    TURN_TIMEOUT,
+  );
+
+  it.fails(
+    `stretch: the worst local turn without compaction, with the reply reserve, fits ${n(WINDOW)}`,
+    async () => {
+      const { before } = await localTurn();
+      const worst = before.prompts[before.peak] + REPLY_RESERVE;
+      target.push(
+        `Stretch goal (tracked, §5.8): the worst local turn without compaction, ${n(worst)} with the reply reserve, against ${n(WINDOW)}: ` +
+          `${worst > WINDOW ? `over by ${n(worst - WINDOW)}` : "met"}.`,
+      );
+      expect(worst).toBeLessThanOrEqual(WINDOW);
+    },
+    TURN_TIMEOUT,
+  );
 });

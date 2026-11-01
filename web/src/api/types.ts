@@ -195,7 +195,10 @@ export interface LaueReading {
   r_int: number | null; // Σ|I − ⟨I⟩| / Σ|I| over the orbits measured twice or more
   noise: number | null; // the noise floor: what counting noise alone gives on the same orbits
   ratio: number | null; // r_int / noise
-  ratio_se: number | null;
+  ratio_se: number | null; // its standard error, from the spatial block bootstrap
+  ratio_se_orbits?: number | null; // the same with orbits as independent samples (too small where voxels correlate)
+  chi2?: number | null; // Σ(I − ⟨I⟩_w)²/σ² over Σ(n − 1): 1 where equivalents agree to the counting noise
+  dof?: number; // its degrees of freedom, Σ(n − 1)
   orbits: number; // orbits with two measured members or more
   voxels: number; // their measured members
   pairs: number; // the pairs of measured equivalents they hold
@@ -207,6 +210,7 @@ export interface LaueVerdict {
   rises: boolean; // its own rise fails the rule (not only a subgroup's)
   against: string | null; // the candidate subgroup it was weighed against
   rise: number | null; // its ratio over that subgroup's
+  se?: number | null; // the standard error of the tested difference (bootstrap, paired)
   judged: boolean;
 }
 
@@ -221,7 +225,14 @@ export interface LaueCandidate {
   depth: number; // the longest chain of candidate subgroups below it
   all: LaueReading | null;
   diffuse: LaueReading | null;
-  verdict: { all: LaueVerdict | null; diffuse: LaueVerdict | null };
+  // the same two readings on the voxels the lowest class can judge (the common subset)
+  common?: { all: LaueReading | null; diffuse: LaueReading | null };
+  verdict: {
+    all: LaueVerdict | null;
+    diffuse: LaueVerdict | null;
+    common_all?: LaueVerdict | null;
+    common_diffuse?: LaueVerdict | null;
+  };
 }
 
 /**
@@ -257,6 +268,27 @@ export interface LaueComparison {
   reason: string;
   disagreement: string | null;
   notes: string[];
+  // the spatial block bootstrap behind the standard errors
+  bootstrap?: {
+    replicates: number;
+    seed: number;
+    block_voxels: number; // the blocks' edge
+    blocks: number; // blocks resampled
+    effective_blocks: number | null; // Kish's effective number, blocks weighed by their noise floor
+    correlation_voxels: number[]; // the residuals' integrated correlation length along H, K, L
+    correlation_reading: string | null;
+    reaches_past: boolean;
+    variance_kept: number;
+  };
+  // the diagnostic: every class read again on the voxels the lowest class can judge
+  common?: {
+    lowest: string | null;
+    voxels: number;
+    share: number | null;
+    suggestion: string | null; // the rule's suggestion there
+    main: string | null; // the main readings' on the same classes
+    flag: string | null; // when the two differ
+  };
   limits: string;
 }
 

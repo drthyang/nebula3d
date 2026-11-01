@@ -544,6 +544,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
         contains: optional(arr(str)),
         r_int: tuple(maybeNum, maybeNum),
         x_noise: tuple(maybeNum, maybeNum),
+        // χ²/dof on [every measured voxel, the diffuse]: 1 within the counting noise.
+        chi2: tuple(maybeNum, maybeNum),
         orbits: num,
         verdict: str,
       }),
@@ -554,6 +556,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     suggested_by: obj({ all: maybeStr, diffuse: maybeStr }),
     why: str,
     flag: maybeStr,
+    // Only when the common subset (the voxels the lowest class judges) suggests another class.
+    common_flag: optional(str),
     rule: str,
     diffuse_mask: str,
     edge_trim: num,

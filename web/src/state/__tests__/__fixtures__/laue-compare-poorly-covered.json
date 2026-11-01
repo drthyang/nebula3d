@@ -1,0 +1,842 @@
+{
+ "id": "poorly-covered.raw",
+ "volume": "poorly-covered.nxs",
+ "edge_trim": 0,
+ "candidates": [
+  {
+   "laue": "-1",
+   "generators": "-h,-k,-l",
+   "order": 2,
+   "ops": "h,k,l; -h,-k,-l",
+   "metric_change": 0.0,
+   "subgroups": [],
+   "maximal_subgroups": [],
+   "depth": 0,
+   "all": {
+    "r_int": 0.0450101,
+    "noise": 0.0453512,
+    "ratio": 0.992479,
+    "ratio_se": 0.010177,
+    "ratio_se_orbits": 0.0109041,
+    "chi2": 1.00224,
+    "dof": 6094,
+    "orbits": 6094,
+    "voxels": 12188,
+    "pairs": 6094
+   },
+   "diffuse": {
+    "r_int": 0.0773557,
+    "noise": 0.0771541,
+    "ratio": 1.00261,
+    "ratio_se": 0.0103959,
+    "ratio_se_orbits": 0.0101173,
+    "chi2": 1.0097,
+    "dof": 5915,
+    "orbits": 5915,
+    "voxels": 11830,
+    "pairs": 5915
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0450101,
+     "noise": 0.0453512,
+     "ratio": 0.992479,
+     "ratio_se": 0.010177,
+     "ratio_se_orbits": 0.0109041,
+     "chi2": 1.00224,
+     "dof": 6094,
+     "orbits": 6094,
+     "voxels": 12188,
+     "pairs": 6094
+    },
+    "diffuse": {
+     "r_int": 0.0773557,
+     "noise": 0.0771541,
+     "ratio": 1.00261,
+     "ratio_se": 0.0103959,
+     "ratio_se_orbits": 0.0101173,
+     "chi2": 1.0097,
+     "dof": 5915,
+     "orbits": 5915,
+     "voxels": 11830,
+     "pairs": 5915
+    }
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": null,
+     "rise": null,
+     "se": null,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": null,
+     "rise": null,
+     "se": null,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": null,
+     "rise": null,
+     "se": null,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": null,
+     "rise": null,
+     "se": null,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "2/m (c unique)",
+   "generators": "-h,-k,l; -h,-k,-l",
+   "order": 4,
+   "ops": "h,k,l; -h,-k,l; -h,-k,-l; h,k,-l",
+   "metric_change": 1.22465e-16,
+   "subgroups": [
+    "-1"
+   ],
+   "maximal_subgroups": [
+    "-1"
+   ],
+   "depth": 1,
+   "all": {
+    "r_int": 0.0527492,
+    "noise": 0.052547,
+    "ratio": 1.00385,
+    "ratio_se": 0.00689624,
+    "ratio_se_orbits": 0.00780272,
+    "chi2": 1.02626,
+    "dof": 12798,
+    "orbits": 7233,
+    "voxels": 20031,
+    "pairs": 20199
+   },
+   "diffuse": {
+    "r_int": 0.0888163,
+    "noise": 0.087449,
+    "ratio": 1.01564,
+    "ratio_se": 0.00698467,
+    "ratio_se_orbits": 0.00701446,
+    "chi2": 1.03174,
+    "dof": 12443,
+    "orbits": 7019,
+    "voxels": 19462,
+    "pairs": 19658
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0506957,
+     "noise": 0.0513311,
+     "ratio": 0.987622,
+     "ratio_se": 0.00954537,
+     "ratio_se_orbits": 0.00968294,
+     "chi2": 0.994206,
+     "dof": 7930,
+     "orbits": 4258,
+     "voxels": 12188,
+     "pairs": 13438
+    },
+    "diffuse": {
+     "r_int": 0.0875092,
+     "noise": 0.0876115,
+     "ratio": 0.998832,
+     "ratio_se": 0.0100274,
+     "ratio_se_orbits": 0.00875042,
+     "chi2": 1.00007,
+     "dof": 7706,
+     "orbits": 4124,
+     "voxels": 11830,
+     "pairs": 13079
+    }
+   },
+   "verdict": {
+    "all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.01146,
+     "se": 0.00924343,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.01299,
+     "se": 0.00778136,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 0.995106,
+     "se": 0.00704612,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 0.996229,
+     "se": 0.00656122,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "-3",
+   "generators": "k,-h-k,l; -h,-k,-l",
+   "order": 6,
+   "ops": "h,k,l; k,-h-k,l; -h,-k,-l; -h-k,h,l; -k,h+k,-l; h+k,-h,-l",
+   "metric_change": 4.04961e-16,
+   "subgroups": [
+    "-1"
+   ],
+   "maximal_subgroups": [
+    "-1"
+   ],
+   "depth": 1,
+   "all": {
+    "r_int": 0.0660188,
+    "noise": 0.0536298,
+    "ratio": 1.23101,
+    "ratio_se": 0.0409321,
+    "ratio_se_orbits": 0.028763,
+    "chi2": 1.23768,
+    "dof": 13690,
+    "orbits": 4887,
+    "voxels": 18577,
+    "pairs": 28573
+   },
+   "diffuse": {
+    "r_int": 0.0981175,
+    "noise": 0.0914928,
+    "ratio": 1.07241,
+    "ratio_se": 0.00715848,
+    "ratio_se_orbits": 0.00730165,
+    "chi2": 1.14402,
+    "dof": 13296,
+    "orbits": 4743,
+    "voxels": 18039,
+    "pairs": 27755
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0509313,
+     "noise": 0.0514131,
+     "ratio": 0.99063,
+     "ratio_se": 0.00891943,
+     "ratio_se_orbits": 0.00945321,
+     "chi2": 1.00169,
+     "dof": 7870,
+     "orbits": 4318,
+     "voxels": 12188,
+     "pairs": 13198
+    },
+    "diffuse": {
+     "r_int": 0.0878637,
+     "noise": 0.0873619,
+     "ratio": 1.00574,
+     "ratio_se": 0.00961155,
+     "ratio_se_orbits": 0.00895939,
+     "chi2": 1.01011,
+     "dof": 7637,
+     "orbits": 4193,
+     "voxels": 11830,
+     "pairs": 12803
+    }
+   },
+   "verdict": {
+    "all": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 1.24034,
+     "se": 0.010177,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.06961,
+     "se": 0.00899682,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 0.998137,
+     "se": 0.0065882,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.00312,
+     "se": 0.00588503,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "-3m1",
+   "generators": "k,-h-k,l; h,-h-k,-l; -h,-k,-l",
+   "order": 12,
+   "ops": "h,k,l; k,-h-k,l; h,-h-k,-l; -h,-k,-l; -h-k,h,l; -h-k,k,-l; -k,h+k,-l; k,h,-l; -h,h+k,l; -k,-h,l; h+k,-h,-l; h+k,-k,l",
+   "metric_change": 4.04961e-16,
+   "subgroups": [
+    "-1",
+    "-3"
+   ],
+   "maximal_subgroups": [
+    "-3"
+   ],
+   "depth": 2,
+   "all": {
+    "r_int": 0.140051,
+    "noise": 0.0581599,
+    "ratio": 2.40803,
+    "ratio_se": 0.213993,
+    "ratio_se_orbits": 0.167209,
+    "chi2": 4.60403,
+    "dof": 17219,
+    "orbits": 4053,
+    "voxels": 21272,
+    "pairs": 62226
+   },
+   "diffuse": {
+    "r_int": 0.16589,
+    "noise": 0.0984225,
+    "ratio": 1.68549,
+    "ratio_se": 0.046206,
+    "ratio_se_orbits": 0.0165046,
+    "chi2": 2.69787,
+    "dof": 16738,
+    "orbits": 3912,
+    "voxels": 20650,
+    "pairs": 60763
+   },
+   "common": {
+    "all": {
+     "r_int": 0.109376,
+     "noise": 0.0559286,
+     "ratio": 1.95564,
+     "ratio_se": 0.175345,
+     "ratio_se_orbits": 0.167749,
+     "chi2": 3.68209,
+     "dof": 9354,
+     "orbits": 2834,
+     "voxels": 12188,
+     "pairs": 25926
+    },
+    "diffuse": {
+     "r_int": 0.150472,
+     "noise": 0.0955251,
+     "ratio": 1.57521,
+     "ratio_se": 0.0441509,
+     "ratio_se_orbits": 0.0195079,
+     "chi2": 2.44303,
+     "dof": 9095,
+     "orbits": 2735,
+     "voxels": 11830,
+     "pairs": 25323
+    }
+   },
+   "verdict": {
+    "all": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 2.42628,
+     "se": 0.010177,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 1.6811,
+     "se": 0.0103959,
+     "judged": true
+    },
+    "common_all": {
+     "supported": false,
+     "rises": true,
+     "against": "-3",
+     "rise": 1.97413,
+     "se": 0.00891943,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 1.57111,
+     "se": 0.0103959,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "-31m",
+   "generators": "k,-h-k,l; -k,-h,-l; -h,-k,-l",
+   "order": 12,
+   "ops": "h,k,l; k,-h-k,l; -k,-h,-l; -h,-k,-l; -h-k,h,l; -h,h+k,-l; -k,h+k,-l; h+k,-k,-l; k,h,l; -h-k,k,l; h+k,-h,-l; h,-h-k,l",
+   "metric_change": 4.04961e-16,
+   "subgroups": [
+    "-1",
+    "-3"
+   ],
+   "maximal_subgroups": [
+    "-3"
+   ],
+   "depth": 2,
+   "all": {
+    "r_int": 0.140268,
+    "noise": 0.058587,
+    "ratio": 2.39419,
+    "ratio_se": 0.209419,
+    "ratio_se_orbits": 0.161709,
+    "chi2": 4.56686,
+    "dof": 17247,
+    "orbits": 3883,
+    "voxels": 21130,
+    "pairs": 63767
+   },
+   "diffuse": {
+    "r_int": 0.166465,
+    "noise": 0.0987587,
+    "ratio": 1.68557,
+    "ratio_se": 0.046595,
+    "ratio_se_orbits": 0.0165571,
+    "chi2": 2.69954,
+    "dof": 16751,
+    "orbits": 3767,
+    "voxels": 20518,
+    "pairs": 62003
+   },
+   "common": {
+    "all": {
+     "r_int": 0.109317,
+     "noise": 0.0563881,
+     "ratio": 1.93865,
+     "ratio_se": 0.167894,
+     "ratio_se_orbits": 0.156905,
+     "chi2": 3.58146,
+     "dof": 9439,
+     "orbits": 2749,
+     "voxels": 12188,
+     "pairs": 26730
+    },
+    "diffuse": {
+     "r_int": 0.150805,
+     "noise": 0.0959374,
+     "ratio": 1.57191,
+     "ratio_se": 0.0432832,
+     "ratio_se_orbits": 0.0191507,
+     "chi2": 2.42593,
+     "dof": 9164,
+     "orbits": 2666,
+     "voxels": 11830,
+     "pairs": 25979
+    }
+   },
+   "verdict": {
+    "all": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 2.41234,
+     "se": 0.010177,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 1.68118,
+     "se": 0.0103959,
+     "judged": true
+    },
+    "common_all": {
+     "supported": false,
+     "rises": true,
+     "against": "-3",
+     "rise": 1.95699,
+     "se": 0.00891943,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 1.56781,
+     "se": 0.0103959,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "6/m",
+   "generators": "h+k,-h,l; -h,-k,-l",
+   "order": 12,
+   "ops": "h,k,l; h+k,-h,l; -h,-k,-l; k,-h-k,l; -h-k,h,-l; -k,h+k,-l; -h,-k,l; h,k,-l; -h-k,h,l; h+k,-h,-l; -k,h+k,l; k,-h-k,-l",
+   "metric_change": 4.04961e-16,
+   "subgroups": [
+    "-1",
+    "2/m (c unique)",
+    "-3"
+   ],
+   "maximal_subgroups": [
+    "2/m (c unique)",
+    "-3"
+   ],
+   "depth": 2,
+   "all": {
+    "r_int": 0.070414,
+    "noise": 0.0585037,
+    "ratio": 1.20358,
+    "ratio_se": 0.0351487,
+    "ratio_se_orbits": 0.032383,
+    "chi2": 1.20744,
+    "dof": 17269,
+    "orbits": 3840,
+    "voxels": 21109,
+    "pairs": 64108
+   },
+   "diffuse": {
+    "r_int": 0.105219,
+    "noise": 0.0987649,
+    "ratio": 1.06534,
+    "ratio_se": 0.00600373,
+    "ratio_se_orbits": 0.0063505,
+    "chi2": 1.12978,
+    "dof": 16775,
+    "orbits": 3719,
+    "voxels": 20494,
+    "pairs": 62387
+   },
+   "common": {
+    "all": {
+     "r_int": 0.0560387,
+     "noise": 0.0566608,
+     "ratio": 0.989019,
+     "ratio_se": 0.0089004,
+     "ratio_se_orbits": 0.00863141,
+     "chi2": 0.998374,
+     "dof": 9580,
+     "orbits": 2608,
+     "voxels": 12188,
+     "pairs": 27234
+    },
+    "diffuse": {
+     "r_int": 0.0968766,
+     "noise": 0.0965935,
+     "ratio": 1.00293,
+     "ratio_se": 0.00912406,
+     "ratio_se_orbits": 0.00809785,
+     "chi2": 1.00387,
+     "dof": 9307,
+     "orbits": 2523,
+     "voxels": 11830,
+     "pairs": 26499
+    }
+   },
+   "verdict": {
+    "all": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 1.2127,
+     "se": 0.010177,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "-1",
+     "rise": 1.06257,
+     "se": 0.00887507,
+     "judged": true
+    },
+    "common_all": {
+     "supported": true,
+     "rises": false,
+     "against": "2/m (c unique)",
+     "rise": 1.00142,
+     "se": 0.00467189,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": true,
+     "rises": false,
+     "against": "2/m (c unique)",
+     "rise": 1.0041,
+     "se": 0.00473197,
+     "judged": true
+    }
+   }
+  },
+  {
+   "laue": "6/mmm",
+   "generators": "h+k,-h,l; -k,-h,-l; -h,-k,-l",
+   "order": 24,
+   "ops": "h,k,l; h+k,-h,l; -k,-h,-l; -h,-k,-l; k,-h-k,l; -h-k,k,-l; -h-k,h,-l; h,-h-k,-l; k,h,l; h+k,-k,-l; -k,h+k,l; -h,h+k,l; -k,h+k,-l; h+k,-k,l; -h-k,k,l; k,-h-k,-l; -h,-k,l; -h,h+k,-l; h,k,-l; h,-h-k,l; k,h,-l; -h-k,h,l; -k,-h,l; h+k,-h,-l",
+   "metric_change": 4.04961e-16,
+   "subgroups": [
+    "-1",
+    "2/m (c unique)",
+    "-3",
+    "-3m1",
+    "-31m",
+    "6/m"
+   ],
+   "maximal_subgroups": [
+    "-3m1",
+    "-31m",
+    "6/m"
+   ],
+   "depth": 3,
+   "all": {
+    "r_int": 0.142728,
+    "noise": 0.0612803,
+    "ratio": 2.3291,
+    "ratio_se": 0.203839,
+    "ratio_se_orbits": 0.200922,
+    "chi2": 4.27781,
+    "dof": 19269,
+    "orbits": 2453,
+    "voxels": 21722,
+    "pairs": 126651
+   },
+   "diffuse": {
+    "r_int": 0.169938,
+    "noise": 0.10331,
+    "ratio": 1.64493,
+    "ratio_se": 0.0448175,
+    "ratio_se_orbits": 0.0199725,
+    "chi2": 2.55428,
+    "dof": 18726,
+    "orbits": 2364,
+    "voxels": 21090,
+    "pairs": 123796
+   },
+   "common": {
+    "all": {
+     "r_int": 0.117887,
+     "noise": 0.0593595,
+     "ratio": 1.98599,
+     "ratio_se": 0.179116,
+     "ratio_se_orbits": 0.177739,
+     "chi2": 3.66108,
+     "dof": 10520,
+     "orbits": 1668,
+     "voxels": 12188,
+     "pairs": 51014
+    },
+    "diffuse": {
+     "r_int": 0.160621,
+     "noise": 0.101364,
+     "ratio": 1.58459,
+     "ratio_se": 0.0446595,
+     "ratio_se_orbits": 0.022531,
+     "chi2": 2.4162,
+     "dof": 10226,
+     "orbits": 1604,
+     "voxels": 11830,
+     "pairs": 49891
+    }
+   },
+   "verdict": {
+    "all": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 2.34675,
+     "se": 0.010177,
+     "judged": true
+    },
+    "diffuse": {
+     "supported": false,
+     "rises": true,
+     "against": "-1",
+     "rise": 1.64064,
+     "se": 0.0103959,
+     "judged": true
+    },
+    "common_all": {
+     "supported": false,
+     "rises": true,
+     "against": "2/m (c unique)",
+     "rise": 2.01088,
+     "se": 0.00954537,
+     "judged": true
+    },
+    "common_diffuse": {
+     "supported": false,
+     "rises": true,
+     "against": "2/m (c unique)",
+     "rise": 1.58644,
+     "se": 0.0100274,
+     "judged": true
+    }
+   }
+  }
+ ],
+ "refused": [
+  {
+   "laue": "2/m (b unique)",
+   "order": 4,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "mmm",
+   "order": 8,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "4/m",
+   "order": 8,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "4/mmm",
+   "order": 16,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "m-3",
+   "order": 24,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  },
+  {
+   "laue": "m-3m",
+   "order": 48,
+   "reason": "metric",
+   "detail": "changes the cell's metric by up to 100% (more than 2%): not symmetries of this lattice",
+   "metric_change": 1.0
+  }
+ ],
+ "isotropic": {
+  "all": {
+   "r_int": 0.967627,
+   "noise": 0.0642864,
+   "ratio": 15.0518,
+   "ratio_se": 1.1175,
+   "ratio_se_orbits": 1.69368,
+   "chi2": 53.6206,
+   "dof": 21748,
+   "orbits": 45,
+   "voxels": 21793,
+   "pairs": 9285037
+  },
+  "diffuse": {
+   "r_int": 0.284086,
+   "noise": 0.109356,
+   "ratio": 2.59782,
+   "ratio_se": 0.106217,
+   "ratio_se_orbits": 0.169737,
+   "chi2": 6.30824,
+   "dof": 21108,
+   "orbits": 44,
+   "voxels": 21152,
+   "pairs": 8775916
+  }
+ },
+ "bragg": {
+  "cell": [
+   1,
+   1,
+   1
+  ],
+  "radius_q": 0.25,
+  "asked_q": 0.25,
+  "origin_radius_q": 0.3,
+  "from": "the punch's largest node ellipsoid: 2 \u00d7 0.115 \u00c5\u207b\u00b9 + 0.02 \u00c5\u207b\u00b9 margin",
+  "closed_under": "6/mmm",
+  "voxels": 641,
+  "share": 0.0294131,
+  "shell_width_q": 0.20944
+ },
+ "measured": 21793,
+ "sigma": "measured",
+ "rule": {
+  "delta": 0.1,
+  "z": 2.0,
+  "text": "Each class's R_int is read in units of its noise floor (the R_int counting noise alone gives on the same orbits, from \u03c3). A class rises against a subgroup when that ratio exceeds the subgroup's by more than 10% and the excess is more than 2 standard errors (a spatial block bootstrap of the difference); it is supported when it rises against none of its candidate subgroups and all of them are supported. A reading tells the classes apart only when pooling whole |Q| shells rises against the lowest class by the same test. The suggestion is the supported class with the most operations in every reading that tells them apart."
+ },
+ "readings": {
+  "all": {
+   "tells_apart": true,
+   "isotropic_rise": 15.1659,
+   "cannot_judge": null,
+   "suggests": "2/m (c unique)"
+  },
+  "diffuse": {
+   "tells_apart": true,
+   "isotropic_rise": 2.59105,
+   "cannot_judge": null,
+   "suggests": "6/m"
+  }
+ },
+ "suggestion": "2/m (c unique)",
+ "suggested_by": {
+  "all": "2/m (c unique)",
+  "diffuse": "6/m"
+ },
+ "reason": "2/m (c unique) is the class with the most operations the rule supports in both readings: its R_int, in units of the noise floor, is 1.01\u00d7 that of -1, the subgroup that agrees best; 6/m rose 1.21\u00d7 against -1.",
+ "disagreement": null,
+ "notes": [
+  "The bootstrap's blocks were cut to 3 voxels (the correlation asks for 4) to keep 64 of them.",
+  "Every measured voxel supports only 2/m (c unique) where the diffuse supports 6/m: the Bragg peaks break the higher symmetry (or carry errors such as extinction or absorption that the diffuse does not)."
+ ],
+ "bootstrap": {
+  "replicates": 200,
+  "seed": 20261101,
+  "block_voxels": 3,
+  "blocks": 152,
+  "effective_blocks": 66.2,
+  "correlation_voxels": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "correlation_reading": "all",
+  "reaches_past": false,
+  "variance_kept": 1.0
+ },
+ "common": {
+  "lowest": "-1",
+  "voxels": 12188,
+  "share": 0.559262,
+  "suggestion": "6/m",
+  "main": "2/m (c unique)",
+  "flag": "On the voxels -1 can judge (56% of the measured voxels) the rule supports 6/m, where every measured voxel supports only 2/m (c unique): the voxels only a higher class compares reject it. Errors that differ between regions of the coverage (absorption, detector or coverage edges) do that, and so does a breaking seen only there."
+ },
+ "limits": "Twinning or several domains related by an operation the sample lacks make a lower symmetry look higher: the domains' sum has the higher symmetry, and R_int alone cannot tell them apart. Systematic errors that differ between regions of the coverage reject classes falsely (the common-subset reading flags it). Only the presets' settings are compared (the four-fold along c, the two-fold along b or c); a sample with its unique axis elsewhere needs custom generators. The diffuse reading masks a sphere around each Bragg node, not the punch itself."
+}
