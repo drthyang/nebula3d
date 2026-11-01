@@ -153,7 +153,6 @@ class IsotropyConfig:
     sample_per_bin: int = 32
     min_snr: float = 3.0
     curve_share: float = 0.25
-    al_direction_share: float = 0.75
     al_min_snr: float = 2.0
     al_width_ratio: float = 2.0
 
@@ -162,8 +161,8 @@ class IsotropyConfig:
             raise ValueError("n_cos must be at least 2 and n_phi at least 4")
         if not 0.0 < self.direction_share < 1.0 or not 0.0 < self.height_share <= 1.0:
             raise ValueError("direction_share must be in (0, 1) and height_share in (0, 1]")
-        if not 0.0 < self.al_direction_share < 1.0 or self.al_width_ratio <= 0:
-            raise ValueError("al_direction_share must be in (0, 1), al_width_ratio positive")
+        if self.al_min_snr < 0 or self.al_width_ratio <= 0:
+            raise ValueError("al_min_snr must be 0 or more and al_width_ratio positive")
         if min(self.core_scale, self.flank_scale, self.q_step) <= 0 or self.gap_scale < 0:
             raise ValueError("core_scale, flank_scale and q_step must be positive, gap_scale ≥ 0")
         if self.sample_per_bin < 0:
@@ -498,15 +497,14 @@ def _judge_layouts(vol: HKLVolume, layouts: Sequence[_Layout], cfg: IsotropyConf
                    slab: int | None = None, cell_scale: NDArray[np.float64] | None = None,
                    rule: str = "strict") -> list[ShellIsotropy]:
     """Each layout's verdict, by the strict rule or the Al lines' (``rule="al"``:
-    ``al_direction_share`` and ``al_min_snr``, and every line of a cluster
-    rising on its own)."""
+    the noise floor ``al_min_snr``, and every line of a cluster rising on its
+    own)."""
     q_step = profile_step(vol, cfg)
     cells = _cell_medians(vol, [(lay.lo, lay.n_bins, lay.aligned) for lay in layouts], cfg,
                           slab=slab, cell_scale=cell_scale)
     if cells is None:
         return [ShellIsotropy(lay.q0, lay.fwhm, 0, np.nan, np.nan, np.nan, False,
                               "no measured voxels", rule=rule) for lay in layouts]
-    share = cfg.al_direction_share if rule == "al" else cfg.direction_share
     min_snr = cfg.al_min_snr if rule == "al" else cfg.min_snr
     q_box = inscribed_q(vol)
     out: list[ShellIsotropy] = []
@@ -574,7 +572,7 @@ def _judge_layouts(vol: HKLVolume, layouts: Sequence[_Layout], cfg: IsotropyConf
             amplitudes = np.linalg.lstsq(peaks, np.asarray(excess).T, rcond=None)[0].T
         out.append(_verdict(q0, fwhm, np.asarray(heights), np.asarray(levels), np.asarray(snrs),
                             np.asarray(beyond_curve) if curved else None, cfg,
-                            share=share, min_snr=min_snr, rule=rule,
+                            min_snr=min_snr, rule=rule,
                             amplitudes=amplitudes, lines=lay.lines))
     return out
 
@@ -619,19 +617,25 @@ AL_MAX_SCALE = 0.02
 #: there to count towards the cell's scale.
 _SCALE_MIN_SNR = 3.0
 
+#: The rings a cell needs placed for a scale of its own: with two, a weighted
+#: median is one of them, and a misplaced one goes unseen.
+_SCALE_MIN_RINGS = 3
+
 
 @dataclass(frozen=True)
 class CellScales:
     """Each direction cell's Al frame: the Al lines there peak at Q_line × (1 + scale)."""
 
     scale: NDArray[np.float64]  # per direction cell; 0 where not measured
-    n_cells: int                # cells whose scale was measured
+    n_cells: int                # cells whose scale was measured (0: no frame, the lab's)
     n_rings: int                # the rings it was read from
     p95: float                  # the 95th percentile of |scale| over those cells
+    reliability: float = 0.0    # the share of the scales' spread that is the cells' own
 
     def as_dict(self) -> dict[str, object]:
         return {"rings": self.n_rings, "cells": self.n_cells,
-                "scale_p95": float(round(self.p95, 5))}
+                "scale_p95": float(round(self.p95, 5)),
+                "reliability": float(round(self.reliability, 3))}
 
 
 def al_cell_scales(
@@ -651,14 +655,17 @@ def al_cell_scales(
     refined by a parabola, counts where it stands :data:`_SCALE_MIN_SNR` times
     the outer bins' scatter above them and inside the search. The cell's scale
     is the weighted median of the places over q_line, each weighted by its
-    precision, (q_line × SNR / FWHM)²; a cell with fewer than two rings placed
-    keeps scale 0 (not aligned). Pass rings clear of other lines by more than
-    the search reaches.
+    precision, (q_line × SNR / FWHM)²; a cell with fewer than
+    :data:`_SCALE_MIN_RINGS` rings placed keeps scale 0 (not aligned). Each
+    scale is then shrunk towards 0 by its error, as far as the scales' spread
+    over the cells is error rather than the cells' own (``reliability``, the
+    share that is their own): from noise, no frame at all (``n_cells`` 0).
+    Pass rings clear of other lines by more than the search reaches.
     """
     cfg = config or IsotropyConfig()
     n_cells = cfg.n_cos * cfg.n_phi
     scale = np.zeros(n_cells)
-    if len(rings) < 2 or grid_too_coarse(vol, cfg):
+    if len(rings) < _SCALE_MIN_RINGS or grid_too_coarse(vol, cfg):
         return CellScales(scale, 0, 0, 0.0)
     q_step = profile_step(vol, cfg)
     windows = []
@@ -706,13 +713,32 @@ def al_cell_scales(
         keep = inner & (snr >= _SCALE_MIN_SNR)
         places[good[keep], j] = place[keep]
         weights[good[keep], j] = (q * np.minimum(snr[keep], 30.0) / w) ** 2
+    # Each cell's scale and its error: the precision of its places (the
+    # matched peak's, about 0.6 FWHM / SNR, over q_line), or their scatter
+    # about the scale, whichever is the larger.
     n_placed = np.isfinite(places).sum(axis=1)
-    for c in np.nonzero(n_placed >= 2)[0]:
+    measured = n_placed >= _SCALE_MIN_RINGS
+    error2 = np.full(n_cells, np.inf)
+    for c in np.nonzero(measured)[0]:
         ok = np.isfinite(places[c])
-        scale[c] = _weighted_median(places[c, ok], weights[c, ok])
-    measured = n_placed >= 2
-    p95 = float(np.quantile(np.abs(scale[measured]), 0.95)) if measured.any() else 0.0
-    return CellScales(np.clip(scale, -max_scale, max_scale), int(measured.sum()), len(rings), p95)
+        p, wt = places[c, ok], weights[c, ok]
+        scale[c] = _weighted_median(p, wt)
+        n_eff = wt.sum() ** 2 / np.sum(wt ** 2)
+        scatter2 = float(np.sum(wt * (p - scale[c]) ** 2) / wt.sum()) / max(n_eff - 1.0, 1.0)
+        error2[c] = max(0.36 / float(wt.sum()), scatter2)
+    if not measured.any():
+        return CellScales(np.zeros(n_cells), 0, len(rings), 0.0, 0.0)
+    # How much of the scales' spread over the cells is the cells' own, not
+    # their error (robust variances), and each cell's scale shrunk towards 0
+    # by its error accordingly: a frame read from noise aligns nothing.
+    spread = float((1.4826 * np.median(np.abs(scale[measured] - np.median(scale[measured])))) ** 2)
+    signal = max(spread - float(np.median(error2[measured])), 0.0)
+    shrunk = np.where(measured, scale * signal / (signal + np.where(measured, error2, 1.0)), 0.0)
+    if signal <= 0.0:
+        return CellScales(np.zeros(n_cells), 0, len(rings), 0.0, 0.0)
+    shrunk = np.clip(shrunk, -max_scale, max_scale)
+    p95 = float(np.quantile(np.abs(shrunk[measured]), 0.95))
+    return CellScales(shrunk, int(measured.sum()), len(rings), p95, signal / spread)
 
 
 def _weighted_median(values: NDArray[np.float64], weights: NDArray[np.float64]) -> float:
@@ -744,7 +770,7 @@ def judge_al_lines(
     (``cell_scale``, :func:`al_cell_scales`; none, the lab frame), its core
     every line's ± ``core_scale`` × the Al width, its flanks outside the
     cluster, clear of the cores of ``others``; it rises by ``height_share`` of
-    its median height in ``al_direction_share`` of the measured cells, at
+    its median height in ``direction_share`` of the measured cells, at
     ``al_min_snr`` and above the curve, and so does every line of a doublet,
     on its own amplitude."""
     cfg = config or IsotropyConfig()
@@ -764,10 +790,10 @@ def judge_al_lines(
 
 def _verdict(q0: float, fwhm: float, heights: NDArray[np.float64], levels: NDArray[np.float64],
              snrs: NDArray[np.float64], beyond_curve: NDArray[np.float64] | None,
-             cfg: IsotropyConfig, *, share: float | None = None, min_snr: float | None = None,
+             cfg: IsotropyConfig, *, min_snr: float | None = None,
              rule: str = "strict", amplitudes: NDArray[np.float64] | None = None,
              lines: tuple[float, ...] = ()) -> ShellIsotropy:
-    share = cfg.direction_share if share is None else share
+    share = cfg.direction_share
     min_snr = cfg.min_snr if min_snr is None else min_snr
     n = int(heights.size)
     if n < cfg.min_cells:
