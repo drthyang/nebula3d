@@ -40,6 +40,121 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 
 # The results that read otherwise
 
+## measure_reciprocal_cut {"plane":"h0l","value":1}
+
+```json
+{
+  "cut": "H–L plane at K = 1",
+  "ring_removal": {
+    "before_ring_energy": 0.0866,
+    "after_ring_energy": 0.0167,
+    "ring_energy_ratio": 0.193,
+    "over_subtraction_fraction": 0,
+    "after_negative_fraction": 0,
+    "ring_residuals": [
+      {
+        "at": 1.79,
+        "fwhm": 0.11,
+        "residual_fraction": 0.0718,
+        "noise_fraction": 0.00937,
+        "significant": true
+      },
+      {
+        "at": 3.18,
+        "fwhm": 0.16,
+        "residual_fraction": 0.124,
+        "noise_fraction": 0.0161,
+        "significant": true
+      }
+    ],
+    "worst_ring_dent": null,
+    "worst_ring_left": {
+      "at": 3.18,
+      "fwhm": 0.16,
+      "residual_fraction": 0.124,
+      "noise_fraction": 0.0161,
+      "significant": true
+    },
+    "suggested_display_vmax": 73.43,
+    "n_finite": 5497
+  },
+  "bragg_punch_leftover": {
+    "suspicious_peaks": [
+      {
+        "xy": [2, 0],
+        "intensity": 452,
+        "local_background": 21,
+        "contrast": 21.5,
+        "sigma": 332,
+        "fwhm_voxels": [1, 1],
+        "broad": false,
+        "hkl": [2, 1, 0],
+        "at_node": true
+      },
+      {
+        "xy": [1.5, -1.938],
+        "intensity": 27.2,
+        "local_background": 21.1,
+        "contrast": 1.29,
+        "sigma": 8.63,
+        "fwhm_voxels": [2, 19],
+        "broad": true,
+        "hkl": [1.5, 1, -1.938],
+        "at_node": false,
+        "on_protected_plane": false
+      }
+    ],
+    "n_suspicious": 2,
+    "n_at_nodes": 1,
+    "n_off_nodes": 1,
+    "n_on_protected": 0,
+    "n_broad_off_nodes": 1,
+    "n_skipped_noisy": 0,
+    "scan_sigma_threshold": 8
+  },
+  "backfill": {
+    "n_filled": 180,
+    "fill_coverage": 0.0327,
+    "median_seam_sigma": 0.227,
+    "p95_seam_sigma": 0.495,
+    "bright_fill_fraction": 0,
+    "checkerboard_fraction": 0.267
+  },
+  "flatten": {
+    "removed_fraction": 0.907,
+    "floor_before": [17.3, 20, 20.5],
+    "floor_after": [0.334, 1.73, 0.546],
+    "after_floor_max_sigma": 2.05,
+    "after_negative_fraction": 0.0538,
+    "floor_trend": 0.224,
+    "floor_span_fraction": 0.125,
+    "floor_judged_q": [2.17, 4.22]
+  },
+  "notes": [],
+  "fields": "ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per raw ring: residual_fraction against the diffuse beside it (negative a dent, positive a ring left), significant beyond 3 × noise_fraction. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged."
+}
+```
+
+## measure_dpdf_cut {"plane":"xz","value":0}
+
+```json
+{
+  "cut": "ΔPDF x–z section at y = 0 Å",
+  "delta_pdf": {
+    "origin_excluded_radius": 0.6,
+    "background_sigma": 0.502,
+    "feature_snr": 252,
+    "strong_feature_fraction": 0.0634,
+    "positive_fraction": 0.763,
+    "anisotropy_ratio": 1,
+    "anisotropy_angle_deg": 0,
+    "radial_trend": [8.68, 0.781, 0.302]
+  },
+  "sigma_of": "this section outside the origin's disk, robust",
+  "fields": "All in this section's robust σ outside the origin's disk. feature_snr: the strongest feature over background σ; strong_feature_fraction: voxels beyond 5σ; positive_fraction: 0.5 is balanced ±; anisotropy_ratio: 1 isotropic, above ~1.5 rods or sheets, along anisotropy_angle_deg in the plane; radial_trend: mean |ΔPDF| in the inner, middle and outer shells."
+}
+```
+
 ## assess_stage {}
 
 ```json

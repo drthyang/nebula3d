@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 87 spans in 31 texts or sets: reading 24, evidence 43, remedy 20.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 87 spans in 32 texts or sets: reading 24, evidence 43, remedy 20.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -219,25 +219,14 @@ The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 Mark a region in the slice views and move them to it, so the user sees a finding⟦remedy:  (satellites at h ± q, a ring left over, a ΔPDF feature)⟧. where: raw, rings, punch, backfill, flatten (h, k, l in r.l.u.) or pdf (x, y, z in Å along a, b, c). shape: box or ellipsoid (center, half_size), or points (up to 12). evidence: the calls showing it, as tool or tool.field (dpdf_peaks.features.0); none, or a region empty or outside the volume, marks nothing. Returns where it is drawn. Cite it by its id (M1, …).
 ```
 
-## tools/index.ts: measure_dpdf_cut's description
-
-1 span: evidence 1.
-
-The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
-
-```text
-The 3D-ΔPDF feature metrics on any real-space section, in its own robust σ outside the origin's disk: feature_snr, the strongest feature over background σ⟦evidence:  (≳ 5 is clear signal)⟧; strong_feature_fraction, voxels beyond 5σ; positive_fraction (0.5: balanced ±); anisotropy_ratio (1 isotropic, above ~1.5 rods or sheets) and anisotropy_angle_deg in the plane; radial_trend, mean |ΔPDF| in inner, middle and outer shells.
-```
-
 ## tools/index.ts: measure_reciprocal_cut's description
 
-3 spans: reading 1, evidence 2.
+1 span: reading 1.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut: one cut, not the volume.⟦reading:  Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).⟧
-Fields. ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per raw ring: residual_fraction against the diffuse beside it (negative a dent, positive a ring left), significant beyond 3 × noise_fraction. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels⟦evidence: : diffuse maxima, signal⟧. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random⟦evidence: , near 1 an artefact⟧. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged.
+Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut: one cut, not the volume. A reply's first call also returns fields, what each one means.⟦reading:  Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).⟧
 ```
 
 ## tools/index.ts: radial_profile's description
@@ -279,6 +268,26 @@ Spans of a text built for each call (its numbers vary), each as written:
 - evidence: “, the HKL origin shifted by about that much, which no UB can make”
 - remedy: “ Report the origin, not the UB.”
 - remedy: “ Look at the origin of the HKL grid, or at how |Q| was assigned, not at the UB.”
+
+## tools/shared/fields.ts: measure_dpdf_cut's fields
+
+1 span: evidence 1.
+
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+
+```text
+All in this section's robust σ outside the origin's disk. feature_snr: the strongest feature over background σ⟦evidence:  (≳ 5 is clear signal)⟧; strong_feature_fraction: voxels beyond 5σ; positive_fraction: 0.5 is balanced ±; anisotropy_ratio: 1 isotropic, above ~1.5 rods or sheets, along anisotropy_angle_deg in the plane; radial_trend: mean |ΔPDF| in the inner, middle and outer shells.
+```
+
+## tools/shared/fields.ts: measure_reciprocal_cut's fields
+
+2 spans: evidence 2.
+
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+
+```text
+ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per raw ring: residual_fraction against the diffuse beside it (negative a dent, positive a ring left), significant beyond 3 × noise_fraction. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels⟦evidence: : diffuse maxima, signal⟧. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random⟦evidence: , near 1 an artefact⟧. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged.
+```
 
 ## tune/catalog.ts: flattenFitQMax's help
 

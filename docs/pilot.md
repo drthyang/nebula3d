@@ -50,8 +50,9 @@ is measured, so the model measures with the tools; earlier, models that
 answered from one cut's metrics without a tool call failed. With *Tools* off,
 the model reads one fixed cut's metrics (H–K at L=0 and the ΔPDF's z=0
 section) and a glossary of what each means, as before; with tools, that
-glossary, tersely, is in `measure_reciprocal_cut`'s and `measure_dpdf_cut`'s
-descriptions (`prompts/system.ts`, `prompts/templates.ts`).
+glossary, tersely, comes with `measure_reciprocal_cut`'s and
+`measure_dpdf_cut`'s first result in a reply, as `fields`
+(`prompts/system.ts`, `prompts/templates.ts`, `tools/shared/fields.ts`).
 
 ## Guardrails
 
@@ -449,7 +450,7 @@ miss is a note.
   picked): system messages become the system prompt, a round's tool results go
   back in one user message, and a turn that called tools is replayed exactly as
   Claude returned it, thinking included. With Tools on, the first request alone
-  is about 7.6k tokens and a full assessment that reads two skills about 42.6k
+  is about 7.2k tokens and a full assessment that reads two skills about 42.2k
   with room for the reply (`__tests__/tokenBudget.test.ts`), so on LM Studio
   the chat reads the context length the model was loaded with
   (`/api/v0/models`) and, below 56k (`TOOLS_CONTEXT`, 57,344), says how far to

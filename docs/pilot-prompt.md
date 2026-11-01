@@ -16,12 +16,13 @@ The prompt as the model reads it now:
 
 ## Where each rule lives now
 
-Every number the old prompt held is in the core or in a tool's description,
-both of which an answer may cite (`numberSources`, `web/src/llm/agent.ts`).
+Every number the old prompt held is in the core, a tool's description, or the
+cut tools' `fields`, which an answer may cite once the tool ran
+(`numberSources`, `web/src/llm/agent.ts`).
 
 | What the prompt said, with tools | Where it lives now |
 | --- | --- |
-| The glossary of one cut's metrics (ring removal, leftover peaks, backfill, flatten, ΔPDF) | Tools off: unchanged. With tools: `measure_reciprocal_cut`'s field list (its description's second paragraph) and `measure_dpdf_cut`'s contract, the tools that return those fields; the round trip in `consistency_details`' contract and `assess_stage` pdf's criterion |
+| The glossary of one cut's metrics (ring removal, leftover peaks, backfill, flatten, ΔPDF) | Tools off: unchanged. With tools: `fields` in `measure_reciprocal_cut`'s and `measure_dpdf_cut`'s first result in a reply, the tools that return those fields (`tools/shared/fields.ts`); the round trip in `consistency_details`' contract and `assess_stage` pdf's criterion |
 | Ground rules: base every statement on numbers in the context and quote them | Core rule 2: a tool's number by reference or exactly as returned; any other from a tool result, the context or the user |
 | When an image is attached, describe what you see and reconcile it with the metrics | Core, a line added only when a message carries an image |
 | All metrics come from a single 2D cut, not the whole volume | Core rule 3, "One cut is not the volume"; `measure_reciprocal_cut`'s contract |
@@ -38,7 +39,7 @@ both of which an answer may cite (`numberSources`, `web/src/llm/agent.ts`).
 | `dpdf_contrast` sets the ΔPDF viewer's range; use it before describing a ΔPDF figure | `dpdf_contrast`'s contract, the figure rule as inference; `delta-pdf-interpretation` step 5 and checklist |
 | `dpdf_peaks`: the strongest features with vector, sign and size; quote it | `dpdf_peaks`' contract |
 | `grain_check`: second grain, displaced Bragg peaks, or neither | `grain_check`'s contract and verdict |
-| The leftover counts are what the punch missed on one cut, not what its search found | `measure_reciprocal_cut`'s field list; `assess_stage` punch's `search_note` |
+| The leftover counts are what the punch missed on one cut, not what its search found | `measure_reciprocal_cut`'s `fields`; `assess_stage` punch's `search_note` |
 | `off_lattice_bunching` and `ask_user`: ask it, never answer it, nor declare a modulation | Core (`ask_user` is a question for the user; "ask it, never answer it yourself" as inference); the result's facts and question |
 | `ub_check`: on a symmetrised volume it fits only what the symmetry keeps, the orientation needs the unsymmetrised file; an offset that changes with \|Q\| is no UB error | `ub_check`'s contract and its computed verdict (R1) |
 | `compare_laue_classes` before suggesting a class; quote suggestion, rule and flag; the class is the user's | `compare_laue_classes`' contract; the core's line on the sample's facts |

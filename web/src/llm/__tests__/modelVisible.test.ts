@@ -672,6 +672,9 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
       if (c.text !== b.text) differ.push(`## ${sampleTitle(s)}\n\n${showResult(c.text)}`);
     }
     expect(differ.map((d) => d.split("\n")[0])).toEqual([
+      // What their fields mean, a reply's first result (THY-63 R3): its definitions only.
+      '## measure_reciprocal_cut {"plane":"h0l","value":1}',
+      '## measure_dpdf_cut {"plane":"xz","value":0}',
       "## assess_stage {}",
       '## assess_stage {"stage":"flatten"}',
       `## assess_stage {"stage":"punch"} (${BUNCHED_NOTE})`,

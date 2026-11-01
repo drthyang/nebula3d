@@ -423,9 +423,11 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     backfill: nullable(backfillMetrics),
     flatten: nullable(flattenMetrics),
     notes: arr(str),
+    // What each field means: a reply's first result only (THY-63 R3).
+    fields: optional(str),
   }),
 
-  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection, sigma_of: str }),
+  measure_dpdf_cut: obj({ cut: str, delta_pdf: dpdfSection, sigma_of: str, fields: optional(str) }),
 
   assess_stage: obj({
     rings: optional(stage(ringsEvaluation)),

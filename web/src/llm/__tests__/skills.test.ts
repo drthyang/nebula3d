@@ -239,7 +239,6 @@ describe("the switch", () => {
     // Every description that holds inference (inference.ts) has its definitions only, and only those differ.
     expect(off.filter((t) => t.description !== of(CHAT_TOOLS, t.name)).map((t) => t.name)).toEqual([
       "measure_reciprocal_cut",
-      "measure_dpdf_cut",
       "symmetry_check",
       "dpdf_contrast",
       "dpdf_peaks",

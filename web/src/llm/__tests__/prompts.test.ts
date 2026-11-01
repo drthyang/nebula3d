@@ -15,7 +15,7 @@ import type { PipelineContext } from "../context/pipelineContext";
 import { PEDESTAL_LIMIT } from "../metrics/flatten";
 import { CORE, SYSTEM } from "../prompts/system";
 import { buildChatMessages, buildStageReviewMessages, summaryBlock } from "../prompts/templates";
-import { CHAT_TOOLS } from "../tools";
+import { RECIP_FIELDS } from "../tools/shared/fields";
 import { verdicts, WORDS } from "../verdicts";
 import { BACK_FFT_R_OK, EVEN_PART, FLATTEN_FLOOR_SIGMA_NOTE, FLOOR_SIGMA_WHY, PEDESTAL_SHELLS, STAGE_NAMES, STAGES } from "../verdicts/rules";
 
@@ -25,11 +25,8 @@ const flat = (text: string): string => text.replace(/\s+/g, " ");
 /** The core prompt's checks: from their opening to the sentence after them. */
 const checks = (text: string): string => flat(text.slice(text.search(/To judge a run|A run is judged on/), text.indexOf("When a change improves one number")));
 
-/** A tool's description with the skills on and off. */
-const describedBoth = (name: string): string[] => {
-  const t = CHAT_TOOLS.find((x) => x.name === name)!;
-  return [t.description, t.descriptionWithoutSkills ?? t.description].map(flat);
-};
+/** What measure_reciprocal_cut's fields mean, as its first result in a reply says it, with the skills on and off. */
+const recipFieldsBoth = (): string[] => [RECIP_FIELDS.whole, RECIP_FIELDS.definitions].map(flat);
 
 /** A stage-review instruction, as the model reads it. */
 const review = (stage: Parameters<typeof buildStageReviewMessages>[1], tools: boolean): string => {
@@ -45,8 +42,8 @@ describe("the prompts state what the checks judge, in the verdict module's words
       expect(text).toContain(`a span both ${PEDESTAL_LIMIT} or more are a pedestal left`);
       expect(text).not.toMatch(/≲ 1 is flat|over the whole coverage|the σ test/);
     }
-    // With tools, measure_reciprocal_cut's field list says the same, in the same words.
-    for (const text of describedBoth("measure_reciprocal_cut")) {
+    // With tools, measure_reciprocal_cut's fields (its first result in a reply) say the same, in the same words.
+    for (const text of recipFieldsBoth()) {
       expect(text).toContain(`floor_trend, floor_span_fraction over ${PEDESTAL_SHELLS} (floor_judged_q): both ${PEDESTAL_LIMIT} or more is a pedestal`);
       expect(text).toContain(`after_floor_max_sigma is ${FLATTEN_FLOOR_SIGMA_NOTE}`);
     }
@@ -85,7 +82,7 @@ describe("the prompts state what the checks judge, in the verdict module's words
     expect(checks(CORE.whole)).not.toMatch(/ring-energy ratio|ring_energy_ratio/);
     expect(WORDS.criterion.rings).toMatch(/rises in nearly every direction over the sphere/);
     // A cut's residuals: significant only beyond 3 × the plane's noise, as the rings' verdict counts them (both arms).
-    for (const text of describedBoth("measure_reciprocal_cut")) expect(text).toContain("significant beyond 3 × noise_fraction");
+    for (const text of recipFieldsBoth()) expect(text).toContain("significant beyond 3 × noise_fraction");
   });
 
   it("the criteria carry no note of who decided what, or when", () => {

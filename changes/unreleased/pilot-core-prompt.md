@@ -7,9 +7,10 @@
   keeps the old text). The first message is a few lines about the dataset (its
   name, cell, grid and ranges, whether the raw volume is symmetrised, the
   outputs on disk) instead of one cut's metrics, so the model measures before
-  it answers; what those metrics mean is now in the cut tools' descriptions.
+  it answers; what those metrics mean now comes with the cut tools' first
+  result in a reply.
   The prompt no longer asks for "a few well-chosen" tool calls; it states the
   round limit as a limit, not a target, and shows how to cite a cell of a
-  column table. Every request is about 4,800 tokens lighter by the context
+  column table. Every request is about 5,100 tokens lighter by the context
   guard's estimate, and on LM Studio at 32k the window guard no longer cuts
   the skills just read to stubs. With Tools off nothing changes.

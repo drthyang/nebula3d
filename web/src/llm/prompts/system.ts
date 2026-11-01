@@ -113,7 +113,8 @@ export const SYSTEM_PROMPT = SYSTEM.whole;
 // docs/pilot-context-design.md): the core every request carries, in place of
 // SYSTEM. The first user message is then the dataset's summary, not one cut's
 // metrics (templates.ts), so the metrics' meanings are where those metrics are
-// returned: measure_reciprocal_cut's and measure_dpdf_cut's descriptions. What
+// returned: measure_reciprocal_cut's and measure_dpdf_cut's first result in a
+// reply (fields, tools/shared/fields.ts). What
 // stays is what spans the tools: the evidence rules (THY-18: no verdict
 // without its tool, numbers by reference, the computed verdict quoted), the
 // checks that judge a run, how to act, and who decides what. Each tool's own

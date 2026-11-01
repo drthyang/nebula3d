@@ -6,10 +6,10 @@
 // summary, with scripts/measure_pilot_context.sh, which counts the same way):
 // OVER 32k in both configurations before compaction.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 37.0k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 36.4k + 6,144
-//   = 42.6k before the loop's compaction, and 34.3k to 38.6k after it, by the
-//   order the skills are read (34.3k in the method's order).
+//   about 36.7k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 36.1k + 6,144
+//   = 42.2k before the loop's compaction, and 33.9k to 38.3k after it, by the
+//   order the skills are read (33.9k in the method's order).
 // - A model LM Studio loaded with 32k gets the turn in with the loop's own
 //   compaction: the window guard shortens nothing more (before R3 it cut
 //   both skills just read to stubs of a few hundred characters).
@@ -154,21 +154,21 @@ type Component = (typeof ROWS)[number];
 // lowered the system prompt (4,453 -> 1,357: the core in place of the
 // metrics' glossary and the tools' guidance) and the context (2,382 -> 288:
 // the dataset's summary in place of one cut's metrics), and every prompt. The
-// tools offered grew (5,554 -> 5,933; every definition 6,139 -> 6,518): the
-// glossary's field meanings moved into measure_reciprocal_cut's catalogue and
-// measure_dpdf_cut's contract, and dpdf_contrast's contract took the figure
-// rule; the cut elsewhere is 13 times that.
+// glossary's field meanings went into the cut tools' results, a reply's first
+// call (fields), which this turn does not make; the tools offered grew a
+// little (5,554 -> 5,584; every definition 6,139 -> 6,169: the cut tools say
+// they return fields, and dpdf_contrast's contract took the figure rule).
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 1_357, tools: 5_933, context: 288, skills: 20_758, results: 8_091 };
+const MEASURED: Record<Component, number> = { system: 1_357, tools: 5_584, context: 288, skills: 20_758, results: 8_091 };
 // Every tool's definition, as the console sends them (Claude).
-const MEASURED_ALL_TOOLS = 6_518;
+const MEASURED_ALL_TOOLS = 6_169;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 37_012,
-  localBefore: 36_426,
-  localSkillsFirst: 28_335,
-  localMethod: 28_116,
-  localSkillsLast: 32_455,
+  console: 36_663,
+  localBefore: 36_078,
+  localSkillsFirst: 27_987,
+  localMethod: 27_767,
+  localSkillsLast: 32_106,
 };
 
 // The room held for the queued model-visible features, by component, in
