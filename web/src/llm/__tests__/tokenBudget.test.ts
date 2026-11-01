@@ -3,23 +3,22 @@
 // component (docs/pilot-context-design.md §5.8).
 //
 // VERDICT (measured 2026-11-01 with THY-63 R3's core prompt, R4's skill
-// cores and THY-59's skill text, with scripts/measure_pilot_context.sh, which
-// counts the same way): UNDER 32k before compaction on a local model.
+// cores and THY-59's skill text, and R5's count of read_skill's Markdown at
+// 3.0 characters a token, with scripts/measure_pilot_context.sh, which counts
+// the same way): UNDER 32k on a local model, with no compaction.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 26.0k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 25.4k + 6,144
-//   = 31.5k before the loop's compaction, inside 32k (the stretch goal, met),
-//   and 28.4k to 29.7k after it, by the order the skills are read (29.7k in
-//   the method's order): the 20 % target (26,214) is missed by 3.4k.
-// - A model LM Studio loaded with 32k gets the turn in with the loop's own
-//   compaction: the window guard shortens nothing more.
+//   about 20.7k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 20.1k + 6,144
+//   = 26.3k, in every order the skills are read: under the soft budget, so
+//   the loop compacts nothing. The stretch goal (inside 32k without
+//   compaction) is met; the 20 % target (26,214) is missed by 69.
+// - A model LM Studio loaded with 32k gets the whole turn, nothing shortened.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (25.8k
-// now). The estimate is conservative (every tool result, the skills' Markdown
-// included, counts at the data rate, 1.4 characters a token); at 3.0 for the
-// skills' 13.8k characters (C6, R5) the turn before compaction is about 26.1k
-// with the reply reserve.
+// to reply, and leaves free the 3k a model-visible addition must leave (31.1k
+// now). The estimate is conservative: tool results count at the data rate,
+// 1.4 characters a token, and read_skill's Markdown at 3.0 (C6), both under
+// what local tokenizers measured.
 //
 // The turn is driven through the real agent loop (runAgent, agent.ts) with a
 // scripted model, and every request it sends is counted by the guard's own
@@ -98,12 +97,12 @@ import {
   baseTokens,
   DATA_CHARS_PER_TOKEN,
   estimateTokens,
+  MARKDOWN_CHARS_PER_TOKEN,
   MIN_REPLY,
-  PROSE_CHARS_PER_TOKEN,
   REPLY_RESERVE,
   resetTokenState,
 } from "../provider/tokens";
-import { isCompacted, SKILL_CORE_MAX, SKILL_STUB_MAX } from "../readings/compact";
+import { isCompacted, SKILL_CORE_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, DETAILS, headingsOf, readsCore, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { callTool, CHAT_TOOLS } from "../tools";
@@ -164,18 +163,20 @@ type Component = (typeof ROWS)[number];
 // read_skill's `section` parameter grew the tools by 4. THY-59's skill text
 // (reduction-qc's Laue class: its description, two gates and a step's words
 // in the core, its section in the details) spent its reserve line: system +6
-// (the description), skills +131 (the core).
+// (the description), skills +131 (the core). R5 counts read_skill's Markdown
+// at 3.0 characters a token, not the data rate's 1.4 (C6): skills 10,060 ->
+// 4,810, and every prompt.
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 10_060, results: 8_091 };
+const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 4_810, results: 8_091 };
 // Every tool's definition, as the console sends them (Claude).
 const MEASURED_ALL_TOOLS = 6_173;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 25_975,
-  localBefore: 25_390,
-  localSkillsFirst: 23_510,
-  localMethod: 23_510,
-  localSkillsLast: 22_265,
+  console: 20_724,
+  localBefore: 20_139,
+  localSkillsFirst: 20_139,
+  localMethod: 20_139,
+  localSkillsLast: 20_139,
 };
 
 // The room held for the queued model-visible features, by component, in
@@ -565,8 +566,10 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       expectWithin(`arm B local, before compaction: ${ROW_LABEL[r]}`, b[r], CEILING[r]);
     }
     expectWithin("arm B local, before compaction: prompt", b.prompt, CEILING_PROMPT.localBefore);
-    // Past the soft budget, so the loop compacts.
-    expect(b.prompt).toBeGreaterThan(SOFT_BUDGET);
+    // Since C6 (THY-63 R5) the worst turn stays under the soft budget, so the
+    // loop's compaction does not trigger on it: a safety net for longer
+    // replies (readings.test.ts and agent.test.ts exercise it). Noted, not
+    // held: the ceilings hold the size.
     // The worst local turn, with the reply reserve, fits the run policy's
     // minimum context for a local live run, and leaves the headroom there.
     const worst = b.prompt + REPLY_RESERVE;
@@ -578,7 +581,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     // core under it) included: the turn still leaves the headroom under the
     // minimum.
     const coreGrowth = LARGEST.skills.reduce((sum, name) => sum + Math.max(0, SKILL_CORE_MAX - allSkills().find((s) => s.name === name)!.core.length), 0);
-    const gated = worst + estimateTokens(coreGrowth / DATA_CHARS_PER_TOKEN, before.key);
+    const gated = worst + estimateTokens(coreGrowth / MARKDOWN_CHARS_PER_TOKEN, before.key);
     expect(min - gated, `with both cores at the cap the worst local turn, ${n(gated)} tokens, leaves ${n(min - gated)} under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_HEADROOM);
 
     // After: the loop as it runs, the skills read in each order. The largest
@@ -606,9 +609,10 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       `Offered for the TASK (localTools.ts): ${offer.length} of ${CHAT_TOOLS.length} tools; not offered: ${CHAT_TOOLS.filter((t) => !offer.includes(t.name)).map((t) => t.name).join(", ") || "none"}.`,
       `Compaction (agent.ts: past SOFT_BUDGET ${n(SOFT_BUDGET)}, all results but the newest ${KEEP_FULL} shortened), by the order the skills are read:`,
       ...(["skillsFirst", "method", "skillsLast"] as const).map((o) => `  ${order(o)}`),
-      `The skills' ${n(skillChars)} characters of Markdown count at the data rate, as every tool result does: ` +
-        `${n(b.skills)} tokens. At the prose rate (${PROSE_CHARS_PER_TOKEN} characters a token) about ${n(skillChars / PROSE_CHARS_PER_TOKEN)}, ` +
-        `and the turn before compaction about ${n(b.prompt - b.skills + skillChars / PROSE_CHARS_PER_TOKEN + REPLY_RESERVE)} with the reserve.`,
+      `The skills' ${n(skillChars)} characters of Markdown count at ${MARKDOWN_CHARS_PER_TOKEN.toFixed(1)} characters a token (C6, MARKDOWN_CHARS_PER_TOKEN): ` +
+        `${n(b.skills)} tokens; at the data rate they counted before R5, about ${n(skillChars / DATA_CHARS_PER_TOKEN)}. ` +
+        `The worst turn's largest request, ${n(b.prompt)}, is ${b.prompt > SOFT_BUDGET ? "past" : "under"} the soft budget (${n(SOFT_BUDGET)}): ` +
+        `${b.prompt > SOFT_BUDGET ? "the loop compacts" : "no compaction"}.`,
       `Reply reserve: Claude ${n(CLAUDE_REPLY)} (anthropic.ts); a local run ${n(REPLY_RESERVE)} (REPLY_RESERVE: no cap is sent, the window plan keeps it free; ` +
         `a request is refused below MIN_REPLY ${n(MIN_REPLY)}).`,
       `The run policy's minimum for a local live run (RUN_POLICY): ${n(min)}; the worst local turn ${n(worst)} leaves ${n(min - worst)} ` +
@@ -617,46 +621,38 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     );
   }, TURN_TIMEOUT);
 
-  it("on LM Studio loaded with 32k: the loop's own compaction fits the window, and the guard shortens nothing more", async () => {
+  it("on LM Studio loaded with 32k: the whole turn fits the window, and nothing is shortened", async () => {
     model.loadedContext.mockResolvedValue({ loaded: WINDOW, max: 131_072 });
     const run = await drive(LM_STUDIO, ORDERS.method);
     // Every request is sent (none refused), each leaving at least MIN_REPLY.
     expect(run.result.note).toBeUndefined();
     expect(run.sent).toHaveLength(ORDERS.method.length + 1);
     for (const p of run.prompts) expect(p + MIN_REPLY).toBeLessThanOrEqual(WINDOW);
-    // Since the core prompt and the dataset's summary (THY-63 R3) each request
-    // is the one the loop's own compaction sends (past SOFT_BUDGET, all but the
-    // newest KEEP_FULL shortened): the window guard, which shortens a request
-    // without MIN_REPLY free down to its newest result, has nothing to do.
-    // Before R3 it shortened both skills read to their stubs here.
+    // Since C6 (THY-63 R5) each request is the one the loop sends without a
+    // window guard: under the soft budget, nothing is compacted, and the
+    // window guard, which shortens a request without MIN_REPLY free down to
+    // its newest result, has nothing to do.
     const { after } = await localTurn();
     expect(run.prompts).toEqual(after.method.prompts);
-    // So on the last request both skills' cores arrive as stubs: the one read
-    // before the checks, and the one read before its page's index and section
-    // (THY-63 R4), which with dpdf_peaks are the newest KEEP_FULL and whole.
     const last = run.sent[run.sent.length - 1];
     const bodies = resultsOf(last, isSkillBody);
     expect(bodies).toHaveLength(2);
-    expect(bodies.map(isCompacted)).toEqual([true, true]);
-    const page = resultsOf(last, (c) => c.name === "read_skill" && c.args.reference !== undefined);
+    expect(bodies.map(isCompacted)).toEqual([false, false]);
     const b = breakdown(run.sent[run.peak], run.key);
-    // A skill's core is shortened to its head, gates and steps, at most
-    // SKILL_STUB_MAX characters (readings/compact.ts, THY-63 R5). At 32k both
-    // skills' stubs grown to the cap still fit: their growth leaves the
-    // largest request MIN_REPLY. (Before the skill cores, two skills gated at
-    // the cap needed more than 32k: review finding P5.3b, 2026-10-24.)
-    const growth = bodies.reduce((sum, t) => sum + Math.max(0, SKILL_STUB_MAX - t.length), 0);
-    const bothAtCap = b.prompt + estimateTokens(growth / DATA_CHARS_PER_TOKEN, run.key) + MIN_REPLY;
-    expect(bothAtCap, `both skills' stubs at the cap: ${n(bothAtCap)} tokens with MIN_REPLY, in a window of ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
+    // Both skills' cores grown to their cap (SKILL_CORE_MAX, readings/compact.ts)
+    // still leave the largest request MIN_REPLY. (Before the skill cores, two
+    // skills gated at the cap needed more than 32k: review finding P5.3b,
+    // 2026-10-24.)
+    const growth = LARGEST.skills.reduce((sum, name) => sum + Math.max(0, SKILL_CORE_MAX - allSkills().find((s) => s.name === name)!.core.length), 0);
+    const bothAtCap = b.prompt + estimateTokens(growth / MARKDOWN_CHARS_PER_TOKEN, run.key) + MIN_REPLY;
+    expect(bothAtCap, `both skills' cores at the cap: ${n(bothAtCap)} tokens with MIN_REPLY, in a window of ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
     // No ceiling of its own: the window-fit checks above bound this prompt
     // more tightly than any ceiling would.
-    columns.push({ head: ["LM Studio at 32k", "after compaction"], b, reserve: REPLY_RESERVE });
+    columns.push({ head: ["LM Studio at 32k", "nothing shortened"], b, reserve: REPLY_RESERVE });
     notes.push(
-      `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): every request fits with MIN_REPLY free after the loop's own compaction, so the guard shortens nothing more. ` +
+      `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): every request fits with MIN_REPLY free, and nothing is shortened. ` +
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
-        `On the last request both skills read arrive as stubs of at most ${n(Math.max(...bodies.map((t) => t.length)))} characters; ` +
-        `the reference page ${page.every(isCompacted) ? "shortened" : "whole"}. ` +
-        `Both skills' stubs at the cap (${n(SKILL_STUB_MAX)} characters each) leave ${n(WINDOW - bothAtCap)} to spare past MIN_REPLY.`,
+        `Both skills' cores at the cap (${n(SKILL_CORE_MAX)} characters each) leave ${n(WINDOW - bothAtCap)} to spare past MIN_REPLY.`,
     );
   }, TURN_TIMEOUT);
 });

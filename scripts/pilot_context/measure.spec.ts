@@ -37,6 +37,7 @@ import {
   baseTokens,
   DATA_CHARS_PER_TOKEN,
   estimateTokens,
+  MARKDOWN_CHARS_PER_TOKEN,
   PROSE_CHARS_PER_TOKEN,
   REPLY_RESERVE,
   resetTokenState,
@@ -93,9 +94,8 @@ const KEY = "measure|uncalibrated"; // never calibrated: the starting rates
 
 const prose = (text: string): number => text.length / PROSE_CHARS_PER_TOKEN;
 const data = (text: string): number => text.length / DATA_CHARS_PER_TOKEN;
-// read_skill's Markdown at the rate the design proposes (C6, docs/pilot-context-design.md §5.7): 3.0 characters a token.
-// Not the guard's rate today (the data rate, 1.4); shown beside it.
-const MARKDOWN_CHARS_PER_TOKEN = 3.0;
+// read_skill's Markdown counts at MARKDOWN_CHARS_PER_TOKEN, 3.0 (C6, THY-63 R5), as the guard counts it; the data
+// rate it counted at before R5 (1.4) is shown beside it.
 const markdown = (chars: number): number => chars / MARKDOWN_CHARS_PER_TOKEN;
 const MD_RATE = MARKDOWN_CHARS_PER_TOKEN.toFixed(1);
 // A tool result as the guard counts it: the data rate, and its rows of bare values (a column table's, line_profile's points) at TABLE_CHARS_PER_TOKEN.
@@ -109,7 +109,7 @@ interface Component {
   group: string;
   name: string;
   arm: "B" | "C" | "both";
-  rate: "prose" | "data" | "tools" | "message";
+  rate: "prose" | "data" | "markdown" | "tools" | "message";
   chars: number;
   est: number;
   text: string;
@@ -324,37 +324,37 @@ describe("3. the opening messages", () => {
 describe("4. the skills", () => {
   it("each skill and reference page as read_skill returns it", () => {
     say(
-      `## 4. Skills (read_skill results count at the data rate, 1.4, as every tool result does; at ${MD_RATE} characters a token, C6, beside it)`,
+      `## 4. Skills (read_skill results count at ${MD_RATE} characters a token, C6; at the data rate, 1.4, as before R5, beside it)`,
       "",
     );
     const rows: (string | number)[][] = [];
-    const row = (what: string, text: string, stub = "", gates = "") => rows.push([what, n(text.length), n(data(text)), n(markdown(text.length)), stub, gates]);
+    const row = (what: string, text: string, stub = "", gates = "") => rows.push([what, n(text.length), n(markdown(text.length)), n(data(text)), stub, gates]);
     for (const s of allSkills()) {
       // The core, as read_skill returns it by default (THY-63 R4), and its `## Gates` section.
       const body = readSkill(s.name);
       const at = gatesOf(body);
-      add({ group: "skill", name: s.name, arm: "B", rate: "data", est: data(body), text: body });
+      add({ group: "skill", name: s.name, arm: "B", rate: "markdown", est: markdown(body.length), text: body });
       row(s.name, body, n(shorten(body).length), at ? n(body.slice(at.start, at.end).trimEnd().length) : "none");
       if (s.details) {
         const details = readSkill(s.name, undefined, DETAILS);
-        add({ group: "skill.details", name: `${s.name} › ${DETAILS}`, arm: "B", rate: "data", est: data(details), text: details });
+        add({ group: "skill.details", name: `${s.name} › ${DETAILS}`, arm: "B", rate: "markdown", est: markdown(details.length), text: details });
         row(`  › ${DETAILS} (on request${details.includes("[The section continues") ? ", first part" : ""}; ${n(s.details.length)} characters in all)`, details);
       }
       for (const r of s.references) {
         const page = readSkill(s.name, r.name);
-        add({ group: "skill.reference", name: `${s.name} › ${r.name}`, arm: "B", rate: "data", est: data(page), text: page });
+        add({ group: "skill.reference", name: `${s.name} › ${r.name}`, arm: "B", rate: "markdown", est: markdown(page.length), text: page });
         row(`  › ${r.name} (${n(r.text.length)} characters; ${page.includes("Sections (read one") ? "its index" : "whole"})`, page);
         const largest = headingsOf(r.text)
           .map((h) => readSkill(s.name, r.name, h.heading))
           .sort((a, b) => b.length - a.length)[0];
         if (largest) {
-          add({ group: "skill.reference.section", name: `${s.name} › ${r.name} › largest section`, arm: "B", rate: "data", est: data(largest), text: largest });
+          add({ group: "skill.reference.section", name: `${s.name} › ${r.name} › largest section`, arm: "B", rate: "markdown", est: markdown(largest.length), text: largest });
           row(`    › its largest section read`, largest);
         }
       }
     }
     table(
-      ["skill / reference", "chars", "est. tokens (data rate, as counted)", `est. tokens (${MD_RATE} a token)`, "shortened stub chars", "`## Gates` chars"],
+      ["skill / reference", "chars", `est. tokens (${MD_RATE} a token, as counted)`, "est. tokens (data rate, before R5)", "shortened stub chars", "`## Gates` chars"],
       rows,
     );
     say(`A reference page or a section is read at most ${n(REFERENCE_MAX_CHARS)} characters at once (a long page by its index of sections, a long section by part).`, "");
@@ -583,9 +583,9 @@ function parts(s: Sent, opening: number) {
     } else p.results += t;
   });
   const total = estimateTokens(baseTokens(s.messages, s.tools), KEY);
-  // The same request with read_skill's Markdown at 3.0 characters a token (C6): its results' data-rate tokens swapped.
-  const atMarkdown = total - data("x".repeat(skillChars)) + markdown(skillChars);
-  return { ...p, total, atMarkdown };
+  // The same request with read_skill's Markdown at the data rate, as counted before R5 (C6): its results' tokens swapped.
+  const atData = total - markdown(skillChars) + data("x".repeat(skillChars));
+  return { ...p, total, atData };
 }
 
 describe("7. a reply's requests, as they grow", () => {
@@ -599,7 +599,7 @@ describe("7. a reply's requests, as they grow", () => {
           const p = parts(s, opening);
           const c = calls[i - 1];
           const what = i === 0 ? "(opening)" : c ? `${c.name}${c.args.reference ? " ref" : ""}${c.args.section ? " section" : ""}` : "answer";
-          return [i + 1, what, s.tools?.length ?? 0, n(p.system), n(p.tools), n(p.opening), n(p.skills), n(p.results), n(p.total), n(p.total + REPLY_RESERVE), n(p.atMarkdown + REPLY_RESERVE)];
+          return [i + 1, what, s.tools?.length ?? 0, n(p.system), n(p.tools), n(p.opening), n(p.skills), n(p.results), n(p.total), n(p.total + REPLY_RESERVE), n(p.atData + REPLY_RESERVE)];
         });
         if (label.startsWith("budget")) {
           const last = sent[sent.length - 1];
@@ -607,13 +607,13 @@ describe("7. a reply's requests, as they grow", () => {
           requests.push({ label: `budget worst, last request, ${mode}`, est: parts(last, opening).total, messages: last.messages, tools: last.tools });
         }
         say(`${label}, ${mode}:`, "");
-        table(["req", "after call", "tools", "system", "tools", "opening", "skills", "results", "prompt", "+ reply reserve", `+ reserve, skills at ${MD_RATE}`], rows);
+        table(["req", "after call", "tools", "system", "tools", "opening", "skills", "results", "prompt", "+ reply reserve", "+ reserve, skills at 1.4 (before R5)"], rows);
         const peak = Math.max(...sent.map((s) => parts(s, opening).total));
-        const peakMd = Math.max(...sent.map((s) => parts(s, opening).atMarkdown));
+        const peakData = Math.max(...sent.map((s) => parts(s, opening).atData));
         const avg = sent.reduce((a, s) => a + parts(s, opening).total, 0) / sent.length;
         say(
           `Peak ${n(peak)} (+${n(REPLY_RESERVE)} = ${n(peak + REPLY_RESERVE)} against ${n(WINDOW)}); mean request ${n(avg)}; ${sent.length} requests. ` +
-            `With read_skill's Markdown at ${MD_RATE} characters a token: peak ${n(peakMd)} (+ reserve ${n(peakMd + REPLY_RESERVE)}).`,
+            `With read_skill's Markdown at the data rate, as before R5: peak ${n(peakData)} (+ reserve ${n(peakData + REPLY_RESERVE)}).`,
           "",
         );
       }
@@ -632,7 +632,7 @@ describe("7. a reply's requests, as they grow", () => {
     const checks = method.filter((c) => c.name !== "read_skill");
     const largest = async (baseUrl: string, calls: Call[], budget?: number): Promise<[number, number]> => {
       const all = (await drive(baseUrl, calls, budget)).map((s) => parts(s, opening));
-      return [Math.max(...all.map((p) => p.total)), Math.max(...all.map((p) => p.atMarkdown))];
+      return [Math.max(...all.map((p) => p.total)), Math.max(...all.map((p) => p.atData))];
     };
     const measures: [string, [number, number], number][] = [
       ["console (Claude, every tool), method order", await largest("https://api.anthropic.com", method), 64_000],
@@ -642,26 +642,24 @@ describe("7. a reply's requests, as they grow", () => {
       ["arm B local, skills read last, after compaction", await largest(OLLAMA, [...checks, ...reads]), REPLY_RESERVE],
     ];
     say(
-      `The budget test's largest prompts (tokenBudget.test.ts holds each to a ceiling), and the same with read_skill's Markdown at ${MD_RATE} characters a token (C6; ` +
-        "compaction still triggers on the guard's count):",
+      "The budget test's largest prompts (tokenBudget.test.ts holds each to a ceiling), and the same with read_skill's Markdown at the data rate, " +
+        "as counted before R5 (compaction still triggers on the count as it is):",
       "",
     );
     table(
-      ["turn", "largest prompt", "+ reply reserve", `largest, skills at ${MD_RATE}`, "+ reply reserve"],
-      measures.map(([what, [p, md], reserve]) => [what, n(p), n(p + reserve), n(md), n(md + reserve)]),
+      ["turn", "largest prompt", "+ reply reserve", "largest, skills at 1.4", "+ reply reserve"],
+      measures.map(([what, [p, d], reserve]) => [what, n(p), n(p + reserve), n(d), n(d + reserve)]),
     );
     const target = Math.floor(0.8 * WINDOW);
     const headroom = (worst: number): string =>
       `${n(worst)} with the reply reserve, against ${n(target)} (20 % under ${n(WINDOW)}): ${worst > target ? `over by ${n(worst - target)}` : `met, ${n(target - worst)} to spare`}`;
     const worstAfter = Math.max(measures[3][1][0], measures[4][1][0]) + REPLY_RESERVE;
-    const worstAfterMd = Math.max(measures[3][1][1], measures[4][1][1]) + REPLY_RESERVE;
-    const wholeMd = measures[1][1][1] + REPLY_RESERVE;
+    const whole = measures[1][1][0] + REPLY_RESERVE;
     say(
-      `Headroom target (tracked): the worst local turn after compaction, ${headroom(worstAfter)}. ` +
-        `With the skills at ${MD_RATE} characters a token: ${headroom(worstAfterMd)}.`,
+      `Headroom target (tracked): the worst local turn after compaction, ${headroom(worstAfter)}.`,
       "",
-      `Stretch goal (the worst local turn without compaction fits ${n(WINDOW)}): ${n(measures[1][1][0] + REPLY_RESERVE)} with the reply reserve; ` +
-        `with the skills at ${MD_RATE} characters a token, ${n(wholeMd)} (${wholeMd > WINDOW ? `over by ${n(wholeMd - WINDOW)}` : `fits, ${n(WINDOW - wholeMd)} left`}).`,
+      `Stretch goal (the worst local turn without compaction fits ${n(WINDOW)}): ${n(whole)} with the reply reserve ` +
+        `(${whole > WINDOW ? `over by ${n(whole - WINDOW)}` : `fits, ${n(WINDOW - whole)} left`}).`,
       "",
     );
   });
