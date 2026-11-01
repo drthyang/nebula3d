@@ -165,6 +165,110 @@ nearly every cell is neither removed nor counted by the ring check. The
 diagnostics list each subtracted shell with its verdict, and the rest under
 `rejected_shells`.
 
+**Al lines: judged again, doublets together, in each cell's Al frame**
+(2026-11). On a measured *mmm* volume (local, unpublished) the removal left
+two kinds of Al ring. The 331 line at 6.79 Å⁻¹, 0.18 Å⁻¹ from the broad 420
+(FWHM 0.15), had no clean flank on that side and was never judged. And every
+line from 8.8 Å⁻¹ up (440, 531, 600, 620, 533, 622), measured in 34 to 71 of
+the 128 direction cells, read an isotropy of −1.2 to 0.01 and was rejected.
+That was not noise. In each direction cell the Al lines sit at
+q_line × (1 + s), one scale s per cell for every line: the line's place moves
+with direction in proportion to its |Q|, as for Al that is not where the
+sample is. On that volume s reaches ±1 % (95th percentile 0.0102), ±0.1 Å⁻¹ at
+9 Å⁻¹, more than the lines' width. The core cut at the all-direction
+profile's |Q| missed the line in a minority of cells and the flank caught it,
+so those cells read negative heights. The scale a cell reads from the lines
+at 2.7 to 8.1 Å⁻¹ predicts its lines at 9 to 10 Å⁻¹ to within 0.017 Å⁻¹ (the
+per-cell scatter is 0.0017 of q). Aligned by it, the stacked lines sharpen,
+and the same high-|Q| lines read an isotropy of 0.48 to 0.90.
+
+So, after the strict verdicts and the lattice fit, the candidates left on a
+fitted Al line are judged again (`ring_isotropy.judge_al_lines`):
+
+- **Only on a confirmed lattice.** At least three confirmed rings must sit on
+  distinct Al lines. The lattice match takes 0.12 Å⁻¹ either side of each
+  line, so one ring always sits near some Al line, but three at one lattice
+  parameter do not by chance.
+- **On a line, as wide as one.** A candidate is admitted when its centre is
+  within half its FWHM of a fitted line (or 0.04 Å⁻¹), and it is no wider than
+  twice the Al width there. The Al width is the confirmed Al rings' FWHM, a
+  line through them over |Q|, kept within their range.
+- **In each cell's Al frame.** Each cell's |Q| is divided by 1 + s
+  (`ring_isotropy.al_cell_scales`). Each confirmed Al ring that is clear of
+  other lines is placed in every cell by a matched peak within ±2 % of its
+  |Q|, counting where it stands 3σ. A cell with three rings placed or more
+  takes their weighted median over q. That scale is then shrunk towards 0 by
+  its error, as far as the scales' spread over the cells is error and not the
+  cells' own, so a frame read from noise aligns nothing. On the measured
+  volume: 6 rings, 128 cells, reliability 0.98. On a synthetic volume whose
+  lines do not move: no frame.
+- **Doublets as one.** Lines too close for a clean flank between them (closer
+  than two Al widths and two bins) are judged as one cluster. Its core is
+  every line's ±0.75 × the Al width and its flanks lie outside the cluster;
+  a confirmed Al ring among them joins it. The cluster's candidates are
+  confirmed or rejected together, and each line must rise on its own: one
+  peak per line, fitted by least squares in every cell, with the same
+  isotropy asked of its amplitude.
+- **The same rule, a lower noise floor.** The isotropy is the strict rule's:
+  0.15 of the median height in 90 % of the measured cells. So are the
+  curvature test and the retry clear of the confirmed rings when no clean
+  flank is found. The noise floor is 2 against 3. On pure noise (independent
+  bins, cells paired by inversion, 20 000 draws) a shell is falsely confirmed
+  with probability 6e-4 on 16 measured cells (the minimum), 2.5e-4 on 24, and
+  never on 34 or more (at 3: 1e-4, 5e-5, never). Each candidate has already
+  risen 6σ above the across-stack noise to be detected. For a textured ring
+  at a peak signal-to-noise of 1.5 per bin on 34 cells, the lower floor
+  raises the confirmation rate from 0.24 to 0.39. On the measured volume it
+  decided no line (all read 6.4 or more).
+- A confirmed candidate is subtracted with the Al width where it is wider
+  than its own, as for the 9.23 Å⁻¹ shell, detected at 0.05 Å⁻¹.
+
+**Why the direction share stays at 90 %.** The Al prior locates a line; it
+does not show that what rises there is the line. A diffuse feature of the
+crystal's at an Al |Q| is told apart by the same evidence as anywhere else:
+it rises in some directions only. It is also told apart by its width, and by
+the frame, where a feature fixed in |Q| sits off the core wherever the lines
+move. A lower share gives that up. Take synthetic diffuse at the Al 400 |Q|,
+present where |cos θ| < 0.6: in the Al frame it reads 0.39 at a 75 % share
+and is confirmed, and 0.007 at 90 %. Simulated features present in 70 % and
+80 % of the directions pass a 75 % share 43 % and 87 % of the time, and the
+90 % share 1.5 % and 11 %.
+
+**Shells judged not rings are spared.** A confirmed ring's envelope reaches
+3 × its FWHM. It took 57 % of the synthetic diffuse at the Al 620 |Q| as
+excess, beside a confirmed 533/622 doublet, after the test had rejected that
+diffuse. The cores of the shells judged and rejected (±0.75 × FWHM, tapered
+over as much again) are now taken out of every envelope. The exceptions: a
+confirmed ring's own core, and the shells left unjudged, which may be rings.
+
+*On the measured volume* (the stage's defaults, edge trimmed by one voxel),
+the removed share went from 13.2 % to 15.6 % of |I|. The table gives each
+line's integrated excess over the all-direction median profile that is
+left, as a share of the raw:
+
+| Lines | Left before | Left now |
+| --- | ---: | ---: |
+| 331 + 420 (6.78, 6.95 Å⁻¹; the 420's envelope took most of the 331 before) | 0.02 | 0.01 |
+| 440 (8.80) | 1.00 | 0.00 |
+| 531 + 600 (9.20, 9.33) | 1.00 | 0.02 |
+| 620 (9.83) | 0.99 | 0.00 |
+| 533 + 622 (10.20, 10.31) | 0.98 | not removed |
+
+The 533/622 doublet, in 34 cells at the coverage edge, is rejected: the weak
+533 line's own amplitude has its 10th percentile at −0.35 of its median, so
+the pair stays. Five rings of another phase come out as before, to the digit
+of the profile: the strict rule removes the strongest of them, and the Al
+rule touches none.
+
+Limits: an Al line the detection misses is not judged, and its neighbour may
+then fail on a filled flank. Rings of any other phase are judged by the
+strict rule alone. The diagnostics (schema 3) record, for each shell, its Al
+match (`match`: phase, hkl, |Q|) and, in its verdict, the rule that judged it
+(`rule: "al"`), the criteria it failed (`fails`: height, isotropy, snr,
+curve, member) and a cluster's lines. A rejected shell's first verdict is kept
+as `strict`. The top level records the frame (`al_frame`: rings, cells,
+95th-percentile |s|, reliability) and the Al rule (`confirmation.al_rule`).
+
 **Bragg peaks.** A Bragg peak covers one sector over a few planes, a minority of
 the pooling neighbourhood, so the median rejects it. Pooling over the stack
 alone is not enough at integer H, where the peak spans most of the plane window:
@@ -215,7 +319,8 @@ Knobs (`RingParams`): `pooled_sectors` (72), `pooled_window_deg` (5),
 FWHM and `slice_axis` the stack axis. `PooledRingConfig` also has
 `pool_target_count` (12) and `al_prior` (on). `pooled_confirm_rings` (on)
 subtracts only confirmed rings, by `pooled_ring_direction_share` (0.9) and
-`pooled_ring_height_share` (0.15). The diagnostics sidecar
+`pooled_ring_height_share` (0.15); `IsotropyConfig.al_min_snr` (2) and
+`al_width_ratio` (2) set the Al lines' noise floor and widest candidate. The diagnostics sidecar
 (`*_ringremoved_diagnostics.json`) lists each shell with its detection route
 and its verdict.
 

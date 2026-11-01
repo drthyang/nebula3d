@@ -48,6 +48,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
     "verdict": "needs attention",
     "criterion": "No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions).",
     "headline": "ring ratio 0.23 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.125 (0kl, 3.2 Å⁻¹)",
+    "stage_shells": "removed 1; left 1: 3.93 isotropy",
     "mean_ring_energy_ratio": 0.23,
     "max_over_subtraction_fraction": 0,
     "max_ring_dent": 0,

@@ -201,6 +201,8 @@ class RingDiagnosticsOut(BaseModel):
     has_diagnostics: bool
     status: str | None = None
     unconfirmed_at_grid: UnconfirmedRingsOut | None = None
+    # The shells removed and left, in one line (preprocessing.pooled_rings.shell_summary).
+    summary: str | None = None
 
 
 class ShellFloorsOut(BaseModel):

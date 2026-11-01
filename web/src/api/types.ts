@@ -154,6 +154,10 @@ export interface RingDiagnostics {
     notice: string; // what the run log says of them, the remedy included
     q_centers: number[]; // their |Q| (Å⁻¹)
   } | null;
+  // The shells it removed and left, in one line: the Al lattice, the count
+  // removed (of them on Al lines), each shell left with its Al line and why
+  // (nebula3d.preprocessing.pooled_rings.shell_summary); null for another model.
+  summary: string | null;
 }
 
 export interface UbCheck {

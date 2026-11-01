@@ -309,7 +309,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## assess_stage {}
 
-3277 characters sent.
+3327 characters sent.
 
 ```json
 {
@@ -317,6 +317,7 @@ References of this skill (read one with read_skill and `reference`):
     "verdict": "needs attention",
     "criterion": "No powder ring left above, or dented below, three times its plane's noise. A bump is a powder ring only if it rises in nearly every direction over the sphere (at least 0.15 of its median height in 90 % of directions): the crystal's own scattering at that |Q| rises in some directions only.",
     "headline": "ring ratio 0.23 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.125 (0kl, 3.2 Å⁻¹)",
+    "stage_shells": "removed 1; left 1: 3.93 isotropy",
     "mean_ring_energy_ratio": 0.23,
     "max_over_subtraction_fraction": 0,
     "max_ring_dent": 0,
@@ -1910,6 +1911,7 @@ A local model's request past its soft budget has its older results shortened (`c
   "rings": {
     "verdict": "needs attention",
     "headline": "ring ratio 0.23 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.125 (0kl, 3.2 Å⁻¹)",
+    "stage_shells": "removed 1; left 1: 3.93 isotropy",
     "mean_ring_energy_ratio": 0.23,
     "max_over_subtraction_fraction": 0,
     "max_ring_dent": 0,
