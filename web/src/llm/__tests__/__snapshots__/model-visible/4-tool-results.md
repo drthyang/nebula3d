@@ -1520,7 +1520,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## configure_settings {}
 
-1570 characters sent.
+1625 characters sent.
 
 ```json
 {
@@ -1568,6 +1568,8 @@ References of this skill (read one with read_skill and `reference`):
     "punchQB": "(default)",
     "punchQC": "(default)",
     "punchFitUnconstrained": false,
+    "punchRotationAware": true,
+    "punchTailSweep": "(default)",
     "punchMargin": "(default)",
     "incidentBeamQA": "(default)",
     "incidentBeamQB": "(default)",
