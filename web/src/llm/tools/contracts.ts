@@ -532,6 +532,33 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     reading: str,
   }),
 
+  compare_laue_classes: obj({
+    columns: str,
+    // Each candidate class: R_int and its ratio to the noise floor on [every measured voxel, the diffuse].
+    classes: arr(
+      obj({
+        class: str,
+        ops: num,
+        contains: optional(arr(str)),
+        r_int: tuple(maybeNum, maybeNum),
+        x_noise: tuple(maybeNum, maybeNum),
+        orbits: num,
+        verdict: str,
+      }),
+    ),
+    no_symmetry: obj({ r_int: tuple(maybeNum, maybeNum), x_noise: tuple(maybeNum, maybeNum) }),
+    refused: arr(str),
+    suggestion: maybeStr,
+    suggested_by: obj({ all: maybeStr, diffuse: maybeStr }),
+    why: str,
+    flag: maybeStr,
+    rule: str,
+    diffuse_mask: str,
+    edge_trim: num,
+    notes: optional(arr(str)),
+    limits: str,
+  }),
+
   radial_profile: obj({
     cut: str,
     q_unit: str,

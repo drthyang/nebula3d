@@ -50,10 +50,13 @@ inward. Check these first, in this order, and say what each check found.
      set them unasked.
 4. **Edge and unmeasured voxels.** Voxels on the edge of the coverage are
    barely covered and can sit orders of magnitude above the interior; the
-   pipeline trims them at load (`edge_trim`). A volume that is regridded or
-   symmetrised outside the pipeline must be trimmed first. Unmeasured voxels
-   stay masked. The backfill fills punched holes and gaps the measured data
-   enclose, not the open coverage.
+   pipeline trims them at load (`edge_trim`; the page's `edgeTrim`, changed
+   only when the user names it). A volume that is regridded or symmetrised
+   outside the pipeline must be trimmed first. Unmeasured voxels stay masked.
+   The backfill fills punched holes and gaps the measured data enclose, not
+   the open coverage. Before proposing a Laue class for the symmetry average,
+   which fills gaps from equivalents, run `compare_laue_classes`: give its
+   suggestion, rule and flag, and that twinning can hide a lower class.
 5. **Powder rings.** `assess_stage` for the rings, then `radial_profile`. A bump
    is a powder ring only if it rises in nearly every direction over the sphere,
    judged in 3D (`shells_judged`; the rule: at least 0.15 of its median height

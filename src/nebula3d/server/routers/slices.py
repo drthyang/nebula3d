@@ -5,8 +5,11 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
+from nebula3d.server import laue
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import (
     StageStatus,
@@ -15,9 +18,13 @@ from nebula3d.server.datasets import (
     resolve_volume,
 )
 from nebula3d.server.deps import get_config
+from nebula3d.server.params import build_params
 from nebula3d.server.schemas import (
     CoverageOut,
     LatticeOut,
+    LaueCompareIn,
+    LaueCompareOut,
+    LaueProgressOut,
     RingIsotropyOut,
     ShellFloorsOut,
     TextureOut,
@@ -104,6 +111,40 @@ def ub_check(
     except ValueError as exc:  # too few peaks to fit
         raise HTTPException(422, str(exc)) from exc
     return UbCheckOut(id=volume_id, **out)
+
+
+@router.post("/{volume_id}/laue-compare", response_model=LaueCompareOut)
+def laue_compare(
+    volume_id: str, req: LaueCompareIn, cfg: ServerConfig = Depends(get_config),
+) -> LaueCompareOut:
+    """Every candidate Laue class compared by R_int, on all measured voxels
+    and on the diffuse, with the rule's suggestion (analysis.laue_compare).
+    The volume is read as the symmetry average reads its raw input: the run's
+    edge trim first.  A volume symmetrized already is refused (422).  Poll
+    the progress under ``req.token`` (``/{volume_id}/laue-compare/progress``)."""
+    stage = _resolve_hkl(cfg, volume_id)
+    try:
+        params = build_params(SimpleNamespace(flatten_enabled=True, params=req.params))  # type: ignore[arg-type]
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    def progress(fraction: float, message: str) -> None:
+        laue.set_progress(req.token, fraction, message)
+
+    laue.set_progress(req.token, 0.0, "starting")
+    try:
+        out = laue.laue_compare(stage.path, params, extra=req.extra, progress=progress)
+    except ValueError as exc:  # symmetrized already, or a grid nothing maps
+        raise HTTPException(422, str(exc)) from exc
+    finally:
+        laue.drop_progress(req.token)
+    return LaueCompareOut(id=volume_id, **out)
+
+
+@router.get("/{volume_id}/laue-compare/progress", response_model=LaueProgressOut)
+def laue_compare_progress(volume_id: str, token: str = Query(...)) -> LaueProgressOut:
+    """How far the comparison started under *token* has come."""
+    return LaueProgressOut(**laue.progress_of(token))
 
 
 def parse_shells(q: str, fwhm: str) -> list[tuple[float, float]]:

@@ -21,7 +21,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { ORIGIN_EXCLUDED } from "../../components/dpdfLevels";
 import { FORMS, kVectors, MAX_ORDER, MODULATION_DEFAULTS } from "../../state/modulation";
-import { STAGES, usePipelineStore } from "../../state/pipelineStore";
+import { LAUE_RULE_DELTA, LAUE_RULE_Z } from "../../state/laueCompare";
+import { DEFAULT_EDGE_TRIM, EDGE_TRIM_LAYERS, STAGES, usePipelineStore } from "../../state/pipelineStore";
 import { bridgeConfig, nodeModules } from "../evals/devData/bridgeWorker";
 import { GRID_TOO_COARSE, isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
@@ -129,7 +130,7 @@ const SCRIPT = String.raw`
 import dataclasses, inspect, json, sys
 import numpy as np
 from nebula3d import modulation, pipeline
-from nebula3d.analysis import bragg_fill_texture as ft, coverage, dpdf_features, ub_refine
+from nebula3d.analysis import bragg_fill_texture as ft, coverage, dpdf_features, laue_compare, ub_refine
 from nebula3d.analysis.delta_pdf import _prepare_forward, compute_delta_pdf
 from nebula3d.preprocessing import ring_isotropy
 from nebula3d.server import tuning
@@ -173,6 +174,8 @@ print(json.dumps({
     "origin_excluded": dpdf_features.ORIGIN_EXCLUDED,
     "stages": list(pipeline.STAGES),
     "tune_stages": list(tuning.TUNE_STAGES),
+    "laue_rule": [laue_compare.DELTA, laue_compare.Z],
+    "edge_trim": p.edge_trim,
     "defaults": {k: eval(expr, {"p": p}) for k, expr in args["defaults"].items()},
     "modulation": {
         "defaults": {f.name: f.default for f in dataclasses.fields(modulation.Modulation) if f.name in ("order", "form", "half_width")},
@@ -222,6 +225,8 @@ type Py = {
   origin_excluded: number;
   stages: string[];
   tune_stages: string[];
+  laue_rule: [number, number];
+  edge_trim: number;
   defaults: Record<string, unknown>;
   modulation: { defaults: Record<"order" | "form" | "half_width", unknown>; half_width: number; max_order: number; forms: string[]; reads_k: boolean[] };
 };
@@ -248,6 +253,18 @@ interface Pin {
 }
 
 const PINS: Pin[] = [
+  {
+    name: "the Laue comparison's rule: its tolerance and standard errors, as the page's help states them",
+    ts: "LAUE_RULE_DELTA and LAUE_RULE_Z, state/laueCompare.ts",
+    py: "DELTA and Z, nebula3d.analysis.laue_compare",
+    values: () => [[LAUE_RULE_DELTA, LAUE_RULE_Z], py.laue_rule],
+  },
+  {
+    name: "the raw edge trim the backend takes when the page sends none (a blank field)",
+    ts: "DEFAULT_EDGE_TRIM, state/pipelineStore.ts (one of EDGE_TRIM_LAYERS)",
+    py: "PipelineParams.edge_trim, nebula3d.pipeline",
+    values: () => [[DEFAULT_EDGE_TRIM, (EDGE_TRIM_LAYERS as readonly number[]).includes(DEFAULT_EDGE_TRIM)], [py.edge_trim, true]],
+  },
   {
     name: "the window's weight on unmeasured space (1e-3)",
     ts: "OPEN_WEIGHT_OK, metrics/coverage.ts",

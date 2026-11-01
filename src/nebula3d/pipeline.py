@@ -127,6 +127,7 @@ __all__ = [
     "PipelinePaths",
     "STAGES",
     "default_modulation",
+    "declared_group",
     "resolve_symmetry_average",
     "symmetry_average_group",
     "symmetrize",
@@ -1072,7 +1073,7 @@ def symmetrize(vol: HKLVolume, params: SymmetryAverageParams | None = None, *,
     return vol
 
 
-def _declared_group(path: str | Path) -> tuple[str, int] | None:
+def declared_group(path: str | Path) -> tuple[str, int] | None:
     """The name and order of the symmetry the file *path* declares it was
     averaged over (its ``symmetry`` and ``symmetry_ops``), or None when it
     declares none or is not there.  The identity alone (an unsymmetrized
@@ -1116,7 +1117,7 @@ def resolve_symmetry_average(
     """
     if not p.symmetry_average_enabled or p.symmetry_average.reaverage:
         return p, None
-    declared = _declared_group(input_path)
+    declared = declared_group(input_path)
     if declared is None:
         return p, None
     label, order = declared

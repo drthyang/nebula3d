@@ -234,6 +234,7 @@ describe("the switch", () => {
       "dpdf_peaks",
       "grain_check",
       "ub_check",
+      "compare_laue_classes",
       "radial_profile",
       "line_profile",
       "consistency_details",

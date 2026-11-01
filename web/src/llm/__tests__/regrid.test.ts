@@ -31,6 +31,7 @@ const api = vi.hoisted(() => ({
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
   fetchUbCheck: vi.fn(),
+  compareLaueClasses: vi.fn(),
   fetchVolumeCoverage: vi.fn(),
   fetchVolumeTexture: vi.fn(),
   regridDataset: vi.fn(),

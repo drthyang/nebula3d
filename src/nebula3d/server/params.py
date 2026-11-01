@@ -91,7 +91,12 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
     if sp.backfill_enabled is not None:
         p.backfill_enabled = bool(sp.backfill_enabled)
     if sp.edge_trim is not None:
-        p.edge_trim = int(sp.edge_trim)
+        # Voxel layers off the raw coverage edge: the NeXus Viewer's "Edge
+        # erosion r", whose field takes 0 to 10 (the page offers 0 to 3).
+        trim = float(sp.edge_trim)
+        if trim != int(trim) or not 0 <= trim <= 10:
+            raise ValueError(f"edge_trim takes 0 to 10 voxel layers, not {sp.edge_trim!r}")
+        p.edge_trim = int(trim)
     if sp.rings_n_patches is not None:
         p.rings = dataclasses.replace(p.rings, n_patches=sp.rings_n_patches)
     if sp.rings_n_fourier is not None:

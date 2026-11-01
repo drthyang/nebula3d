@@ -12,7 +12,7 @@ const UI_ONLY = /^punch(Slice|Cut)/;
 
 // A blank that is no default: the symmetry average's Laue class is the
 // sample's, and none is chosen until the user chooses one.
-const BLANK: Record<string, string> = { symmetryLaue: "(none chosen: the user's to set)" };
+const BLANK: Record<string, string> = { symmetryLaue: "(none chosen: the user's to set)", edgeTrim: "1 (default)" };
 
 // The facts held in several fields, and those fields.
 const COMPOSITE = SAMPLE_PARAMS.filter((p) => p.fields.length > 1);

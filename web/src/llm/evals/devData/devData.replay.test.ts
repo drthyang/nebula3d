@@ -88,6 +88,7 @@ const BACKEND_CALLS: Record<string, Record<string, unknown>> = {
   dpdf_peaks: {},
   grain_check: {},
   ub_check: {},
+  compare_laue_classes: {},
   radial_profile: {},
   line_profile: { stage: "flattened", along: "H", at: { K: 0, L: 0 } },
   bragg_peaks: {},

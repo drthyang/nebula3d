@@ -49,7 +49,10 @@ export type WorkerRequest =
       tuningRun: string | null;
       tuningTrial: string | null;
     }
-  | { id: number; type: "json_call"; method: string; args: unknown[] }
+  // `progress`: the call reports its progress, as a run does: the bridge
+  // method takes a (fraction, message) callback after its arguments, and each
+  // call of it is posted as a progress event of that stage.
+  | { id: number; type: "json_call"; method: string; args: unknown[]; progress?: string }
   | { id: number; type: "slice_call"; method: string; args: unknown[] };
 
 // ---------------------------------------------------------------------------
@@ -210,7 +213,15 @@ async function dispatch(req: WorkerRequest): Promise<void> {
       }
 
       case "json_call": {
-        const result = (bridge![req.method] as (...a: unknown[]) => string)(...req.args);
+        const args = [...req.args];
+        const stage = req.progress;
+        if (stage) {
+          args.push((fraction: number, message: string): void => {
+            post({ id: null, type: "progress", stage, status: "progress", fraction, message });
+            heap?.report();
+          });
+        }
+        const result = (bridge![req.method] as (...a: unknown[]) => string)(...args);
         reply(result);
         break;
       }

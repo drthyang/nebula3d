@@ -42,7 +42,8 @@ type ModelOf = Pick<PipelineConfig, "ringModel" | "punchFrame">;
 export function basicFields(stage: SectionStage, s: ModelOf): Key[] {
   switch (stage) {
     case "symmetry_average":
-      return ["symmetryLaue"];
+      // The raw edge trim lives here too: it applies whether or not the stage is on.
+      return ["edgeTrim", "symmetryLaue"];
     case "rings":
       return s.ringModel === "global_v2"
         ? ["ringModel", "ringGlobalMaterial", "ringGlobalSubtraction"]

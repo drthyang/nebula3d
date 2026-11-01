@@ -1,6 +1,6 @@
 # The inference arm C does not read
 
-Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 101 spans in 31 texts or sets: reading 29, evidence 51, remedy 21.
+Every span of the text the model reads that is inference (inference.ts), where it is written: which reading or check to use for a conclusion (reading), what a value or a pattern is evidence of (evidence), or what a finding calls for, a change, a check to run next or what to report (remedy). With the skills on (the console, arm B) the text is read whole; with them off (arm C) these spans are left out, and the rest, the definitions, is read as written. A sentence that mixes the two is split at the span; where the definitions left would not read whole, a small connective beside the span gives them the words they need in arm C only. 105 spans in 32 texts or sets: reading 30, evidence 53, remedy 22.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -118,7 +118,7 @@ scientifically cautious; do not overstate certainty from summary statistics.
 
 ## prompts/system.ts: the system prompt, the tools' guidance
 
-27 spans: reading 18, evidence 5, remedy 4.
+28 spans: reading 19, evidence 5, remedy 4.
 
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧, and each connective that reads otherwise in arm C ⟨connective: “as written” → “in arm C”⟩:
 
@@ -187,6 +187,7 @@ or by declaring a modulation; whether the sample has one, and in which form, is 
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps⟦remedy: : say so, and that the orientation needs the unsymmetrised file⟧.⟦evidence:  A relative offset along
 Q that changes with |Q| is not a UB error, whatever the fit returns.⟧
+⟦reading: Before you suggest a Laue class for the symmetry average, call ⟧compare_laue_classes⟨connective: “ and quote its suggestion, rule and flag: the class is the user's to set” → “ compares the Laue classes by R_int”⟩.
 assess_stage pdf gives the back-FFT r and RMS; run_log says what a stage did or why it
 failed. When a change improves one number, check that it did not break another⟦evidence: : a higher
 ΔPDF feature SNR with a lower back-FFT r, or with Qmax past the coverage, is ripple, not
@@ -202,6 +203,16 @@ fills it in from the result. Any other number you write must come from a tool re
 context: the app checks each answer and sends one back that gives a verdict without its tool,
 a number from nowhere, a reference that names nothing, or a verdict the checks contradict.
 Quote the numbers the tools return. Keep tool calls purposeful — a few well-chosen ones.
+```
+
+## tools/index.ts: compare_laue_classes's description
+
+3 spans: evidence 2, remedy 1.
+
+The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
+
+```text
+Which Laue class does the sample have? Compares every Laue class the cell's metric allows (the UB under the symmetry average's 2% check) and whose operations map the grid, by R_int on the raw volume as the symmetry average reads it (the run's edge trim first): Σ|I − ⟨I⟩| / Σ|I| over the orbits measured twice or more, on every measured voxel and on the diffuse (the punch cell's Bragg nodes masked), each also over its noise floor, the R_int counting noise alone gives on the same orbits (x_noise). A class rises against a subgroup when its x_noise exceeds the subgroup's by more than 10% and two standard errors; suggestion is the supported class with the most operations in every reading that can tell the classes apart⟦evidence: , none when even whole |Q| shells (no_symmetry) stay at the noise⟧. flag says when the diffuse supports less than every measured voxel⟦evidence: : averaging over the higher class would impose the Bragg peaks' symmetry on the diffuse⟧. A volume symmetrized already is refused. Seconds on a small volume, a minute or more on a full one.⟦remedy:  Cite its classes, rule and flag when you suggest a Laue class; the class is the user's to set, and update_settings refuses it.⟧
 ```
 
 ## tools/index.ts: consistency_details's description

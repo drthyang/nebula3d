@@ -25,6 +25,7 @@ import { dpdf_contrast } from "./defs/dpdf_contrast";
 import { dpdf_peaks } from "./defs/dpdf_peaks";
 import { grain_check } from "./defs/grain_check";
 import { ub_check } from "./defs/ub_check";
+import { compare_laue_classes } from "./defs/compare_laue_classes";
 import { radial_profile } from "./defs/radial_profile";
 import { line_profile } from "./defs/line_profile";
 import { bragg_peaks } from "./defs/bragg_peaks";
@@ -56,6 +57,7 @@ export const CHAT_TOOLS: ChatTool[] = [
   dpdf_peaks,
   grain_check,
   ub_check,
+  compare_laue_classes,
   radial_profile,
   line_profile,
   bragg_peaks,

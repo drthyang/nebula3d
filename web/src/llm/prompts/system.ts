@@ -173,6 +173,7 @@ ${reading("Asked whether the UB is right, or why the Bragg peaks sit off their n
 the UB to the measured peak centres. On a symmetrised volume it fits only what the symmetry
 keeps${remedy(": say so, and that the orientation needs the unsymmetrised file")}.${evidence(` A relative offset along
 Q that changes with |Q| is not a UB error, whatever the fit returns.`)}
+${reading("Before you suggest a Laue class for the symmetry average, call ")}compare_laue_classes${connective(" and quote its suggestion, rule and flag: the class is the user's to set", " compares the Laue classes by R_int")}.
 assess_stage pdf gives the back-FFT r and RMS; run_log says what a stage did or why it
 failed. When a change improves one number, check that it did not break another${evidence(`: a higher
 ΔPDF feature SNR with a lower back-FFT r, or with Qmax past the coverage, is ripple, not
