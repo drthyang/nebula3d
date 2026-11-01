@@ -44,6 +44,7 @@ describe("touch", () => {
 
   it("says a tap reads values, as no hover can on a touch screen", () => {
     expect(gestureCard({ mac: true, touch: true }).note).toMatch(/tap reads/);
+    expect(gestureCard({ mac: true, touch: true }).note).toMatch(/press and hold/i); // the touch path to every title
   });
 });
 
