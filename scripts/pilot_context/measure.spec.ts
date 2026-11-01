@@ -550,6 +550,33 @@ describe("7. a reply's requests, as they grow", () => {
     const peak = Math.max(...sent.map((s) => parts(s, opening).total));
     say(`LM Studio loaded with 32k, budget worst order: peak ${n(peak)}, ${n(WINDOW - peak)} left for the reply.`, "");
     expect(sent.length).toBeGreaterThan(1);
+
+    // The largest prompts tokenBudget.test.ts holds to its ceilings, and its
+    // tracked headroom target (docs/development.md, "The Pilot's token budget").
+    const method = ORDERS["budget worst (method order)"];
+    const reads = method.filter((c) => c.name === "read_skill");
+    const checks = method.filter((c) => c.name !== "read_skill");
+    const largest = async (baseUrl: string, calls: Call[], budget?: number) =>
+      Math.max(...(await drive(baseUrl, calls, budget)).map((s) => parts(s, opening).total));
+    const measures: [string, number, number][] = [
+      ["console (Claude, every tool), method order", await largest("https://api.anthropic.com", method), 64_000],
+      ["arm B local, before compaction", await largest(OLLAMA, method, Infinity), REPLY_RESERVE],
+      ["arm B local, skills read first, after compaction", await largest(OLLAMA, [...reads, ...checks]), REPLY_RESERVE],
+      ["arm B local, method order, after compaction", await largest(OLLAMA, method), REPLY_RESERVE],
+      ["arm B local, skills read last, after compaction", await largest(OLLAMA, [...checks, ...reads]), REPLY_RESERVE],
+    ];
+    say("The budget test's largest prompts (tokenBudget.test.ts holds each to a ceiling):", "");
+    table(
+      ["turn", "largest prompt", "+ reply reserve"],
+      measures.map(([what, p, reserve]) => [what, n(p), n(p + reserve)]),
+    );
+    const target = Math.floor(0.8 * WINDOW);
+    const worstAfter = Math.max(measures[3][1], measures[4][1]) + REPLY_RESERVE;
+    say(
+      `Headroom target (tracked): the worst local turn after compaction, ${n(worstAfter)} with the reply reserve, ` +
+        `against ${n(target)} (20 % under ${n(WINDOW)}): ${worstAfter > target ? `over by ${n(worstAfter - target)}` : "met"}.`,
+      "",
+    );
   });
 });
 
