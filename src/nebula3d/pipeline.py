@@ -71,6 +71,7 @@ from nebula3d.analysis.delta_pdf import (
     _q_max_from_axes,
     real_space_radius,
 )
+from nebula3d.analysis.misorientation import Misorientation
 from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
@@ -409,7 +410,10 @@ _PUNCHED_DATASET = f"/MDHistoWorkspace/{NEBULA3D_GROUP}/punched"
 _LEGACY_PUNCHED_DATASET = "/entry/punched"
 
 
-def _write_punched(path: Path, punched: np.ndarray) -> None:
+def _write_punched(path: Path, punched: np.ndarray,
+                   round2: np.ndarray | None = None) -> None:
+    """The punch record: 1 where round 1 punched, 2 where round 2 (the tail
+    sweep, THY-60) did; any nonzero code is a punch hole to its readers."""
     import h5py
 
     shape = punched.shape
@@ -418,7 +422,10 @@ def _write_punched(path: Path, punched: np.ndarray) -> None:
             _PUNCHED_DATASET, shape=shape, dtype=np.int8, chunks=(1, *shape[1:]),
             compression="gzip", compression_opts=1, shuffle=True)
         for i in range(shape[0]):  # slab by slab: no volume-sized int8 copy
-            ds[i] = punched[i].astype(np.int8)
+            plane = punched[i].astype(np.int8)
+            if round2 is not None:
+                plane[round2[i]] = 2
+            ds[i] = plane
 
 
 #: The flatten's settings in its output: a JSON text attribute of the file's
@@ -641,6 +648,19 @@ class PunchParams:
     # (rρ, rθ, rφ) Å⁻¹ — seeded from the q radii so the default punch volume is
     # comparable to the previous a*/b*/c* default.
     punch_spherical_radii: tuple[float, float, float] | None = (0.097, 0.072, 0.115)
+    # A UB turned in the upstream reduction (THY-60): the punch always fits
+    # the rotation ω to its strong peaks' centres and records it
+    # (nebula3d.analysis.misorientation).  With rotation_aware, when ω is
+    # significant, explains the offsets and is resolved on the grid, round 1
+    # punches each node's footprint swept along ±ω × q; otherwise round 1 is
+    # unchanged.  tail_sweep ("off" | "auto" | "on") is round 2: the tails
+    # left beside the holes along ±ω × q̂ are added to them before the
+    # backfill (nebula3d.analysis.tail_sweep); "auto" only when ω is active
+    # as above, "on" whenever a rotation was fitted.  Neither touches
+    # symmetrised data, where a turned UB shows as rings, not shifts.  The
+    # remedy is refining the UB in the reduction.
+    rotation_aware: bool = True
+    tail_sweep: str = "auto"
 
 
 @dataclass
@@ -2052,6 +2072,7 @@ def bragg_remover(p: PunchParams) -> BraggRemover:
         punch_frame=p.punch_frame, punch_q_radius=p.punch_q_radius,
         punch_q_radii=p.punch_q_radii,
         punch_spherical_radii=p.punch_spherical_radii,
+        rotation_aware=p.rotation_aware, tail_sweep=p.tail_sweep,
     )
 
 
@@ -2216,7 +2237,30 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
               f"punch shared across {symmetry.order} symmetry operations: "
               f"{int((vol.mask & ~keep).sum()) - before:,} more voxels punched "
               f"at positions equivalent to punched ones")
+    # A UB turned in the reduction (THY-60): the diagnosis, round 1's
+    # rotation-aware punches, and round 2, the tail sweep, before any backfill.
+    rotation = remover._rotation_report  # noqa: SLF001
+    turn: Misorientation | None = rotation.get("misorientation")
+    if turn is not None and turn.status != "no_peaks":
+        _emit(progress, "punch", "progress", None, turn.describe())
+    if rotation.get("stretched"):
+        centred = int(rotation.get("centred", 0))
+        _emit(progress, "punch", "progress", None,
+              f"rotation-aware round 1: {rotation['stretched']:,} node punches swept along "
+              f"±ω × q" + (f", {centred:,} of them centred where the rotation puts the "
+                           "node (centre not fitted)" if centred else ""))
+    round1 = keep
+    keep, sweep = remover._sweep_tails(vol, keep, peak_records, reference)  # noqa: SLF001
+    if sweep.ran or p.tail_sweep == "on":
+        _emit(progress, "punch", "progress", None, sweep.describe())
     profile = bragg_profile_from_records(vol, remover, peak_records, footprint)
+    profile["misorientation"] = None if turn is None else turn.to_json()
+    if turn is not None:
+        profile["misorientation"]["round1"] = {
+            "rotation_aware": bool(p.rotation_aware),
+            "stretched": int(rotation.get("stretched", 0)),
+            "centred": int(rotation.get("centred", 0))}
+    profile["tail_sweep"] = sweep.to_json(vol)
     # Sharp peaks off the lattice bunched at one commensurate fraction: what a
     # modulation the sample did not declare would leave. Measured and
     # recorded; whether the sample has one is the user's to say.
@@ -2233,11 +2277,16 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     out_vol = dataclasses.replace(vol, mask=vol.mask & keep)
     _emit(progress, "punch", "done", 1.0,
           f"detected {len(peak_records)} peaks; punched {int(punched.sum()):,} voxels"
+          + (f" ({sweep.added.size:,} of them by the tail sweep)" if sweep.added.size else "")
           + (f". ⚠ {notice}" if notice else ""))
     setattr(out_vol, "_bragg_profile", profile)
     # Which masked voxels are punch holes (the rest are unmeasured coverage):
-    # the backfill fills each hole from its own surroundings with it.
+    # the backfill fills each hole from its own surroundings with it, round
+    # 1's and round 2's alike, once.
     setattr(out_vol, "_punched", punched)
+    # Round 2's voxels, recorded apart (code 2 in the punch record).
+    setattr(out_vol, "_punched_round2",
+            None if not sweep.added.size else punched & round1)
     return out_vol
 
 
@@ -3482,7 +3531,8 @@ def run_pipeline(
             _write_stage_record(paths.braggpunched, made_from)
             punch_record = getattr(out, "_punched", None)
             if punch_record is not None:
-                _write_punched(paths.braggpunched, punch_record)
+                _write_punched(paths.braggpunched, punch_record,
+                               getattr(out, "_punched_round2", None))
             del punch_record
             profile = getattr(out, "_bragg_profile", None)
             if profile is not None:
