@@ -182,10 +182,11 @@ export const loadedContext = async (
 };
 
 // The context window the console suggests loading a local model with when
-// Tools are on: 56k. The first request alone is about 8k tokens, and a full
-// assessment that reads two skills reaches about 47.6k with room for the reply
-// (measured through the agent loop: __tests__/tokenBudget.test.ts), which 56k
-// holds with the 3k of headroom a model-visible addition must leave. A smaller
+// Tools are on: 56k. It holds a full assessment that reads two skills, with
+// room for the reply and the 3k of headroom a model-visible addition must
+// leave (measured through the agent loop and checked by
+// __tests__/tokenBudget.test.ts; scripts/measure_pilot_context.sh prints the
+// sizes). A smaller
 // window still works, but the window guard then shortens the skills just read
 // to stubs, or refuses the request. The same number is the run policy's
 // minimum for a local live run of the validation (evals/validationModels.ts).

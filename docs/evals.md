@@ -716,10 +716,11 @@ tier hold a local model to it too (`modelAt`; see "Running it" under the
 scenarios, above). The sibling app RMC keeps its own rule, 48k. Arm B's worst
 turn on a local model, the validation task with two skills read whole and the
 3D-ΔPDF's strongest features a full list (the dev control's, at
-`dpdf_peaks`' default), is about 47.6k tokens with the reply reserve before
-the loop's compaction and 37.7k to 42k after it
-(`web/src/llm/__tests__/tokenBudget.test.ts`). The minimum holds it with the
-3k of headroom a model-visible addition must leave; it was 48k (49,152) until
+`dpdf_peaks`' default), with the reply reserve and before the loop's
+compaction, fits the minimum with the 3k of headroom a model-visible addition
+must leave: `web/src/llm/__tests__/tokenBudget.test.ts` checks it, and
+`scripts/measure_pilot_context.sh` prints today's size before and after
+compaction. The minimum was 48k (49,152) until
 the worst turn carried a full list. A 32k window holds the turn only by
 shortening the skills just read to stubs, so a
 run at 32k would grade arm B on stubs of its method. Before the plan starts,

@@ -116,7 +116,7 @@ describe("planWindow", () => {
     const plan = await planWindow({ baseUrl: "http://localhost:1234/v1", model: "qwen", messages: asking(35_000) });
     expect(plan.window).toBe(8_192);
     expect(plan.refusal).toMatch(/loaded with a 8,192-token context/);
-    // The suggestion is 56k at least (TOOLS_CONTEXT: a full assessment reaches about 47.6k, tokenBudget.test.ts).
+    // The suggestion is 56k at least (TOOLS_CONTEXT: it holds a full assessment, as tokenBudget.test.ts checks).
     expect(plan.refusal).toMatch(/Context Length of 57,344/);
     // The same request fits a 32k window: the guard itself goes by the window, not the suggestion.
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ id: "qwen", state: "loaded", loaded_context_length: 32_768 }] })));

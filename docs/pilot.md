@@ -167,10 +167,11 @@ Each is described under [How it works](#how-it-works).
   request no window of the model can hold, or longer than the window LM Studio
   loaded the model with, is not sent: the reply says how to fix it.
 - **A local model wants a 56k window.** With Tools on, a full assessment that
-  reads two skills whole, the 3D-ΔPDF's strongest features a full list, is
-  about 47.6k tokens with room for the reply (measured through the agent loop:
-  `web/src/llm/__tests__/tokenBudget.test.ts`), and a model-visible addition
-  must leave 3k of the window free. A 32k window still runs, but the guard
+  reads two skills whole, the 3D-ΔPDF's strongest features a full list, needs
+  more than a 32k window holds; 56k holds it with room for the reply and the
+  3k a model-visible addition must leave free (measured through the agent
+  loop and checked by `web/src/llm/__tests__/tokenBudget.test.ts`;
+  `scripts/measure_pilot_context.sh` prints today's size). A 32k window still runs, but the guard
   then shortens the skills the model just read to stubs, and refuses a
   request that still does not fit; 56k (57,344 tokens) or more avoids that on
   long two-skill turns. In LM Studio, set the model's default Context Length
