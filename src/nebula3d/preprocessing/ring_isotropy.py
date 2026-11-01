@@ -153,12 +153,17 @@ class IsotropyConfig:
     sample_per_bin: int = 32
     min_snr: float = 3.0
     curve_share: float = 0.25
+    al_direction_share: float = 0.75
+    al_min_snr: float = 2.0
+    al_width_ratio: float = 2.0
 
     def __post_init__(self) -> None:
         if self.n_cos < 2 or self.n_phi < 4:
             raise ValueError("n_cos must be at least 2 and n_phi at least 4")
         if not 0.0 < self.direction_share < 1.0 or not 0.0 < self.height_share <= 1.0:
             raise ValueError("direction_share must be in (0, 1) and height_share in (0, 1]")
+        if not 0.0 < self.al_direction_share < 1.0 or self.al_width_ratio <= 0:
+            raise ValueError("al_direction_share must be in (0, 1), al_width_ratio positive")
         if min(self.core_scale, self.flank_scale, self.q_step) <= 0 or self.gap_scale < 0:
             raise ValueError("core_scale, flank_scale and q_step must be positive, gap_scale ≥ 0")
         if self.sample_per_bin < 0:
@@ -179,16 +184,31 @@ class ShellIsotropy:
     not_judged: str = ""      # why no verdict could be reached, if none was
     snr: float = float("nan")  # median over cells of the height over its noise
     beyond_curve: float = float("nan")  # the share of the height left above a quadratic baseline
+    rule: str = "strict"      # "strict", or "al": the Al lines' rule (judge_al_lines)
+    # A cluster's lines: (|Q|, median amplitude, isotropy of the amplitude).
+    members: tuple[tuple[float, float, float], ...] = ()
+    # The criteria a judged shell failed: "height", "isotropy", "snr", "curve",
+    # and "line" (a line of a cluster that does not rise on its own).
+    fails: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         def r(x: float, n: int = 4) -> float | None:
             return None if not np.isfinite(x) else float(round(x, n))
-        return {"q_center": r(self.q_center), "fwhm": r(self.fwhm), "n_cells": self.n_cells,
-                "median_height": r(self.median_height, 6),
-                "relative_height": r(self.relative_height),
-                "isotropy": r(self.isotropy, 3), "snr": r(self.snr, 1),
-                "beyond_curve": r(self.beyond_curve, 2),
-                "is_ring": self.is_ring, "not_judged": self.not_judged or None}
+        out: dict[str, object] = {
+            "q_center": r(self.q_center), "fwhm": r(self.fwhm), "n_cells": self.n_cells,
+            "median_height": r(self.median_height, 6),
+            "relative_height": r(self.relative_height),
+            "isotropy": r(self.isotropy, 3), "snr": r(self.snr, 1),
+            "beyond_curve": r(self.beyond_curve, 2),
+            "is_ring": self.is_ring, "not_judged": self.not_judged or None}
+        if self.fails:
+            out["fails"] = list(self.fails)
+        if self.rule != "strict":
+            out["rule"] = self.rule
+        if self.members:
+            out["lines"] = [{"q": r(q), "amplitude": r(a, 6), "isotropy": r(i, 3)}
+                            for q, a, i in self.members]
+        return out
 
 
 def voxel_q_step(vol: HKLVolume) -> float:
@@ -259,31 +279,83 @@ def grid_needs(vol: HKLVolume, config: IsotropyConfig | None = None) -> str:
             f"voxels in each |Q| bin")
 
 
-def shell_isotropy(
-    vol: HKLVolume,
-    shells: Sequence[tuple[float, float]],
-    config: IsotropyConfig | None = None,
-    *,
-    others: Sequence[tuple[float, float]] = (),
-    keep_apart: bool = True,
-    slab: int | None = None,
-) -> list[ShellIsotropy]:
-    """Judge each ``(q_center, fwhm)`` shell of ``vol`` (Å⁻¹): a powder ring or not.
+@dataclass(frozen=True)
+class _Layout:
+    """One judged window in |Q|: a shell, or a cluster of Al lines judged as one."""
 
-    The cores of ``others`` (more ``(q_center, fwhm)`` candidates) are kept out
-    of each shell's flanks, and those of the other shells too unless
-    ``keep_apart`` is False. One pass over the volume in slabs of ``slab`` H
-    planes, reading only the voxels inside a shell's window; masked and
-    non-finite voxels are left out. :func:`judge_shells` is the usual entry.
+    q0: float                     # the centre reported (a cluster's: its lines' mean)
+    fwhm: float                   # the width its core is cut by (capped)
+    lo: float                     # the first bin's lower edge (Å⁻¹)
+    n_bins: int
+    centres: NDArray[np.float64]
+    role: NDArray[np.int_]        # 1 core, 0 flank, −1 unused
+    lines: tuple[float, ...] = ()  # a cluster's lines, each with its own amplitude
+    aligned: bool = False         # binned in each direction cell's Al frame
 
-    On a grid too coarse for the test (:func:`grid_too_coarse`) no shell is
-    judged, and a shell is not judged where the grid fills too few of its
-    direction cells (the module docstring, *Resolution*): ``not_judged`` says
-    why, starting "grid too coarse".
-    """
-    cfg = config or IsotropyConfig()
-    if not shells:
-        return []
+
+def _reach(fwhm: float, cfg: IsotropyConfig, q_step: float) -> tuple[float, float, float, float]:
+    """The capped FWHM, and the core's half-width, the gap and a flank's width it gives."""
+    fwhm = max(min(float(fwhm), cfg.fwhm_cap), SAMPLES_PER_FWHM * q_step)
+    return (fwhm, max(cfg.core_scale * fwhm, q_step), cfg.gap_scale * fwhm,
+            max(cfg.flank_scale * fwhm, 2.0 * q_step))
+
+
+def _extent(fwhm: float, cfg: IsotropyConfig, q_step: float) -> float:
+    """How far a candidate reaches either side, by its own width (not capped)."""
+    fwhm = max(float(fwhm), SAMPLES_PER_FWHM * q_step)
+    return max(cfg.core_scale * fwhm, q_step) + cfg.gap_scale * fwhm
+
+
+def _layout(lines: Sequence[float], fwhm_in: float, cfg: IsotropyConfig, q_step: float,
+            keep_out: Sequence[tuple[float, float]], own: Sequence[float], *,
+            aligned: bool = False) -> _Layout:
+    """The bins of a shell at ``lines[0]``, or of a cluster of lines judged as one:
+    the core in the middle (every line's), a flank on either side, the first
+    clean bins outward from the gap past the outermost lines (the core and gap
+    of every ``keep_out`` but the ``own`` centres skipped)."""
+    lines = tuple(float(x) for x in lines)
+    fwhm, core, gap, flank = _reach(fwhm_in, cfg, q_step)
+    lo_edge, hi_edge = min(lines), max(lines)
+    lo = lo_edge - core - gap - cfg.flank_reach * flank
+    span = 2.0 * (core + gap + cfg.flank_reach * flank)
+    if hi_edge > lo_edge:
+        span = span + (hi_edge - lo_edge)
+    n_bins = int(np.ceil(span / q_step))
+    centres = lo + (np.arange(n_bins) + 0.5) * q_step
+    d = (np.abs(centres - lo_edge) if len(lines) == 1
+         else np.min(np.abs(centres[None, :] - np.asarray(lines)[:, None]), axis=0))
+    clean = d > core + gap
+    for q1, half in keep_out:
+        if all(abs(q1 - o) > 1e-9 for o in own):
+            clean &= np.abs(centres - q1) > half
+    role = np.where(d <= core, 1, -1)
+    n_flank = max(2, int(round(flank / q_step)))
+    for side, dist in ((centres < lo_edge, lo_edge - centres),
+                       (centres > hi_edge, centres - hi_edge)):
+        picks = np.nonzero(side & clean)[0]
+        picks = picks[np.argsort(dist[picks])][:n_flank]
+        role[picks] = 0
+    return _Layout(float(np.mean(lines)) if len(lines) > 1 else lo_edge, fwhm, lo, n_bins,
+                   centres, role, lines if len(lines) > 1 else (), aligned)
+
+
+@dataclass
+class _CellMedians:
+    median: NDArray[np.float64]   # (cells, bins): each cell's median per |Q| bin
+    grid: NDArray[np.int64]       # (cells, bins): the grid's voxels there, measured or not
+    keeps: list[float]            # the share of each window's voxels read
+    offsets: NDArray[np.int_]     # each window's first bin
+
+
+def _cell_medians(vol: HKLVolume, windows: Sequence[tuple[float, int, bool]],
+                  cfg: IsotropyConfig, *, slab: int | None = None,
+                  cell_scale: NDArray[np.float64] | None = None) -> _CellMedians | None:
+    """The median of every direction cell and |Q| bin of each ``(lo, n_bins,
+    aligned)`` window, in one pass over the volume in slabs of ``slab`` H
+    planes, reading only the voxels inside a window; masked and non-finite
+    voxels are left out. An aligned window bins each voxel's |Q| in its cell's
+    Al frame, |Q| / (1 + ``cell_scale[cell]``) (:func:`al_cell_scales`). None
+    when no window holds a measured voxel."""
     lean = low_memory()
     n_h = int(np.size(vol.h_axis))
     # Each slab's float64 |Q| arrays stay a small share of the volume.
@@ -291,63 +363,31 @@ def shell_isotropy(
     max_voxels = min(cfg.max_voxels, vol.data.size // 8) if lean else cfg.max_voxels
     q_step = profile_step(vol, cfg)
     n_cells = cfg.n_cos * cfg.n_phi
-
-    def reach(fwhm: float) -> tuple[float, float, float, float]:
-        fwhm = max(min(float(fwhm), cfg.fwhm_cap), SAMPLES_PER_FWHM * q_step)
-        return (fwhm, max(cfg.core_scale * fwhm, q_step), cfg.gap_scale * fwhm,
-                max(cfg.flank_scale * fwhm, 2.0 * q_step))
-
-    def extent(fwhm: float) -> float:
-        """How far a candidate reaches either side, by its own width (not capped)."""
-        fwhm = max(float(fwhm), SAMPLES_PER_FWHM * q_step)
-        return max(cfg.core_scale * fwhm, q_step) + cfg.gap_scale * fwhm
-
-    coarse = grid_too_coarse(vol, cfg)
-    if coarse:
-        return [ShellIsotropy(float(q0), reach(f)[0], 0, np.nan, np.nan, np.nan, False, coarse)
-                for q0, f in shells]
-
-    # Every candidate's core and gap, kept out of the other shells' flanks.
-    apart = [*shells, *others] if keep_apart else list(others)
-    keep_out = [(float(q), extent(f)) for q, f in apart]
-    # Each shell's bins: the core in the middle, a flank on either side, the
-    # first clean bins outward from the gap (another shell's core is skipped).
-    layouts = []
-    for q0, fwhm_in in shells:
-        q0 = float(q0)
-        fwhm, core, gap, flank = reach(fwhm_in)
-        lo = q0 - core - gap - cfg.flank_reach * flank
-        n_bins = int(np.ceil((2.0 * (core + gap + cfg.flank_reach * flank)) / q_step))
-        centres = lo + (np.arange(n_bins) + 0.5) * q_step
-        d = np.abs(centres - q0)
-        clean = d > core + gap
-        for q1, half in keep_out:
-            if abs(q1 - q0) > 1e-9:
-                clean &= np.abs(centres - q1) > half
-        role = np.where(d <= core, 1, -1)  # 1 core, 0 flank, −1 unused
-        n_flank = max(2, int(round(flank / q_step)))
-        for side in (centres < q0, centres > q0):
-            picks = np.nonzero(side & clean)[0]
-            picks = picks[np.argsort(d[picks])][:n_flank]
-            role[picks] = 0
-        layouts.append((q0, fwhm, lo, n_bins, centres, role))
-    offsets = np.cumsum([0] + [lay[3] for lay in layouts])
+    offsets = np.cumsum([0] + [w[1] for w in windows])
     total_bins = int(offsets[-1])
-    q_lo = min(lay[2] for lay in layouts)
-    q_hi = max(lay[2] + lay[3] * q_step for lay in layouts)
+    any_aligned = any(w[2] for w in windows)
+    scale = (np.zeros(n_cells) if cell_scale is None
+             else np.asarray(cell_scale, dtype=np.float64))
+    s_lo, s_hi = ((min(0.0, float(scale.min())), max(0.0, float(scale.max())))
+                  if any_aligned else (0.0, 0.0))
+    # An aligned window's |Q| range in the lab frame: its Al-frame range times
+    # (1 + scale), over every cell's scale.
+    q_lo = min(min(w[0] * (1.0 + s_lo), w[0] * (1.0 + s_hi)) if w[2] else w[0] for w in windows)
+    q_hi = max(max((w[0] + w[1] * q_step) * (1.0 + s_lo), (w[0] + w[1] * q_step) * (1.0 + s_hi))
+               if w[2] else w[0] + w[1] * q_step for w in windows)
     # The voxels each window holds, by geometry (an upper bound past the box):
     # past the budget, each is read with probability keep_share, raised for a
-    # shell that would keep fewer than sample_per_bin per cell and bin.
+    # window that would keep fewer than sample_per_bin per cell and bin.
     axes_steps = [abs(float(a[1] - a[0])) if np.size(a) > 1 else 1.0
                   for a in (vol.h_axis, vol.k_axis, vol.l_axis)]
     ub_det = abs(float(np.linalg.det(np.asarray(vol.ub_matrix, dtype=np.float64))))
     voxel_volume = max(ub_det * float(np.prod(axes_steps)), 1e-30)
-    expected = [4.0 / 3.0 * np.pi * (max(lay[2] + lay[3] * q_step, 0.0) ** 3
-                                     - max(lay[2], 0.0) ** 3) / voxel_volume
-                for lay in layouts]
+    expected = [4.0 / 3.0 * np.pi * (max(w[0] + w[1] * q_step, 0.0) ** 3
+                                     - max(w[0], 0.0) ** 3) / voxel_volume
+                for w in windows]
     keep_share = min(1.0, max_voxels / max(sum(expected), 1.0))
-    keeps = [min(1.0, max(keep_share, n_cells * lay[3] * cfg.sample_per_bin / max(e, 1.0)))
-             for lay, e in zip(layouts, expected)]
+    keeps = [min(1.0, max(keep_share, n_cells * w[1] * cfg.sample_per_bin / max(e, 1.0)))
+             for w, e in zip(windows, expected)]
 
     ub = np.asarray(vol.ub_matrix, dtype=np.float64)
     h = np.asarray(vol.h_axis, dtype=np.float64)
@@ -376,6 +416,7 @@ def shell_isotropy(
         sector = np.minimum(((phi + np.pi) / (2.0 * np.pi) * cfg.n_phi).astype(np.int64),
                             cfg.n_phi - 1)
         cell_w = (band * cfg.n_phi + sector).astype(np.int32)
+        q_al = q_w / (1.0 + scale[cell_w]) if any_aligned else q_w
         measured = ok[window]
         read = bool(measured.any())
         draw = (np.random.default_rng(i0).random(ok.shape)[ok]
@@ -383,8 +424,8 @@ def shell_isotropy(
         cell = cell_w[measured]
         v = data[ok].astype(np.float32)
         grid_keys = []
-        for s, (_q0, _f, lo, n_bins, _c, _r) in enumerate(layouts):
-            b = np.floor((q_w - lo) / q_step).astype(np.int32)
+        for s, (lo, n_bins, aligned) in enumerate(windows):
+            b = np.floor(((q_al if aligned else q_w) - lo) / q_step).astype(np.int32)
             inside = (b >= 0) & (b < n_bins)
             grid_keys.append(cell_w[inside] * np.int32(total_bins) + np.int32(offsets[s])
                              + b[inside])
@@ -398,10 +439,8 @@ def shell_isotropy(
                 keys.append(cell[inside] * np.int32(total_bins) + np.int32(offsets[s]) + b[inside])
                 vals.append(v[inside])
         grid += bincount(np.concatenate(grid_keys), minlength=grid.size)
-    grid_cells = grid.reshape(n_cells, total_bins)
     if not keys:
-        return [ShellIsotropy(lay[0], lay[1], 0, np.nan, np.nan, np.nan, False,
-                              "no measured voxels") for lay in layouts]
+        return None
     key = np.concatenate(keys)
     val = np.concatenate(vals)
     del keys, vals
@@ -414,12 +453,67 @@ def shell_isotropy(
     nz = np.nonzero(count >= cfg.min_voxels)[0]
     median_flat[nz] = 0.5 * (sorted_vals[starts[nz] + (count[nz] - 1) // 2]
                              + sorted_vals[starts[nz] + count[nz] // 2])
-    median = median_flat.reshape(n_cells, total_bins)
+    return _CellMedians(median_flat.reshape(n_cells, total_bins),
+                        grid.reshape(n_cells, total_bins), keeps, offsets)
 
+
+def shell_isotropy(
+    vol: HKLVolume,
+    shells: Sequence[tuple[float, float]],
+    config: IsotropyConfig | None = None,
+    *,
+    others: Sequence[tuple[float, float]] = (),
+    keep_apart: bool = True,
+    slab: int | None = None,
+) -> list[ShellIsotropy]:
+    """Judge each ``(q_center, fwhm)`` shell of ``vol`` (Å⁻¹): a powder ring or not.
+
+    The cores of ``others`` (more ``(q_center, fwhm)`` candidates) are kept out
+    of each shell's flanks, and those of the other shells too unless
+    ``keep_apart`` is False. One pass over the volume in slabs of ``slab`` H
+    planes, reading only the voxels inside a shell's window; masked and
+    non-finite voxels are left out. :func:`judge_shells` is the usual entry.
+
+    On a grid too coarse for the test (:func:`grid_too_coarse`) no shell is
+    judged, and a shell is not judged where the grid fills too few of its
+    direction cells (the module docstring, *Resolution*): ``not_judged`` says
+    why, starting "grid too coarse".
+    """
+    cfg = config or IsotropyConfig()
+    if not shells:
+        return []
+    q_step = profile_step(vol, cfg)
+    coarse = grid_too_coarse(vol, cfg)
+    if coarse:
+        return [ShellIsotropy(float(q0), _reach(f, cfg, q_step)[0], 0, np.nan, np.nan, np.nan,
+                              False, coarse) for q0, f in shells]
+    # Every candidate's core and gap, kept out of the other shells' flanks.
+    apart = [*shells, *others] if keep_apart else list(others)
+    keep_out = [(float(q), _extent(f, cfg, q_step)) for q, f in apart]
+    layouts = [_layout((float(q0),), f, cfg, q_step, keep_out, (float(q0),)) for q0, f in shells]
+    return _judge_layouts(vol, layouts, cfg, slab=slab)
+
+
+def _judge_layouts(vol: HKLVolume, layouts: Sequence[_Layout], cfg: IsotropyConfig, *,
+                   slab: int | None = None, cell_scale: NDArray[np.float64] | None = None,
+                   rule: str = "strict") -> list[ShellIsotropy]:
+    """Each layout's verdict, by the strict rule or the Al lines' (``rule="al"``:
+    ``al_direction_share`` and ``al_min_snr``, and every line of a cluster
+    rising on its own)."""
+    q_step = profile_step(vol, cfg)
+    cells = _cell_medians(vol, [(lay.lo, lay.n_bins, lay.aligned) for lay in layouts], cfg,
+                          slab=slab, cell_scale=cell_scale)
+    if cells is None:
+        return [ShellIsotropy(lay.q0, lay.fwhm, 0, np.nan, np.nan, np.nan, False,
+                              "no measured voxels", rule=rule) for lay in layouts]
+    share = cfg.al_direction_share if rule == "al" else cfg.direction_share
+    min_snr = cfg.al_min_snr if rule == "al" else cfg.min_snr
     q_box = inscribed_q(vol)
     out: list[ShellIsotropy] = []
-    for s, (q0, fwhm, lo, n_bins, centres, role) in enumerate(layouts):
-        prof = median[:, offsets[s]:offsets[s] + n_bins]
+    for s, lay in enumerate(layouts):
+        q0, fwhm, centres, role = lay.q0, lay.fwhm, lay.centres, lay.role
+        span = slice(int(cells.offsets[s]), int(cells.offsets[s]) + lay.n_bins)
+        prof = cells.median[:, span]
         flank = role == 0
         x_flank = centres[flank] - q0
         x_core = centres[role == 1] - q0
@@ -428,7 +522,7 @@ def shell_isotropy(
         # pass for a height in every direction.
         if not ((x_flank < 0).any() and (x_flank > 0).any()):
             out.append(ShellIsotropy(q0, fwhm, 0, np.nan, np.nan, np.nan, False,
-                                     "no clean flank on one side"))
+                                     "no clean flank on one side", rule=rule))
             continue
         # The cells the grid fills: of those the shell's window reaches in
         # every bin of its profile, the ones it gives min_voxels in each (as
@@ -437,15 +531,16 @@ def shell_isotropy(
         # happens to fill, along its own directions (Resolution). Asked of a
         # window inside the box's inscribed sphere only, where no face cuts a
         # cell short: further out a cell has more voxels a bin, not fewer.
-        voxels = grid_cells[:, offsets[s]:offsets[s] + n_bins][:, role >= 0]
+        voxels = cells.grid[:, span][:, role >= 0]
         reached = int(np.count_nonzero((voxels > 0).all(axis=1)))
-        filled = int(np.count_nonzero((voxels * keeps[s] >= cfg.min_voxels).all(axis=1)))
-        inside_box = lo + n_bins * q_step <= q_box
+        filled = int(np.count_nonzero((voxels * cells.keeps[s] >= cfg.min_voxels).all(axis=1)))
+        inside_box = lay.lo + lay.n_bins * q_step <= q_box
         if inside_box and reached and filled < cfg.direction_share * reached:
             out.append(ShellIsotropy(
                 q0, fwhm, int(np.count_nonzero(good)), np.nan, np.nan, np.nan, False,
                 f"{GRID_TOO_COARSE}: {filled} of the {reached} direction cells get "
-                f"{cfg.min_voxels} voxels in each |Q| bin, under {100 * cfg.direction_share:g} %"))
+                f"{cfg.min_voxels} voxels in each |Q| bin, under {100 * cfg.direction_share:g} %",
+                rule=rule))
             continue
         # A line through the flanks gives each cell's height, which a ring whose
         # |Q| wanders with direction keeps. A quadratic through the same flanks
@@ -453,21 +548,34 @@ def shell_isotropy(
         # under the shell, or a falling background, reads as a height in every
         # direction above a line, but not above the curve.
         curved = x_flank.size >= 4
-        heights, levels, snrs, beyond_curve = [], [], [], []
+        heights, levels, snrs, beyond_curve, excess = [], [], [], [], []
         for c in np.nonzero(good)[0]:
             y_flank = prof[c, flank]
             line = np.polyfit(x_flank, y_flank, 1)
-            height = float(np.mean(prof[c, role == 1] - np.polyval(line, x_core)))
+            above_line = prof[c, role == 1] - np.polyval(line, x_core)
+            height = float(np.mean(above_line))
             resid = y_flank - np.polyval(line, x_flank)
             scatter = float(np.sqrt(np.sum(resid ** 2) / max(x_flank.size - 2, 1)))
             heights.append(height)
             levels.append(float(np.polyval(line, 0.0)))
             snrs.append(height / (scatter / np.sqrt(x_core.size)) if scatter > 0 else np.inf)
+            excess.append(above_line)
             if curved:
                 quad = np.polyfit(x_flank, y_flank, 2)
                 beyond_curve.append(float(np.mean(prof[c, role == 1] - np.polyval(quad, x_core))))
+        amplitudes = None
+        if lay.lines and excess:
+            # A cluster's lines, each its own amplitude in every cell: the
+            # excess over the core fitted as one peak of the cluster's width
+            # at each line (least squares, all cells at once).
+            sigma = fwhm / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+            peaks = np.exp(-0.5 * ((x_core[:, None] + q0 - np.asarray(lay.lines)[None, :])
+                                   / sigma) ** 2)
+            amplitudes = np.linalg.lstsq(peaks, np.asarray(excess).T, rcond=None)[0].T
         out.append(_verdict(q0, fwhm, np.asarray(heights), np.asarray(levels), np.asarray(snrs),
-                            np.asarray(beyond_curve) if curved else None, cfg))
+                            np.asarray(beyond_curve) if curved else None, cfg,
+                            share=share, min_snr=min_snr, rule=rule,
+                            amplitudes=amplitudes, lines=lay.lines))
     return out
 
 
@@ -499,15 +607,174 @@ def judge_shells(
     return first
 
 
+# ---------------------------------------------------------------------------
+# The Al lines' test (the module docstring, *Al lines*)
+# ---------------------------------------------------------------------------
+
+#: The largest |scale| :func:`al_cell_scales` searches: an Al line at |Q| is
+#: looked for within ± AL_MAX_SCALE × |Q| of its place in every direction cell.
+AL_MAX_SCALE = 0.02
+
+#: The signal-to-noise a ring's matched peak needs in a cell for its place
+#: there to count towards the cell's scale.
+_SCALE_MIN_SNR = 3.0
+
+
+@dataclass(frozen=True)
+class CellScales:
+    """Each direction cell's Al frame: the Al lines there peak at Q_line × (1 + scale)."""
+
+    scale: NDArray[np.float64]  # per direction cell; 0 where not measured
+    n_cells: int                # cells whose scale was measured
+    n_rings: int                # the rings it was read from
+    p95: float                  # the 95th percentile of |scale| over those cells
+
+    def as_dict(self) -> dict[str, object]:
+        return {"rings": self.n_rings, "cells": self.n_cells,
+                "scale_p95": float(round(self.p95, 5))}
+
+
+def al_cell_scales(
+    vol: HKLVolume,
+    rings: Sequence[tuple[float, float]],
+    config: IsotropyConfig | None = None,
+    *,
+    max_scale: float = AL_MAX_SCALE,
+    slab: int | None = None,
+) -> CellScales:
+    """Where the confirmed Al rings ``(q_line, fwhm)`` peak in each direction
+    cell, as one scale per cell: the lines there sit at q_line × (1 + scale).
+
+    In every cell, each ring's excess over a line through the outer bins of
+    its window is matched with a peak of its FWHM (capped at ``fwhm_cap``)
+    placed every quarter bin within ± ``max_scale`` × q_line; the best place,
+    refined by a parabola, counts where it stands :data:`_SCALE_MIN_SNR` times
+    the outer bins' scatter above them and inside the search. The cell's scale
+    is the weighted median of the places over q_line, each weighted by its
+    precision, (q_line × SNR / FWHM)²; a cell with fewer than two rings placed
+    keeps scale 0 (not aligned). Pass rings clear of other lines by more than
+    the search reaches.
+    """
+    cfg = config or IsotropyConfig()
+    n_cells = cfg.n_cos * cfg.n_phi
+    scale = np.zeros(n_cells)
+    if len(rings) < 2 or grid_too_coarse(vol, cfg):
+        return CellScales(scale, 0, 0, 0.0)
+    q_step = profile_step(vol, cfg)
+    windows = []
+    for q, f in rings:
+        w = max(min(float(f), cfg.fwhm_cap), SAMPLES_PER_FWHM * q_step)
+        half = max_scale * float(q) + 2.0 * w
+        windows.append((float(q) - half, int(np.ceil(2.0 * half / q_step)), False))
+    cells = _cell_medians(vol, windows, cfg, slab=slab)
+    if cells is None:
+        return CellScales(scale, 0, 0, 0.0)
+    places = np.full((n_cells, len(rings)), np.nan)
+    weights = np.zeros((n_cells, len(rings)))
+    for j, ((q, f), (lo, n_bins, _al)) in enumerate(zip(rings, windows)):
+        q = float(q)
+        w = max(min(float(f), cfg.fwhm_cap), SAMPLES_PER_FWHM * q_step)
+        reach = max_scale * q
+        x = lo + (np.arange(n_bins) + 0.5) * q_step - q
+        outer = np.abs(x) > reach + w
+        if (x[outer] < 0).sum() < 2 or (x[outer] > 0).sum() < 2:
+            continue
+        prof = cells.median[:, int(cells.offsets[j]):int(cells.offsets[j]) + n_bins]
+        good = np.nonzero(np.isfinite(prof).all(axis=1))[0]
+        if good.size == 0:
+            continue
+        y = prof[good]
+        design = np.vstack([x[outer], np.ones(int(outer.sum()))]).T
+        line = np.linalg.lstsq(design, y[:, outer].T, rcond=None)[0]
+        excess = y - (np.outer(line[0], x) + line[1][:, None])
+        scatter = np.sqrt(np.sum(excess[:, outer] ** 2, axis=1) / max(int(outer.sum()) - 2, 1))
+        step = 0.25 * q_step
+        shifts = np.arange(-reach, reach + 0.5 * step, step)
+        sigma = w / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+        peaks = np.exp(-0.5 * ((x[None, :] - shifts[:, None]) / sigma) ** 2)
+        peaks /= np.sqrt(np.sum(peaks ** 2, axis=1, keepdims=True))
+        score = excess @ peaks.T                         # (cells, shifts)
+        best = np.argmax(score, axis=1)
+        inner = (best > 0) & (best < shifts.size - 1)
+        rows = np.arange(good.size)
+        b = np.clip(best, 1, shifts.size - 2)
+        s0, s1, s2 = score[rows, b - 1], score[rows, b], score[rows, b + 1]
+        curv = s0 - 2.0 * s1 + s2
+        frac = np.where(curv < 0, 0.5 * (s0 - s2) / np.where(curv < 0, curv, -1.0), 0.0)
+        place = (shifts[b] + np.clip(frac, -0.5, 0.5) * step) / q
+        snr = np.divide(score[rows, best], scatter, out=np.zeros(good.size), where=scatter > 0)
+        keep = inner & (snr >= _SCALE_MIN_SNR)
+        places[good[keep], j] = place[keep]
+        weights[good[keep], j] = (q * np.minimum(snr[keep], 30.0) / w) ** 2
+    n_placed = np.isfinite(places).sum(axis=1)
+    for c in np.nonzero(n_placed >= 2)[0]:
+        ok = np.isfinite(places[c])
+        scale[c] = _weighted_median(places[c, ok], weights[c, ok])
+    measured = n_placed >= 2
+    p95 = float(np.quantile(np.abs(scale[measured]), 0.95)) if measured.any() else 0.0
+    return CellScales(np.clip(scale, -max_scale, max_scale), int(measured.sum()), len(rings), p95)
+
+
+def _weighted_median(values: NDArray[np.float64], weights: NDArray[np.float64]) -> float:
+    order = np.argsort(values)
+    cw = np.cumsum(weights[order])
+    return float(values[order][int(np.searchsorted(cw, 0.5 * cw[-1]))])
+
+
+@dataclass(frozen=True)
+class AlCluster:
+    """Al lines judged as one shell: one line, or a doublet whose cores touch."""
+
+    lines: tuple[float, ...]     # the lines' |Q| at the fitted lattice (Å⁻¹)
+    fwhm: float                  # the Al lines' width there (Å⁻¹)
+    own: tuple[float, ...] = ()  # its candidates' own centres, not kept out of its flanks
+
+
+def judge_al_lines(
+    vol: HKLVolume,
+    clusters: Sequence[AlCluster],
+    config: IsotropyConfig | None = None,
+    *,
+    cell_scale: NDArray[np.float64] | None = None,
+    others: Sequence[tuple[float, float]] = (),
+    slab: int | None = None,
+) -> list[ShellIsotropy]:
+    """Judge each cluster of Al lines as one shell, by the Al lines' rule (the
+    module docstring, *Al lines*): in each direction cell's Al frame
+    (``cell_scale``, :func:`al_cell_scales`; none, the lab frame), its core
+    every line's ± ``core_scale`` × the Al width, its flanks outside the
+    cluster, clear of the cores of ``others``; it rises by ``height_share`` of
+    its median height in ``al_direction_share`` of the measured cells, at
+    ``al_min_snr`` and above the curve, and so does every line of a doublet,
+    on its own amplitude."""
+    cfg = config or IsotropyConfig()
+    if not clusters:
+        return []
+    q_step = profile_step(vol, cfg)
+    coarse = grid_too_coarse(vol, cfg)
+    if coarse:
+        return [ShellIsotropy(float(np.mean(c.lines)), _reach(c.fwhm, cfg, q_step)[0], 0, np.nan,
+                              np.nan, np.nan, False, coarse, rule="al") for c in clusters]
+    keep_out = [(float(q), _extent(f, cfg, q_step)) for q, f in others]
+    aligned = cell_scale is not None
+    layouts = [_layout(c.lines, c.fwhm, cfg, q_step, keep_out, (*c.lines, *c.own),
+                       aligned=aligned) for c in clusters]
+    return _judge_layouts(vol, layouts, cfg, slab=slab, cell_scale=cell_scale, rule="al")
+
+
 def _verdict(q0: float, fwhm: float, heights: NDArray[np.float64], levels: NDArray[np.float64],
              snrs: NDArray[np.float64], beyond_curve: NDArray[np.float64] | None,
-             cfg: IsotropyConfig) -> ShellIsotropy:
+             cfg: IsotropyConfig, *, share: float | None = None, min_snr: float | None = None,
+             rule: str = "strict", amplitudes: NDArray[np.float64] | None = None,
+             lines: tuple[float, ...] = ()) -> ShellIsotropy:
+    share = cfg.direction_share if share is None else share
+    min_snr = cfg.min_snr if min_snr is None else min_snr
     n = int(heights.size)
     if n < cfg.min_cells:
         return ShellIsotropy(q0, fwhm, n, np.nan, np.nan, np.nan, False,
-                             f"measured in {n} direction cells, under {cfg.min_cells}")
+                             f"measured in {n} direction cells, under {cfg.min_cells}", rule=rule)
     med = float(np.median(heights))
-    low = float(np.quantile(heights, 1.0 - cfg.direction_share))
+    low = float(np.quantile(heights, 1.0 - share))
     level = float(np.median(levels))
     rel = med / level if level > 0 else np.nan
     iso = low / med if med > 0 else np.nan
@@ -516,12 +783,23 @@ def _verdict(q0: float, fwhm: float, heights: NDArray[np.float64], levels: NDArr
     # a curve_share of that height stays above a quadratic through the flanks.
     snr = float(np.median(snrs))
     curve = float(np.median(beyond_curve)) / med if beyond_curve is not None and med > 0 else np.nan
-    return ShellIsotropy(q0, fwhm, n, med, rel, iso,
-                         bool(med > 0 and low >= cfg.height_share * med and snr >= cfg.min_snr
-                              and not (curve < cfg.curve_share)),
-                         snr=snr, beyond_curve=curve)
+    fails = [code for code, failed in (
+        ("height", not med > 0), ("isotropy", med > 0 and not low >= cfg.height_share * med),
+        ("snr", not snr >= min_snr), ("curve", curve < cfg.curve_share)) if failed]
+    members: list[tuple[float, float, float]] = []
+    if amplitudes is not None:
+        # Every line of a cluster rises on its own amplitude, as the cluster does.
+        for line, amp in zip(lines, amplitudes.T):
+            m = float(np.median(amp))
+            lo = float(np.quantile(amp, 1.0 - share))
+            members.append((line, m, lo / m if m > 0 else np.nan))
+            if not (m > 0 and lo >= cfg.height_share * m) and "line" not in fails:
+                fails.append("line")
+    return ShellIsotropy(q0, fwhm, n, med, rel, iso, not fails, snr=snr, beyond_curve=curve,
+                         rule=rule, members=tuple(members), fails=tuple(fails))
 
 
-__all__ = ["GRID_TOO_COARSE", "SAMPLES_PER_FWHM", "IsotropyConfig", "ShellIsotropy", "grid_needs",
-           "grid_too_coarse", "inscribed_q", "judge_shells", "profile_step", "shell_isotropy",
+__all__ = ["AL_MAX_SCALE", "GRID_TOO_COARSE", "SAMPLES_PER_FWHM", "AlCluster", "CellScales",
+           "IsotropyConfig", "ShellIsotropy", "al_cell_scales", "grid_needs", "grid_too_coarse",
+           "inscribed_q", "judge_al_lines", "judge_shells", "profile_step", "shell_isotropy",
            "voxel_q_step"]
