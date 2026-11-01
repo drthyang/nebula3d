@@ -267,7 +267,7 @@ Does the 3D-ΔPDF keep the symmetry its data were declared symmetrised with? Eac
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Is the volume's UB right? Fits the UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first). Returns verdict, rms_start → rms, cell_start and cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file⟦evidence: . An offset that changes with |Q| is no UB error⟧. About 10 s.
+Is the volume's UB right? Fits a UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first); it changes no data. Returns verdict, rms_start → rms, cell_start → cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file⟦evidence: . An offset that changes with |Q| is no UB error⟧.
 ```
 
 ## tools/index.ts: ub_check's reading
