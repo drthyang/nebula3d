@@ -32,7 +32,16 @@ import { toolsFor } from "../../web/src/llm/localTools";
 import { SYSTEM, TOOLS } from "../../web/src/llm/prompts/system";
 import { buildChatMessages, buildStageReviewMessages, CHAT_HISTORY_TURNS, type ReviewStage } from "../../web/src/llm/prompts/templates";
 import type { ChatMessage, StreamDelta, ToolSpec } from "../../web/src/llm/provider/client";
-import { baseTokens, DATA_CHARS_PER_TOKEN, estimateTokens, PROSE_CHARS_PER_TOKEN, REPLY_RESERVE, resetTokenState } from "../../web/src/llm/provider/tokens";
+import {
+  baseTokens,
+  DATA_CHARS_PER_TOKEN,
+  estimateTokens,
+  PROSE_CHARS_PER_TOKEN,
+  REPLY_RESERVE,
+  resetTokenState,
+  TABLE_CHARS_PER_TOKEN,
+  tableChars,
+} from "../../web/src/llm/provider/tokens";
 import { shorten } from "../../web/src/llm/readings";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../../web/src/llm/settings";
 import { allSkills, readSkill, REFERENCE_MAX_CHARS, skillsPrompt } from "../../web/src/llm/skills";
@@ -82,6 +91,8 @@ const KEY = "measure|uncalibrated"; // never calibrated: the starting rates
 
 const prose = (text: string): number => text.length / PROSE_CHARS_PER_TOKEN;
 const data = (text: string): number => text.length / DATA_CHARS_PER_TOKEN;
+// A tool result as the guard counts it: the data rate, and its rows of bare values (a column table's, line_profile's points) at TABLE_CHARS_PER_TOKEN.
+const result = (text: string): number => data(text) + tableChars(text) * (1 / TABLE_CHARS_PER_TOKEN - 1 / DATA_CHARS_PER_TOKEN);
 const toolsTokens = (specs: ToolSpec[]): number => baseTokens([], specs);
 const msgTokens = (m: ChatMessage): number => baseTokens([m]);
 const n = (x: number): string => Math.round(x).toLocaleString("en-US");
@@ -386,18 +397,18 @@ function charsUnder(text: string, key: string): number {
 
 describe("5. tool results", () => {
   it("a sample of each tool's result, as sent (model-visible snapshots)", () => {
-    say("## 5. Tool results (the snapshots' samples on the synthetic crystal; estimator: data rate, 1.4)", "");
+    say("## 5. Tool results (the snapshots' samples on the synthetic crystal; estimator: data rate, 1.4, rows of bare values 1.2)", "");
     for (const [arm, file] of [["B", "4-tool-results.md"], ["C", "4-tool-results-arm-c.md"]] as const) {
       const rows: (string | number)[][] = [];
       for (const s of samples(file)) {
         if (s.head.includes("does not exist") || s.head.includes("not JSON") || s.head.includes("outside the da")) continue;
         const a = anatomy(s.text);
         const short = shorten(s.text);
-        if (arm === "B") add({ group: "result", name: s.head.slice(0, 90), arm, rate: "data", est: data(s.text), text: s.text });
+        if (arm === "B") add({ group: "result", name: s.head.slice(0, 90), arm, rate: "data", est: result(s.text), text: s.text });
         rows.push([
           s.head.slice(0, 60).replace(/\|/g, "/"),
           n(s.text.length),
-          n(data(s.text)),
+          n(result(s.text)),
           a.proseChars ? `${n(a.proseChars)} (${pct(a.proseChars, s.text.length)})` : "0",
           n(short.length),
           a.keys.slice(0, 3).map(([k, c]) => `${k} ${n(c)}`).join("; "),
@@ -627,10 +638,6 @@ describe("8. one rule, many homes", () => {
 // synthetic crystal (and the dev control's dpdf_peaks list): the same
 // numbers, fewer characters. Measurement only: no tool is changed.
 type Obj = Record<string, unknown>;
-const table2 = (rows: Obj[]): { cols: string[]; rows: unknown[][] } => {
-  const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
-  return { cols, rows: rows.map((r) => cols.map((c) => r[c] ?? null)) };
-};
 
 describe("9. what-ifs on the tools' results", () => {
   it("the same numbers, reshaped", async () => {
@@ -643,43 +650,19 @@ describe("9. what-ifs on the tools' results", () => {
     };
     const rows: (string | number)[][] = [];
     const row = (what: string, before: string, after: string) => {
-      rows.push([what, n(before.length), n(after.length), n(data(before) - data(after)), pct(before.length - after.length, before.length)]);
-      add({ group: "whatif.reshape", name: what, arm: "B", rate: "data", est: data(after), text: after });
+      rows.push([what, n(before.length), n(after.length), n(result(before) - result(after)), pct(before.length - after.length, before.length)]);
+      add({ group: "whatif.reshape", name: what, arm: "B", rate: "data", est: result(after), text: after });
     };
 
+    // Done in THY-63 R1 (signed sizes, column tables, the terse criterion on
+    // later calls); what is left needs a description or a skill changed.
     const peaks = await run("dpdf_peaks");
-    const p = JSON.parse(peaks) as Obj & { features: Obj[] };
-    const signed = {
-      ...p,
-      reading: undefined,
-      features: p.features.map((f) => {
-        const s = f.sign === "−" || f.sign === "-" ? -1 : 1;
-        const g: Obj = { ...f, size_sigma: s * Number(f.size_sigma) };
-        delete g.sign;
-        if (g.mean_size_sigma === f.size_sigma) delete g.mean_size_sigma;
-        else if (typeof g.mean_size_sigma === "number") g.mean_size_sigma = s * (g.mean_size_sigma as number);
-        if (g.multiplicity === g.n_vectors) delete g.multiplicity;
-        return g;
-      }),
-    };
-    row("dpdf_peaks (dev control): reading → description; sign in the size; equal duplicates dropped", peaks, JSON.stringify(signed));
-
-    const radial = await run("radial_profile");
-    const r = JSON.parse(radial) as Obj & { rows: Obj[] };
-    row("radial_profile: rows as a column table", radial, JSON.stringify({ ...r, rows: undefined, ...table2(r.rows) }));
-
-    const bragg = await run("bragg_peaks");
-    const b = JSON.parse(bragg) as Obj & { peaks: Obj[] };
-    row("bragg_peaks: peaks as a column table", bragg, JSON.stringify({ ...b, peaks: undefined, ...table2(b.peaks) }));
-
-    const assess = await run("assess_stage", { stage: "all" });
-    const a = JSON.parse(assess) as Record<string, Obj>;
-    const noCrit = Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v && typeof v === "object" && !Array.isArray(v) ? { ...v, criterion: undefined } : v]));
-    row("assess_stage all: criterion once per reply (later calls)", assess, JSON.stringify(noCrit));
+    const p = JSON.parse(peaks) as Obj;
+    row("dpdf_peaks (dev control): reading → description (R2)", peaks, JSON.stringify({ ...p, reading: undefined }));
 
     const qmax = await run("qmax_coverage");
     const q = JSON.parse(qmax) as Obj;
-    row("qmax_coverage: band_check and reach_from folded into the verdict", qmax, JSON.stringify({ ...q, band_check: undefined, reach_from: undefined }));
+    row("qmax_coverage: band_check and reach_from folded into the verdict (band_check is named in reduction-qc: R4)", qmax, JSON.stringify({ ...q, band_check: undefined, reach_from: undefined }));
 
     const settings = await run("configure_settings");
     add({ group: "whatif.reshape", name: "configure_settings as is", arm: "B", rate: "data", est: data(settings), text: settings });
