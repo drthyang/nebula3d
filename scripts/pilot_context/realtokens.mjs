@@ -13,10 +13,13 @@
 // (keep_alive 0 on the last call). Synthetic texts only (the measurement's
 // components): no measured data. Usage:
 //   node scripts/pilot_context/realtokens.mjs <dir> [model ...]
-// Default models: gemma4:26b qwen3:32b. Writes <dir>/realtokens.json and
-// prints a table by group.
+// Default models: gemma4:26b qwen3:32b. Writes <dir>/realtokens.json after
+// each model and prints a table by group. Identical texts are counted once.
+// REALTOKENS_REQUESTS=first counts only the first whole request (a dense
+// model takes minutes on the longest).
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { request } from "node:http";
 import { join } from "node:path";
 
 const OLLAMA = process.env.OLLAMA_URL ?? "http://localhost:11434";
@@ -31,10 +34,21 @@ const { components, requests = [] } = JSON.parse(readFileSync(join(dir, "compone
 let counter = 0;
 const nonce = () => `[measure ${String(100000 + ((counter++ * 7919) % 900000))}]\n`;
 
-async function post(path, body) {
-  const res = await fetch(`${OLLAMA}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error(`${path}: ${res.status} ${await res.text()}`);
-  return res.json();
+// node:http, not fetch: a long prompt on a dense model outlasts fetch's
+// five-minute header timeout.
+function post(path, body) {
+  const url = new URL(path, OLLAMA);
+  const payload = JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const req = request(url, { method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(payload) } }, (res) => {
+      let text = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => (text += c));
+      res.on("end", () => (res.statusCode === 200 ? resolve(JSON.parse(text)) : reject(new Error(`${path}: ${res.statusCode} ${text}`))));
+    });
+    req.on("error", reject);
+    req.end(payload);
+  });
 }
 
 const options = { num_predict: 1, temperature: 0, num_ctx: 65536 };
@@ -63,6 +77,7 @@ async function chatCount(model, req, keep = "10m") {
 }
 
 const results = { measured: new Date().toISOString(), models: {} };
+const onlyFirst = process.env.REALTOKENS_REQUESTS === "first";
 for (const model of models) {
   process.stderr.write(`${model}: loading…\n`);
   await rawCount(model, "warm up"); // load the model
@@ -70,21 +85,26 @@ for (const model of models) {
   for (let i = 0; i < 5; i++) base.push(await rawCount(model, ""));
   const nonceTokens = base.reduce((a, b) => a + b, 0) / base.length;
   const counted = [];
+  const seen = new Map();
   for (const [i, c] of components.entries()) {
     if (!c.text) continue;
-    const t = (await rawCount(model, c.text)) - nonceTokens;
+    if (!seen.has(c.text)) seen.set(c.text, (await rawCount(model, c.text)) - nonceTokens);
+    const t = seen.get(c.text);
     counted.push({ group: c.group, name: c.name, arm: c.arm, rate: c.rate, chars: c.chars, est: c.est, real: t });
     if (i % 20 === 0) process.stderr.write(`  ${i + 1}/${components.length}\n`);
   }
   const reqs = [];
-  for (const [i, r] of requests.entries()) {
-    const last = i === requests.length - 1;
-    reqs.push({ label: r.label, est: r.est, real: await chatCount(model, r, last ? 0 : "10m") });
-  }
-  if (!requests.length) await rawCount(model, "", 0);
+  const todo = onlyFirst ? requests.slice(0, 1) : requests;
   results.models[model] = { nonceTokens, components: counted, requests: reqs };
+  writeFileSync(join(dir, "realtokens.json"), JSON.stringify(results, null, 1));
+  for (const [i, r] of todo.entries()) {
+    const last = i === todo.length - 1;
+    process.stderr.write(`  request: ${r.label}\n`);
+    reqs.push({ label: r.label, est: r.est, real: await chatCount(model, r, last ? 0 : "10m") });
+    writeFileSync(join(dir, "realtokens.json"), JSON.stringify(results, null, 1));
+  }
+  if (!todo.length) await rawCount(model, "", 0);
 }
-writeFileSync(join(dir, "realtokens.json"), JSON.stringify(results, null, 1));
 
 // The table: by group and rate, the estimate against each model's count.
 const groups = new Map();
@@ -110,5 +130,5 @@ console.log("");
 console.log(`| whole request | estimate | ${models.join(" | ")} |`);
 console.log(`| --- | ---: | ${models.map(() => "---:").join(" | ")} |`);
 for (const [i, r] of (results.models[models[0]].requests ?? []).entries()) {
-  console.log(`| ${r.label} | ${fmt(r.est)} | ${models.map((m) => fmt(results.models[m].requests[i].real)).join(" | ")} |`);
+  console.log(`| ${r.label} | ${fmt(r.est)} | ${models.map((m) => (results.models[m].requests[i] ? fmt(results.models[m].requests[i].real) : "–")).join(" | ")} |`);
 }
