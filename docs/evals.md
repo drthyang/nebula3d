@@ -722,9 +722,11 @@ compaction, fits the minimum with the 3k of headroom a model-visible addition
 must leave: `web/src/llm/__tests__/tokenBudget.test.ts` checks it, and
 `scripts/measure_pilot_context.sh` prints today's size before and after
 compaction. The minimum was 48k (49,152) until
-the worst turn carried a full list. A 32k window holds the turn only by
-shortening the skills just read to stubs, so a
-run at 32k would grade arm B on stubs of its method. Before the plan starts,
+the worst turn carried a full list. Until THY-63 R3 a 32k window held the
+turn only by shortening the skills just read to stubs, so a run at 32k would
+have graded arm B on stubs of its method; since the core prompt it holds the
+turn as the loop's own compaction leaves it (the skill read first a stub, as
+at any window), with about 4.6k left for the reply. Before the plan starts,
 and again before each run, the runner reads the window the run will get
 (`runContext`), without loading anything, and refuses one under the minimum or
 one it cannot read, saying the model, the window found, the minimum and how
