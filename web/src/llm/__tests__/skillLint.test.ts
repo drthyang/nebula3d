@@ -317,7 +317,8 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
     skill: "delta-pdf-interpretation",
     phrase: "its vector in Å and in lattice units, its sign, its size",
     what: "a feature's vector, sign and size",
-    fields: ["features.vectors_A", "features.sign", "features.size_sigma"],
+    // The sign is size_sigma's own (THY-63 R1).
+    fields: ["features.vectors_A", "features.size_sigma"],
   },
 ];
 

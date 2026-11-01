@@ -19,6 +19,8 @@ import type { AgentStep } from "../agent";
 import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type ToolContext } from "../tools";
 import { offLatticeBunching } from "../metrics/bunching";
 import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
+import { tableRows } from "../tools/shared/table";
+import { TERSE_CRITERION, WORDS } from "../verdicts/rules";
 import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
 import braggOverDiffuse from "../../state/__tests__/__fixtures__/laue-compare-bragg-over-diffuse.json";
 import hex6m from "../../state/__tests__/__fixtures__/laue-compare-hex-6m.json";
@@ -192,10 +194,12 @@ describe("bragg_peaks", () => {
       peaks: [peak([1, 0, 0], 8), peak([2, 0, 0], 30), peak([0, 1, 0], 12)],
     } as unknown as BraggProfile);
     const bySig = JSON.parse((await run("bragg_peaks", {})).text);
-    expect(bySig.peaks.map((p: { hkl: number[] }) => p.hkl)).toEqual([[2, 0, 0], [0, 1, 0], [1, 0, 0]]);
-    expect(bySig.peaks[0].anisotropy).toBe(2);
+    // A row per peak, in a column table (THY-63 R1).
+    expect(bySig.peaks.cols).toEqual(["hkl", "q", "intensity", "local_background", "significance", "measured_width_q", "resolution_limited", "anisotropy", "fit"]);
+    expect(tableRows(bySig.peaks).map((p) => p.hkl)).toEqual([[2, 0, 0], [0, 1, 0], [1, 0, 0]]);
+    expect(tableRows(bySig.peaks)[0].anisotropy).toBe(2);
     const near = JSON.parse((await run("bragg_peaks", { near_hkl: [0, 1, 0], limit: 1 })).text);
-    expect(near.peaks).toEqual([expect.objectContaining({ hkl: [0, 1, 0] })]);
+    expect(tableRows(near.peaks)).toEqual([expect.objectContaining({ hkl: [0, 1, 0] })]);
   });
 });
 
@@ -801,6 +805,22 @@ describe("assess_stage", () => {
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
   });
 
+  it("sends a stage's whole criterion once in a reply, and the terse one on its later results there (THY-63 R1)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, floor_trend: 0.3, floor_span_fraction: 0.6, per_plane: { hk0: {} } });
+    const first = await runOn(full, "assess_stage", { stage: "flatten" });
+    const whole = JSON.parse(first.text).flatten.criterion;
+    expect(whole).toBe(WORDS.criterion.flatten);
+    const earlier: AgentStep[] = [{ id: "0:call_0", name: "assess_stage", args: { stage: "flatten" }, status: "done", result: first.text }];
+    const again = (args: Args, replySteps: AgentStep[]) => callTool({ dataset: full, datasets: [full], replySteps }, "assess_stage", args);
+    const later = JSON.parse((await again({}, earlier)).text);
+    expect(later.flatten.criterion).toBe(TERSE_CRITERION.flatten);
+    // The other stages' whole criteria were not sent yet; a reply that has sent none, or only terse ones, gets them whole.
+    expect(later.pdf.criterion).toBe(WORDS.criterion.pdf);
+    expect(JSON.parse((await again({ stage: "flatten" }, [])).text).flatten.criterion).toBe(whole);
+    const terseOnly: AgentStep[] = [{ ...earlier[0], result: JSON.stringify({ flatten: { criterion: TERSE_CRITERION.flatten } }) }];
+    expect(JSON.parse((await again({ stage: "flatten" }, terseOnly)).text).flatten.criterion).toBe(whole);
+  });
+
   it("keeps each stage's outcome beside its result, never in it", async () => {
     evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, max_floor_trend: 0.9, max_floor_span_fraction: 0.9, per_plane: {} });
     const r = await run("assess_stage", {});
@@ -889,9 +909,10 @@ describe("run_log", () => {
     });
     const all = JSON.parse((await run("run_log", {})).text);
     expect(all.ended).toBe("done");
-    expect(all.lines.map((l: { message: string }) => l.message)).toEqual(["9 shells fitted", "188 peaks punched"]);
+    expect(all.lines.cols).toEqual(["stage", "status", "message"]);
+    expect(tableRows(all.lines).map((l) => l.message)).toEqual(["9 shells fitted", "188 peaks punched"]);
     const punch = JSON.parse((await run("run_log", { stage: "punch" })).text);
-    expect(punch.lines).toEqual([{ stage: "punch", status: "done", message: "188 peaks punched" }]);
+    expect(punch.lines.rows).toEqual([["punch", "done", "188 peaks punched"]]);
   });
 
   it("says when there is no run yet", async () => {
@@ -910,9 +931,9 @@ describe("run_log", () => {
       ],
     });
     const b = JSON.parse((await run("run_log", { stage: "rings" })).text);
-    expect(b.lines).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
+    expect(tableRows(b.lines)).toEqual([{ stage: "rings", status: "done", message: `${summary}. ⚠ ${NOTICE}` }]);
     const c = JSON.parse((await callTool({ ...ctx, skills: false }, "run_log", {})).text);
-    expect(c.lines.map((l: { message: string }) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
+    expect(tableRows(c.lines).map((l) => l.message)).toEqual([`${summary}. ⚠ ${NOTICE_DEFINITION}`, "188 peaks punched"]);
   });
 });
 
@@ -1524,7 +1545,8 @@ describe("dpdf_peaks", () => {
     ],
   };
   // An entry's fields when the extrema are grouped by sign, length and size: as they were before.
-  const PLAIN_ENTRY = ["sign", "length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"];
+  // The sign is the size's own (THY-63 R1).
+  const PLAIN_ENTRY = ["length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"];
 
   it("lists the strongest features with their vectors, signs and sizes", async () => {
     api.fetchDpdfFeatures.mockResolvedValue(features);
@@ -1534,11 +1556,11 @@ describe("dpdf_peaks", () => {
     const out = JSON.parse(r.text);
     expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
     expect(out.features[0]).toEqual({
-      sign: "−", length_A: 2.739, size_sigma: 1520, n_vectors: 6,
+      length_A: 2.739, size_sigma: -1520, n_vectors: 6,
       vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497]],
       vectors_A: [[1.938, 1.938, 0], [0, 1.938, -1.938], [0, 1.938, 1.938], [1.938, 0, -1.938]],
     });
-    expect(out.features[1]).toMatchObject({ sign: "+", length_A: 5.838, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
+    expect(out.features[1]).toMatchObject({ length_A: 5.838, size_sigma: 238, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
     for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
     expect([out.robust_sigma, out.threshold_sigma, out.origin_disk_A, out.extrema_above_threshold]).toEqual([6.17, 5, 1.95, 619]);
     expect(r.summary).toBe("619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ");
@@ -1561,14 +1583,15 @@ describe("dpdf_peaks", () => {
     const out = JSON.parse(r.text);
     expect(out.grouped_by).toBe("declared symmetry (m-3m: 48 operations, r ≡ −r)");
     // Each orbit one entry: the vectors found (n_vectors) and the orbit's (multiplicity) apart.
-    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors, e.multiplicity])).toEqual([["+", 24, 24], ["−", 2, 3]]);
+    // A multiplicity equal to n_vectors is not repeated.
+    expect(out.features.map((e: Record<string, unknown>) => [Math.sign(e.size_sigma as number), e.n_vectors, e.multiplicity])).toEqual([[1, 24, undefined], [-1, 2, 3]]);
     expect(out.features[0]).toEqual({
-      sign: "+", length_A: 3.736, size_sigma: 63.7, mean_size_sigma: 57.8, n_vectors: 24, multiplicity: 24,
+      length_A: 3.736, size_sigma: 63.7, mean_size_sigma: 57.8, n_vectors: 24,
       vectors_rlu: [[0.748, -0.25, 0.5], [0.251, 0.5, -0.749], [0.75, 0.249, 0.501], [0.251, -0.748, 0.5]],
       vectors_A: [[2.991, -0.9994, 2.002], [1.005, 2.001, -2.996], [3.001, 0.9954, 2.003], [1.003, -2.992, 2]],
     });
     expect(out.features[1]).toEqual({
-      sign: "−", length_A: 4, size_sigma: 38.9, mean_size_sigma: 37.2, n_vectors: 2, multiplicity: 3,
+      length_A: 4, size_sigma: -38.9, mean_size_sigma: -37.2, n_vectors: 2, multiplicity: 3,
       vectors_rlu: [[1, -0.003, 0.0007], [0.0012, 0.998, 0.0012]],
       vectors_A: [[4, -0.0121, 0.0027], [0.0048, 3.991, 0.0046]],
     });
@@ -1581,10 +1604,10 @@ describe("dpdf_peaks", () => {
     const out = JSON.parse((await run("dpdf_peaks", { min_sigma: 8 })).text);
     expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
     // The orbits split by size: seven entries, the 26 extrema between them.
-    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors])).toEqual([["+", 7], ["+", 7], ["+", 6], ["+", 3], ["+", 1], ["−", 1], ["−", 1]]);
+    expect(out.features.map((e: Record<string, unknown>) => [Math.sign(e.size_sigma as number), e.n_vectors])).toEqual([[1, 7], [1, 7], [1, 6], [1, 3], [1, 1], [-1, 1], [-1, 1]]);
     expect(out.features.reduce((sum: number, e: { n_vectors: number }) => sum + e.n_vectors, 0)).toBe(26);
     for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
-    expect(out.features[0]).toEqual({ sign: "+", length_A: 3.736, size_sigma: 63.7, n_vectors: 7, vectors_rlu: [[0.748, -0.25, 0.5]], vectors_A: [[2.991, -0.9992, 2.002]] });
+    expect(out.features[0]).toEqual({ length_A: 3.736, size_sigma: 63.7, n_vectors: 7, vectors_rlu: [[0.748, -0.25, 0.5]], vectors_A: [[2.991, -0.9992, 2.002]] });
 
     // A symmetry declared that cannot be applied: grouped as without one, and grouped_by says why.
     const why = "sign, length and size (the declared symmetry 6/mmm is not applied: the ΔPDF file records no cell)";
@@ -1804,9 +1827,11 @@ describe("radial_profile", () => {
     );
     const out = JSON.parse((await runOn(full, "radial_profile", { stages: ["raw", "flattened"], bins: 8 })).text);
     expect(out.q_unit).toBe("|Q| in Å⁻¹");
-    expect(Object.keys(out.rows[0])).toEqual(["q", "raw", "flattened"]);
-    expect(out.rows[0].raw - out.rows[0].flattened).toBeCloseTo(8, 5);
-    expect(out.rows[out.rows.length - 1].q).toBeGreaterThan(out.rows[0].q);
+    // A row per shell, in a column table (THY-63 R1).
+    expect(out.shells.cols).toEqual(["q", "raw", "flattened"]);
+    const rows = tableRows(out.shells) as { q: number; raw: number; flattened: number }[];
+    expect(rows[0].raw - rows[0].flattened).toBeCloseTo(8, 5);
+    expect(rows[rows.length - 1].q).toBeGreaterThan(rows[0].q);
   });
 });
 

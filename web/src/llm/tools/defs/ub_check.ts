@@ -70,7 +70,7 @@ export const ub_check: ChatTool = {
     const u = await fetchUbCheck(rawId, cell, qMax);
     const cellText = (c: number[]) => `${c.slice(0, 3).map((x) => x.toFixed(4)).join(", ")} Å; ${c.slice(3).map((x) => x.toFixed(3)).join("°, ")}°`;
     const shift = originShift(u);
-    const result = {
+    const measured = {
       fit: u.fit,
       bragg_nodes_every: u.cell_nodes,
       symmetry_from: u.operations_from,
@@ -120,13 +120,16 @@ export const ub_check: ChatTool = {
         " ",
       ).text(skillsOn(ctx)),
     };
+    // The verdict is computed from the numbers, by the UB's rule (verdicts/),
+    // with the angle and the limit it was judged by.
+    const outcome = judge("ub", measured, { skills: skillsOn(ctx) });
+    const result = { verdict: outcome.words, ...measured };
     return {
       result,
       summary:
         `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°` +
         (shift ? `; origin shifted ${rlu(shift)} r.l.u.` : ""),
-      // No verdict in the result: the UB's rule (verdicts/) judges what the fit found.
-      outcomes: [judge("ub", result)],
+      outcomes: [outcome],
     };
   },
 };

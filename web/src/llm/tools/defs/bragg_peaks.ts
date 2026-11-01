@@ -6,6 +6,7 @@ import { safe } from "../../context/loadContext";
 import { roundSig } from "../../metrics/sliceStats";
 import { num, oneOf } from "../shared/args";
 import { r4 } from "../shared/figures";
+import { columnTable } from "../shared/table";
 import { ToolArgError, type ChatTool } from "../types";
 
 export const bragg_peaks: ChatTool = {
@@ -54,16 +55,19 @@ export const bragg_peaks: ChatTool = {
       return p[sortBy] ?? LAST;
     };
     peaks.sort((x, y) => key(y) - key(x));
+    const listed = peaks.slice(0, limit);
+    const sortedBy = near ? `distance to ${near.join(", ")}` : sortBy;
     const result = {
       n_peaks: profile.n_peaks,
       punch_frame: profile.punch_frame,
-      sorted_by: near ? `distance to ${near.join(", ")}` : sortBy,
-      peaks: peaks.slice(0, limit),
+      sorted_by: sortedBy,
+      // A row per peak (a column table, tools/shared/table.ts).
+      peaks: columnTable(listed, ["hkl", "q", "intensity", "local_background", "significance", "measured_width_q", "resolution_limited", "anisotropy", "fit"]),
     };
-    const top = result.peaks[0];
+    const top = listed[0];
     return {
       result,
-      summary: `${profile.n_peaks} fitted peaks; top ${result.peaks.length} by ${result.sorted_by}`,
+      summary: `${profile.n_peaks} fitted peaks; top ${listed.length} by ${sortedBy}`,
       view: top && {
         view: "bragg",
         hkl: top.hkl as [number, number, number],

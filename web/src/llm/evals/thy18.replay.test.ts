@@ -92,7 +92,7 @@ describe("THY-18: no verdict without its evidence", () => {
       { calls: [{ name: "dpdf_peaks" }] },
       {
         text:
-          "The strongest pair correlation is {{dpdf_peaks.features.0.sign}} at {{dpdf_peaks.features.0.vectors_rlu.0}} r.l.u. " +
+          "The strongest pair correlation is at {{dpdf_peaks.features.0.vectors_rlu.0}} r.l.u. " +
           "({{dpdf_peaks.features.0.length_A}} Å, {{dpdf_peaks.features.0.size_sigma}}σ), in {{dpdf_peaks.features.0.n_vectors}} directions.",
       },
     ]);
@@ -100,7 +100,7 @@ describe("THY-18: no verdict without its evidence", () => {
     expect(r.sent[1]).toMatch(/gives a verdict on the 3D-ΔPDF's pair correlations without its evidence in this reply: call dpdf_peaks/);
     const top = (r.results("dpdf_peaks")[0].features as Record<string, unknown>[])[0];
     expect(r.content).toBe(
-      `The strongest pair correlation is ${top.sign} at ${shown((top.vectors_rlu as unknown[])[0])} r.l.u. ` +
+      `The strongest pair correlation is at ${shown((top.vectors_rlu as unknown[])[0])} r.l.u. ` +
         `(${shown(top.length_A)} Å, ${shown(top.size_sigma)}σ), in ${shown(top.n_vectors)} directions.`,
     );
     expect(r.note).toBeUndefined();

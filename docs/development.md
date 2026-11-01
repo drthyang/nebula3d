@@ -413,6 +413,29 @@ When a tool's result changes on purpose (a field added, renamed, retyped, or
 left out on a new path), change its contract in the same commit: the
 contract follows the tool. When the result changed by accident, fix the tool.
 
+A result follows the compact formats of `docs/pilot-context-design.md` §5.5:
+
+- **Bulk lists are column tables**, `{"cols": [...], "rows": [[...], ...]}`
+  (`web/src/llm/tools/shared/table.ts`, the contracts' `table` shape):
+  radial_profile's shells, bragg_peaks' peaks, run_log's lines. A reference
+  reads a row by its index and a value by its column's name
+  (`{{radial_profile.shells.3.flattened}}`, `references.ts`), and the context
+  guard counts a table's rows at 1.2 characters a token
+  (`TABLE_CHARS_PER_TOKEN`, `provider/tokens.ts`), as dense as local
+  tokenizers read them. A list an answer cites entry by entry stays a list of
+  objects: `contracts.test.ts` lists each with why, and a new list of objects
+  fails there until it is a table or listed.
+- **A number carries its sign**: dpdf_peaks' `size_sigma` is −1520, not
+  `"sign": "−"` beside 1520, so an answer's signed number traces to it.
+- **A verdict carries its rule**: the outcome with the numbers and the limit
+  it was judged by (ub_check: "the UB is right: turned 0.003°, under the
+  0.05° that counts as turned"). assess_stage sends a stage's whole criterion
+  once in a reply and the terse one (`TERSE_CRITERION`, at most 160
+  characters, its limits only) on its later results there.
+- **A field left out repeats nothing**: dpdf_peaks leaves out
+  `mean_size_sigma` and `multiplicity` where they equal `size_sigma` and
+  `n_vectors`.
+
 ### The limits both languages hold
 
 `web/src/llm/__tests__/sharedLimits.replay.test.ts` pins each limit or

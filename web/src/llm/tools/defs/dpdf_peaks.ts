@@ -17,7 +17,7 @@ import { ToolArgError, type ChatTool } from "../types";
 const PEAK_VECTORS = 4;
 
 // How dpdf_peaks' entries read; which of them are no pair correlations is inference (inference.ts).
-const PEAKS_READING = written("tools/index.ts: dpdf_peaks' reading")`Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to ${PEAK_VECTORS} of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk${evidence(
+const PEAKS_READING = written("tools/index.ts: dpdf_peaks' reading")`Each entry: |r|, the largest size in σ with its sign, how many vectors (one per ± pair) share them, and up to ${PEAK_VECTORS} of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk${evidence(
   "; features nearer the origin than the shortest interatomic distance are not pair correlations",
 )}.`;
 
@@ -46,20 +46,27 @@ export const dpdf_peaks: ChatTool = {
     const f = await fetchDpdfFeatures(dpdfVolumeId(dataset)!, minSigma, limit);
     const sign = (s: number) => (s > 0 ? "+" : "−");
     const vec = (v: number[] | null, digits: number) => (v ? v.map((x) => roundSig(x, digits) + 0) : null);
-    const features = f.groups.map((g) => ({
-      sign: sign(g.sign),
-      length_A: roundSig(g.length, 4),
-      size_sigma: roundSig(g.size_sigma, 3),
+    // A size carries its sign (THY-63 R1): −1520, not a sign beside 1520, so
+    // an answer's signed number traces to it (answerChecks.ts, untracedNumbers).
+    const signed = (s: number, size: number) => (s > 0 ? 1 : -1) * Math.abs(roundSig(size, 3));
+    const features = f.groups.map((g) => {
+      const size = signed(g.sign, g.size_sigma);
       // An orbit of the declared symmetry (the backend gives its multiplicity):
       // its copies' mean size, and how many distinct vectors it has. Grouped by
       // sign, length and size there is no orbit, and every size is within 5 %
-      // of the largest: neither is given, and the entry is as it was.
-      ...(g.multiplicity != null ? { mean_size_sigma: roundSig(g.mean_size_sigma, 3) } : {}),
-      n_vectors: g.n,
-      ...(g.multiplicity != null ? { multiplicity: g.multiplicity } : {}),
-      vectors_rlu: g.vectors_rlu.slice(0, PEAK_VECTORS).map((v) => vec(v, 3)),
-      vectors_A: g.vectors.slice(0, PEAK_VECTORS).map((v) => vec(v, 4)),
-    }));
+      // of the largest: neither is given. Each is left out where it repeats a
+      // number the entry already gives (the largest size, n_vectors).
+      const mean = g.multiplicity != null ? signed(g.sign, g.mean_size_sigma) : null;
+      return {
+        length_A: roundSig(g.length, 4),
+        size_sigma: size,
+        ...(mean != null && mean !== size ? { mean_size_sigma: mean } : {}),
+        n_vectors: g.n,
+        ...(g.multiplicity != null && g.multiplicity !== g.n ? { multiplicity: g.multiplicity } : {}),
+        vectors_rlu: g.vectors_rlu.slice(0, PEAK_VECTORS).map((v) => vec(v, 3)),
+        vectors_A: g.vectors.slice(0, PEAK_VECTORS).map((v) => vec(v, 4)),
+      };
+    });
     const result = {
       grouped_by: f.grouped_by,
       features,

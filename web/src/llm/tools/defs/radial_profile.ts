@@ -10,6 +10,7 @@ import { keysOf, RECIP } from "../facts";
 import { num, oneOf } from "../shared/args";
 import { checkInRange, cleanupView, HKL, planeLabel, RECIP_FIXED, RECIP_PLANES, recipMeta, recipRange } from "../shared/cuts";
 import { described, description } from "../shared/describe";
+import { columnTable } from "../shared/table";
 import { ToolArgError, type ChatTool } from "../types";
 
 export const radial_profile: ChatTool = {
@@ -72,7 +73,8 @@ export const radial_profile: ChatTool = {
         cut: planeLabel(plane, value),
         q_unit: radius ? "|Q| in Å⁻¹" : "in-plane radius in r.l.u. (no cell)",
         stat: "median per shell",
-        rows,
+        // A row per shell: its |Q|, then each stage's median (a column table, tools/shared/table.ts).
+        shells: columnTable(rows, ["q", ...stages]),
       },
       summary: `${planeLabel(plane, value)}: ${rows.length} shells × ${stages.length} stages`,
       view: cleanupView(plane, value),

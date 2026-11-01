@@ -97,6 +97,22 @@ describe("numbers by reference", () => {
     expect(resolveReference("dpdf_peaks.features.0.vectors_rlu", steps)).toBe("(0.497, 0.497, 0); (0, 0.497, 0.497)");
   });
 
+  it("reads a column table's row by its index, and a row's value by its column's name or index (THY-63 R1)", () => {
+    const shells = { cols: ["q", "raw", "flattened"], rows: [[0.345, 16.7, 0.646], [0.531, 17.5, 1.34]] };
+    const profile = [step("radial_profile", { cut: "H–K plane at L = 0", shells }), step("run_log", { lines: { cols: ["stage", "message"], rows: [["punch", "13 peaks punched"]] } })];
+    expect(resolveReference("radial_profile.shells.1.flattened", profile)).toBe("1.34");
+    expect(resolveReference("radial_profile.shells.1.2", profile)).toBe("1.34");
+    expect(resolveReference("radial_profile.shells.rows.0.q", profile)).toBe("0.345");
+    expect(resolveReference("radial_profile.shells.rows.0.1", profile)).toBe("16.7");
+    expect(resolveReference("radial_profile.shells.0", profile)).toBe("(0.345, 16.7, 0.646)");
+    expect(resolveReference("radial_profile.shells.cols", profile)).toBe("(q, raw, flattened)");
+    expect(resolveReference("run_log.lines.0.message", profile)).toBe("13 peaks punched");
+    // No such column or row: nothing to fill.
+    for (const key of ["radial_profile.shells.0.ringremoved", "radial_profile.shells.2.q", "radial_profile.shells.0.3", "radial_profile.shells.q", "radial_profile.shells.rows.q"]) {
+      expect(resolveReference(key, profile), key).toBeNull();
+    }
+  });
+
   it("names nothing it cannot fill: no such tool, field, or a value that is no number or text", () => {
     for (const key of ["ub_check.angle", "ub_check.origin_shift_rlu", "ub_check.passes", "qmax_coverage.verdict", "ub_check"]) {
       expect(resolveReference(key, steps), key).toBeNull();

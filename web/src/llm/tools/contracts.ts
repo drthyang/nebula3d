@@ -21,7 +21,9 @@ export type Shape =
   | { readonly kind: "tuple"; readonly of: readonly Shape[] }
   | { readonly kind: "object"; readonly fields: Readonly<Record<string, Field>> }
   | { readonly kind: "record"; readonly of: Shape } // any keys, each value of one shape
-  | { readonly kind: "union"; readonly of: readonly Shape[] };
+  | { readonly kind: "union"; readonly of: readonly Shape[] }
+  // A column table (tools/shared/table.ts): { cols, rows }, each row a value per column, in the columns' order.
+  | { readonly kind: "table"; readonly cols: Readonly<Record<string, Field>> };
 
 /** An object's field: its shape, and whether the result may leave it out. */
 export interface Field {
@@ -54,6 +56,16 @@ export const obj = (fields: Record<string, Shape | Field>): Shape => ({
   fields: Object.fromEntries(Object.entries(fields).map(([k, f]) => [k, isField(f) ? f : { shape: f, optional: false }])),
 });
 
+/**
+ * A column table (tools/shared/table.ts) whose columns are these: a column
+ * not here disagrees, and one that is not optional must be there. Each row
+ * has a value per column, of that column's shape.
+ */
+export const table = (cols: Record<string, Shape | Field>): Shape => ({
+  kind: "table",
+  cols: Object.fromEntries(Object.entries(cols).map(([k, f]) => [k, isField(f) ? f : { shape: f, optional: false }])),
+});
+
 /** Two object shapes' fields as one object (the second's win). */
 const merged = (a: Shape, b: Shape): Shape => {
   if (a.kind !== "object" || b.kind !== "object") throw new Error("merged takes two object shapes");
@@ -79,6 +91,8 @@ export function describe(shape: Shape): string {
       return `record of ${describe(shape.of)}`;
     case "union":
       return shape.of.map(describe).join(" | ");
+    case "table":
+      return `table of { ${Object.entries(shape.cols).map(([k, f]) => (f.optional ? `${k}?` : k)).join(", ")} }`;
     default:
       return shape.kind;
   }
@@ -120,6 +134,23 @@ export function disagreements(shape: Shape, value: unknown, path = "result"): st
         } else out.push(...disagreements(f.shape, o[k], `${path}.${k}`));
       }
       for (const k of Object.keys(o)) if (!(k in shape.fields)) out.push(`${path}.${k}: not in the contract (got ${typeOf(o[k])})`);
+      return out;
+    }
+    case "table": {
+      if (got !== "object") return expected();
+      const t = value as Record<string, unknown>;
+      const out: string[] = [];
+      for (const k of Object.keys(t)) if (k !== "cols" && k !== "rows") out.push(`${path}.${k}: not in the contract (got ${typeOf(t[k])})`);
+      if (!Array.isArray(t.cols) || !t.cols.every((c) => typeof c === "string")) return [...out, `${path}.cols: expected array of string, got ${typeOf(t.cols)}`];
+      if (!Array.isArray(t.rows)) return [...out, `${path}.rows: expected array of rows, got ${typeOf(t.rows)}`];
+      const cols = t.cols as string[];
+      for (const c of cols) if (!(c in shape.cols)) out.push(`${path}.cols: ${JSON.stringify(c)} not in the contract`);
+      for (const [c, f] of Object.entries(shape.cols)) if (!f.optional && !cols.includes(c)) out.push(`${path}.cols: ${JSON.stringify(c)} missing`);
+      (t.rows as unknown[]).forEach((row, i) => {
+        if (!Array.isArray(row)) out.push(`${path}.rows[${i}]: expected a row (array), got ${typeOf(row)}`);
+        else if (row.length !== cols.length) out.push(`${path}.rows[${i}]: expected ${cols.length} values (one per column), got ${row.length}`);
+        else row.forEach((v, j) => shape.cols[cols[j]] && out.push(...disagreements(shape.cols[cols[j]].shape, v, `${path}.rows[${i}].${cols[j]}`)));
+      });
       return out;
     }
     case "union": {
@@ -478,10 +509,10 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     grouped_by: str,
     features: arr(
       obj({
-        sign: oneOf("+", "−"),
         length_A: num,
+        // Signed: + more pairs than the average structure, − fewer.
         size_sigma: num,
-        // Only for an orbit of the declared symmetry (findings).
+        // Only for an orbit of the declared symmetry, and where it differs from size_sigma or n_vectors (findings).
         mean_size_sigma: optional(num),
         n_vectors: num,
         multiplicity: optional(num),
@@ -511,6 +542,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   }),
 
   ub_check: obj({
+    // The UB's rule's outcome, with the angle and its limit; null with no angle to judge.
+    verdict: maybeStr,
     fit: oneOf("orientation", "lattice", "both", "symmetric"),
     bragg_nodes_every: v3,
     symmetry_from: maybeStr,
@@ -568,16 +601,14 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     q_unit: str,
     stat: str,
     // A shell's median in each stage compared (the stages that exist, or those asked for).
-    rows: arr(
-      obj({
-        q: num,
-        raw: optional(maybeNum),
-        ringremoved: optional(maybeNum),
-        braggpunched: optional(maybeNum),
-        backfilled: optional(maybeNum),
-        flattened: optional(maybeNum),
-      }),
-    ),
+    shells: table({
+      q: num,
+      raw: optional(maybeNum),
+      ringremoved: optional(maybeNum),
+      braggpunched: optional(maybeNum),
+      backfilled: optional(maybeNum),
+      flattened: optional(maybeNum),
+    }),
   }),
 
   line_profile: obj({
@@ -600,26 +631,24 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
       n_peaks: num,
       punch_frame: maybeStr,
       sorted_by: str,
-      peaks: arr(
-        obj({
-          hkl: v3,
-          q: maybeNum,
-          intensity: maybeNum,
-          local_background: maybeNum,
-          significance: maybeNum,
-          measured_width_q: nullable(v3),
-          resolution_limited: nullable(tuple(bool, bool, bool)),
-          anisotropy: maybeNum,
-          fit: str,
-        }),
-      ),
+      peaks: table({
+        hkl: v3,
+        q: maybeNum,
+        intensity: maybeNum,
+        local_background: maybeNum,
+        significance: maybeNum,
+        measured_width_q: nullable(v3),
+        resolution_limited: nullable(tuple(bool, bool, bool)),
+        anisotropy: maybeNum,
+        fit: str,
+      }),
     }),
   ),
 
   // Without a saved check, has_check false alone (findings).
   consistency_details: union(obj({ has_check: lit(false) }), consistencyMetrics),
 
-  run_log: obj({ ended: str, lines: arr(obj({ stage: maybeStr, status: maybeStr, message: str })) }),
+  run_log: obj({ ended: str, lines: table({ stage: maybeStr, status: maybeStr, message: str }) }),
 
   // A dataset the cut could not be measured on is its label and the error (findings).
   compare_datasets: obj({

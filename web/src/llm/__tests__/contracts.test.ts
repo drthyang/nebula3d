@@ -34,9 +34,11 @@ import {
   rec,
   RESULT_CONTRACTS,
   str,
+  table,
   TEXT_RESULTS,
   tuple,
   union,
+  type Shape,
 } from "../tools/contracts";
 
 const api = vi.hoisted(() => ({
@@ -83,6 +85,78 @@ describe("the contracts cover the registry", () => {
     expect(contractDisagreements("no_such_tool", {})).toEqual(["no_such_tool: no contract (tools/contracts.ts)"]);
     expect(contractDisagreements("read_skill", "Skill reduction-qc …")).toEqual([]);
     expect(contractDisagreements("read_skill", { text: "…" })).toEqual(["read_skill: expected text, got object"]);
+  });
+});
+
+// A result's bulk list is a column table (tools/shared/table.ts, THY-63 R1):
+// the lists of objects the contracts hold, each with why it stays one. A new
+// list of objects fails here until it is a table or listed with its reason.
+const CITED = "an answer cites its entries one by one (references read best by name)";
+const FEW = "a few entries at most (one per plane, pass, dataset, stage or change)";
+const OBJECT_LISTS: Record<string, string> = {
+  "describe_dataset.other_datasets": FEW,
+  "measure_reciprocal_cut.ring_removal.ring_residuals": CITED,
+  "measure_reciprocal_cut.bragg_punch_leftover.suspicious_peaks": CITED,
+  "assess_stage.rings.shells_judged": CITED,
+  "assess_stage.rings.per_plane.hk0.ring_residuals": CITED,
+  "assess_stage.rings.per_plane.h0l.ring_residuals": CITED,
+  "assess_stage.rings.per_plane.0kl.ring_residuals": CITED,
+  "texture_check.per_cut": FEW,
+  "symmetry_check.not_tested": FEW,
+  "symmetry_check.ops": CITED,
+  "dpdf_peaks.features": CITED,
+  "grain_check.far": CITED,
+  "ub_check.passes": FEW,
+  "ub_check.radial": FEW,
+  "compare_laue_classes.classes": CITED,
+  "compare_datasets.rows": FEW,
+  "update_settings.changed": FEW,
+  "update_settings.refused": FEW,
+  "tune_pipeline.stages": FEW,
+  "tune_pipeline.stages[].trials": "a tuning run's trials, each judged by name in the reply",
+  "mark_region.drawn_on": FEW,
+};
+
+describe("bulk lists are column tables (THY-63 R1)", () => {
+  it("every list of objects a result holds is listed with why it stays one", () => {
+    const found = new Set<string>();
+    const walk = (s: Shape, path: string): void => {
+      switch (s.kind) {
+        case "array":
+          if (s.of.kind === "object" || (s.of.kind === "union" && s.of.of.some((x) => x.kind === "object"))) found.add(path);
+          return walk(s.of, `${path}[]`);
+        case "object":
+          return Object.entries(s.fields).forEach(([k, f]) => walk(f.shape, `${path}.${k}`));
+        case "union":
+          return s.of.forEach((x) => walk(x, path));
+        case "record":
+          return walk(s.of, `${path}.*`);
+        case "tuple":
+          return s.of.forEach((x, i) => walk(x, `${path}[${i}]`));
+        default:
+          return;
+      }
+    };
+    for (const [name, shape] of Object.entries(RESULT_CONTRACTS)) walk(shape, name);
+    expect([...found].sort()).toEqual(Object.keys(OBJECT_LISTS).sort());
+  });
+});
+
+describe("a column table against its contract", () => {
+  const shape = obj({ shells: table({ q: num, raw: optional(nullable(num)), note: optional(str) }) });
+  const good = { shells: { cols: ["q", "raw"], rows: [[0.3, 16.7], [0.5, null]] } };
+
+  it("agrees when each row has a value per column, of its column's shape, an optional column left out", () => {
+    expect(disagreements(shape, good)).toEqual([]);
+    expect(describeShape(shape)).toBe("{ shells }");
+  });
+
+  it("names a column it does not hold, one left out, a row of another length, and a value of another type", () => {
+    expect(disagreements(shape, { shells: { cols: ["q", "flattened"], rows: [] } })).toEqual(['result.shells.cols: "flattened" not in the contract']);
+    expect(disagreements(shape, { shells: { cols: ["raw"], rows: [] } })).toEqual(['result.shells.cols: "q" missing']);
+    expect(disagreements(shape, { shells: { cols: ["q", "raw"], rows: [[0.3]] } })).toEqual(["result.shells.rows[0]: expected 2 values (one per column), got 1"]);
+    expect(disagreements(shape, { shells: { cols: ["q", "raw"], rows: [[0.3, "x"]] } })).toEqual(['result.shells.rows[0].raw: expected number | null, got "x"']);
+    expect(disagreements(shape, { shells: [{ q: 0.3 }] })).toEqual(["result.shells: expected table of { q, raw?, note? }, got array"]);
   });
 });
 
@@ -241,7 +315,7 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
   it("line_profile and radial_profile through the ΔPDF, and on chosen stages", async () => {
     expect((await run("line_profile", { stage: "delta_pdf", along: "x", at: { y: 0, z: 0 } })).units).toBe("Å");
     const radial = await run("radial_profile", { plane: "0kl", stages: ["raw", "flattened"], bins: 8 });
-    expect(Object.keys((radial.rows as object[])[0])).toEqual(["q", "raw", "flattened"]);
+    expect((radial.shells as { cols: string[] }).cols).toEqual(["q", "raw", "flattened"]);
   });
 
   it("update_settings: a setting already at its value, and one with no effect under the current model", async () => {
@@ -279,7 +353,7 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     usePipelineStore.setState({ events: [{ type: "progress", stage: "punch", status: "done", message: "13 peaks punched" }], terminal: "done", running: false });
     expect(await run("run_log", { stage: "punch", limit: 5 })).toEqual({
       ended: "done",
-      lines: [{ stage: "punch", status: "done", message: "13 peaks punched" }],
+      lines: { cols: ["stage", "status", "message"], rows: [["punch", "done", "13 peaks punched"]] },
     });
   });
 

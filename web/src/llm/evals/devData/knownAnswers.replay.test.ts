@@ -35,6 +35,7 @@ import { flattenJudging, flattenMetrics, volumePedestal } from "../../metrics/fl
 import { SYMMETRY_HOLDS } from "../../metrics/symmetry";
 import { fit } from "../../readings";
 import { CHAT_TOOLS, MAX_RESULT_CHARS } from "../../tools";
+import { tableRows, type Table } from "../../tools/shared/table";
 import { verdicts } from "../../verdicts";
 import { casesIn, type ValidationCase } from "../validation";
 import { bridgeConfig } from "./bridgeWorker";
@@ -214,7 +215,7 @@ describe("dev-control: nothing flagged", () => {
 
 type Planted = ValidationCase["planted"][number];
 interface PeakEntry {
-  sign: string;
+  size_sigma: number; // signed (THY-63 R1)
   vectors_rlu: (number[] | null)[];
 }
 
@@ -226,7 +227,7 @@ const cubeImages = (v: number[]): number[][] =>
 
 /** Whether an entry of dpdf_peaks is the planted correlation: its sign, and an image of its vector among the entry's. */
 const listsCorrelation = (e: PeakEntry, p: Planted): boolean =>
-  e.sign === (p.sign === "+" ? "+" : "−") &&
+  Math.sign(e.size_sigma) === (p.sign === "+" ? 1 : -1) &&
   e.vectors_rlu.some((u) => u !== null && cubeImages(p.vector).some((w) => Math.hypot(u[0] - w[0], u[1] - w[1], u[2] - w[2]) <= SAME_VECTOR));
 
 /** The entry (1-based) each planted correlation first comes in, 0 where none is it. */
@@ -269,7 +270,7 @@ describe("dev-control: dpdf_peaks lists the planted correlations", () => {
       expect(g.mean_size_sigma, msg).toBeGreaterThanOrEqual(0.95 * g.size_sigma);
     }
     expect(entries.map((e) => e.n_vectors), msg).toEqual(served.groups.map((g) => g.n));
-    for (const e of entries) expect(Object.keys(e), msg).toEqual(["sign", "length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"]);
+    for (const e of entries) expect(Object.keys(e), msg).toEqual(["length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"]);
   });
 });
 
@@ -435,7 +436,7 @@ for (const id of ["dev-rings", "dev-rings-shell"] as const) {
     check(id, name, async () => {
       const c = devCase(id);
       const log = ran(await c.tool("run_log", { stage: "rings" }), "run_log");
-      const done = (log.result.lines as { status: string; message: string }[]).filter((l) => l.status === "done").pop()?.message ?? "";
+      const done = (tableRows(log.result.lines as Table) as { status: string; message: string }[]).filter((l) => l.status === "done").pop()?.message ?? "";
       const rings = ran(await c.tool("assess_stage", { stage: "rings" }), "assess_stage rings").result.rings as Record<string, unknown>;
       const left = (await fetchRingDiagnostics((await c.dataset()).id)).unconfirmed_at_grid;
       const msg = evidence(c, { ring_log: done, notice: rings.notice ?? null, unconfirmed_at_grid: left });

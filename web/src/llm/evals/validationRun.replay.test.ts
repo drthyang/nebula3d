@@ -146,7 +146,7 @@ describe("validation runs back to back", () => {
     expect(one.decisions.filter((d) => d.status !== "done").map((d) => `${d.tool}: ${d.result}`)).toEqual([]);
     expect(first.overrun).toBe(0);
     // What it left in the app: what a second run would read, were it not cleared.
-    expect(read(only(one, "run_log")).lines).not.toEqual([]);
+    expect((read(only(one, "run_log")).lines as { rows: unknown[] }).rows).not.toEqual([]);
     expect(read(only(one, "current_view")).page).toBe("dpdf");
     const pipe = usePipelineStore.getState();
     expect([pipe.events.length > 0, pipe.terminal, pipe.flattenQ2]).toEqual([true, "done", true]);

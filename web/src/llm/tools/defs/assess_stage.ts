@@ -6,12 +6,13 @@ import { SIGMA_OF } from "../../metrics/dpdf";
 import { skillsOn } from "../../skills";
 import { TUNE_STAGE_LABELS, TUNE_STAGES, type TuneStage } from "../../tune/catalog";
 import { evaluateStage, headline } from "../../tune/evaluate";
-import { judge, WORDS, type Outcome } from "../../verdicts/rules";
+import { judge, TERSE_CRITERION, WORDS, type Outcome } from "../../verdicts/rules";
 import { ALL_STAGES, stageKey } from "../facts";
 import type { ViewTarget } from "../openView";
 import { oneOf } from "../shared/args";
 import { cleanupView, planeLabel } from "../shared/cuts";
 import type { ChatTool } from "../types";
+import type { AgentStep } from "../../agent";
 
 // The output each stage writes, as the dataset lists it.
 const STAGE_OUTPUT: Record<TuneStage, string> = {
@@ -57,6 +58,29 @@ function worstPlane(stage: TuneStage, evaluation: Record<string, unknown>): stri
   return worst ?? Object.keys(per)[0] ?? null;
 }
 
+/**
+ * The stages whose whole criterion an earlier assess_stage in this reply
+ * already sent (THY-63 R1): its later results carry the terse one
+ * (TERSE_CRITERION), the limits without the explanation.
+ */
+function criteriaSent(steps: readonly AgentStep[] | undefined): Set<TuneStage> {
+  const sent = new Set<TuneStage>();
+  for (const step of steps ?? []) {
+    if (step.name !== "assess_stage" || step.status !== "done" || !step.result) continue;
+    let r: unknown;
+    try {
+      r = JSON.parse(step.result);
+    } catch {
+      continue;
+    }
+    for (const stage of TUNE_STAGES) {
+      const part = (r as Record<string, unknown> | null)?.[stage] as Record<string, unknown> | undefined;
+      if (typeof part?.criterion === "string" && part.criterion !== TERSE_CRITERION[stage]) sent.add(stage);
+    }
+  }
+  return sent;
+}
+
 export const assess_stage: ChatTool = {
   name: "assess_stage",
   facts: {
@@ -91,6 +115,7 @@ export const assess_stage: ChatTool = {
     const lines: string[] = [];
     let view: ViewTarget | undefined;
     let measuredOn: string[] | undefined;
+    const sent = criteriaSent(ctx.replySteps);
     for (const stage of stages) {
       if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
         result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
@@ -115,7 +140,8 @@ export const assess_stage: ChatTool = {
       if (pick === "all") for (const key of DETAIL[stage]) delete evaluation[key];
       result[stage] = {
         verdict,
-        criterion: outcome.criterion,
+        // The whole criterion once in a reply, the terse one after it.
+        criterion: sent.has(stage) ? TERSE_CRITERION[stage] : outcome.criterion,
         headline: headline(stage, evaluation),
         ...evaluation,
         // Which σ the sections' feature_snr are in: with their per-plane
