@@ -344,7 +344,8 @@ def fit_pooled_rings(
                                cfg.window_scale, cfg.window_cap_frac)
     n_iter = np.maximum(3, np.round(windows / (2.0 * q_step)).astype(int))
     halfwidths = cfg.envelope_scale * fwhm
-    envelope = _shell_envelope(q_grid, centers, halfwidths, q_step)
+    envelope = _spare_rejected(q_grid, _shell_envelope(q_grid, centers, halfwidths, q_step),
+                               centers, fwhm, rejected, q_step)
     ceiling = (_shell_ceiling(q_grid, centers, halfwidths, cfg.amp_cap * amps, q_step)
                if cfg.amp_cap > 0 else np.full(n_bins, np.inf))
 
@@ -893,6 +894,31 @@ def _shell_envelope(
             d <= 2.0 * w, 0.5 * (1.0 + np.cos(np.pi * (d - w) / w)), 0.0))
         env = np.maximum(env, bump)
     return env
+
+
+def _spare_rejected(
+    q_grid: NDArray[np.float64], envelope: NDArray[np.float64], centers: NDArray[np.float64],
+    fwhm: NDArray[np.float64], rejected: list[dict[str, object]], q_step: float,
+) -> NDArray[np.float64]:
+    """The envelope with the cores of the shells judged not to be rings taken
+    out: ± 0.75 × FWHM, a raised-cosine taper over the next 0.75 × FWHM. A
+    judged shell that failed is the crystal's own scattering, kept, and a
+    confirmed ring's envelope, which reaches 3 × its FWHM, must not subtract
+    it as excess. A shell left unjudged (no clean flank, a grid too coarse)
+    is not spared, nor is any bin within a confirmed ring's own core."""
+    keep = np.ones_like(envelope)
+    for s in rejected:
+        verdict = s.get("isotropy")
+        if not isinstance(verdict, dict) or verdict.get("not_judged") or verdict.get("is_ring"):
+            continue
+        core = max(0.75 * float(s["fwhm"]), q_step)  # type: ignore[arg-type]
+        d = np.abs(q_grid - float(s["q_center"]))  # type: ignore[arg-type]
+        bump = np.where(d <= core, 1.0, np.where(
+            d <= 2.0 * core, 0.5 * (1.0 + np.cos(np.pi * (d - core) / core)), 0.0))
+        keep = np.minimum(keep, 1.0 - bump)
+    for c, f in zip(centers, fwhm):
+        keep[np.abs(q_grid - float(c)) <= max(0.75 * float(f), q_step)] = 1.0
+    return envelope * keep
 
 
 def _shell_ceiling(
