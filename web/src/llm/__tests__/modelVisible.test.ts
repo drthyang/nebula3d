@@ -399,7 +399,7 @@ const PEAKS_STEP: AgentStep = {
   name: "dpdf_peaks",
   args: {},
   status: "done",
-  result: JSON.stringify({ features: [{ sign: "+", length_A: 4, size_sigma: 40, n_vectors: 3, vectors_rlu: [[1, 0, 0]], vectors_A: [[4, 0, 0]] }] }),
+  result: JSON.stringify({ features: [{ length_A: 4, size_sigma: 40, n_vectors: 3, vectors_rlu: [[1, 0, 0]], vectors_A: [[4, 0, 0]] }] }),
 };
 const CUT_STEP: AgentStep = {
   id: "0:call_0",

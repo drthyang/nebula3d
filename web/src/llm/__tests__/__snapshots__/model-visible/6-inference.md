@@ -232,7 +232,7 @@ The run's saved back-FFT check in full: Pearson r and normalised RMS of the inve
 The text as arm B reads it, each span arm C leaves out marked ⟦class: …⟧:
 
 ```text
-Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk⟦evidence: ; features nearer the origin than the shortest interatomic distance are not pair correlations⟧.
+Each entry: |r|, the largest size in σ with its sign, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk⟦evidence: ; features nearer the origin than the shortest interatomic distance are not pair correlations⟧.
 ```
 
 ## tools/index.ts: dpdf_peaks's description

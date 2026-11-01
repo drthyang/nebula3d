@@ -478,10 +478,10 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     grouped_by: str,
     features: arr(
       obj({
-        sign: oneOf("+", "−"),
         length_A: num,
+        // Signed: + more pairs than the average structure, − fewer.
         size_sigma: num,
-        // Only for an orbit of the declared symmetry (findings).
+        // Only for an orbit of the declared symmetry, and where it differs from size_sigma or n_vectors (findings).
         mean_size_sigma: optional(num),
         n_vectors: num,
         multiplicity: optional(num),
@@ -511,6 +511,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   }),
 
   ub_check: obj({
+    // The UB's rule's outcome, with the angle and its limit; null with no angle to judge.
+    verdict: maybeStr,
     fit: oneOf("orientation", "lattice", "both", "symmetric"),
     bragg_nodes_every: v3,
     symmetry_from: maybeStr,

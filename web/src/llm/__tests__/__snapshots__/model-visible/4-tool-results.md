@@ -698,19 +698,16 @@ References of this skill (read one with read_skill and `reference`):
 
 ## dpdf_peaks {}
 
-1450 characters sent.
+1151 characters sent.
 
 ```json
 {
   "grouped_by": "declared symmetry (mmm: 8 operations, r ≡ −r)",
   "features": [
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [1, 0, 0]
       ],
@@ -719,12 +716,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [0, 1, 0]
       ],
@@ -733,12 +727,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [0, 0, 1]
       ],
@@ -747,12 +738,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [1, 1, 0],
         [1, -1, 0]
@@ -763,12 +751,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [1, 0, 1],
         [1, 0, -1]
@@ -779,12 +764,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [0, 1, 1],
         [0, 1, -1]
@@ -799,7 +781,7 @@ References of this skill (read one with read_skill and `reference`):
   "threshold_sigma": 5,
   "origin_disk_A": 1.8,
   "extrema_above_threshold": 26,
-  "reading": "Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk; features nearer the origin than the shortest interatomic distance are not pair correlations."
+  "reading": "Each entry: |r|, the largest size in σ with its sign, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk; features nearer the origin than the shortest interatomic distance are not pair correlations."
 }
 ```
 
@@ -864,10 +846,11 @@ References of this skill (read one with read_skill and `reference`):
 
 ## ub_check {}
 
-956 characters sent.
+1038 characters sent.
 
 ```json
 {
+  "verdict": "the UB is right: turned 0.003°, under the 0.05° that counts as turned",
   "fit": "both",
   "bragg_nodes_every": [1, 1, 1],
   "symmetry_from": "synthetic_a.nxs",

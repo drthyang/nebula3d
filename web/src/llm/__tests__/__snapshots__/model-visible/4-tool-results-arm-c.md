@@ -287,12 +287,9 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
   "grouped_by": "declared symmetry (mmm: 8 operations, r ≡ −r)",
   "features": [
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [1, 0, 0]
       ],
@@ -301,12 +298,9 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       ]
     },
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [0, 1, 0]
       ],
@@ -315,12 +309,9 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       ]
     },
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [0, 0, 1]
       ],
@@ -329,12 +320,9 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [1, 1, 0],
         [1, -1, 0]
@@ -345,12 +333,9 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [1, 0, 1],
         [1, 0, -1]
@@ -361,12 +346,9 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [0, 1, 1],
         [0, 1, -1]
@@ -381,7 +363,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
   "threshold_sigma": 5,
   "origin_disk_A": 1.8,
   "extrema_above_threshold": 26,
-  "reading": "Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk."
+  "reading": "Each entry: |r|, the largest size in σ with its sign, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk."
 }
 ```
 

@@ -1524,7 +1524,8 @@ describe("dpdf_peaks", () => {
     ],
   };
   // An entry's fields when the extrema are grouped by sign, length and size: as they were before.
-  const PLAIN_ENTRY = ["sign", "length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"];
+  // The sign is the size's own (THY-63 R1).
+  const PLAIN_ENTRY = ["length_A", "size_sigma", "n_vectors", "vectors_rlu", "vectors_A"];
 
   it("lists the strongest features with their vectors, signs and sizes", async () => {
     api.fetchDpdfFeatures.mockResolvedValue(features);
@@ -1534,11 +1535,11 @@ describe("dpdf_peaks", () => {
     const out = JSON.parse(r.text);
     expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
     expect(out.features[0]).toEqual({
-      sign: "−", length_A: 2.739, size_sigma: 1520, n_vectors: 6,
+      length_A: 2.739, size_sigma: -1520, n_vectors: 6,
       vectors_rlu: [[0.497, 0.497, 0], [0, 0.497, -0.497], [0, 0.497, 0.497], [0.497, 0, -0.497]],
       vectors_A: [[1.938, 1.938, 0], [0, 1.938, -1.938], [0, 1.938, 1.938], [1.938, 0, -1.938]],
     });
-    expect(out.features[1]).toMatchObject({ sign: "+", length_A: 5.838, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
+    expect(out.features[1]).toMatchObject({ length_A: 5.838, size_sigma: 238, n_vectors: 3, vectors_rlu: [[1.5, 0.001, 0]] });
     for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
     expect([out.robust_sigma, out.threshold_sigma, out.origin_disk_A, out.extrema_above_threshold]).toEqual([6.17, 5, 1.95, 619]);
     expect(r.summary).toBe("619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ");
@@ -1561,14 +1562,15 @@ describe("dpdf_peaks", () => {
     const out = JSON.parse(r.text);
     expect(out.grouped_by).toBe("declared symmetry (m-3m: 48 operations, r ≡ −r)");
     // Each orbit one entry: the vectors found (n_vectors) and the orbit's (multiplicity) apart.
-    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors, e.multiplicity])).toEqual([["+", 24, 24], ["−", 2, 3]]);
+    // A multiplicity equal to n_vectors is not repeated.
+    expect(out.features.map((e: Record<string, unknown>) => [Math.sign(e.size_sigma as number), e.n_vectors, e.multiplicity])).toEqual([[1, 24, undefined], [-1, 2, 3]]);
     expect(out.features[0]).toEqual({
-      sign: "+", length_A: 3.736, size_sigma: 63.7, mean_size_sigma: 57.8, n_vectors: 24, multiplicity: 24,
+      length_A: 3.736, size_sigma: 63.7, mean_size_sigma: 57.8, n_vectors: 24,
       vectors_rlu: [[0.748, -0.25, 0.5], [0.251, 0.5, -0.749], [0.75, 0.249, 0.501], [0.251, -0.748, 0.5]],
       vectors_A: [[2.991, -0.9994, 2.002], [1.005, 2.001, -2.996], [3.001, 0.9954, 2.003], [1.003, -2.992, 2]],
     });
     expect(out.features[1]).toEqual({
-      sign: "−", length_A: 4, size_sigma: 38.9, mean_size_sigma: 37.2, n_vectors: 2, multiplicity: 3,
+      length_A: 4, size_sigma: -38.9, mean_size_sigma: -37.2, n_vectors: 2, multiplicity: 3,
       vectors_rlu: [[1, -0.003, 0.0007], [0.0012, 0.998, 0.0012]],
       vectors_A: [[4, -0.0121, 0.0027], [0.0048, 3.991, 0.0046]],
     });
@@ -1581,10 +1583,10 @@ describe("dpdf_peaks", () => {
     const out = JSON.parse((await run("dpdf_peaks", { min_sigma: 8 })).text);
     expect(out.grouped_by).toBe("sign, length and size (no symmetry declared)");
     // The orbits split by size: seven entries, the 26 extrema between them.
-    expect(out.features.map((e: Record<string, unknown>) => [e.sign, e.n_vectors])).toEqual([["+", 7], ["+", 7], ["+", 6], ["+", 3], ["+", 1], ["−", 1], ["−", 1]]);
+    expect(out.features.map((e: Record<string, unknown>) => [Math.sign(e.size_sigma as number), e.n_vectors])).toEqual([[1, 7], [1, 7], [1, 6], [1, 3], [1, 1], [-1, 1], [-1, 1]]);
     expect(out.features.reduce((sum: number, e: { n_vectors: number }) => sum + e.n_vectors, 0)).toBe(26);
     for (const e of out.features) expect(Object.keys(e)).toEqual(PLAIN_ENTRY);
-    expect(out.features[0]).toEqual({ sign: "+", length_A: 3.736, size_sigma: 63.7, n_vectors: 7, vectors_rlu: [[0.748, -0.25, 0.5]], vectors_A: [[2.991, -0.9992, 2.002]] });
+    expect(out.features[0]).toEqual({ length_A: 3.736, size_sigma: 63.7, n_vectors: 7, vectors_rlu: [[0.748, -0.25, 0.5]], vectors_A: [[2.991, -0.9992, 2.002]] });
 
     // A symmetry declared that cannot be applied: grouped as without one, and grouped_by says why.
     const why = "sign, length and size (the declared symmetry 6/mmm is not applied: the ΔPDF file records no cell)";

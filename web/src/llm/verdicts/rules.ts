@@ -708,8 +708,25 @@ export const isOriginProblem = (p: string): boolean => p.startsWith(ORIGIN_PROBL
  */
 export const D16_UB_UNMEASURED_READS_RIGHT = false;
 
+/**
+ * ub_check's verdict (THY-63 R1, C4): the outcome with the angle it was judged
+ * on and the rule's limit, so the limit is where the model reads the result
+ * and an answer may quote it. A shifted HKL origin follows, as {{achieved}}
+ * names it.
+ */
+const ubWords = (u: Readonly<Record<string, unknown>>, kind: "right" | "turned" | "symmetrised", shift: unknown[] | null): string => {
+  const angle = ubTurn(u);
+  const head =
+    kind === "symmetrised"
+      ? "the UB is not judged: the volume is symmetrised, so only the changes that commute with its operations were fitted"
+      : kind === "turned"
+        ? `the UB is turned by ${angle}°: ${UB_TURN}° or more counts as turned`
+        : `the UB is right: turned ${angle}°, under the ${UB_TURN}° that counts as turned`;
+  return shift ? `${head}; ${ORIGIN_PROBLEM}(${shift.join(", ")}) r.l.u., which no UB explains` : head;
+};
+
 const ub: CheckRule<Readonly<Record<string, unknown>>> = {
-  // ub_check writes no verdict: what the fit found, and the data's problems it shows.
+  // What the fit found, judged by UB_TURN and D4, with the data's problems it shows.
   judge: (u) => {
     const dataProblems: string[] = [];
     const turned = UB_TURNED(u);
@@ -717,10 +734,10 @@ const ub: CheckRule<Readonly<Record<string, unknown>>> = {
     const shift = Array.isArray(u.origin_shift_rlu) ? (u.origin_shift_rlu as unknown[]) : null;
     if (shift) dataProblems.push(`${ORIGIN_PROBLEM}(${shift.join(", ")}) r.l.u.`);
     // Not judged, or turned: either holds a claim that the UB is right to account.
-    if (UB_NOT_JUDGED(u)) return { kind: "attention", reasons: ["symmetrised"], words: null, dataProblems };
-    if (turned) return { kind: "attention", reasons: ["UB turned"], words: null, dataProblems };
+    if (UB_NOT_JUDGED(u)) return { kind: "attention", reasons: ["symmetrised"], words: ubWords(u, "symmetrised", shift), dataProblems };
+    if (turned) return { kind: "attention", reasons: ["UB turned"], words: ubWords(u, "turned", shift), dataProblems };
     if (!D16_UB_UNMEASURED_READS_RIGHT && ubTurn(u) == null) return { ...nothing(), words: null, dataProblems };
-    return { kind: "pass", reasons: [], words: null, dataProblems };
+    return { kind: "pass", reasons: [], words: ubWords(u, "right", shift), dataProblems };
   },
 };
 
