@@ -17,6 +17,7 @@ import {
 import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
 import type { Lattice, VolumeMeta } from "../api/types";
 import { LaueCompare } from "../components/LaueCompare";
+import { LocalHandoffNotice } from "../components/LocalHandoff";
 import { PunchPreview } from "../components/PunchPreview";
 import { RingModelHelp } from "../components/RingModelHelp";
 import type { HklAxis, PunchGeom } from "../components/punchGeometry";
@@ -798,6 +799,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
           </button>
         </div>
       )}
+      <LocalHandoffNotice />
       {/* ----------------------------------------------------------- data card */}
       <section className="card data-card">
         <div className="card-title-row">

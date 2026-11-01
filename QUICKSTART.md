@@ -18,8 +18,9 @@ It is a **fully static** GitHub Pages bundle — no backend — that runs the *r
 own `.nxs`/`.h5`, or the built-in demo volume; nothing is uploaded. It runs at
 full resolution, storing volumes and running the FFT in float32 (|Q|, fits and
 reductions stay float64): up to about 80 M voxels in a desktop browser, about
-5 M on a phone or tablet. Larger data uses the native mode below. This path has full feature parity with the
-native backend.
+5 M on a phone or tablet. Larger data uses the native mode below: when a volume
+or a run is too large for the browser, the page says so and gives its commands.
+This path has full feature parity with the native backend.
 
 To run that build locally:
 
@@ -32,8 +33,10 @@ cd web && npm run dev:pyodide      # http://localhost:5173
 ## Native — no size limit
 
 Runs the real pipeline locally with no size limit; reads `./data` by default.
+nebula3d is not on PyPI, so install it from a clone:
 
 ```bash
+git clone https://github.com/drthyang/nebula3d && cd nebula3d
 pip install -e ".[web]"
 nebula3d-web                 # serves http://127.0.0.1:8000 and opens a browser
 ```

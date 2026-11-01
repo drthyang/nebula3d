@@ -172,7 +172,8 @@ hosted — the privacy-preserving path to a public, fully-functional app.
   detects the device (`web/src/api/device.ts`; only the main thread can tell
   iPadOS from a Mac) and passes it in the worker's boot message to
   `webbridge.setup(mobile=…)`. A larger file is refused with a message that
-  points to a desktop browser (up to ~80 M voxels) or the native build.
+  points to a desktop browser (up to ~80 M voxels) or the native build, and
+  the console shows its [run-it-locally card](#run-it-locally-card).
 
   (The default Bragg backfill, `backfill_bragg` with `method="laplace"`, costs
   ~10 B/voxel more than the connected-component / `ndimage` `local` fill
@@ -519,10 +520,68 @@ there is a measurement (`web/src/components/MemoryBar.tsx`, `memoryView.ts`).
   no bar. psutil is not a dependency: this reads `/proc` and libproc's
   `proc_pid_rusage` directly.
 
-The bar only reports. A pre-run warning would have to compare the run's
-estimated peak with the heap's free room, and the free room inside a
-high-water heap cannot be measured from JavaScript; the size gate already
-refuses a volume whose estimated peak exceeds the budget when it is loaded.
+The bar only reports, apart from one soft hint: in the browser build, a red
+bar during a run shows **Near the browser's limit · run it locally ›** under
+it, which opens the [run-it-locally card](#run-it-locally-card) on the
+Execution page while the run goes on (nothing is stopped or asked). A
+pre-run warning from the bar would have to compare the run's estimated peak
+with the heap's free room, and the free room inside a high-water heap cannot
+be measured from JavaScript; the size gate's estimate does that job instead
+(below).
+
+### Run-it-locally card
+
+The in-browser build's limits are Pyodide's: a 4 GiB 32-bit heap, numpy
+indexing in 32 bits, and on a phone or tablet a tab the OS stops far sooner.
+The native build (`nebula3d-web`) has none of them. When one of them stops
+the work, the console says so where it happens, with a card
+(`web/src/components/LocalHandoff.tsx`; its words and which one a page shows:
+`handoffView.ts`):
+
+- **one plain line on why, with the numbers**: the volume's grid and the
+  size gate's estimate against the 4 GiB ceiling (about 3 GiB of it for a
+  run), the phone's tab budget, the allocation that failed, or the 32-bit
+  limit;
+- **QUICKSTART's native route** as terminal commands with a **Copy** button
+  (from a clone, since nebula3d is not on PyPI, with a data folder
+  `~/nebula3d-data`), where to put the volume (a regridded one's source, as
+  the regridded copy lives only in the browser) and a link to QUICKSTART;
+- "Your data stays on your computer either way.";
+- the original error behind **Details**.
+
+It appears on a load the size gate refused (Configure, beside the load's
+status), on a run that failed of the limit (in place of the Execution page's
+failure banner, and on Configure for the selected dataset), and **before a
+run** when the selected dataset's estimate is over the budget (the gate's
+report for a dataset already loaded, `webbridge.inspect_dataset_json`: a
+regridded volume never passed the gate at load). Configure shows one card at
+most, the newest. The card's × dismisses it, remembered per dataset (per file
+for a refused load) in the browser's localStorage, when there is one
+(`state/handoffStore.ts`); a dismissed failure keeps a one-line link that
+opens it again. Nothing about it interrupts a run. The native build never
+shows it.
+
+What counts as the limit is one classifier (`web/src/api/browserLimit.ts`,
+tested message by message): Python's `MemoryError` and numpy's "Unable to
+allocate", WebAssembly and the JS engine running out of memory ("Out of
+memory", "Array buffer allocation failed", "memory access out of bounds",
+Emscripten's OOM abort), numpy's 32-bit traps ("iterator is too large",
+"Cannot cast array data from dtype('int64') to dtype('int32')", …), the
+pipeline worker dying mid-run, and the size gate's refusal. The engine marks
+the last two on the error, leaving its words unchanged: a run's error text
+reaches NEBULA Pilot as before.
+
+**Data errors** are the other class: known Python errors that say what about
+the data or the settings stopped the run and what to change
+(`WindowSupportError` and `FFTOriginError` from `analysis/delta_pdf.py`,
+`SymmetryAverageError` from the symmetry average; `web/src/api/dataError.ts`).
+The Execution page's banner shows the exception's own message as plain text,
+with the traceback behind **Details**, and no card: the native build would
+stop the same way. Any other error shows as it came.
+
+**The desktop app** (a separate build, to come) gets a link on the card
+through one hook, `desktopAppLink()` in `handoffView.ts`, which returns null
+until the app exists.
 
 ## NEBULA Pilot (AI assistant)
 

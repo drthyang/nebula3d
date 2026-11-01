@@ -7,7 +7,7 @@
 // 15 s, every 3 s while a run goes, and after each stage a run finishes.
 
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { fetchServerMemory } from "../api/client";
@@ -15,6 +15,7 @@ import { getEngineMemory, subscribeEngineMemory, type EngineMemory } from "../ap
 import { PYODIDE_MODE } from "../api/pyodideEngine";
 import type { JobEvent } from "../api/types";
 import { usePipelineStore } from "../state/pipelineStore";
+import { NearLimitHint } from "./LocalHandoff";
 import { engineMemoryView, placeCard, serverMemoryView, type MemoryView } from "./memoryView";
 
 const IDLE_MS = 15_000;
@@ -173,7 +174,8 @@ function MemoryHelp({ view }: { view: MemoryView }) {
   );
 }
 
-function MemoryMeter({ view }: { view: MemoryView }) {
+// children: a line under the bar (the in-browser build's hint when it is red).
+function MemoryMeter({ view, children }: { view: MemoryView; children?: ReactNode }) {
   return (
     <div className={`mem mem--${view.level}`} title={view.tooltip}>
       <div className="mem-head">
@@ -198,13 +200,15 @@ function MemoryMeter({ view }: { view: MemoryView }) {
         <span className="mem-amount">{view.amount}</span>
         <span className="mem-note">{view.note}</span>
       </div>
+      {children}
     </div>
   );
 }
 
 function EngineMemoryBar() {
   const view = engineMemoryView(useEngineMemory());
-  return view ? <MemoryMeter view={view} /> : null;
+  // Red during a run: a soft hint toward the local version (LocalHandoff.tsx).
+  return view ? <MemoryMeter view={view}>{view.level === "high" && <NearLimitHint />}</MemoryMeter> : null;
 }
 
 function ServerMemoryBar() {
