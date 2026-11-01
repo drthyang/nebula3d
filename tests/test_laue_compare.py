@@ -11,7 +11,13 @@ construction:
   extinction and absorption give real ones) with 4/mmm rods in the diffuse:
   the full reading accepts m-3m, the diffuse does not;
 - small grids with unmeasured voxels, NaN values and unknown σ, where every
-  orbit, voxel and pair is counted again by brute force.
+  orbit, voxel, pair and χ² term is counted again by brute force;
+- counting noise smoothed over neighbouring voxels (as the resolution
+  correlates them), where the spread of the ratios over independent
+  realisations is known: the orbits as independent samples understate it,
+  the spatial block bootstrap gives it (THY-59);
+- the 6/m crystal with an error that only the poorly covered region carries,
+  which the common-subset reading flags.
 
 The numbers pinned below come from these builders with fixed seeds; their
 tolerances are several standard errors of the ratios (≈ 0.003 on the larger
@@ -28,9 +34,12 @@ import tracemalloc
 
 import numpy as np
 import pytest
+from scipy.ndimage import gaussian_filter
 
 from nebula3d.analysis.laue_compare import (
+    BLOCK_MIN,
     DELTA,
+    REPLICATES,
     Z,
     _class_readings,
     bragg_neighbourhood,
@@ -138,6 +147,40 @@ def wedge_cut(vol: HKLVolume, *, seed: int = 0) -> HKLVolume:
     return out
 
 
+ORTHO_UB = ub_from_lattice(5.0, 5.5, 6.1)
+
+
+def correlated_noise(*, seed: int = 0, n: int = 61, width: float = 1.0) -> HKLVolume:
+    """Counting noise (σ 0.1) about 1 on an orthorhombic cell (classes -1 to
+    mmm), smoothed by a Gaussian of *width* voxels, as the resolution
+    correlates neighbouring voxels, and scaled back to unit variance by the
+    kernel's own norm (not each realisation's spread, which would pin the
+    sum of squares and shrink the spread of R_int): every class agrees within
+    the noise, and neighbours share it."""
+    delta = np.zeros((n, n, n))
+    delta[n // 2, n // 2, n // 2] = 1.0
+    norm = float(np.sqrt((gaussian_filter(delta, width, mode="wrap") ** 2).sum()))
+    e = gaussian_filter(np.random.default_rng(seed).standard_normal((n, n, n)), width,
+                        mode="wrap") / norm
+    return HKLVolume.from_arrays(1.0 + 0.1 * e, (-2.0, 2.0), (-2.0, 2.0), (-2.0, 2.0),
+                                 sigma=np.full((n, n, n), 0.1), ub_matrix=ORTHO_UB)
+
+
+def poorly_covered(*, scale: float = 1.1, seed: int = 0, n_hk: int = 61,
+                   n_l: int = 41) -> HKLVolume:
+    """The 6/m crystal with the wedge cut (:func:`wedge_cut`) and its
+    intensities scaled by *scale* where their Friedel mates fall in the
+    unmeasured wedge (azimuths 200°–260°), as an absorption or a detector
+    region would: an error only the poorly covered region carries, which only
+    classes above -1 compare there."""
+    out = wedge_cut(hex_crystal(seed=seed, n_hk=n_hk, n_l=n_l), seed=seed)
+    q = np.einsum("ij,j...->i...", np.asarray(out.ub_matrix),
+                  np.stack(np.meshgrid(out.h_axis, out.k_axis, out.l_axis, indexing="ij")))
+    phi = np.degrees(np.arctan2(q[1], q[0])) % 360.0
+    out.data[(phi > 200.0) & (phi < 260.0) & out.mask] *= scale
+    return out
+
+
 def _rows(cmp) -> dict[str, tuple[float, float]]:
     return {c.label: (c.all.ratio, c.diffuse.ratio) for c in cmp.candidates}
 
@@ -214,8 +257,8 @@ def _brute(vol: HKLVolume, sym: GridSymmetry, mask: np.ndarray) -> dict:
     orbit with Python sets: every orbit's distinct members on the grid, those
     measured (mask True, value finite), σ² taken as |I| where σ is unknown."""
     seen = np.zeros(sym.shape, dtype=bool)
-    dev = mag = noise = 0.0
-    orbits = voxels = pairs = 0
+    dev = mag = noise = chi2 = 0.0
+    orbits = voxels = pairs = dof = 0
     for x in itertools.product(*map(range, sym.shape)):
         if seen[x]:
             continue
@@ -239,11 +282,17 @@ def _brute(vol: HKLVolume, sym: GridSymmetry, mask: np.ndarray) -> dict:
         total = sum(var)
         noise += sum(math.sqrt(2 / math.pi) * math.sqrt(max(0.0, w * (1 - 2 / n) + total / n ** 2))
                      for w in var)
+        # χ² about the inverse-variance mean, over the members whose σ² is above 0.
+        weighted = [(v, 1.0 / w) for v, w in zip(vals, var) if w > 0]
+        if weighted:
+            wmean = sum(v * w for v, w in weighted) / sum(w for _, w in weighted)
+            chi2 += sum(w * (v - wmean) ** 2 for v, w in weighted)
+            dof += len(weighted) - 1
         orbits += 1
         voxels += n
         pairs += n * (n - 1) // 2
     return {"r_int": dev / mag, "noise": noise / mag, "orbits": orbits, "voxels": voxels,
-            "pairs": pairs}
+            "pairs": pairs, "chi2": chi2 / dof, "dof": dof}
 
 
 @pytest.mark.parametrize("grid, laue", [("hexagonal", "6/mmm"), ("hexagonal", "6/m"),
@@ -263,6 +312,7 @@ def test_partial_coverage_counts_every_orbit_voxel_and_pair(grid, laue):
                                                        want["pairs"])
         assert got.r_int == pytest.approx(want["r_int"], rel=1e-12)
         assert got.noise == pytest.approx(want["noise"], rel=1e-12)
+        assert got.dof == want["dof"] and got.chi2 == pytest.approx(want["chi2"], rel=1e-9)
         assert want["orbits"] > 20
 
 
@@ -383,6 +433,128 @@ def test_the_suggestion_is_stable_to_the_noise(name, build, answer, flag):
         cmp = compare_laue_classes(build(seed))
         assert cmp.suggestion == answer, (name, seed, cmp.reason)
         assert (cmp.disagreement is not None) == flag, (name, seed)
+        assert cmp.common["flag"] is None, (name, seed)  # clean data: no region effect
+
+
+# ---------------------------------------------------------------------------
+# Honest statistics: the block bootstrap, χ²/dof, the common subset (THY-59)
+# ---------------------------------------------------------------------------
+def test_correlated_noise_the_bootstrap_gives_the_spread_the_orbits_understate():
+    # 24 independent realisations of noise smoothed over about a voxel: the
+    # ratios' spread over them is the standard error to match.  Orbits as
+    # independent samples give a third of it; the block bootstrap gives it
+    # within its own and the spread's sampling error (the spread of 24 values
+    # is itself uncertain by ≈ 15 %).
+    runs = [compare_laue_classes(correlated_noise(seed=seed)) for seed in range(24)]
+    first = runs[0]
+    assert [c.label for c in first.candidates] == ["-1", "2/m (b unique)", "2/m (c unique)",
+                                                   "mmm"]
+    for label in ("-1", "2/m (b unique)", "2/m (c unique)", "mmm"):
+        reads = [r.candidate(label).all for r in runs]
+        spread = float(np.std([x.ratio for x in reads], ddof=1))
+        orbit = float(np.mean([x.ratio_se_orbits for x in reads]))
+        boot = float(np.mean([x.ratio_se for x in reads]))
+        assert orbit < 0.5 * spread, (label, orbit, spread)
+        assert 0.7 * spread < boot < 1.45 * spread, (label, boot, spread)
+    # The rule's paired difference, on the same resamples: mmm against 2/m.
+    excess, se = [], []
+    for r in runs:
+        g, h = r.candidate("mmm").all, r.candidate("2/m (b unique)").all
+        excess.append(g.ratio - (1 + DELTA) * h.ratio)
+        se.append(float(np.std(g.replicates - (1 + DELTA) * h.replicates, ddof=1)))
+    spread = float(np.std(excess, ddof=1))
+    assert 0.7 * spread < float(np.mean(se)) < 1.6 * spread
+    # Where the class holds the cap at the subgroup's own error does not bind.
+    for r in runs:
+        g, h = r.candidate("mmm").all, r.candidate("2/m (b unique)").all
+        assert float(np.std(g.replicates - (1 + DELTA) * h.replicates, ddof=1)) < h.ratio_se
+    # The blocks follow the correlation: longer than the white-noise minimum.
+    boot = first.bootstrap
+    assert boot["block_voxels"] > BLOCK_MIN and boot["replicates"] == REPLICATES
+    assert all(0.5 < x < 0.9 for x in boot["correlation_voxels"])
+    assert boot["blocks"] >= 64 and 0 < boot["effective_blocks"] <= boot["blocks"]
+
+
+def test_a_breaking_concentrated_in_a_few_shells_is_still_rejected(monkeypatch):
+    # The demo without its rods: its powder rings, textured about c*, break the
+    # cubic three-fold in thin shells only (4/mmm; m-3m 1.15x, above the 10 %).
+    # Over 16 noise seeds the excess varies by 0.0013; the bootstrap's paired
+    # spread is 0.032, the rings' uneven reach over the coverage, the
+    # subgroup's own 0.0018. Capped at the latter the rule rejects m-3m; the
+    # paired spread alone would accept it.
+    vol = demo_volume(61, extent=4.0, model=DemoModel(rod_amp=0.0))
+    cmp = compare_laue_classes(vol)
+    assert cmp.suggestion == "4/mmm"
+    m3m = cmp.candidate("m-3m")
+    sub = cmp.candidate(m3m.verdict_all.against)
+    assert m3m.verdict_all.rise == pytest.approx(1.15, abs=0.02) and m3m.verdict_all.rises
+    paired = float(np.std(m3m.all.replicates - (1 + DELTA) * sub.all.replicates, ddof=1))
+    assert paired > 10 * sub.all.ratio_se
+    assert m3m.verdict_all.se == pytest.approx(sub.all.ratio_se, rel=1e-12)
+    monkeypatch.setattr("nebula3d.analysis.laue_compare.SE_CAP", False)
+    assert compare_laue_classes(vol).suggestion == "m-3m"
+
+
+def test_white_noise_keeps_the_smallest_blocks_and_the_orbits_standard_error():
+    cmp = compare_laue_classes(hex_crystal())
+    assert cmp.bootstrap["block_voxels"] == BLOCK_MIN
+    for c in cmp.candidates:
+        if c.label in ("-1", "2/m (c unique)", "-3", "6/m"):  # the classes it has
+            assert c.all.ratio_se == pytest.approx(c.all.ratio_se_orbits, rel=0.35), c.label
+
+
+def test_chi2_per_degree_of_freedom_is_one_for_the_true_class_and_more_for_a_wrong_one():
+    cmp = compare_laue_classes(hex_crystal())
+    for label in ("-1", "2/m (c unique)", "-3", "6/m"):
+        for r in (cmp.candidate(label).all, cmp.candidate(label).diffuse):
+            assert r.chi2 == pytest.approx(1.0, abs=4 * math.sqrt(2 / r.dof) + 0.005), label
+    wrong = cmp.candidate("6/mmm")
+    assert wrong.all.chi2 > 3.0 and wrong.diffuse.chi2 > 2.0
+    # Counting noise alone: every class, and whole |Q| shells, at 1.
+    noise = compare_laue_classes(noise_only())
+    for r in [c.all for c in noise.candidates] + [noise.isotropic["all"]]:
+        assert r.chi2 == pytest.approx(1.0, abs=4 * math.sqrt(2 / r.dof) + 0.005)
+
+
+def test_a_region_dependent_error_raises_the_common_subset_flag():
+    # A 10 % error where -1 cannot judge: the classes above it pool those voxels
+    # with well-measured equivalents and rise, so every measured voxel rejects
+    # 6/m (the conservative failure: a lower class, gaps left unfilled); on the
+    # voxels -1 judges, 6/m is supported, and the flag says so.
+    cmp = compare_laue_classes(poorly_covered())
+    assert cmp.suggestion == "2/m (c unique)"
+    assert cmp.common["lowest"] == "-1" and 0.4 < cmp.common["share"] < 0.7
+    assert cmp.common["suggestion"] == "6/m" and cmp.common["main"] == "2/m (c unique)"
+    assert cmp.common["flag"] is not None and "supports 6/m" in cmp.common["flag"]
+    six = cmp.candidate("6/m")
+    assert not six.verdict_all.supported and six.verdict_common_all.supported
+    assert six.common_all.ratio == pytest.approx(1.0, abs=0.02) and six.all.ratio > 1.15
+    assert six.all.chi2 > 1.15 and six.common_all.chi2 == pytest.approx(1.0, abs=0.03)
+
+
+def test_the_common_subset_flag_is_quiet_on_clean_data():
+    for vol in (wedge_cut(hex_crystal()), hex_crystal(), bragg_over_diffuse()):
+        cmp = compare_laue_classes(vol)
+        assert cmp.common["flag"] is None
+        assert cmp.common["suggestion"] == cmp.suggestion
+    # On full coverage the lowest class judges every voxel: one reading.
+    full = compare_laue_classes(hex_crystal())
+    assert full.common["share"] == 1.0
+    assert full.candidate("6/m").common_all is full.candidate("6/m").all
+
+
+def test_the_bootstrap_is_seeded_and_reproducible():
+    vol = hex_crystal(n_hk=41, n_l=21)
+    a, b = compare_laue_classes(vol), compare_laue_classes(vol)
+    assert a.bootstrap == b.bootstrap
+    for ca, cb in zip(a.candidates, b.candidates):
+        assert ca.all.ratio_se == cb.all.ratio_se and ca.diffuse.ratio_se == cb.diffuse.ratio_se
+        assert np.array_equal(ca.all.replicates, cb.all.replicates)
+        assert ca.verdict_all == cb.verdict_all
+    other = compare_laue_classes(vol, seed=1)
+    se = [(c.all.ratio_se, o.all.ratio_se) for c, o in zip(a.candidates, other.candidates)]
+    assert any(x != y for x, y in se)
+    assert all(y == pytest.approx(x, rel=0.3) for x, y in se)
 
 
 # ---------------------------------------------------------------------------
@@ -430,8 +602,16 @@ def test_the_result_records_the_rule_and_the_numbers_that_drove_it():
     out = compare_laue_classes(hex_crystal()).to_dict()
     assert out["rule"]["delta"] == DELTA == 0.10 and out["rule"]["z"] == Z == 2.0
     assert "10%" in out["rule"]["text"] and "noise floor" in out["rule"]["text"]
+    assert set(out["bootstrap"]) >= {"replicates", "seed", "block_voxels", "blocks",
+                                     "effective_blocks", "correlation_voxels"}
+    assert set(out["common"]) == {"lowest", "voxels", "share", "suggestion", "main", "flag"}
+    assert "standard errors (a spatial block bootstrap" in out["rule"]["text"]
     row = next(c for c in out["candidates"] if c["laue"] == "6/mmm")
-    assert set(row["all"]) == {"r_int", "noise", "ratio", "ratio_se", "orbits", "voxels", "pairs"}
+    assert set(row["common"]) == {"all", "diffuse"}
+    assert set(row["verdict"]) == {"all", "diffuse", "common_all", "common_diffuse"}
+    assert row["verdict"]["all"]["se"] > 0
+    assert set(row["all"]) == {"r_int", "noise", "ratio", "ratio_se", "ratio_se_orbits", "chi2",
+                               "dof", "orbits", "voxels", "pairs"}
     assert row["verdict"]["all"]["against"] == "-1" and row["verdict"]["all"]["rises"]
     assert out["bragg"]["radius_q"] == pytest.approx(0.25)
     assert out["bragg"]["closed_under"] == "6/mmm"
