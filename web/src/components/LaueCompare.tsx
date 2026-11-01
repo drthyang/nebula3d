@@ -218,8 +218,10 @@ export function LaueCompare({
                   <th scope="col" title="R_int with the Bragg nodes masked">
                     R_int diffuse
                   </th>
-                  <th scope="col" className="num" title="χ² per degree of freedom: every measured voxel over the diffuse. 1 is agreement within the counting noise">
-                    χ²/dof
+                  <th scope="col" className="num laue-th-chi2" title="χ² per degree of freedom: every measured voxel over the diffuse. 1 is agreement within the counting noise">
+                    χ²/
+                    <wbr />
+                    dof
                   </th>
                   <th scope="col" className="num" title="Orbits with two measured members or more">
                     Orbits

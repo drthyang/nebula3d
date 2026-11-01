@@ -1631,6 +1631,11 @@ input[type="range"]::-moz-range-track {
 .laue-chi2 .laue-detail {
   white-space: nowrap;
 }
+/* χ stays lower case (an upper-case chi reads as X); on a phone it wraps after the slash */
+.laue-table th.laue-th-chi2 {
+  text-transform: none;
+  letter-spacing: 0;
+}
 .laue-common {
   display: flex;
   flex-direction: column;
