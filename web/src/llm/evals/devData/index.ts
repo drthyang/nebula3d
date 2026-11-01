@@ -186,7 +186,7 @@ async function activate(id: DevCaseId, n: number, symmetrise: Symmetrised | unde
   if (restored && saved) {
     usePipelineStore.setState(saved);
   } else {
-    // The Run button's settings: every enabled stage, outputs that exist reused.
+    // The Run button's settings: every enabled stage, outputs that still follow from them reused.
     const s = usePipelineStore.getState();
     const ended = await s.runStages(enabledStages(s), { datasetId, force: s.force });
     const { events, times, terminal } = usePipelineStore.getState();
