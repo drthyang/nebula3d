@@ -1,5 +1,5 @@
 // What the run-it-locally card says and which one the Configure page shows
-// (localHandoff.ts): its why-line with the numbers, QUICKSTART's route with
+// (handoffView.ts): its why-line with the numbers, QUICKSTART's route with
 // the data folder, and the choice between a refused load, a failed run and the
 // estimate before a run.
 
@@ -19,7 +19,7 @@ import {
   QUICKSTART_URL,
   runLimitOf,
   type HandoffEnv,
-} from "../localHandoff";
+} from "../handoffView";
 import type { MemoryView } from "../memoryView";
 
 const GiB = 1024 ** 3;
@@ -41,6 +41,13 @@ describe("leadLine", () => {
     expect(leadLine(limit({ kind: "gate", needBytes: 5.03e9, shape: [501, 501, 501], device: "desktop" }), DESKTOP)).toBe(
       "This volume (501×501×501) needs about 4.7 GiB; the in-browser engine stops at 4 GiB.",
     );
+  });
+
+  it("names the volume when it is known", () => {
+    expect(leadLine(limit({ kind: "gate", needBytes: 5.03e9, shape: [501, 501, 501] }), DESKTOP, "huge.h5")).toBe(
+      "huge.h5 (501×501×501) needs about 4.7 GiB; the in-browser engine stops at 4 GiB.",
+    );
+    expect(leadLine(limit({ kind: "gate" }), DESKTOP, "huge.h5")).toBe("huge.h5 is too large for the in-browser engine, which stops at 4 GiB.");
   });
 
   it("says how much of the 4 GiB a run gets when the need is under it", () => {

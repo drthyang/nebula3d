@@ -16,6 +16,7 @@ import {
 } from "../api/pyodideEngine";
 import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
 import type { Lattice } from "../api/types";
+import { LocalHandoffNotice } from "../components/LocalHandoff";
 import { PunchPreview } from "../components/PunchPreview";
 import { RingModelHelp } from "../components/RingModelHelp";
 import type { HklAxis, PunchGeom } from "../components/punchGeometry";
@@ -733,6 +734,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             </button>
           </div>
         )}
+        <LocalHandoffNotice />
 
         <div className="data-card-grid">
           {PYODIDE_MODE ? (

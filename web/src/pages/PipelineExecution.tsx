@@ -12,6 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 
 import type { Tab } from "../state/navStore";
 import { useDatasets } from "../api/hooks";
+import { NearLimitHandoff, RunFailureHandoff } from "../components/LocalHandoff";
 import { staleOutputs } from "../api/stale";
 import type { JobEvent } from "../api/types";
 import { useDatasetStore } from "../state/datasetStore";
@@ -426,19 +427,22 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
         )}
       </div>
 
-      {/* banner — failed / cancelled */}
+      {/* banner — failed / cancelled; the in-browser engine's limit: the run-it-locally card */}
+      {phase === "running" && <NearLimitHandoff />}
       {phase === "error" && (
-        <div className="exec-banner error">
-          <span className="exec-banner-ico">✕</span>
-          <div className="exec-banner-txt">
-            <span className="exec-banner-title">
-              {interruptedStage ? STAGE_LABELS[interruptedStage] : "Pipeline"} failed
-            </span>
-            <span className="exec-banner-body">
-              {lastError ?? "The run stopped with an error — see the event log below for details."}
-            </span>
+        <RunFailureHandoff heading={`${interruptedStage ? STAGE_LABELS[interruptedStage] : "Pipeline"} failed`}>
+          <div className="exec-banner error">
+            <span className="exec-banner-ico">✕</span>
+            <div className="exec-banner-txt">
+              <span className="exec-banner-title">
+                {interruptedStage ? STAGE_LABELS[interruptedStage] : "Pipeline"} failed
+              </span>
+              <span className="exec-banner-body">
+                {lastError ?? "The run stopped with an error — see the event log below for details."}
+              </span>
+            </div>
           </div>
-        </div>
+        </RunFailureHandoff>
       )}
       {phase === "cancelled" && (
         <div className="exec-banner cancelled">

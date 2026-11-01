@@ -352,6 +352,23 @@ button {
   color: var(--text-3);
   white-space: nowrap;
 }
+/* Red during an in-browser run: a soft hint that opens the run-it-locally
+   card on the Execution page (components/LocalHandoff.tsx, NearLimitHint). */
+.mem-hint {
+  align-self: flex-start;
+  margin-top: 1px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--mem-color);
+  cursor: pointer;
+}
+.mem-hint:hover {
+  text-decoration: underline;
+}
 /* The "?" beside the bar's title opens what the tooltip says as a card (for
    touch screens and the keyboard), in the gesture card's look (.gh-*). */
 .mem-head {

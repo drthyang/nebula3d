@@ -69,8 +69,8 @@ export function aboutBytes(bytes: number): string {
   return `${Math.max(10, Math.round(bytes / (10 * MiB)) * 10)} MiB`;
 }
 
-/** Why, in one plain line with the numbers: the card's first line. */
-export function leadLine(limit: BrowserLimit, env: HandoffEnv): string {
+/** Why, in one plain line with the numbers: the card's first line. *name*: the volume's file, when known. */
+export function leadLine(limit: BrowserLimit, env: HandoffEnv, name?: string | null): string {
   const device = limit.device ?? env.device;
   const ceiling = formatBytes(env.heapCeiling);
   const phone =
@@ -81,7 +81,7 @@ export function leadLine(limit: BrowserLimit, env: HandoffEnv): string {
       : null;
 
   if (limit.needBytes) {
-    const volume = `This volume${limit.shape ? ` (${limit.shape.join("×")})` : ""} needs about ${aboutBytes(limit.needBytes)}`;
+    const volume = `${name || "This volume"}${limit.shape ? ` (${limit.shape.join("×")})` : ""} needs about ${aboutBytes(limit.needBytes)}`;
     if (phone) return `${volume}; ${phone}.`;
     if (limit.needBytes < env.heapCeiling && env.heapBudget) {
       return `${volume}; the in-browser engine stops at ${ceiling}, about ${aboutBytes(env.heapBudget)} of it for a run.`;
@@ -90,7 +90,9 @@ export function leadLine(limit: BrowserLimit, env: HandoffEnv): string {
   }
   switch (limit.kind) {
     case "gate":
-      return phone ? `This volume is too large: ${phone}.` : `This volume is too large for the in-browser engine, which stops at ${ceiling}.`;
+      return phone
+        ? `${name || "This volume"} is too large: ${phone}.`
+        : `${name || "This volume"} is too large for the in-browser engine, which stops at ${ceiling}.`;
     case "int32":
       return "The run hit the in-browser engine's 32-bit limit (an array too large to index); the local version runs 64-bit Python.";
     case "worker":
