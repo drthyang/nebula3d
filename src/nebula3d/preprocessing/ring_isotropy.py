@@ -225,7 +225,7 @@ class ShellIsotropy:
     # A cluster's lines: (|Q|, median amplitude, isotropy of the amplitude).
     members: tuple[tuple[float, float, float], ...] = ()
     # The criteria a judged shell failed: "height", "isotropy", "snr", "curve",
-    # and "line" (a line of a cluster that does not rise on its own).
+    # and "member" (a line of a cluster that does not rise on its own).
     fails: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
@@ -857,8 +857,8 @@ def _verdict(q0: float, fwhm: float, heights: NDArray[np.float64], levels: NDArr
             m = float(np.median(amp))
             lo = float(np.quantile(amp, 1.0 - share))
             members.append((line, m, lo / m if m > 0 else np.nan))
-            if not (m > 0 and lo >= cfg.height_share * m) and "line" not in fails:
-                fails.append("line")
+            if not (m > 0 and lo >= cfg.height_share * m) and "member" not in fails:
+                fails.append("member")
     return ShellIsotropy(q0, fwhm, n, med, rel, iso, not fails, snr=snr, beyond_curve=curve,
                          rule=rule, members=tuple(members), fails=tuple(fails))
 

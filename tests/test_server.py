@@ -607,6 +607,7 @@ def test_ring_diagnostics_missing_returns_empty_state(env):
         "has_diagnostics": False,
         "status": None,
         "unconfirmed_at_grid": None,
+        "summary": None,
     }
     assert r.json()["diagnostics_path"].endswith("_ringremoved_diagnostics.json")
     assert client.get("/api/rings/nope/diagnostics").status_code == 404

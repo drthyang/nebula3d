@@ -324,3 +324,43 @@ def test_al_config_validation():
         IsotropyConfig(al_width_ratio=0.0)
     with pytest.raises(ValueError):
         IsotropyConfig(al_min_snr=-1.0)
+
+
+# ------------------------------------------------- the record, in one line
+
+def test_the_record_in_one_line(al_case):
+    """What NEBULA Pilot reads of the ring stage (server.rings, ``summary``):
+    the Al lattice, the shells removed (of them on Al lines), and the shells
+    left with their Al line and why, the Al lines first."""
+    from nebula3d.preprocessing.pooled_rings import shell_summary
+
+    out = al_case[3]
+    line = shell_summary(out.diagnostics)
+    d = out.diagnostics
+    n_al = sum(1 for s in d["shells"] if s.get("match"))
+    assert line.startswith(f"Al a={d['al_lattice_a']:.3f} Å; removed {len(d['shells'])} "
+                           f"(Al {n_al}); left {len(d['rejected_shells'])}: ")
+    assert line.endswith("6.21 Al400 isotropy, 9.81 Al620 isotropy, 4.83 isotropy"), line
+    assert len(line) < 160
+
+
+def test_the_record_names_four_shells_left_and_counts_the_rest():
+    from nebula3d.preprocessing.pooled_rings import shell_summary
+
+    def left(q, verdict, hkl=None):
+        return {"q_center": q, "fwhm": 0.1, "isotropy": verdict,
+                **({"match": {"phase": "Al", "hkl": hkl, "q": q}} if hkl else {})}
+
+    record = {"algorithm": "pooled", "al_lattice_a": None, "shells": [], "rejected_shells": [
+        left(5.0, {"is_ring": False, "fails": ["snr", "curve"]}),
+        left(3.0, {"is_ring": False, "not_judged": "no clean flank on one side"}),
+        left(2.0, {"is_ring": False, "not_judged": "grid too coarse: 0.99 voxels"}),
+        left(9.2, {"is_ring": False, "fails": ["member"]}, "531"),
+        left(4.0, {"is_ring": False, "median_height": 0.1, "isotropy": -0.2, "snr": 9.0}),
+        left(6.0, {"is_ring": False, "not_judged": "measured in 9 direction cells, under 16"}),
+    ]}
+    assert shell_summary(record) == ("removed 0; left 6: 9.20 Al531 member, 2.00 grid, "
+                                     "3.00 flank, 6.00 cells, +2 more")
+    assert shell_summary({"algorithm": "global_v2"}) is None
+    empty = {"algorithm": "pooled", "shells": [], "rejected_shells": []}
+    assert shell_summary(empty) == "removed 0"

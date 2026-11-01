@@ -510,13 +510,16 @@ const ringIsotropy = (id: string, shells: { q: number; fwhm: number }[]): RingIs
   }),
 });
 
-// What the ring removal recorded: the powder ring confirmed, none left unconfirmed.
+// What the ring removal recorded: the powder ring confirmed, none left
+// unconfirmed, the crystal's own shell at 3.93 Å⁻¹ left (it rises in some
+// directions only).
 const ringDiagnostics = (id: string): RingDiagnostics => ({
   dataset_id: id,
   diagnostics_path: `processed/${id}_ringremoved_diagnostics.json`,
   has_diagnostics: true,
   status: "fitted",
   unconfirmed_at_grid: null,
+  summary: "removed 1; left 1: 3.93 isotropy",
 });
 
 // The whole volume's shell floors of a dataset's flattened stage, on the

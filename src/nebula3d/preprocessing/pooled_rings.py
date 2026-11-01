@@ -101,6 +101,7 @@ from nebula3d.preprocessing.radial_background import (
 )
 from nebula3d.preprocessing.ring_isotropy import (
     AL_MAX_SCALE,
+    GRID_TOO_COARSE,
     AlCluster,
     CellScales,
     IsotropyConfig,
@@ -939,4 +940,64 @@ def _shell_ceiling(
     return out
 
 
-__all__ = ["PooledRingConfig", "PooledRingResult", "fit_pooled_rings"]
+#: How many of the shells it left :func:`shell_summary` names; the rest it counts.
+SUMMARY_LEFT = 4
+
+
+def _left_code(verdict: object) -> str:
+    """Why a shell was left, in one word: the first criterion it failed
+    (height, isotropy, snr, curve, member), or why it was not judged (grid,
+    flank, cells, nodata). Diagnostics older than ``fails`` are read from
+    their numbers by the default rule."""
+    if not isinstance(verdict, dict):
+        return "unjudged"
+    why = str(verdict.get("not_judged") or "")
+    if why:
+        return ("grid" if why.startswith(GRID_TOO_COARSE) else
+                "flank" if why.startswith("no clean flank") else
+                "cells" if why.startswith("measured in") else "nodata")
+    fails = verdict.get("fails")
+    if isinstance(fails, list) and fails:
+        return str(fails[0])
+    defaults = IsotropyConfig()
+    for code, value, floor in (("height", verdict.get("median_height"), 0.0),
+                               ("isotropy", verdict.get("isotropy"), defaults.height_share),
+                               ("snr", verdict.get("snr"), defaults.min_snr),
+                               ("curve", verdict.get("beyond_curve"), defaults.curve_share)):
+        if isinstance(value, (int, float)) and not value >= floor and value == value:
+            return code
+    return "rejected"
+
+
+def shell_summary(diagnostics: object) -> str | None:
+    """The pooled ring removal's record in one line, for NEBULA Pilot: the Al
+    lattice if fitted, the shells removed (of them on Al lines), and the shells
+    left, each its |Q|, its Al line if any and why (:func:`_left_code`); the
+    Al-line shells first, then those left unjudged, then the rest, at most
+    :data:`SUMMARY_LEFT` named. None for another model's diagnostics."""
+    if not isinstance(diagnostics, dict) or diagnostics.get("algorithm") != "pooled":
+        return None
+    kept = [s for s in diagnostics.get("shells") or [] if isinstance(s, dict)]
+    left = [s for s in diagnostics.get("rejected_shells") or [] if isinstance(s, dict)]
+
+    def al(s: dict[str, object]) -> str:
+        m = s.get("match")
+        return (f"Al{m.get('hkl')}" if isinstance(m, dict) and m.get("phase") == "Al" else "")
+
+    a = diagnostics.get("al_lattice_a")
+    head = f"Al a={float(a):.3f} Å; " if isinstance(a, (int, float)) else ""
+    n_al = sum(1 for s in kept if al(s))
+    head += f"removed {len(kept)}" + (f" (Al {n_al})" if n_al else "")
+    if not left:
+        return head
+    order = sorted(left, key=lambda s: (not al(s), not (s.get("isotropy") or {}).get("not_judged"),
+                                        float(s.get("q_center") or 0.0)))  # type: ignore[arg-type]
+    named = [" ".join(x for x in (f"{float(s['q_center']):.2f}", al(s),  # type: ignore[arg-type]
+                                  _left_code(s.get("isotropy"))) if x)
+             for s in order[:SUMMARY_LEFT]]
+    more = f", +{len(left) - SUMMARY_LEFT} more" if len(left) > SUMMARY_LEFT else ""
+    return f"{head}; left {len(left)}: " + ", ".join(named) + more
+
+
+__all__ = ["SUMMARY_LEFT", "PooledRingConfig", "PooledRingResult", "fit_pooled_rings",
+           "shell_summary"]

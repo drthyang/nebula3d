@@ -10,7 +10,8 @@ detected and did not subtract, how many, what the grid needs, and the notice
 the run log gives them (:func:`nebula3d.pipeline.unconfirmed_rings_notice`).
 The run log holds it for one session's run; the record holds it for as long
 as the output it describes, so the Pilot's ring check and the report say it
-too.
+too. With it, the shells removed and left in one line
+(:func:`nebula3d.preprocessing.pooled_rings.shell_summary`).
 
 FastAPI-free, like :mod:`nebula3d.server.consistency`: the router
 (:mod:`nebula3d.server.routers.rings`) and the browser bridge
@@ -22,6 +23,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from nebula3d.preprocessing.pooled_rings import shell_summary
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import artifact_path, find_dataset
 
@@ -42,7 +44,9 @@ def saved_ring_diagnostics(cfg: ServerConfig, dataset_id: str) -> dict[str, Any]
     """The ring stage's record of a dataset, from its diagnostics: their
     ``status`` and ``unconfirmed_at_grid``, the shells it detected and could
     not confirm as powder rings on its grid (``count``, ``needs``, ``notice``,
-    ``q_centers``), which it did not subtract; None where it left none.
+    ``q_centers``), which it did not subtract; None where it left none. And
+    ``summary``, the shells removed and left in one line (None for another
+    model's diagnostics, or none).
 
     ``None`` for an unknown dataset. ``has_diagnostics`` is false when the
     stage wrote none (a model that writes none, or no run), or when they are
@@ -68,4 +72,5 @@ def saved_ring_diagnostics(cfg: ServerConfig, dataset_id: str) -> dict[str, Any]
         "has_diagnostics": isinstance(data, dict),
         "status": status if isinstance(status, str) else None,
         "unconfirmed_at_grid": _unconfirmed(record.get("unconfirmed_at_grid")),
+        "summary": shell_summary(record) if isinstance(data, dict) else None,
     }

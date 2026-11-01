@@ -248,6 +248,8 @@ const worstRing = nullable(obj({ plane: str, at: num, residual_fraction: num }))
 
 const ringsEvaluation = obj({
   notice: optional(str),
+  // The ring stage's own record: removed (on Al lines) and left, each with why.
+  stage_shells: optional(str),
   mean_ring_energy_ratio: maybeNum,
   max_over_subtraction_fraction: maybeNum,
   max_ring_dent: maybeNum,

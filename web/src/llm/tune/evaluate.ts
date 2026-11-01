@@ -249,6 +249,9 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // The ring candidates the removal left unsubtracted, unconfirmed on its grid, said out
       // loud (verdicts/rules.ts, RING_NOTICE_REMEDY: arm C reads it without its remedy).
       ...(notice ? { notice } : {}),
+      // The ring stage's own record of its shells: removed (on Al lines) and
+      // left, each with why (the skill reads the codes).
+      ...(record?.summary ? { stage_shells: record.summary } : {}),
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
       // The deepest dent and largest leftover at the confirmed rings, over the

@@ -265,7 +265,7 @@ then fail on a filled flank. Rings of any other phase are judged by the
 strict rule alone. The diagnostics (schema 3) record, for each shell, its Al
 match (`match`: phase, hkl, |Q|) and, in its verdict, the rule that judged it
 (`rule: "al"`), the criteria it failed (`fails`: height, isotropy, snr,
-curve, line) and a cluster's lines. A rejected shell's first verdict is kept
+curve, member) and a cluster's lines. A rejected shell's first verdict is kept
 as `strict`. The top level records the frame (`al_frame`: rings, cells,
 95th-percentile |s|, reliability) and the Al rule (`confirmation.al_rule`).
 
