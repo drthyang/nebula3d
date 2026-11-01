@@ -32,6 +32,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { JobEvent } from "../../api/types";
 import type { AgentStep } from "../agent";
+import { LAUE_RULE_DELTA, LAUE_RULE_Z } from "../../state/laueCompare";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { pedestalLeft } from "../metrics/flatten";
@@ -87,7 +88,13 @@ interface Limit {
 /** Files read as text: a limit held in Python, or in a constant its module does not export, and what the skills name. */
 const SOURCES = repoKeyed(
   import.meta.glob(
-    ["../../../../src/nebula3d/preprocessing/ring_isotropy.py", "../../../../src/nebula3d/server/tuning.py", "../metrics/rings.ts", "../../api/types.ts"],
+    [
+      "../../../../src/nebula3d/preprocessing/ring_isotropy.py",
+      "../../../../src/nebula3d/server/tuning.py",
+      "../metrics/rings.ts",
+      "../../api/types.ts",
+      "../tools/defs/compare_laue_classes.ts",
+    ],
     { query: "?raw", import: "default", eager: true },
   ),
 );
@@ -164,6 +171,9 @@ const LIMITS = {
     constant: "UB_TURN, read through UB_TURNED (verdicts/rules.ts)",
     value: boundary((x) => UB_TURNED({ orientation_change_deg: x, fit: "both", symmetrised: false }), 0, 10),
   },
+  // The backend's DELTA and Z (nebula3d.analysis.laue_compare), which sharedLimits.replay.test.ts holds equal to these.
+  laueDelta: { constant: "LAUE_RULE_DELTA (state/laueCompare.ts), the Laue rule's tolerance", value: LAUE_RULE_DELTA },
+  laueZ: { constant: "LAUE_RULE_Z (state/laueCompare.ts), the Laue rule's standard errors", value: LAUE_RULE_Z },
 } satisfies Record<string, Limit>;
 
 const same = (a: number, b: number): boolean => a === b || Math.abs(a - b) <= 1e-9 * Math.max(Math.abs(a), Math.abs(b));
@@ -190,6 +200,8 @@ const GATES: Gate[] = [
   { skill: "reduction-qc", phrase: "more than 1e-3 of its weight on unmeasured space", stated: 1e-3, limit: LIMITS.tuningWeight },
   { skill: "reduction-qc", phrase: "a trend and a span both 0.8 or more", stated: 0.8, limit: LIMITS.pedestalTrend },
   { skill: "reduction-qc", phrase: "a trend and a span both 0.8 or more", stated: 0.8, limit: LIMITS.pedestalSpan },
+  { skill: "reduction-qc", phrase: "by more than 10 % and two standard errors", stated: 0.1, limit: LIMITS.laueDelta },
+  { skill: "reduction-qc", phrase: "two standard errors of the difference", stated: 2, limit: LIMITS.laueZ },
   {
     skill: "reduction-qc",
     phrase: "the outer half of the shells the counts reach",
@@ -234,6 +246,7 @@ const NOT_GATES: { skill: SkillName; phrase: string; why: string }[] = [
   { skill: "delta-pdf-interpretation", phrase: "each (001) layer", why: "an example plane" },
   { skill: "delta-pdf-interpretation", phrase: "the z = 0 plane", why: "an example plane" },
   { skill: "delta-pdf-interpretation", phrase: "gives all three", why: "the three quantities dpdf_peaks gives: a feature's vector, sign and size" },
+  { skill: "reduction-qc", phrase: "near 1, the equivalents agree within the noise", why: "the ratio's value at agreement (its definition), not a limit: the rule compares classes with each other (DELTA, Z)" },
   { skill: "reduction-qc", phrase: "from 0.025 to 0.066 to 0.107", why: "evidence, not a line: what the Q² term did to the scored pedestal span on the validation's clean controls (batch 1, finding 5)" },
   { skill: "delta-pdf-interpretation", phrase: "Taking a back-FFT r near 1 as proof", why: "a failure mode quoting trust check 4, whose gate is in GATES" },
 ];
@@ -328,6 +341,13 @@ const OTHER_NAMES: { name: string; what: string; holds: () => boolean }[] = [
   { name: "nebula3d.demo", what: "the demo volume's module", holds: () => REPO_FILES.has("src/nebula3d/demo.py") },
   { name: "processed/", what: "a dataset's outputs, which tuning never writes", holds: () => source("src/nebula3d/server/tuning.py").includes("``processed/``") },
   { name: "edge_trim", what: "the pipeline's edge trim, a run parameter", holds: () => /\bedge_trim\?:/.test(source("web/src/api/types.ts")) },
+  { name: "flag", what: "compare_laue_classes' flag (the diffuse supports less)", holds: () => has("compare_laue_classes", "flag") },
+  { name: "chi2", what: "compare_laue_classes' χ²/dof of each class", holds: () => has("compare_laue_classes", "chi2") },
+  {
+    name: "common_flag",
+    what: "compare_laue_classes' common-subset flag, in a result only when raised (not on the synthetic crystal)",
+    holds: () => source("web/src/llm/tools/defs/compare_laue_classes.ts").includes("{ common_flag: out.common.flag }"),
+  },
   { name: "+ b·Q²", what: "the flatten's Q² term, as a formula (flattenQ2)", holds: () => true },
   { name: "b·Q²", what: "the flatten's Q² term, as a formula (flattenQ2)", holds: () => true },
 ];

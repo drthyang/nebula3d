@@ -2,10 +2,10 @@
 name: reduction-qc
 description: >-
   Check that a reduction can be trusted before reading physics from it: the UB,
-  the symmetrisation, the raw counts' |Q| edges and the coverage, edge and
-  unmeasured voxels, the powder rings and the flatten floor. Use it when asked
-  whether a run is sound or ready for the 3D-ΔPDF, and before changing or tuning
-  the ring removal or the flatten. NOT for reading ΔPDF features
+  the symmetrisation and its Laue class, the raw counts' |Q| edges and the
+  coverage, edge and unmeasured voxels, the powder rings and the flatten floor.
+  Use it when asked whether a run is sound or ready for the 3D-ΔPDF, and before
+  changing or tuning the ring removal or the flatten. NOT for reading ΔPDF features
   (delta-pdf-interpretation) or auditing the Bragg nodes (bragg-node-audit).
 ---
 
@@ -55,8 +55,8 @@ inward. Check these first, in this order, and say what each check found.
    outside the pipeline must be trimmed first. Unmeasured voxels stay masked.
    The backfill fills punched holes and gaps the measured data enclose, not
    the open coverage. Before proposing a Laue class for the symmetry average,
-   which fills gaps from equivalents, run `compare_laue_classes`: give its
-   suggestion, rule and flag, and that twinning can hide a lower class.
+   which fills gaps from equivalents, run `compare_laue_classes` and read it
+   as **The Laue class** below says.
 5. **Powder rings.** `assess_stage` for the rings, then `radial_profile`. A bump
    is a powder ring only if it rises in nearly every direction over the sphere,
    judged in 3D (`shells_judged`; the rule: at least 0.15 of its median height
@@ -99,6 +99,38 @@ inward. Check these first, in this order, and say what each check found.
    were symmetrised with holds to about 1e-3 or better; a clear break means a
    stage broke it (see delta-pdf-interpretation).
 8. **Report** (below).
+
+## The Laue class (`compare_laue_classes`)
+
+Evidence for the user's choice: cite the classes, rule and flags and suggest
+a class; never set it (`update_settings` refuses it).
+
+- **Numbers.** R_int: how much equivalent voxels disagree. `x_noise`: R_int
+  over what counting noise alone gives on the same orbits, so classes of any
+  size compare; near 1, the equivalents agree within the noise. `chi2`
+  (χ²/dof) reads alike and weighs strong disagreements (Bragg peaks) more.
+- **Voxels.** Only measured voxels count, in orbits with another measured
+  member; an empty voxel is never a zero.
+- **Classes see different voxels.** With partial coverage a higher class
+  compares voxels its subgroups cannot: evidence, not bias. Each is weighed
+  against its own subgroups on its own voxels in its own noise units, so
+  shared errors cancel.
+- **The rule errs low.** A class is rejected when its `x_noise` rises above a
+  subgroup's by more than 10 % and two standard errors of the difference.
+  Errors add disagreement, which a higher class pools more of, so a wrong
+  answer is a class too low: gaps unfilled, nothing imposed.
+- **Limits.** The errors come from a block bootstrap, which allows for
+  correlated neighbouring voxels. Errors that differ between regions reject
+  classes falsely (`common_flag`). Twinning, or domains related by an
+  operation the sample lacks, make a lower symmetry look higher, undetectably.
+- **Flags.** `flag`: the diffuse supports a lower class than the Bragg peaks,
+  whose symmetry averaging would impose on it; the suggestion is the
+  diffuse's. A note that every measured voxel supports less than the diffuse:
+  the Bragg peaks break the symmetry or carry extinction or absorption
+  errors. `common_flag`: the voxels the lowest class can judge suggest
+  another class; if higher, the main suggestion may be a false rejection:
+  give both, ask the user to look. No suggestion: isotropic within the noise
+  (`no_symmetry` did not rise).
 
 ## Firm rules (enforced in code)
 
@@ -157,3 +189,6 @@ finding.
   refined and checked, symmetrised volumes, regridding, reading the offsets
 - [delta_pdf](../../../docs/algorithms/delta_pdf.md) — the transform window, its
   support on the coverage, and the flatten's background terms
+- [laue_compare](../../../docs/algorithms/laue_compare.md) — the Laue classes
+  compared: R_int, the noise floor, χ²/dof, the rule, the block bootstrap and
+  the common subset
