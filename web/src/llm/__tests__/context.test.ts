@@ -60,3 +60,48 @@ describe("buildPipelineContext", () => {
     expect(json.length).toBeLessThan(6000);
   });
 });
+
+// The dataset's summary a model with tools starts from (THY-63 C1): facts
+// about the dataset, none measured on a slice, and never in the JSON a model
+// without tools reads.
+describe("the dataset's summary", () => {
+  const stage = (name: string, exists = true) => ({ name, exists, kind: "hkl" as const, volume_id: `d.${name}` });
+  const full = {
+    ...meta,
+    h_range: [-3.00004, 3.00004],
+    k_range: [-2, 2],
+    l_range: [-1.5, 1.5],
+    symmetry: "6/mmm",
+  } as unknown as VolumeMeta;
+
+  it("holds the grid's ranges, the raw volume's symmetry and the outputs on disk, from what was read", () => {
+    const ctx = buildPipelineContext({
+      datasetLabel: "d",
+      plane: "hk0",
+      cutValue: 0,
+      hklMeta: full,
+      slices: {},
+      stages: [stage("raw"), stage("ringremoved"), stage("braggpunched", false)],
+    });
+    expect(ctx.summary).toEqual({ hkl_ranges: [[-3, 3], [-2, 2], [-1.5, 1.5]], symmetry: "6/mmm", stages_on_disk: ["raw", "ringremoved"] });
+    // No symmetry declared: null; a class declared for the volume by an export or a regrid's record, named apart.
+    const none = { ...full, symmetry: null, symmetry_ops: null, declared_for: { symmetry: "mmm", symmetry_ops: [], from: "x_sym.nxs" } } as unknown as VolumeMeta;
+    expect(buildPipelineContext({ datasetLabel: "d", plane: "hk0", cutValue: 0, hklMeta: none, slices: {} }).summary).toMatchObject({
+      symmetry: null,
+      symmetry_declared_for: "mmm",
+    });
+    // Operations without a name: their number.
+    const ops = { ...full, symmetry: null, symmetry_ops: [[[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[-1, 0, 0], [0, -1, 0], [0, 0, -1]]] } as unknown as VolumeMeta;
+    expect(buildPipelineContext({ datasetLabel: "d", plane: "hk0", cutValue: 0, hklMeta: ops, slices: {} }).summary?.symmetry).toBe("2 operations");
+    // Nothing read: nothing said.
+    expect(buildPipelineContext({ datasetLabel: "d", plane: "hk0", cutValue: 0, slices: {} }).summary).toEqual({});
+  });
+
+  it("is not in the context's JSON, which reads as it did without it", () => {
+    const ctx = buildPipelineContext({ datasetLabel: "d", plane: "hk0", cutValue: 0, hklMeta: full, slices: {}, stages: [stage("raw")] });
+    const { summary, ...rest } = ctx;
+    expect(summary).toBeDefined();
+    expect(contextToJson(ctx)).toBe(contextToJson(rest));
+    expect(contextToJson(ctx)).not.toMatch(/summary|stages_on_disk|hkl_ranges/);
+  });
+});

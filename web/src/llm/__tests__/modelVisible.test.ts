@@ -28,13 +28,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { JobEvent } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
-import { runAgent, type AgentStep } from "../agent";
+import { MAX_TOOL_ROUNDS, runAgent, type AgentStep } from "../agent";
 import { answerIssues, earlierSources, issuesPrompt, marksMade } from "../answerChecks";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
 import { toolsFor } from "../localTools";
-import { SYSTEM, TOOLS } from "../prompts/system";
+import { CORE, roundsLine } from "../prompts/system";
 import { buildChatMessages, buildStageReviewMessages, systemPrompt, type ReviewStage } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolCall } from "../provider/client";
 import { shorten } from "../readings";
@@ -192,19 +192,22 @@ describe("1. the system prompt and the first user message, as the app builds the
     // Built with the switch off from the same sections, never cut from B's: without the skills' section, and the
     // others without their inference (inference.ts).
     expect(c.messages[0].content).toBe(systemPrompt({ tools: true, skills: false }));
-    expect(c.messages[0].content).toBe(`${SYSTEM.definitions}\n${TOOLS.definitions}`);
-    expect(b.messages[0].content).toBe(`${SYSTEM.whole}\n${TOOLS.whole}\n${skillsPrompt()}`);
-    // The context: B's, but the search's note, its definition only. The rest is B's.
+    expect(c.messages[0].content).toBe(`${CORE.definitions}\n${roundsLine(MAX_TOOL_ROUNDS)}`);
+    expect(b.messages[0].content).toBe(`${CORE.whole}\n${roundsLine(MAX_TOOL_ROUNDS)}\n${skillsPrompt()}`);
+    // The context, the dataset's summary, holds no inference: B's. So is the rest.
+    expect(c.messages.slice(1)).toEqual(b.messages.slice(1));
+    // Without tools the context is the cut's metrics: arm C's the same, but the search's note, its definition only.
     const json = (m: ChatMessage) => JSON.parse(/```json\n([\s\S]*)\n```/.exec(String(m.content))![1]) as { bragg_punch: { peak_profile: { search_note: string } } };
-    const [bc, cc] = [json(b.messages[1]), json(c.messages[1])];
+    const offB = buildChatMessages(context, [], QUESTION, null, { tools: false });
+    const offC = buildChatMessages(context, [], QUESTION, null, { tools: false, skills: false });
+    const [bc, cc] = [json(offB[1]), json(offC[1])];
     expect(cc.bragg_punch.peak_profile.search_note).toBe("peaks the search punched off the Bragg nodes");
     expect(bc.bragg_punch.peak_profile.search_note).toMatch(/; grain_check says whether/);
     expect({ ...cc, bragg_punch: { ...cc.bragg_punch, peak_profile: bc.bragg_punch.peak_profile } }).toEqual(bc);
-    expect(c.messages.slice(2)).toEqual(b.messages.slice(2));
     await expect(
       doc(
         "Opening messages: tools on, skills off (validation arm C)",
-        "`buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup(\"C\")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section, its other sections and the context's prose without their inference (inference.ts; 6-inference.md lists each span left out), and read_skill is not offered. The rest is arm B's.\n\n" +
+        "`buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup(\"C\")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section and the core without its inference (inference.ts; 6-inference.md lists each span left out), and read_skill is not offered. The context, the dataset's summary, and the rest are arm B's.\n\n" +
           tools(toolsWithSkills(CHAT_TOOLS, c.skills)),
         renderMessages(c.messages),
       ),
@@ -669,6 +672,9 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
       if (c.text !== b.text) differ.push(`## ${sampleTitle(s)}\n\n${showResult(c.text)}`);
     }
     expect(differ.map((d) => d.split("\n")[0])).toEqual([
+      // What their fields mean, a reply's first result (THY-63 R3): its definitions only.
+      '## measure_reciprocal_cut {"plane":"h0l","value":1}',
+      '## measure_dpdf_cut {"plane":"xz","value":0}',
       "## assess_stage {}",
       '## assess_stage {"stage":"flatten"}',
       `## assess_stage {"stage":"punch"} (${BUNCHED_NOTE})`,
@@ -842,6 +848,10 @@ const COVERED = step("qmax_coverage", {}, { verdict: "clean: the ΔPDF's ellipso
 // Two marks made by mark_region, each named by its result's id.
 const markedAs = (id: string, label: string) =>
   step("mark_region", { where: "flatten", shape: "ellipsoid", label, evidence: ["measure_reciprocal_cut"] }, { marked: id, label, where: "flatten", page: "Reciprocal cleanup" });
+// A ΔPDF assessment whose SNR, and a ring assessment whose shell, an invented feature list traces to by chance.
+const PDF_JUDGED = step("assess_stage", { stage: "pdf" }, {
+  pdf: { verdict: VERDICT_LABEL.pass, criterion: CRITERIA.pdf, headline: "r 0.98901 (even part 1) · RMS 0.1253 · SNR 1380", back_fft_pearson_r_even: 1 },
+});
 const MARKED_M1 = markedAs("M1", "diffuse maximum");
 const MARKED_M2 = markedAs("M2", "its partners");
 
@@ -892,6 +902,12 @@ const REPLIES: { what: string; reply: string; steps: AgentStep[]; earlier?: Agen
     reply: "M2 marks the partners of the diffuse maximum, which M1 marks.",
     steps: [MARKED_M2],
     earlier: [MARKED_M1],
+  },
+  {
+    // The dev-control smoke run's answer, shortened (answerChecks.test.ts has it whole).
+    what: "a list of results credited to a tool that did not run, called illustrative",
+    reply: "The strongest features: Feature 1: Δr ≈ 2.6 Å, SNR ≈ 1380 (from dpdf_peaks via assess_stage pdf). The values are illustrative of the reported SNR.",
+    steps: [PDF_JUDGED, RINGS],
   },
   {
     what: "a question a result puts to the user, not asked, and its answer said as fact",
@@ -1001,6 +1017,7 @@ describe("5. the text sent back to the model", () => {
         [issues.unasked.length > 0, /has a question for the user that the answer does not ask/],
         [issues.assumed.length > 0, /as fact what a result in this reply asks the user/],
         [issues.unmadeMarks.length > 0, /(This mark id names|These mark ids name) no mark made in this conversation/],
+        [issues.uncalled.length > 0, /numbers to a check that did not run in this reply/],
       ];
       for (const [found, line] of kinds) expect(line.test(sent), `${what}: ${line}`).toBe(found);
     }
@@ -1033,7 +1050,8 @@ describe("5. the text sent back to the model", () => {
     const at = sentBack(c.added);
     expect(at).toBe(sentBack(b.added));
     expect(c.added.filter((_m, i) => i !== at)).toEqual(b.added.filter((_m, i) => i !== at));
-    expect(String(b.added[at].content)).toMatch(/call assess_stage with stage flatten/);
+    // Asked to answer now, the revision offers no tools (tool_choice none): the send-back asks for no call.
+    expect(String(b.added[at].content)).toMatch(/verdict on the flatten without its evidence in this reply, and no tool calls are left/);
     const sent = String(c.added[at].content);
     expect(namedInOwnWords(sent)).toEqual([]);
     expect(quotations(sent)).toEqual(["The flatten left no pedestal."]);

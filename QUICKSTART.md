@@ -78,8 +78,8 @@ reads it from there. A session typically runs top to bottom:
    reloads an idle model; Ollama at its usual port gets its window from the app,
    up to what the model supports, and elsewhere start it with
    `OLLAMA_CONTEXT_LENGTH=57344`). With *Tools* on, the first request alone is
-   about 8k tokens, and a full assessment that reads two skills about 48k; in a
-   32k window the skills it read are shortened to stubs
+   about 7.2k tokens, and a full assessment that reads two skills about 42k; in
+   a 32k window the skill it read first is shortened to a stub
    ([docs/pilot.md](docs/pilot.md#guardrails)).
 
 ## Going further

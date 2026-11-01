@@ -6,10 +6,12 @@ import { fetchDpdfSlice } from "../../../api/client";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../../components/dpdfLevels";
 import { useDpdfStore } from "../../../state/dpdfStore";
 import { dpdfVolumeId } from "../../context/loadContext";
+import { remedy } from "../../inference";
 import { SIGMA_OF } from "../../metrics/dpdf";
 import { median, roundSig } from "../../metrics/sliceStats";
 import { num } from "../shared/args";
 import { dpdfMeta, dpdfView } from "../shared/cuts";
+import { described, description } from "../shared/describe";
 import { ToolArgError, type ChatTool } from "../types";
 
 // The q-quantile of ascending magnitudes.
@@ -25,8 +27,11 @@ export const dpdf_contrast: ChatTool = {
     invalidates: ["view"],
     offeredFor: ["pdf"],
   },
-  description:
-    "Set the 3D-ΔPDF viewer's colour range so pair-correlation features carry the colour and the FFT ripple stays dim. Call it once without arguments: the limit is the 99.9th percentile of |ΔPDF| on the three centre sections (origin disk left out), the page's Auto. Returns the applied limit, and what the 99.5th and 99.97th percentiles would give. Pass percentile or limit_sigma only for a range the user asks for; reset returns to Auto.",
+  // Before a figure is described: the system prompt's routing until THY-63 R3,
+  // delta-pdf-interpretation's step 5.
+  ...described(
+    description("dpdf_contrast")`Set the 3D-ΔPDF viewer's colour range so pair-correlation features carry the colour and the FFT ripple stays dim. Call it once without arguments: the limit is the 99.9th percentile of |ΔPDF| on the three centre sections (origin disk left out), the page's Auto.${remedy(" Use it before you describe a ΔPDF figure.")} Returns the applied limit, and what the 99.5th and 99.97th percentiles would give. Pass percentile or limit_sigma only for a range the user asks for; reset returns to Auto.`,
+  ),
   parameters: {
     type: "object",
     properties: {
