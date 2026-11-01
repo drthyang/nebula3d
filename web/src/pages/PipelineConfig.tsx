@@ -721,6 +721,83 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
 
   return (
     <div className="config-page">
+      {/* ------------------------------------------------- run and session controls:
+          the page's top-level actions, above the cards */}
+      <div className="config-toolbar" role="toolbar" aria-label="Run and session">
+        <div className="config-toolbar-run">
+          <Switch
+            label="Force"
+            checked={s.force}
+            onChange={(v) => patch({ force: v })}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={onRun}
+            disabled={s.busy || !datasetId}
+            title={s.busy && !s.running ? "The last run lost its connection to the server and may still be going there: wait until it is heard from (Execution page)" : undefined}
+          >
+            {s.running && <span className="spin" />}
+            {s.running ? "Running…" : s.busy ? "Waiting for the last run…" : "Run pipeline"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={onStarted}
+            disabled={!s.busy}
+          >
+            View execution →
+          </button>
+        </div>
+        <div className="config-toolbar-session">
+          <input
+            ref={sessionInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="visually-hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onRestoreSession(f);
+              if (sessionInputRef.current) sessionInputRef.current.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => void onSaveSession()}
+            title="Save the settings, the last run's log, the outputs present and the NEBULA Pilot conversation to a file"
+          >
+            Save session
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => sessionInputRef.current?.click()}
+            disabled={s.busy || chatBusy}
+            title={s.busy || chatBusy ? "Wait for the run or the reply to finish" : "Bring back a saved session: its settings, last run and conversation"}
+          >
+            Restore session…
+          </button>
+        </div>
+      </div>
+      {sessionNote && (
+        <div className={`session-note ${sessionNote.kind}`} role="status">
+          <span>{sessionNote.text}</span>
+          {sessionNote.recompute && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={s.busy}
+              onClick={() => void onRecompute(sessionNote.recompute!)}
+            >
+              Recompute them
+            </button>
+          )}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSessionNote(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
       {/* ----------------------------------------------------------- data card */}
       <section className="card data-card">
         <div className="card-title-row">
@@ -756,79 +833,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               })}
             </ol>
           </div>
-          <div className="data-actions">
-            <Switch
-              label="Force"
-              checked={s.force}
-              onChange={(v) => patch({ force: v })}
-            />
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={onRun}
-              disabled={s.busy || !datasetId}
-              title={s.busy && !s.running ? "The last run lost its connection to the server and may still be going there: wait until it is heard from (Execution page)" : undefined}
-            >
-              {s.running && <span className="spin" />}
-              {s.running ? "Running…" : s.busy ? "Waiting for the last run…" : "Run pipeline"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={onStarted}
-              disabled={!s.busy}
-            >
-              View execution →
-            </button>
-            <input
-              ref={sessionInputRef}
-              type="file"
-              accept=".json,application/json"
-              className="visually-hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onRestoreSession(f);
-                if (sessionInputRef.current) sessionInputRef.current.value = "";
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => void onSaveSession()}
-              title="Save the settings, the last run's log, the outputs present and the NEBULA Pilot conversation to a file"
-            >
-              Save session
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => sessionInputRef.current?.click()}
-              disabled={s.busy || chatBusy}
-              title={s.busy || chatBusy ? "Wait for the run or the reply to finish" : "Bring back a saved session: its settings, last run and conversation"}
-            >
-              Restore session…
-            </button>
-          </div>
         </div>
-        {sessionNote && (
-          <div className={`session-note ${sessionNote.kind}`} role="status">
-            <span>{sessionNote.text}</span>
-            {sessionNote.recompute && (
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                disabled={s.busy}
-                onClick={() => void onRecompute(sessionNote.recompute!)}
-              >
-                Recompute them
-              </button>
-            )}
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSessionNote(null)} aria-label="Dismiss">
-              ×
-            </button>
-          </div>
-        )}
-
         <div className="data-card-grid">
           {PYODIDE_MODE ? (
             <div className="data-source-panel">
