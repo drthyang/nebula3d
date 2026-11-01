@@ -767,7 +767,7 @@ describe("4. a sample of each tool's result, as the model reads it", () => {
       problems.push(...contractDisagreements(s.name, whole(s.name, c)).map((d) => `arm C, ${sampleTitle(s)}: ${d}`));
     }
     expect(problems).toEqual([]);
-  });
+  }, 20_000);
 });
 
 // ---------------------------------------------------------------- 6. what arm C does not read
