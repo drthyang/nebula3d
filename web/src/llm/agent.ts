@@ -266,7 +266,7 @@ export async function runAgent({
       forgotten.push(r.key);
       shortened.add(r.id);
     }
-    if (history && forgotten.length) history = forget(history, forgotten);
+    if (history && forgotten.length) history = forget(history, forgotten, shortened);
     if (shortened.size) steps = steps.map((s) => (shortened.has(s.id) ? { ...s, shortened: true } : s));
     return shortened.size > 0;
   };

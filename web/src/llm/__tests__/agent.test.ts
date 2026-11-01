@@ -741,6 +741,30 @@ describe("runAgent", () => {
       expect(Object.keys(r.steps[0])).toEqual(["id", "name", "args", "status", "progress", "summary", "result", "view", "outcomes", "shortened"]);
     });
 
+    it("tells the next round's calls which earlier results it shortened, so assess_stage can send a whole criterion again (THY-63 R5)", async () => {
+      const marks: (true | undefined)[][] = [];
+      const probe: AgentTool = {
+        ...seriesTool,
+        run: async (args, c, io) => {
+          marks.push((c.replySteps ?? []).map((s) => s.shortened));
+          return seriesTool.run(args, c, io);
+        },
+      };
+      script([
+        [{ toolCalls: [call("c1", "series", { x: 1 })] }],
+        [{ toolCalls: [call("c2", "series", { x: 2 })] }],
+        [{ toolCalls: [call("c3", "series", { x: 3 })] }],
+        [{ toolCalls: [call("c4", "series", { x: 4 })] }],
+        // Before this request the first result is shortened: this call reads it so.
+        [{ toolCalls: [call("c5", "series", { x: 5 })] }],
+        [{ content: "Done." }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [probe], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
+      // Before the answer's request the second is shortened too.
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, true, undefined, undefined, undefined]);
+      expect(marks).toEqual([[], [undefined], [undefined, undefined], [undefined, undefined, undefined], [true, undefined, undefined, undefined]]);
+    });
+
     it("shortens a request too long for LM Studio's window down to its newest result before refusing it", async () => {
       vi.stubGlobal(
         "fetch",

@@ -61,12 +61,15 @@ function worstPlane(stage: TuneStage, evaluation: Record<string, unknown>): stri
 /**
  * The stages whose whole criterion an earlier assess_stage in this reply
  * already sent (THY-63 R1): its later results carry the terse one
- * (TERSE_CRITERION), the limits without the explanation.
+ * (TERSE_CRITERION), the limits without the explanation. A result the loop
+ * has since shortened (compaction: `shortened`) no longer shows the model its
+ * whole criterion, so it counts for none, and the next result of that stage
+ * sends the whole criterion again (THY-63 R5).
  */
 function criteriaSent(steps: readonly AgentStep[] | undefined): Set<TuneStage> {
   const sent = new Set<TuneStage>();
   for (const step of steps ?? []) {
-    if (step.name !== "assess_stage" || step.status !== "done" || !step.result) continue;
+    if (step.name !== "assess_stage" || step.status !== "done" || !step.result || step.shortened) continue;
     let r: unknown;
     try {
       r = JSON.parse(step.result);

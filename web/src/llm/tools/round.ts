@@ -99,10 +99,18 @@ export function startReply(ctx: ToolContext, given: readonly AgentTool[], openin
   });
 }
 
-/** The history without the calls `keys` names, every step of each: compaction shortened a result, so its call may run again. */
-export function forget(history: History, keys: Iterable<CallKey>): History {
+/**
+ * The history without the calls `keys` names, every step of each: compaction
+ * shortened a result, so its call may run again. The reply's steps the next
+ * round reads (replySteps) mark the steps `shortened` names as shortened: the
+ * model no longer reads what they returned whole (assess_stage then sends a
+ * stage's whole criterion again).
+ */
+export function forget(history: History, keys: Iterable<CallKey>, shortened: Iterable<string> = []): History {
   const gone = new Set(keys);
-  return sealed({ ...history, ran: history.ran.filter((r) => !gone.has(r.key)) });
+  const short = new Set(shortened);
+  const replySteps = history.ctx.replySteps?.map((s) => (short.has(s.id) && !s.shortened ? { ...s, shortened: true as const } : s));
+  return sealed({ ...history, ctx: { ...history.ctx, replySteps }, ran: history.ran.filter((r) => !gone.has(r.key)) });
 }
 
 /** A round's calls run: what goes back into the conversation, and the next history. */
