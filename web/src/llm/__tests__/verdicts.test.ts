@@ -8,7 +8,7 @@ import type { AgentStep } from "../agent";
 import { withoutInference } from "../inference";
 import { shownGrains, type GrainFacts } from "../metrics/grains";
 import { judge, UNROUNDED, verdicts, WORDS, type CheckId, type Kind, type Outcome, type Reason } from "../verdicts";
-import { RING_NOTICE_REMEDY, RING_NOTICE_REMEDY_ONE } from "../verdicts/rules";
+import { RING_NOTICE_REMEDY, RING_NOTICE_REMEDY_ONE, STAGES, TERSE_CRITERION, TERSE_CRITERION_MAX } from "../verdicts/rules";
 
 type Obj = Record<string, unknown>;
 
@@ -135,6 +135,18 @@ describe("judge: a stage's evaluation", () => {
       });
     }
   }
+
+  it("states each stage's criterion tersely too: its limits, at most 160 characters, no number its whole criterion lacks (THY-63 R1)", () => {
+    const numbers = (t: string) => t.match(/\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? [];
+    for (const stage of STAGES) {
+      const terse = TERSE_CRITERION[stage];
+      // The criterion assess_stage sends whole: the stage's own (the backfill's judges less than the report's).
+      const whole = judge(stage, {}).criterion!;
+      expect(terse.length, stage).toBeLessThanOrEqual(TERSE_CRITERION_MAX);
+      expect(terse.length, stage).toBeLessThan(whole.length);
+      for (const x of numbers(terse)) expect(numbers(whole), `${stage}: ${x}`).toContain(x);
+    }
+  });
 
   it("compares the ΔPDF's raw window weight, kept beside the one its evaluation shows (D6)", () => {
     // A weight shown rounded (two figures before 2.4.6b, three since), the raw one kept where JSON never reads it.

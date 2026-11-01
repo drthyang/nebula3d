@@ -20,6 +20,7 @@ import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type T
 import { offLatticeBunching } from "../metrics/bunching";
 import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
 import { tableRows } from "../tools/shared/table";
+import { TERSE_CRITERION, WORDS } from "../verdicts/rules";
 import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
 import braggOverDiffuse from "../../state/__tests__/__fixtures__/laue-compare-bragg-over-diffuse.json";
 import hex6m from "../../state/__tests__/__fixtures__/laue-compare-hex-6m.json";
@@ -802,6 +803,22 @@ describe("assess_stage", () => {
     expect(out.flatten).not.toHaveProperty("goal");
     expect(r.summary).toBe("Flatten: meets its goal · floor ≤ 0.8σ · trend ≤ 0.3 · span ≤ 0.6 · 3D-ΔPDF: needs attention · r 0.99 · RMS 0.1 · SNR 40");
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, axis: "L" });
+  });
+
+  it("sends a stage's whole criterion once in a reply, and the terse one on its later results there (THY-63 R1)", async () => {
+    evaluate.evaluateStage.mockResolvedValue({ max_after_floor_sigma: 0.8, floor_trend: 0.3, floor_span_fraction: 0.6, per_plane: { hk0: {} } });
+    const first = await runOn(full, "assess_stage", { stage: "flatten" });
+    const whole = JSON.parse(first.text).flatten.criterion;
+    expect(whole).toBe(WORDS.criterion.flatten);
+    const earlier: AgentStep[] = [{ id: "0:call_0", name: "assess_stage", args: { stage: "flatten" }, status: "done", result: first.text }];
+    const again = (args: Args, replySteps: AgentStep[]) => callTool({ dataset: full, datasets: [full], replySteps }, "assess_stage", args);
+    const later = JSON.parse((await again({}, earlier)).text);
+    expect(later.flatten.criterion).toBe(TERSE_CRITERION.flatten);
+    // The other stages' whole criteria were not sent yet; a reply that has sent none, or only terse ones, gets them whole.
+    expect(later.pdf.criterion).toBe(WORDS.criterion.pdf);
+    expect(JSON.parse((await again({ stage: "flatten" }, [])).text).flatten.criterion).toBe(whole);
+    const terseOnly: AgentStep[] = [{ ...earlier[0], result: JSON.stringify({ flatten: { criterion: TERSE_CRITERION.flatten } }) }];
+    expect(JSON.parse((await again({ stage: "flatten" }, terseOnly)).text).flatten.criterion).toBe(whole);
   });
 
   it("keeps each stage's outcome beside its result, never in it", async () => {

@@ -419,6 +419,24 @@ const pdf: StageRule = {
 
 const STAGE_RULES: Record<Stage, StageRule> = { rings, punch, backfill, flatten, pdf };
 
+/**
+ * Each stage's criterion as assess_stage states it, tersely (THY-63 R1,
+ * docs/pilot-context-design.md §5.5): its limits and scope, at most
+ * TERSE_CRITERION_MAX characters, no explanation. assess_stage sends a
+ * stage's whole criterion (its own, where it judges less than the report)
+ * once in a reply, and this on its later results there, so the limits an
+ * answer may quote stay in every result. Every number it states is one its
+ * whole criterion states (verdicts.test.ts).
+ */
+export const TERSE_CRITERION_MAX = 160;
+export const TERSE_CRITERION: Record<Stage, string> = {
+  rings: "No powder ring left above, or dented below, three times its plane's noise; a powder ring rises at least 0.15 of its median height in 90 % of directions.",
+  punch: "No Bragg peak missed at a lattice node; no sharp peak left off the lattice outside the protected planes.",
+  backfill: "A median seam of 1σ or less; fill bias is texture_check's.",
+  flatten: `No pedestal: ${PEDESTAL_WHERE} floor trend and span both ${PEDESTAL_LIMIT} or more over ${PEDESTAL_SHELLS}. Floor in σ: ${FLATTEN_FLOOR_SIGMA_NOTE}.`,
+  pdf: `Back-FFT r of ${BACK_FFT_R_OK} or more against ${EVEN_PART}; at most 1e-3 of the window's weight on unmeasured space; the declared symmetry kept.`,
+};
+
 // ---------------------------------------------------------------- the checks on the result
 
 interface Words extends Judged {

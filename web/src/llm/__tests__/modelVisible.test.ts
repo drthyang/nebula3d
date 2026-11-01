@@ -401,6 +401,14 @@ const PEAKS_STEP: AgentStep = {
   status: "done",
   result: JSON.stringify({ features: [{ length_A: 4, size_sigma: 40, n_vectors: 3, vectors_rlu: [[1, 0, 0]], vectors_A: [[4, 0, 0]] }] }),
 };
+// An assess_stage earlier in the reply that sent every stage's whole criterion (THY-63 R1).
+const ASSESSED_STEP: AgentStep = {
+  id: "0:call_0",
+  name: "assess_stage",
+  args: {},
+  status: "done",
+  result: JSON.stringify(Object.fromEntries((["rings", "punch", "backfill", "flatten", "pdf"] as const).map((s) => [s, { criterion: judge(s, {}).criterion }]))),
+};
 const CUT_STEP: AgentStep = {
   id: "0:call_0",
   name: "measure_reciprocal_cut",
@@ -438,6 +446,12 @@ const SAMPLES: Sample[] = [
   { name: "measure_reciprocal_cut", args: { plane: "h0l", value: 1 } },
   { name: "measure_dpdf_cut", args: { plane: "xz", value: 0 } },
   { name: "assess_stage", args: {} },
+  {
+    name: "assess_stage",
+    args: {},
+    note: "later in a reply whose first assess_stage sent every stage's whole criterion: the terse ones",
+    ctx: { replySteps: [ASSESSED_STEP] },
+  },
   { name: "assess_stage", args: { stage: "flatten" } },
   { name: "assess_stage", args: { stage: "punch" }, note: BUNCHED_NOTE, before: bunchedOnce },
   { name: "texture_check", args: {} },

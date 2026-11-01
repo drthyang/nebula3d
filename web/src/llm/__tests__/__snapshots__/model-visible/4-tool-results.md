@@ -419,6 +419,118 @@ References of this skill (read one with read_skill and `reference`):
 }
 ```
 
+## assess_stage {} (later in a reply whose first assess_stage sent every stage's whole criterion: the terse ones)
+
+2752 characters sent.
+
+```json
+{
+  "rings": {
+    "verdict": "needs attention",
+    "criterion": "No powder ring left above, or dented below, three times its plane's noise; a powder ring rises at least 0.15 of its median height in 90 % of directions.",
+    "headline": "ring ratio 0.23 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.125 (0kl, 3.2 Å⁻¹)",
+    "mean_ring_energy_ratio": 0.23,
+    "max_over_subtraction_fraction": 0,
+    "max_ring_dent": 0,
+    "max_ring_left": 0.125,
+    "worst_ring_dent": null,
+    "worst_ring_left": {
+      "plane": "0kl",
+      "at": 3.2,
+      "residual_fraction": 0.125
+    },
+    "ring_rule": {
+      "direction_share": 0.9,
+      "height_share": 0.15
+    },
+    "shells_judged": [
+      {
+        "at": 0.911,
+        "ring": false,
+        "isotropy": 0.04
+      },
+      {
+        "at": 1.43,
+        "ring": false,
+        "isotropy": 0.04
+      },
+      {
+        "at": 3.2,
+        "ring": true,
+        "isotropy": 0.86
+      },
+      {
+        "at": 3.93,
+        "ring": false,
+        "isotropy": 0.04
+      }
+    ]
+  },
+  "punch": {
+    "verdict": "needs attention",
+    "criterion": "No Bragg peak missed at a lattice node; no sharp peak left off the lattice outside the protected planes.",
+    "headline": "1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
+    "total_leftover_peaks": 1,
+    "leftover_at_nodes": 1,
+    "leftover_off_lattice": 0,
+    "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
+    "leftover_off_lattice_broad": 0,
+    "leftover_off_lattice_sharp": 0,
+    "strongest_leftover": {
+      "plane": "hk0",
+      "xy": [2, 1],
+      "intensity": 452,
+      "local_background": 21.3,
+      "contrast": 21.2,
+      "sigma": 374,
+      "fwhm_voxels": [1, 1],
+      "broad": false,
+      "hkl": [2, 1, 0],
+      "at_node": true
+    },
+    "noisy_spikes_skipped": 0,
+    "mean_punched_fraction": 0.03,
+    "fitted_peaks": 14
+  },
+  "backfill": {
+    "verdict": "meets its goal",
+    "criterion": "A median seam of 1σ or less; fill bias is texture_check's.",
+    "headline": "seam 0.218σ · bright ≤ 0",
+    "mean_median_seam_sigma": 0.218,
+    "max_bright_fill_fraction": 0
+  },
+  "flatten": {
+    "verdict": "meets its goal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. Floor in σ: reported, not judged.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
+    "max_after_floor_sigma": 2.78,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
+    "pedestal_left": false
+  },
+  "pdf": {
+    "verdict": "meets its goal",
+    "criterion": "Back-FFT r of 0.999 or more against the data's even part under Q → −Q; at most 1e-3 of the window's weight on unmeasured space; the declared symmetry kept.",
+    "headline": "r 0.99714 (even part 1) · RMS 0.07132 · SNR 252 · unmeasured 2.4e-4 · symmetry off ≤ 0",
+    "back_fft_pearson_r": 0.99714,
+    "back_fft_normalized_rms": 0.07132,
+    "back_fft_pearson_r_even": 1,
+    "back_fft_odd_share": 0.00421,
+    "back_fft_per_plane_r": {
+      "+0.000": 0.99691
+    },
+    "mean_feature_snr": 252,
+    "window_weight_on_unmeasured": 0.00024,
+    "window_shape": "ellipsoid",
+    "max_symmetry_break": 0,
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
+    "symmetry_declared": true
+  },
+  "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
+}
+```
+
 ## assess_stage {"stage":"flatten"}
 
 2044 characters sent.
