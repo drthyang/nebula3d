@@ -1,7 +1,8 @@
-// read_skill: reads one of the user's skills (skills.ts), or a document it
-// cites. Offered with the skills on only (its facts' needsSkills).
+// read_skill: reads one of the user's skills (skills.ts): its core (head,
+// gates, steps), a section of it on request, or a document it cites. Offered
+// with the skills on only (its facts' needsSkills).
 
-import { allSkills, readSkill, REFERENCE_MAX_CHARS } from "../../skills";
+import { allSkills, readSkill, readsCore, REFERENCE_MAX_CHARS } from "../../skills";
 import { ToolArgError, type ChatTool } from "../types";
 
 // The user's methods (skills.ts): the system prompt lists their names, and
@@ -19,11 +20,12 @@ export const read_skill: ChatTool = {
     properties: {
       name: { type: "string", enum: allSkills().map((s) => s.name), description: "The skill" },
       reference: { type: "string", description: "One of the skill's references, by the name the skill lists" },
-      section: { type: "string", description: "With reference: one section of that document, by its heading" },
+      section: { type: "string", description: "A section by its heading: of the reference, else of the skill (e.g. Details)" },
     },
     required: ["name"],
   },
-  maxResultChars: REFERENCE_MAX_CHARS + 2000,
+  // A read is never cut to fit: a skill's core is read whole, a page or a section at most REFERENCE_MAX_CHARS (a header and a note on top).
+  maxResultChars: Math.max(REFERENCE_MAX_CHARS, ...allSkills().map((s) => readSkill(s.name).length)) + 2000,
   run: async (args, ctx) => {
     const name = typeof args.name === "string" ? args.name.trim() : "";
     if (!name) throw new ToolArgError("name must be one of the skills listed in the system prompt");
@@ -35,7 +37,9 @@ export const read_skill: ChatTool = {
     } catch (e) {
       throw new ToolArgError((e as Error).message);
     }
-    if (!reference) ctx.skillsRead?.add(name);
-    return { result: text, summary: reference ? `${name}: ${reference}${section ? ` (${section})` : ""}` : `Read the ${name} skill` };
+    // The gate opens on the skill's core, its method: not on a section or a reference alone.
+    if (readsCore({ reference, section })) ctx.skillsRead?.add(name);
+    const summary = reference ? `${name}: ${reference}${section ? ` (${section})` : ""}` : section ? `${name}: ${section}` : `Read the ${name} skill`;
+    return { result: text, summary };
   },
 };

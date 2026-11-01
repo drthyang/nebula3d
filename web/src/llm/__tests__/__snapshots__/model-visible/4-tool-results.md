@@ -6,7 +6,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-5976 characters sent.
+5791 characters sent.
 
 ```text
 Skill bragg-node-audit
@@ -116,15 +116,109 @@ forbidden node) with `mark_region` on the stage that shows it, its positions
 as points, resting on the call that measured it; name the mark by its id
 beside the signal.
 
-## References
-
-- [bragg_cleanup](../../../docs/algorithms/bragg_cleanup.md) — the punch: node
-  detection, the off-lattice search, footprints, the significance gate and the
-  backfill
-
 ---
 References of this skill (read one with read_skill and `reference`):
 - bragg_cleanup: the punch: node detection, the off-lattice search, footprints, the significance gate and the backfill
+```
+
+## read_skill {"name":"delta-pdf-interpretation","reference":"delta_pdf"}
+
+928 characters sent.
+
+```text
+Reference "delta_pdf" of skill delta-pdf-interpretation (docs/algorithms/delta_pdf.md)
+
+# 3D-ΔPDF Transform
+
+Sections (read one with read_skill, `reference` and `section`, by its heading):
+- Purpose
+- Correct transform recipe
+  - Non-orthogonal cells (hexagonal, monoclinic, triclinic)
+- The strongest features, grouped by the declared symmetry (2026-10-19)
+- Inverse transform & consistency check (`invert_delta_pdf`)
+- The centring bug (fixed 2026-06-05)
+- Near-origin spike (expected, not the bug)
+- The dashed axis streaks were the DC subtraction (fixed 2026-10-07)
+- The window respects the lattice symmetry (2026-10-07)
+  - The window and the measured coverage (`support`)
+- The axis cross is the residual diffuse background (diagnosed 2026-06-05)
+  - Methods compared (smooth-bg wins)
+  - Background removal in the pipeline: the radial flatten (step 4)
+    - A background that rises with |Q|, and what the literature does
+```
+
+## read_skill {"name":"delta-pdf-interpretation","reference":"delta_pdf","section":"The window and the measured coverage (`support`)"}
+
+4125 characters sent.
+
+```text
+Reference "delta_pdf" of skill delta-pdf-interpretation (docs/algorithms/delta_pdf.md), section "The window and the measured coverage (`support`) (part 1 of 2)"
+
+### The window and the measured coverage (`support`)
+
+A backfill that leaves unmeasured space masked, rather than inventing
+intensity there, hands the transform a volume whose data end inside the box.
+Read as `I = 0`, that region does two things: it pulls the weighted mean `c`
+down, and the box-sized window still weights it. On the hexagonal data the
+separable window puts a few percent of its weight on unmeasured space, so the
+coverage edge becomes a step with a truncation ripple (period ≈ 2π/Q_edge,
+with Q_edge the `|Q|` where the coverage ends).
+
+`compute_delta_pdf(support=mask)` (pipeline `DeltaPdfParams.window_support`,
+default on, passes the input volume's `mask`; server `pdf_window_support`;
+*Taper to the measured coverage* in the web app):
+
+- **ΔI = 0 off the data.** The mean is weighted over the support only, and
+  voxels outside it are zeroed after it is subtracted. They then add no
+  step of `−c`, and the input still sums to zero.
+- **The window fits the coverage.** Unsupported space that reaches the box
+  faces is where the coverage ends. It is found by `binary_fill_holes`
+  (26-connected; bool arrays only), so holes enclosed by data do not count.
+  The ellipsoid is shrunk until at most `support_tol` (default 10⁻³) of its
+  weight lies there. With `"auto"`, an orthogonal box switches to the
+  ellipsoid when the separable window puts more than that on it. A shrunk
+  ellipsoid is the same ellipsoid scaled, so it stays invariant. The scale
+  is logged as `window_scale`.
+- **The weight left there is recorded.** The share of the window's weight on
+  that open space is `DeltaPDF.window_open_weight`, logged as
+  `window_open_weight` beside `window_scale` and served with the ΔPDF's
+  metadata (`/api/deltapdf/{id}/meta`, `dpdf_meta_json`). The web app's
+  coverage check reports it: the measure of a transform reaching past the
+  data, whatever the window's shape. On a measured volume the auto window, an
+  ellipsoid at scale 1.0, kept a negligible share there and nothing on a box
+  face.
+- `invert_delta_pdf` leaves unsupported voxels out of the reliable `mask`.
+- An all-True support (a backfill that fills the whole box, e.g.
+  `unmeasured="all"`) changes nothing, bit for bit.
+
+The tolerance is not cosmetic. Coverage edges are ragged, and thin channels
+of unmeasured voxels reach far in. On the raw hexagonal data the nearest open
+voxel sits well inside the ellipsoid, although only a tiny fraction of the
+window's weight (below the default tolerance) is open. Even on orthorhombic
+data with full coverage, a thin channel of open voxels reaches inside the
+ellipsoid, with a negligible share of the weight. Shrinking to the
+nearest open voxel (`support_tol=0`) would shrink the hexagonal window
+substantially (real-space peaks markedly broader) and cut its main peak
+sharply; the weight criterion ignores such channels.
+
+Measured on the hexagonal data (the pipeline's flattened input with the
+unmeasured space that reaches the box edge masked, as the unmeasured-aware
+backfill leaves it; Gaussian σ = 0.4; differences at 2–15 Å relative to the
+strongest 1.5–15 Å correlation):
+
+| window | `c` | effect of the support | scale |
+|---|---|---|---|
+| separable | rises | a few % max, well below 1 % RMS (the mean's share of the ripple) | — (cannot shrink) |
+| ellipsoid (`auto`) | essentially unchanged | negligible (≪ 1 %) | 1.0 (already inside the coverage) |
+| ellipsoid, `support_tol=0` | much lower | main peak sharply reduced | shrunk substantially |
+
+So for this hexagonal cell the ellipsoid already keeps clear of the coverage
+edge, and the support only fixes the mean's handling of the empty region. It
+matters most for an orthogonal cell whose coverage ends inside the box, where
+`"auto"` now moves to a fitted ellipsoid. `_open_space` takes 2–3 s on 401³
+natively and runs only when the support has unsupported voxels.
+
+[The section continues: read section "The window and the measured coverage (`support`) (part 2)".]
 ```
 
 ## describe_dataset {}

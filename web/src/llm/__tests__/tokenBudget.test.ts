@@ -102,7 +102,7 @@ import {
 } from "../provider/tokens";
 import { GATES_MAX, isCompacted, SKILL_STUB_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
-import { allSkills, readSkill, REFERENCE_MAX_CHARS } from "../skills";
+import { allSkills, DETAILS, headingsOf, readsCore, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { callTool, CHAT_TOOLS } from "../tools";
 import devControlPeaks from "./__fixtures__/dpdf-peaks-dev-control.json";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
@@ -241,27 +241,61 @@ const CHECKS: Call[] = [
 ];
 const FEATURES: Call = { name: "dpdf_peaks", args: {} };
 
-/** The two largest skills as read_skill returns them, and the largest reference page either cites. */
-function largestReads(): { skills: string[]; reference: { skill: string; name: string; chars: number } } {
+/**
+ * The largest reads of the turn (THY-63 R4: a skill's core by default, the
+ * rest on request, each at most REFERENCE_MAX_CHARS): the two largest skills'
+ * cores; the larger of their details, its first part; and, of the references
+ * either cites, the page whose largest section is largest: its index, then
+ * that section's first part.
+ */
+function largestReads(): {
+  skills: string[];
+  details: { skill: string; chars: number } | null;
+  reference: { skill: string; name: string; chars: number; section: string; sectionChars: number };
+} {
   const bySize = [...allSkills()].sort((a, b) => readSkill(b.name).length - readSkill(a.name).length);
   const two = bySize.slice(0, 2);
-  const pages = two.flatMap((s) => s.references.map((r) => ({ skill: s.name, name: r.name, chars: readSkill(s.name, r.name).length })));
-  const reference = pages.sort((a, b) => b.chars - a.chars)[0];
-  return { skills: two.map((s) => s.name), reference };
+  const details = two
+    .filter((s) => s.details)
+    .map((s) => ({ skill: s.name, chars: readSkill(s.name, undefined, DETAILS).length }))
+    .sort((a, b) => b.chars - a.chars)[0];
+  const sections = two.flatMap((s) =>
+    s.references.flatMap((r) =>
+      headingsOf(r.text).map((h) => ({
+        skill: s.name,
+        name: r.name,
+        chars: readSkill(s.name, r.name).length,
+        section: h.heading,
+        sectionChars: readSkill(s.name, r.name, h.heading).length,
+      })),
+    ),
+  );
+  const reference = sections.sort((a, b) => b.sectionChars - a.sectionChars)[0];
+  return { skills: two.map((s) => s.name), details: details ?? null, reference };
 }
 
 const LARGEST = largestReads();
-const readOf = (name: string, reference?: string): Call => ({ name: "read_skill", args: reference ? { name, reference } : { name } });
+const readOf = (name: string, reference?: string, section?: string): Call => ({
+  name: "read_skill",
+  args: { name, ...(reference ? { reference } : {}), ...(section ? { section } : {}) },
+});
 const SKILL_WITH_PAGE = LARGEST.reference.skill;
 const OTHER_SKILL = LARGEST.skills.find((s) => s !== SKILL_WITH_PAGE)!;
-const SKILL_READS: Call[] = [readOf(OTHER_SKILL), readOf(SKILL_WITH_PAGE), readOf(SKILL_WITH_PAGE, LARGEST.reference.name)];
+const SKILL_READS: Call[] = [
+  readOf(OTHER_SKILL),
+  readOf(SKILL_WITH_PAGE),
+  ...(LARGEST.details ? [readOf(LARGEST.details.skill, undefined, DETAILS)] : []),
+  readOf(SKILL_WITH_PAGE, LARGEST.reference.name),
+  readOf(SKILL_WITH_PAGE, LARGEST.reference.name, LARGEST.reference.section),
+];
 
 // The orders the reply may read them in, one call a round.
 const ORDERS: Record<"skillsFirst" | "method" | "skillsLast", Call[]> = {
   skillsFirst: [...SKILL_READS, ...CHECKS, FEATURES],
-  // Each skill before the checks of its topic: the other skill first, the one
-  // whose page is read right before the ΔPDF's features.
-  method: [SKILL_READS[0], ...CHECKS, SKILL_READS[1], SKILL_READS[2], FEATURES],
+  // Each skill before the checks of its topic: the other skill first, then the
+  // one whose page is read, with its details and its page, right before the
+  // ΔPDF's features.
+  method: [SKILL_READS[0], ...CHECKS, ...SKILL_READS.slice(1), FEATURES],
   skillsLast: [...CHECKS, FEATURES, ...SKILL_READS],
 };
 
@@ -359,7 +393,7 @@ const resultsOf = (s: Sent, pick: (c: Call) => boolean): string[] => {
     return c && pick(c) && typeof m.content === "string" ? [m.content] : [];
   });
 };
-const isSkillBody = (c: Call): boolean => c.name === "read_skill" && c.args.reference === undefined;
+const isSkillBody = (c: Call): boolean => c.name === "read_skill" && readsCore(c.args);
 type Breakdown = Record<(typeof ROWS)[number], number> & { prompt: number; offered: number; numCtx?: number };
 
 /**
@@ -421,8 +455,10 @@ afterAll(() => {
   console.log(
     [
       "NEBULA Pilot's worst turn, in the context guard's estimated tokens (provider/tokens.ts, uncalibrated)",
-      `Skills read whole: ${LARGEST.skills.join(", ")}; reference page: ${LARGEST.reference.skill} › ${LARGEST.reference.name} ` +
-        `(${n(LARGEST.reference.chars)} characters, cut at ${n(REFERENCE_MAX_CHARS)})`,
+      `Skills read (their cores): ${LARGEST.skills.join(", ")}; ` +
+        `${LARGEST.details ? `${LARGEST.details.skill}'s details (${n(LARGEST.details.chars)} characters); ` : ""}` +
+        `reference page: ${LARGEST.reference.skill} › ${LARGEST.reference.name}, its index (${n(LARGEST.reference.chars)} characters) ` +
+        `and its section "${LARGEST.reference.section}" (${n(LARGEST.reference.sectionChars)} characters; a read is at most ${n(REFERENCE_MAX_CHARS)} and a header)`,
       `Results: ${[...CHECKS, FEATURES].map((c) => c.name).join(", ")}`,
       "",
       ...table,
