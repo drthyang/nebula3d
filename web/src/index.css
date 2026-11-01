@@ -30,6 +30,9 @@
   --amber-soft: rgba(232, 180, 84, 0.12);
   --red: #ef6a6a;
   --red-soft: rgba(239, 106, 106, 0.12);
+  /* the punch's tail sweep (round 2, THY-60): apart from every other overlay */
+  --r2: #ff4fd8;
+  --r2-fill: rgba(255, 79, 216, 0.38);
 
   --radius: 10px;
   --radius-sm: 7px;
@@ -1323,6 +1326,13 @@ input[type="range"]::-moz-range-track {
 .bragg-ell-fit { fill: none; stroke: #7fd4ff; stroke-width: 2.2; }
 .bragg-ell-meas { fill: none; stroke: rgba(255, 255, 255, 0.85); stroke-width: 1.6; stroke-dasharray: 5 4; }
 .bragg-ell-floor { fill: none; stroke: rgba(205, 212, 223, 0.55); stroke-width: 1.4; stroke-dasharray: 4 4; }
+/* the tail sweep's voxels (round 2 of the punch, THY-60) */
+.bragg-r2 { fill: rgba(255, 79, 216, 0.38); stroke: #ff4fd8; stroke-width: 0.8; }
+.bragg-r2-leg { width: 9px !important; height: 9px !important; border-radius: 2px !important; background: rgba(255, 79, 216, 0.38); border: 1px solid #ff4fd8; }
+/* the UB turn the punch read off its peaks: a line, details behind ? */
+.bragg-stat-ub { min-width: 0; }
+.bragg-stat-ub .bragg-stat-ub-line { white-space: normal; color: #cdd4df; }
+.bragg-stat-ub--warn .bragg-stat-ub-line { color: #e8b454; }
 .bragg-leg-row { display: flex; flex-wrap: wrap; gap: 6px 12px; }
 .bragg-hover { margin-left: auto; font-family: ui-monospace, monospace; color: #a8b1bf; }
 .bragg-ell-leg-fit { width: 11px !important; height: 0 !important; border-radius: 0 !important; border-top: 2.2px solid #7fd4ff; }
@@ -2469,6 +2479,12 @@ input[type="range"]::-moz-range-track {
   stroke-width: 1;
   stroke-dasharray: 3 2;
 }
+/* the last run's tail sweep (round 2 of the punch, THY-60): its voxels */
+.punch-r2 {
+  fill: var(--r2-fill);
+  stroke: var(--r2);
+  stroke-width: 0.6;
+}
 /* |Q| transform-band boundary: a large reference ellipse over the slice */
 .punch-qband {
   fill: none;
@@ -2510,6 +2526,10 @@ input[type="range"]::-moz-range-track {
 .punch-legend .sw.sat {
   background: var(--green-soft);
   border: 1px solid var(--green);
+}
+.punch-legend .sw.r2 {
+  background: var(--r2-fill);
+  border-color: var(--r2);
 }
 .punch-legend .sw.qband {
   background: transparent;

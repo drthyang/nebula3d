@@ -14,7 +14,7 @@ import {
   PYODIDE_MODE,
   type BootStatus,
 } from "../api/pyodideEngine";
-import { useBootStatus, useDataRoot, useDatasets } from "../api/hooks";
+import { useBootStatus, useBraggProfile, useDataRoot, useDatasets } from "../api/hooks";
 import type { Lattice, StageParamsIn, VolumeMeta } from "../api/types";
 import { LaueCompare } from "../components/LaueCompare";
 import { LocalHandoffNotice } from "../components/LocalHandoff";
@@ -23,6 +23,7 @@ import { RingModelHelp } from "../components/RingModelHelp";
 import type { HklAxis, PunchGeom } from "../components/punchGeometry";
 import { boxQMax, metricFromUb, reciprocalMetric } from "../components/reciprocal";
 import { Field, HelpTip, RangeSlider, Switch } from "../components/ui";
+import { ubTurnText } from "../components/ubTurn";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { declaresNone, modulationRequest } from "../state/modulation";
 import { formatOp, gridProblem, LAUE_PRESETS, laueGroup, laueSpecOf, METRIC_TOLERANCE, metricChange, presetNamed, ubUnknown, type LaueGroup } from "../state/laue";
@@ -283,6 +284,11 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
   const setDataset = useDatasetStore((st) => st.setDataset);
   const resetDataset = useDatasetStore((st) => st.resetDataset);
   const selectedDataset = datasets.find((d) => d.id === datasetId);
+  // The last punch's record: the UB turn it read off its peaks, and its tail
+  // sweep (THY-60), beside the settings that act on them.
+  const punchedOnDisk = Boolean(selectedDataset?.stages.some((st) => st.name === "braggpunched" && st.exists));
+  const lastPunch = useBraggProfile(punchedOnDisk ? (datasetId ?? undefined) : undefined).data;
+  const ubTurn = lastPunch?.misorientation?.significant ? ubTurnText(lastPunch.misorientation, lastPunch.tail_sweep) : null;
   const folderInputRef = useRef<HTMLInputElement>(null);
   const [rootDraft, setRootDraft] = useState("");
   const [rootError, setRootError] = useState<string | null>(null);
@@ -366,6 +372,8 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       punchQB: st.punchQB,
       punchQC: st.punchQC,
       punchFitUnconstrained: st.punchFitUnconstrained,
+      punchRotationAware: st.punchRotationAware,
+      punchTailSweep: st.punchTailSweep,
       punchMargin: st.punchMargin,
       incidentBeamQA: st.incidentBeamQA,
       incidentBeamQB: st.incidentBeamQB,
@@ -1415,6 +1423,36 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSearchMaxWidth: e.target.value })}
                     />
                   </Field>
+                  <Field className={flash("punchTailSweep")} label="Tail sweep">
+                    <select
+                      value={s.punchTailSweep}
+                      title="After the punch, before the backfill: at each Bragg node, punch the tail a slightly turned UB leaves beside the hole along ω × q̂ (5σ above the diffuse at its distance, connected to the hole, confined, no wider than the peak). Auto: only when the punch finds a turned UB it can trust. On: whenever a rotation was fitted. Off: never."
+                      onChange={(e) => patch({ punchTailSweep: e.target.value })}
+                    >
+                      <option value="">Auto</option>
+                      <option value="off">Off</option>
+                      <option value="on">On</option>
+                    </select>
+                  </Field>
+                  <div className={cls("switch-row", flash("punchRotationAware"))}>
+                    <Switch
+                      label="Follow a turned UB"
+                      checked={s.punchRotationAware}
+                      onChange={(v) => patch({ punchRotationAware: v })}
+                    />
+                    <HelpTip>
+                      The punch fits one small rotation ω to its strong peaks&apos; offsets from their nodes. When it is
+                      significant, explains the offsets and shifts peaks by half a voxel or more, each node&apos;s punch
+                      is stretched by |ω|·|Q| along ω × q̂ (a centre it could not fit moves to where ω puts it). Off
+                      keeps round 1 as it was; the tail sweep is set apart.
+                    </HelpTip>
+                  </div>
+                  {ubTurn && (
+                    <p className={cls("config-note", "cfg-fields-wide", "ub-turn-note", ubTurn.tone === "warn" && "config-note--warn")}>
+                      Last run: {ubTurn.line}
+                      <HelpTip>{ubTurn.detail}</HelpTip>
+                    </p>
+                  )}
                   <div className={cls("switch-row", flash("punchFitUnconstrained"))}>
                     <Switch
                       label="Drop fit constraints"

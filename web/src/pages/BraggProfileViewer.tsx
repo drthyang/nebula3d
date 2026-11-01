@@ -11,7 +11,7 @@ import { useQueries } from "@tanstack/react-query";
 
 import { fetchSlice } from "../api/client";
 import { useBraggProfile, useDatasets, useMeta } from "../api/hooks";
-import type { BraggPeakWidth, Slice, VolumeMeta } from "../api/types";
+import type { BraggPeakWidth, Slice, TailSweepRecord, VolumeMeta } from "../api/types";
 import { BraggPeakSlice } from "../components/BraggPeakSlice";
 import {
   absoluteLevels,
@@ -33,7 +33,8 @@ import {
 } from "../components/braggView";
 import { autoLevels, type Levels, type ScaleKind } from "../components/colorScale";
 import type { LayoutState } from "../components/layout";
-import { EmptyState, IconAlert, IconLattice, Switch } from "../components/ui";
+import { EmptyState, HelpTip, IconAlert, IconLattice, Switch } from "../components/ui";
+import { sweptOnPlane, ubTurnText } from "../components/ubTurn";
 import { useLevels } from "../components/useLevels";
 import { useWorkspaceLayout, type LayoutDispatch } from "../components/useWorkspaceLayout";
 import { AUTO_TITLES } from "../components/viewerText";
@@ -472,11 +473,13 @@ function SelectedPeak({
   levels,
   scale,
   soft,
+  sweep,
 }: {
   peak: BraggPeakWidth;
   peaks: BraggPeakWidth[];
   axes: Axis[];
   meta: VolumeMeta | undefined;
+  sweep?: TailSweepRecord | null;
   slices: { data?: Slice; isError: boolean; isFetching: boolean }[];
   layout: LayoutState;
   dispatchLayout: LayoutDispatch;
@@ -497,6 +500,11 @@ function SelectedPeak({
     ? Math.min(...ranges!.map((r, i) => Math.abs(r[1] - r[0]) / Math.max(1, meta.shape[i] - 1)))
     : 0;
   const limit = peakHalfLimit(fitHalf, voxel);
+  // A voxel's size along H, K and L (r.l.u.), for the tail sweep's voxels.
+  const steps = ranges ? ranges.map((r, i) => Math.abs(r[1] - r[0]) / Math.max(1, meta!.shape[i] - 1)) : null;
+  const sweptOn = (t: Tile) =>
+    steps ? sweptOnPlane(sweep, (3 - t.xa - t.ya) as 0 | 1 | 2, fixedValue(centre, t), steps[3 - t.xa - t.ya], t.xa, t.ya) : [];
+  const anySwept = TILES.some((t) => sweptOn(t).length > 0);
   const peakKey = centre.join(",");
   const [link, setLink] = useState<{ peak: string; offset: Hkl; zoom: number }>({ peak: peakKey, offset: NO_OFFSET, zoom: 1 });
   const offset = link.peak === peakKey ? link.offset : NO_OFFSET;
@@ -563,6 +571,8 @@ function SelectedPeak({
                   fitted={fittedEllipse(peak, t.xa, t.ya)}
                   measured={ell(t.xa, t.ya, measuredHkl)}
                   floor={floorEll(t.xa, t.ya)}
+                  swept={sweptOn(t)}
+                  sweptStep={steps ? [steps[t.xa], steps[t.ya]] : undefined}
                 />
                 {q?.isFetching && q.data && <span className="spin vf-spin" />}
               </>
@@ -575,6 +585,11 @@ function SelectedPeak({
         <span className="bragg-leg"><i className="bragg-ell-leg-fit" />fitted</span>
         <span className="bragg-leg"><i className="bragg-ell-leg-meas" />measured</span>
         <span className="bragg-leg"><i className="bragg-ell-leg-floor" />|Q|-floor</span>
+        {anySwept && (
+          <span className="bragg-leg" title="Voxels the tail sweep (round 2 of the punch) added beside this peak's hole, along ω × q̂">
+            <i className="bragg-r2-leg" />tail sweep
+          </span>
+        )}
         <span className="bragg-leg bragg-hover">
           {cursor ? `H ${cursor[0].toFixed(3)} · K ${cursor[1].toFixed(3)} · L ${cursor[2].toFixed(3)}` : ""}
         </span>
@@ -659,6 +674,8 @@ export function BraggProfileViewer() {
 
   const lat = meta.data?.lattice;
   const grid = meta.data?.shape;
+  // The UB turn the punch read off its peaks, and its tail sweep (THY-60).
+  const ubTurn = ubTurnText(profile?.misorientation, profile?.tail_sweep);
 
   // The assistant pointed at a peak: select the fitted peak nearest that HKL,
   // showing fractional entries too when it is one of them, then clear the ask.
@@ -773,6 +790,14 @@ export function BraggProfileViewer() {
                 <span className="bragg-stat-eyebrow">|Q| range</span>
                 <span className="bragg-stat-row"><span className="bragg-stat-v">{qs.length ? `${Math.min(...qs).toFixed(1)}–${Math.max(...qs).toFixed(1)}` : "—"}</span><span className="bragg-stat-desc">Å⁻¹{padQ != null ? ` · floor ${padQ.toFixed(3)}` : ""}</span></span>
               </div>
+              {ubTurn && (
+                <div className={`bragg-stat bragg-stat-ub${ubTurn.tone === "warn" ? " bragg-stat-ub--warn" : ""}`}>
+                  <span className="bragg-stat-eyebrow">
+                    UB turn <HelpTip>{ubTurn.detail}</HelpTip>
+                  </span>
+                  <span className="bragg-stat-row"><span className="bragg-stat-desc bragg-stat-ub-line">{ubTurn.line}</span></span>
+                </div>
+              )}
               <div className="bragg-stat">
                 <span className="bragg-stat-eyebrow">Fit kind</span>
                 <span className="bragg-stat-row"><span className="bragg-stat-v bragg-stat-fit">{profile?.fit_covariance ? "covariance" : "moment"}</span><span className="bragg-stat-desc">{padQ != null ? `pad ${padQ.toFixed(3)} Å⁻¹` : ""}</span></span>
@@ -796,6 +821,7 @@ export function BraggProfileViewer() {
                   levels={lv.levels}
                   scale={scale}
                   soft={lv.soft}
+                  sweep={profile?.tail_sweep}
                 />
               )}
               <PeakTable peaks={peaks} axes={axes} order={order} selected={selected} sortKey={sortKey} onSort={setSortKey} onSelect={setSelected} />

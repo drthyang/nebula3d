@@ -542,6 +542,57 @@ export interface BraggProfile {
   // (nebula3d.server.modulation.record_out): null for a record written
   // before the punch kept it; absent from an older server's.
   modulation?: ModulationRecord | null;
+  // A UB turned in the reduction, read off the punch's peaks, and the tail
+  // sweep (THY-60): null for a record written before the punch kept them.
+  misorientation?: Misorientation | null;
+  tail_sweep?: TailSweepRecord | null;
+}
+
+/** The punch's diagnosis of a UB turned in the reduction (nebula3d.analysis.misorientation.Misorientation.to_json). */
+export interface Misorientation {
+  // "active" | "not_significant" | "not_explained" | "unresolved" | "too_few_peaks" | "symmetrised" | "no_peaks"
+  status: string;
+  active: boolean;
+  n_peaks: number;
+  n_rejected: number;
+  omega_rad: number[] | null;
+  angle_deg: number | null;
+  sigma_deg: number | null;
+  axis: number[] | null;
+  axis_uvw: number[] | null; // the axis as a real-space direction, largest component 1
+  axis_sigma_deg: number | null;
+  r2: number | null; // share of the transverse offset variance the rotation explains
+  f_stat: number | null;
+  p_value: number | null;
+  rms_before: number | null; // Å⁻¹
+  rms_after: number | null;
+  max_shift: number | null; // Å⁻¹, at the farthest punched node
+  voxel_q: number | null; // Å⁻¹
+  significant: boolean;
+  explains: boolean;
+  resolved: boolean;
+  rules?: Record<string, number>;
+  // What round 1 did with it.
+  round1?: { rotation_aware: boolean; stretched: number; centred: number } | null;
+}
+
+/** Round 2 of the punch, the tail sweep (nebula3d.analysis.tail_sweep.TailSweep.to_json). */
+export interface TailSweepRecord {
+  setting: string; // "off" | "auto" | "on"
+  ran: boolean;
+  reason: string | null; // why it did not run
+  z_gate: number | null;
+  grow_sigma?: number | null;
+  n_voxels: number;
+  nodes_searched: number;
+  counts: Record<string, number>; // swept, clean, extended, broad, capped, shell_capped, no_hole
+  tail_voxels: { before?: number; after?: number; left_alone?: number };
+  tail_excess?: Record<string, number>;
+  bright_fill: { before?: number | null; after?: number | null };
+  limits?: Record<string, number>;
+  shells_capped?: number[];
+  nodes: { node: number[]; q: number; shift: number; status: string; hole: number; added: number }[];
+  voxels_hkl: number[][]; // every voxel round 2 added (H, K, L)
 }
 
 // ---------------------------------------------------------------- the sample's modulation
@@ -723,6 +774,11 @@ export interface StageParamsIn {
   punch_search_protect_h?: number[];
   punch_search_protect_half_width?: number;
   punch_search_max_width_ratio?: number;
+  // A UB turned in the reduction (THY-60): round 1 follows the rotation when
+  // it is active (default true), and round 2 sweeps the tails it leaves
+  // ("off" | "auto" | "on"; default auto).
+  punch_rotation_aware?: boolean;
+  punch_tail_sweep?: string;
   punch_margin?: number;
   // Q-space punch: frame "spherical" (rρ,rθ,rφ, default) or "q" (a*,b*,c*) (Å⁻¹)
   punch_frame?: string;
