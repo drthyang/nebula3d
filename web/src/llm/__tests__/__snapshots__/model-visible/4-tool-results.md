@@ -667,7 +667,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## texture_check {}
 
-370 characters sent.
+527 characters sent.
 
 ```json
 {
@@ -680,6 +680,7 @@ References of this skill (read one with read_skill and `reference`):
   "above_floor_fraction": 0,
   "below_floor_fraction": 0,
   "systematic_fill_bias": false,
+  "criterion": "systematic_fill_bias: 5 judged holes or more, 75 % of them past their range one way, with a median of 0.5σ and 0.2 of the local level or more.",
   "per_cut": [
     {
       "cut": "H–K plane at L = 0",
@@ -810,7 +811,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## dpdf_peaks {}
 
-1151 characters sent.
+791 characters sent.
 
 ```json
 {
@@ -892,8 +893,7 @@ References of this skill (read one with read_skill and `reference`):
   "robust_sigma": 0.71,
   "threshold_sigma": 5,
   "origin_disk_A": 1.8,
-  "extrema_above_threshold": 26,
-  "reading": "Each entry: |r|, the largest size in σ with its sign, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk; features nearer the origin than the shortest interatomic distance are not pair correlations."
+  "extrema_above_threshold": 26
 }
 ```
 
@@ -1458,71 +1458,12 @@ References of this skill (read one with read_skill and `reference`):
 
 ## configure_settings {}
 
-1570 characters sent.
+31 characters sent.
 
 ```json
 {
-  "settings": {
-    "symmetryAverageEnabled": false,
-    "ringsEnabled": true,
-    "punchEnabled": true,
-    "backfillEnabled": true,
-    "flatten": true,
-    "pdfEnabled": true,
-    "force": false,
-    "symmetryLaue": "(none chosen: the user's to set)",
-    "symmetryReaverage": false,
-    "symmetryAllowMetricChange": false,
-    "edgeTrim": "1 (default)",
-    "ringModel": "pooled",
-    "ringRadialMode": "rolling",
-    "ringNPatches": "(default)",
-    "ringNFourier": "8",
-    "ringSliceAxis": "H",
-    "ringWidth": "(default)",
-    "ringGlobalMaterial": "auto",
-    "ringGlobalSubtraction": "conservative",
-    "ringGlobalConfidence": "1",
-    "ringGlobalLmax": "4",
-    "ringGlobalMinSnr": "5",
-    "ringPooledSectors": "(default)",
-    "ringPooledWindow": "(default)",
-    "punchMinSig": "(default)",
-    "punchFootprint": "(default)",
-    "punchProfileNSigma": "(default)",
-    "punchMode": "(default)",
-    "punchSupercellH": "(default)",
-    "punchSupercellK": "(default)",
-    "punchSupercellL": "(default)",
-    "punchHGuard": "(default)",
-    "punchSearchFloor": "(default)",
-    "modulation": "(default)",
-    "punchSearchMaxWidth": "(default)",
-    "punchFrame": "spherical",
-    "punchRho": "(default)",
-    "punchTheta": "(default)",
-    "punchPhi": "(default)",
-    "punchQA": "(default)",
-    "punchQB": "(default)",
-    "punchQC": "(default)",
-    "punchFitUnconstrained": false,
-    "punchMargin": "(default)",
-    "incidentBeamQA": "(default)",
-    "incidentBeamQB": "(default)",
-    "incidentBeamQC": "(default)",
-    "incidentBeamMargin": "(default)",
-    "incidentBeamFitCovariance": false,
-    "backfillMethod": "(default)",
-    "flattenEstimator": "(default)",
-    "flattenIon": "(default)",
-    "flattenQ2": false,
-    "flattenFitQMax": "(default)",
-    "pdfApod": "(default)",
-    "pdfWindowShape": "(default)",
-    "pdfWindowSupport": true,
-    "pdfQMin": "(default)",
-    "pdfQMax": "(default)"
-  }
+  "settings": {},
+  "at_default": 59
 }
 ```
 

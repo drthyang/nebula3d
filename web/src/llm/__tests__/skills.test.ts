@@ -217,22 +217,20 @@ describe("the switch", () => {
       expect(t.description).toBe(own.descriptionWithoutSkills ?? own.description);
       expect(t.parameters).toBe(own.parameters);
     }
-    // dpdf_peaks: with the skills on, the skill's name and its order; off, neither.
+    // dpdf_peaks: with the skills on, the skill's order; off, not (THY-63 R2: the skill's name left the contract).
     const of = (tools: readonly { name: string; description: string }[], name: string) => tools.find((t) => t.name === name)!.description;
-    expect(of(CHAT_TOOLS, "dpdf_peaks")).toMatch(/after the trust checks \(qmax_coverage, .*\(delta-pdf-interpretation\)/);
+    expect(of(CHAT_TOOLS, "dpdf_peaks")).toMatch(/after the trust checks \(qmax_coverage, /);
     expect(of(off, "dpdf_peaks")).not.toMatch(/trust checks/);
-    // ub_check: with the skills on, how to read radial, reduction-qc's step 2 word for word; off, what radial is.
-    const reading = /a UB error gives the same relative offset at every \|Q\| along a direction/;
+    // ub_check: with the skills on, how to read radial, reduction-qc's step 2; off, what radial is.
+    const reading = /An offset that changes with \|Q\| is no UB error/;
     expect(of(CHAT_TOOLS, "ub_check")).toMatch(reading);
     expect(of(off, "ub_check")).not.toMatch(reading);
-    expect(of(off, "ub_check")).toMatch(/radial is the peaks' median offset along Q from their nodes/);
+    expect(of(off, "ub_check")).toMatch(/radial \(offset along Q per \|Q\| band and direction\)/);
     // Every description that holds inference (inference.ts) has its definitions only, and only those differ.
     expect(off.filter((t) => t.description !== of(CHAT_TOOLS, t.name)).map((t) => t.name)).toEqual([
       "measure_reciprocal_cut",
-      "texture_check",
       "symmetry_check",
       "dpdf_peaks",
-      "grain_check",
       "ub_check",
       "compare_laue_classes",
       "radial_profile",

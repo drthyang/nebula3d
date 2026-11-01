@@ -30,7 +30,7 @@ export const measure_reciprocal_cut: ChatTool = {
   parameters: {
     type: "object",
     properties: {
-      plane: { type: "string", enum: RECIP_PLANES, description: "hk0 = H–K plane (cut along L), h0l = H–L plane (cut along K), 0kl = K–L plane (cut along H)" },
+      plane: { type: "string", enum: RECIP_PLANES, description: "hk0: H–K plane (fixed L), h0l: H–L (fixed K), 0kl: K–L (fixed H)" },
       value: { type: "number", description: "Cut position along the fixed axis, in r.l.u." },
     },
     required: ["plane", "value"],

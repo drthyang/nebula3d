@@ -450,6 +450,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     above_floor_fraction: maybeNum,
     below_floor_fraction: maybeNum,
     systematic_fill_bias: nullable(bool),
+    // The rule's limits (THY-63 R2).
+    criterion: str,
     per_cut: arr(obj({ cut: str, azimuthal_ratio: maybeNum })),
   }),
 
@@ -524,7 +526,6 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     threshold_sigma: num,
     origin_disk_A: num,
     extrema_above_threshold: num,
-    reading: str,
   }),
 
   grain_check: obj({
@@ -694,7 +695,8 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
   }),
 
   // The Configure page's settings by name: a blank one reads "(default)".
-  configure_settings: obj({ settings: rec(union(str, bool)) }),
+  // The settings off their defaults and how many are at them; with all: true, every setting alone.
+  configure_settings: obj({ settings: rec(union(str, bool)), at_default: optional(num) }),
 
   update_settings: obj({
     changed: arr(obj({ setting: str, from: settingValue, to: settingValue, note: optional(str) })),
