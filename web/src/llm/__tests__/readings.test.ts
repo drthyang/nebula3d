@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Dataset } from "../../api/types";
 import type { AgentStep } from "../agent";
 import { fit, found, seen, shorten, whole, type Readable } from "../readings";
-import { COMPACTED, GATES_MAX, gatesOf, isCompacted, SKILL_STUB_MAX, TEXT_HEAD } from "../readings/compact";
+import { COMPACTED, coreOf, GATES_MAX, gatesOf, isCompacted, SKILL_CORE_MAX, SKILL_STUB_MAX, TEXT_HEAD } from "../readings/compact";
 import { MAX_TEXTS } from "../readings/found";
 import { allSkills, readSkill } from "../skills";
 import { callTool, MAX_RESULT_CHARS } from "../tools";
@@ -135,11 +135,11 @@ const gatesSection = (text: string): string => {
   return text.slice(at.start, at.end).trimEnd();
 };
 
-describe("shorten: a skill keeps its gates", () => {
-  // A synthetic skill as read_skill returns it ("Skill <name>", the body, the
-  // references after a `---`): its gates are made up, no skill's or data's.
-  const INTRO = `# A synthetic method\n\n${"Read the volume before you change it, and say what you read. ".repeat(8)}`;
-  const STEPS = `## Steps\n\n${Array.from({ length: 12 }, (_, i) => `${i + 1}. Call the step's tool and read its verdict before the next step.`).join("\n")}`;
+describe("shorten: a skill keeps its head, gates and steps; a section read becomes the line that names it", () => {
+  // A synthetic skill as read_skill returns its core ("Skill <name>", the head,
+  // `## Gates`, `## Steps`, then what is left for later after a `---`): its
+  // gates are made up, no skill's or data's.
+  const HEAD = "# A synthetic method\n\nRead the volume before you change it, and say what you read.";
   const GATES = [
     "## Gates",
     "",
@@ -151,66 +151,72 @@ describe("shorten: a skill keeps its gates", () => {
     "",
     "- Report both, to 3 decimals, and the gate that failed first.",
   ].join("\n");
-  const FAILURES = `## Failure modes\n\n${"A failure mode, and what it looks like on the cuts. ".repeat(12)}`;
-  const REFERENCES = "\n\n---\nReferences of this skill (read one with read_skill and `reference`):\n- the method's page: 12 sections on 9 planes";
-  const skill = (body: string, refs = REFERENCES) => `Skill synthetic-method\n\n${body}${refs}`;
-  const gated = skill(`${INTRO}\n\n${STEPS}\n\n${GATES}\n\n${FAILURES}`);
+  const STEPS = `## Steps\n\n${Array.from({ length: 12 }, (_, i) => `${i + 1}. Call the step's tool and read its verdict before the next step.`).join("\n")}`;
+  const LATER =
+    "\n\n---\nDetails of this skill (read with read_skill and `section` \"Details\", or one part by its heading): Failure modes.\n" +
+    "References of this skill (read one with read_skill and `reference`):\n- the method's page: 12 sections on 9 planes";
+  const skill = (body: string, later = LATER) => `Skill synthetic-method\n\n${body}${later}`;
+  const core = skill(`${HEAD}\n\n${GATES}\n\n${STEPS}`);
 
-  it("keeps the section whole, with the skill's name and head: every gate number survives", () => {
-    const stub = shorten(gated);
+  it("keeps the name, the head, the gates and the steps whole, and lets what is left for later go", () => {
+    const stub = shorten(core);
     expect(isCompacted(stub)).toBe(true);
-    expect(stub.length).toBeLessThan(gated.length);
+    expect(stub.length).toBeLessThan(core.length);
     expect(stub.length).toBeLessThanOrEqual(SKILL_STUB_MAX);
-    // The name and the head, as a skill without gates is shortened.
-    expect(stub.startsWith(`${gated.slice(0, TEXT_HEAD)}…\n\n`)).toBe(true);
-    expect(stub.startsWith("Skill synthetic-method\n\n# A synthetic method")).toBe(true);
-    // The section whole, its subsection with it, and every number in it, in order.
-    expect(stub).toContain(GATES);
+    expect(stub).toBe(`Skill synthetic-method\n\n${HEAD}\n\n${GATES}\n\n${STEPS}\n\n(${COMPACTED})`);
+    // Every gate number survives, in order.
     expect(numbersIn(gatesSection(stub))).toEqual(numbersIn(GATES));
     expect(numbersIn(GATES)).toEqual(["0.37", "85", "4.5", "7", "2e-4", "3/4", "3"]);
-    // The rest goes: the steps, the failure modes and the references.
-    for (const gone of ["## Steps", "## Failure modes", "References of this skill"]) expect(stub).not.toContain(gone);
-    expect(stub.endsWith(`\n\n(${COMPACTED})`)).toBe(true);
+    for (const gone of ["Details of this skill", "References of this skill"]) expect(stub).not.toContain(gone);
     expect(shorten(stub)).toBe(stub);
   });
 
-  it("ends the section at the next heading of level 1 or 2, or at the `---` before the references", () => {
-    const last = skill(`${INTRO}\n\n${GATES}`);
-    expect(gatesSection(last)).toBe(GATES);
-    expect(shorten(last)).not.toContain("References of this skill");
-    const top = skill(`${INTRO}\n\n${GATES}\n\n# Appendix\n\nAt 11 planes.`, "");
-    expect(gatesSection(top)).toBe(GATES);
+  it("ends the kept part at a heading of level 1 or 2 past the steps, or at the `---` before what is left for later", () => {
+    const details = skill(`${HEAD}\n\n${GATES}\n\n${STEPS}\n\n## Details\n\n${"Why the steps are so. ".repeat(10)}`, "");
+    expect(shorten(details)).not.toContain("## Details");
+    expect(shorten(details)).toContain(STEPS);
+    const top = skill(`${HEAD}\n\n${GATES}\n\n${STEPS}\n\n# Appendix\n\n${"At 11 planes. ".repeat(10)}`, "");
     expect(shorten(top)).not.toContain("Appendix");
+    // Gates without steps: the gates alone, as before R5.
+    const gatesOnly = skill(`${HEAD}\n\n${GATES}\n\n## Failure modes\n\nA failure mode.`);
+    expect(coreOf(gatesOnly)).toEqual(gatesOf(gatesOnly));
+    expect(shorten(gatesOnly)).toBe(`Skill synthetic-method\n\n${HEAD}\n\n${GATES}\n\n(${COMPACTED})`);
   });
 
-  it("cuts a section past GATES_MAX at a line boundary, and says how many lines it left out", () => {
-    const lines = Array.from({ length: 40 }, (_, i) => `- Gate ${i + 1}: its quantity at most 0.${i + 10}, else the stage needs attention.`);
-    const section = ["## Gates", "", ...lines].join("\n");
-    expect(section.length).toBeGreaterThan(GATES_MAX);
-    const stub = shorten(skill(`${INTRO}\n\n${section}\n\n${FAILURES}`));
+  it("keeps a head of at most TEXT_HEAD characters whole, and cuts a longer one there", () => {
+    const long = skill(`# A synthetic method\n\n${"Read the volume before you change it, and say what you read. ".repeat(8)}\n\n${GATES}\n\n${STEPS}`);
+    const stub = shorten(long);
+    expect(stub.startsWith(`${long.slice(0, TEXT_HEAD)}…\n\n${GATES}`)).toBe(true);
+    expect(stub).toContain(STEPS);
+  });
+
+  it("cuts gates and steps past SKILL_CORE_MAX at a line boundary, and says how many lines it left out", () => {
+    const lines = Array.from({ length: 80 }, (_, i) => `${i + 1}. Step ${i + 1}: its quantity at most 0.${i + 10}, else the stage needs attention.`);
+    const steps = ["## Steps", "", ...lines].join("\n");
+    expect(GATES.length + steps.length).toBeGreaterThan(SKILL_CORE_MAX);
+    const stub = shorten(skill(`${HEAD}\n\n${GATES}\n\n${steps}`));
     expect(isCompacted(stub)).toBe(true);
     expect(stub.length).toBeLessThanOrEqual(SKILL_STUB_MAX);
     const kept = stub.slice(stub.indexOf("## Gates"), stub.indexOf("\n[")); // up to the marker
-    expect(kept.length).toBeLessThanOrEqual(GATES_MAX);
-    expect(section.startsWith(`${kept}\n`)).toBe(true); // whole lines, from the heading
-    const keptLines = kept.split("\n").length - 2; // the heading and the blank line after it
-    expect(keptLines).toBeGreaterThan(10);
-    expect(stub).toContain(`\n[${40 - keptLines} more lines of the gates left out to save room: read the skill again for them]\n\n(${COMPACTED})`);
-    expect(numbersIn(kept)).toEqual(numbersIn(lines.slice(0, keptLines).join("\n")));
+    expect(HEAD.length + kept.length).toBeLessThanOrEqual(SKILL_CORE_MAX);
+    expect(`${GATES}\n\n${steps}`.startsWith(`${kept}\n`)).toBe(true); // whole lines, from the gates' heading
+    const keptSteps = kept.split("\n").filter((l) => /^\d+\. /.test(l)).length;
+    expect(keptSteps).toBeGreaterThan(20);
+    expect(stub).toContain(`\n[${80 - keptSteps} more lines of the gates and steps left out to save room: read the skill again for them]\n\n(${COMPACTED})`);
     expect(shorten(stub)).toBe(stub);
   });
 
-  it("keeps a skill whole where its head and gates would save nothing", () => {
-    const short = skill(`# A short method: its gates come first\n\n${GATES}`, "");
-    expect(short.length).toBeGreaterThan(TEXT_HEAD); // before, it was cut inside its gates
+  it("keeps a skill whole where its head, gates and steps would save nothing", () => {
+    const short = skill(`# A short method: its gates come first\n\n${GATES}\n\n${STEPS}`, "");
+    expect(short.length).toBeGreaterThan(TEXT_HEAD);
     expect(shorten(short)).toBe(short);
   });
 
   it("shortens a skill without the section exactly as before", () => {
     for (const text of [
-      skill(`${INTRO}\n\n${STEPS}\n\n${FAILURES}`),
-      skill(`${INTRO}\n\n${GATES.replace("## Gates", "## Gates and limits")}\n\n${FAILURES}`), // another heading
-      skill(`${INTRO}\n\n${GATES.replace("## Gates", "### Gates")}\n\n${FAILURES}`),
+      skill(`${HEAD}\n\n${STEPS}`),
+      skill(`${HEAD}\n\n${GATES.replace("## Gates", "## Gates and limits")}\n\n${STEPS}`), // another heading
+      skill(`${HEAD}\n\n${GATES.replace("## Gates", "### Gates")}\n\n${STEPS}`),
       skill("# Short\n\nA method of a few words.", ""),
     ]) {
       expect(gatesOf(text)).toBeNull();
@@ -218,12 +224,22 @@ describe("shorten: a skill keeps its gates", () => {
     }
   });
 
-  it("shortens a text that is no skill's as before, a `## Gates` in it or not", () => {
-    for (const text of [
-      `Reference "the method's page" of skill synthetic-method (docs/x.md)\n\n${INTRO}\n\n${GATES}\n\n${FAILURES}`,
-      `Error: ${INTRO}\n\n${GATES}\n\n${FAILURES}`,
-      `${INTRO}\n\n${GATES}\n\n${FAILURES}`,
+  it("shortens one section of a skill, or a reference page, to the line that names it", () => {
+    const body = `${HEAD}\n\n${GATES}\n\n${"A failure mode, and what it looks like on the cuts. ".repeat(12)}`;
+    for (const first of [
+      'Skill synthetic-method, section "Details"',
+      'Skill synthetic-method, section "Failure modes (part 2 of 3)"',
+      'Reference "the method\'s page" of skill synthetic-method (docs/x.md)',
+      'Reference "the method\'s page" of skill synthetic-method (docs/x.md), section "Significance Gate"',
     ]) {
+      const text = `${first}\n\n${body}`;
+      expect(gatesOf(text)).toBeNull();
+      expect(shorten(text)).toBe(`${first} (${COMPACTED})`);
+    }
+  });
+
+  it("shortens any other text as before, a `## Gates` in it or not", () => {
+    for (const text of [`Error: ${HEAD} ${"x".repeat(400)}\n\n${GATES}\n\n${STEPS}`, `${HEAD} ${"x".repeat(400)}\n\n${GATES}\n\n${STEPS}`]) {
       expect(gatesOf(text)).toBeNull();
       expect(shorten(text)).toBe(before(text));
     }
@@ -250,31 +266,32 @@ describe("shorten over the real skills (.claude/skills), as read_skill returns t
     }
   });
 
-  // Today no skill has the section: each is shortened byte for byte as before.
-  for (const { name, gated } of SKILLS) {
-    it.skipIf(gated)(`${name}, without a \`## Gates\` section: shortened byte for byte as before`, async () => {
+  // Every skill has the skills' form (THY-63 R4; skillLint.test.ts holds it):
+  // shortened, it is its name, its core whole (head, gates, steps) and the
+  // note. Its core past SKILL_CORE_MAX would be cut: skillLint fails first.
+  for (const { name } of SKILLS) {
+    it(`${name}: shortened to its name, its head, gates and steps whole, and the note`, async () => {
       const text = await modelCopy(name);
-      expect(text.length).toBeGreaterThan(TEXT_HEAD);
-      expect(shorten(text)).toBe(before(text));
-      expect(shorten(text)).toBe(`${text.slice(0, 400)}… (${COMPACTED})`);
+      const skill = allSkills().find((s) => s.name === name)!;
+      const section = gatesSection(text);
+      const stub = shorten(text);
+      expect(section.length, `${name}'s gates are ${section.length} characters, past GATES_MAX (${GATES_MAX})`).toBeLessThanOrEqual(GATES_MAX);
+      expect(skill.core.length).toBeLessThanOrEqual(SKILL_CORE_MAX);
+      expect(stub).toBe(`Skill ${name}\n\n${skill.core}\n\n(${COMPACTED})`);
+      expect(numbersIn(stub)).toEqual([...numbersIn(`Skill ${name}\n\n${skill.core}`)]);
+      expect(stub.length).toBeLessThanOrEqual(SKILL_STUB_MAX);
     });
   }
 
-  // Off until a skill gains `## Gates` (the user writes it): then on, by itself.
-  // A section past GATES_MAX fails here: shorten the section, or raise the cap
-  // deliberately, with its reasoning in readings/compact.ts.
-  for (const { name, gated } of SKILLS) {
-    it.skipIf(!gated)(`${name}, once it has a \`## Gates\` section: every number in the section survives compaction`, async () => {
-      const text = await modelCopy(name);
-      const section = gatesSection(text);
-      const stub = shorten(text);
-      expect(stub.startsWith(`Skill ${name}\n\n`)).toBe(true);
-      expect(section.length, `${name}'s gates are ${section.length} characters, past GATES_MAX (${GATES_MAX})`).toBeLessThanOrEqual(GATES_MAX);
-      expect(stub).toContain(section);
-      expect(numbersIn(gatesSection(stub))).toEqual(numbersIn(section));
-      expect(stub.length).toBeLessThanOrEqual(Math.max(SKILL_STUB_MAX, text.length));
-    });
-  }
+  it("shortens each skill's section reads to the line that names them", () => {
+    for (const s of allSkills()) {
+      for (const section of ["Details", ...s.details.split("\n").filter((l) => l.startsWith("### ")).map((l) => l.slice(4))]) {
+        const text = readSkill(s.name, undefined, section);
+        const first = text.slice(0, text.indexOf("\n"));
+        expect(shorten(text), `${s.name} › ${section}`).toBe(`${first} (${COMPACTED})`);
+      }
+    }
+  });
 });
 
 describe("found, seen and whole: the two readings of a step", () => {

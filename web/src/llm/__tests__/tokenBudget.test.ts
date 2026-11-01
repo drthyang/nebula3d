@@ -103,7 +103,7 @@ import {
   REPLY_RESERVE,
   resetTokenState,
 } from "../provider/tokens";
-import { GATES_MAX, isCompacted, SKILL_STUB_MAX } from "../readings/compact";
+import { isCompacted, SKILL_CORE_MAX, SKILL_STUB_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, DETAILS, headingsOf, readsCore, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { callTool, CHAT_TOOLS } from "../tools";
@@ -573,13 +573,13 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     const min = RUN_POLICY.minLocalContextTokens;
     expect(worst, `the worst local turn, ${n(worst)} tokens, does not fit the run policy's minimum of ${n(min)}`).toBeLessThanOrEqual(min);
     expect(min - worst, `the worst local turn leaves ${n(min - worst)} of the ${n(POLICY_HEADROOM)} tokens of headroom under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_HEADROOM);
-    // The live-run rule holds everything, both skills read whole with a
-    // `## Gates` section at its cap (GATES_MAX, readings/compact.ts) included:
-    // each section adds at most GATES_MAX characters to its skill's text, and
-    // the turn still leaves the headroom under the minimum (the manager's
-    // decision on the user's delegation, 2026-10-24; review finding P5.3b).
-    const gated = worst + estimateTokens((2 * GATES_MAX) / DATA_CHARS_PER_TOKEN, before.key);
-    expect(min - gated, `with two gated skills at the cap the worst local turn, ${n(gated)} tokens, leaves ${n(min - gated)} under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_HEADROOM);
+    // The live-run rule holds everything, both skills' cores grown to their
+    // cap (SKILL_CORE_MAX, readings/compact.ts; skillLint.test.ts holds every
+    // core under it) included: the turn still leaves the headroom under the
+    // minimum.
+    const coreGrowth = LARGEST.skills.reduce((sum, name) => sum + Math.max(0, SKILL_CORE_MAX - allSkills().find((s) => s.name === name)!.core.length), 0);
+    const gated = worst + estimateTokens(coreGrowth / DATA_CHARS_PER_TOKEN, before.key);
+    expect(min - gated, `with both cores at the cap the worst local turn, ${n(gated)} tokens, leaves ${n(min - gated)} under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_HEADROOM);
 
     // After: the loop as it runs, the skills read in each order. The largest
     // request of the reply is what the window must hold.
@@ -612,7 +612,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       `Reply reserve: Claude ${n(CLAUDE_REPLY)} (anthropic.ts); a local run ${n(REPLY_RESERVE)} (REPLY_RESERVE: no cap is sent, the window plan keeps it free; ` +
         `a request is refused below MIN_REPLY ${n(MIN_REPLY)}).`,
       `The run policy's minimum for a local live run (RUN_POLICY): ${n(min)}; the worst local turn ${n(worst)} leaves ${n(min - worst)} ` +
-        `(at least ${n(POLICY_HEADROOM)} must stay free); with both skills gated at the cap (${n(GATES_MAX)} characters each) it is ` +
+        `(at least ${n(POLICY_HEADROOM)} must stay free); with both skills' cores at the cap (${n(SKILL_CORE_MAX)} characters each) it is ` +
         `${n(gated)}, leaving ${n(min - gated)}.`,
     );
   }, TURN_TIMEOUT);
@@ -640,16 +640,14 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     expect(bodies.map(isCompacted)).toEqual([true, true]);
     const page = resultsOf(last, (c) => c.name === "read_skill" && c.args.reference !== undefined);
     const b = breakdown(run.sent[run.peak], run.key);
-    // A skill with a `## Gates` section is shortened to its head and the
-    // section, at most SKILL_STUB_MAX characters (readings/compact.ts). At
-    // 32k one skill gated at the cap still fits: its stub's growth leaves the
-    // largest request MIN_REPLY. Two gated at the cap need more than 32k: the
-    // live runs' 56k holds them (the test above). The manager's decision on
-    // the user's delegation, 2026-10-24 (review finding P5.3b), reversible by
-    // the user.
-    const growth = Math.max(...bodies.map((t) => Math.max(0, SKILL_STUB_MAX - t.length)));
-    const oneGated = b.prompt + estimateTokens(growth / DATA_CHARS_PER_TOKEN, run.key) + MIN_REPLY;
-    expect(oneGated, `one skill gated at the cap: ${n(oneGated)} tokens with MIN_REPLY, in a window of ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
+    // A skill's core is shortened to its head, gates and steps, at most
+    // SKILL_STUB_MAX characters (readings/compact.ts, THY-63 R5). At 32k both
+    // skills' stubs grown to the cap still fit: their growth leaves the
+    // largest request MIN_REPLY. (Before the skill cores, two skills gated at
+    // the cap needed more than 32k: review finding P5.3b, 2026-10-24.)
+    const growth = bodies.reduce((sum, t) => sum + Math.max(0, SKILL_STUB_MAX - t.length), 0);
+    const bothAtCap = b.prompt + estimateTokens(growth / DATA_CHARS_PER_TOKEN, run.key) + MIN_REPLY;
+    expect(bothAtCap, `both skills' stubs at the cap: ${n(bothAtCap)} tokens with MIN_REPLY, in a window of ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
     // No ceiling of its own: the window-fit checks above bound this prompt
     // more tightly than any ceiling would.
     columns.push({ head: ["LM Studio at 32k", "after compaction"], b, reserve: REPLY_RESERVE });
@@ -658,7 +656,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
         `On the last request both skills read arrive as stubs of at most ${n(Math.max(...bodies.map((t) => t.length)))} characters; ` +
         `the reference page ${page.every(isCompacted) ? "shortened" : "whole"}. ` +
-        `One skill gated at the cap (${n(SKILL_STUB_MAX)}-character stub) leaves ${n(WINDOW - oneGated)} to spare past MIN_REPLY.`,
+        `Both skills' stubs at the cap (${n(SKILL_STUB_MAX)} characters each) leave ${n(WINDOW - bothAtCap)} to spare past MIN_REPLY.`,
     );
   }, TURN_TIMEOUT);
 });
@@ -689,7 +687,7 @@ describe("the headroom target (docs/pilot-context-design.md §5.8), tracked unti
       const { before } = await localTurn();
       const worst = before.prompts[before.peak] + REPLY_RESERVE;
       target.push(
-        `Stretch goal (tracked, §5.8): the worst local turn without compaction, ${n(worst)} with the reply reserve, against ${n(WINDOW)}: ` +
+        `Stretch goal (enforced since R3 and R4, §5.8): the worst local turn without compaction, ${n(worst)} with the reply reserve, against ${n(WINDOW)}: ` +
           `${worst > WINDOW ? `over by ${n(worst - WINDOW)}` : "met"}.`,
       );
       expect(worst).toBeLessThanOrEqual(WINDOW);

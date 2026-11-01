@@ -681,10 +681,12 @@ describe("runAgent", () => {
       expect(readings.found(r.steps[0])).toMatchObject({ peak: 1, series: expect.arrayContaining([1.199]) });
     });
 
-    it("keeps a skill's `## Gates` section when it shortens the skill's text", async () => {
+    it("keeps a skill's `## Gates` and `## Steps` when it shortens the skill's text, and lets what is left for later go", async () => {
       // A skill's text as read_skill returns it, synthetic: its gates are made up.
       const gates = "## Gates\n\n- Rings: a ring left at most 0.37 of its plane's noise.\n- Punch: a node punched at 4.5σ or more.";
-      const text = `Skill synthetic-method\n\n# A synthetic method\n\n${"Read the volume first. ".repeat(40)}\n\n${gates}\n\n## Steps\n\n${"A step. ".repeat(60)}`;
+      const steps = `## Steps\n\n1. ${"A step. ".repeat(30).trim()}\n2. ${"Another step. ".repeat(10).trim()}`;
+      const later = `---\nDetails of this skill (read with read_skill and \`section\` "Details"): ${"A part; ".repeat(40)}`;
+      const text = `Skill synthetic-method\n\n# A synthetic method\n\n${"Read the volume first. ".repeat(40)}\n\n${gates}\n\n${steps}\n\n${later}`;
       const method: AgentTool = {
         name: "read_method",
         description: "a skill's text",
@@ -701,7 +703,7 @@ describe("runAgent", () => {
       const r = await runAgent({ messages: base, tools: [method, seriesTool], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
       const sent = toolTexts(seen[4].messages);
       expect(sent.map(isCompacted)).toEqual([true, false, false, false]);
-      expect(sent[0]).toBe(`${text.slice(0, 400)}…\n\n${gates}\n\n(shortened to save room; call the tool again for the whole result)`);
+      expect(sent[0]).toBe(`${text.slice(0, 400)}…\n\n${gates}\n\n${steps}\n\n(shortened to save room; call the tool again for the whole result)`);
       expect(r.steps[0]).toMatchObject({ name: "read_method", shortened: true });
       expect(readings.seen(r.steps[0])).toBe(text);
     });
