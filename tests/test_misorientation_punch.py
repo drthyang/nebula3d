@@ -235,8 +235,7 @@ def test_no_turn_leaves_both_rounds_inactive_and_the_punch_bit_identical():
     off = _punch("aligned", "off")
     assert np.array_equal(out._punched, off._punched)  # type: ignore[attr-defined]
     assert np.array_equal(out.mask, off.mask)  # type: ignore[attr-defined]
-    # The count main punched before THY-60 on this crystal.
-    assert int(out._punched.sum()) == 26162  # type: ignore[attr-defined]
+    # And "off" is main's punch (test_off_is_the_punch_before_thy60).
 
 
 def test_random_offsets_are_not_a_turn_and_the_sweep_stays_inactive():
@@ -246,13 +245,84 @@ def test_random_offsets_are_not_a_turn_and_the_sweep_stays_inactive():
     assert m["r2"] < 0.1
     assert out._bragg_profile["tail_sweep"]["ran"] is False  # type: ignore[attr-defined]
     assert np.array_equal(out._punched, _punch("random", "off")._punched)  # type: ignore[attr-defined]
-    assert int(out._punched.sum()) == 26782  # type: ignore[attr-defined]
 
 
-def test_off_is_the_punch_before_thy60():
-    """With both off, a turned crystal is punched as main punched it."""
-    for name, count in (("t03", 27660), ("t05", 35298), ("features", 35477)):
-        assert int(_punch(name, "off")._punched.sum()) == count  # type: ignore[attr-defined]
+def _main_punch_centers(
+    self: BraggRemover,
+    vol: object,
+    keep: np.ndarray,
+    peaks: list,
+    *,
+    reference: float | None = None,
+    protect: np.ndarray | None = None,
+) -> np.ndarray:
+    """``BraggRemover._punch_centers`` as main had it before THY-60, verbatim
+    (main 8b9a865a): the only arithmetic THY-60 rewrote (into ``_final_punch``)."""
+    r_base = self._fit_base_radii(vol)
+    ref = (reference if reference is not None else self._scaling_reference(peaks)
+           ) if self.intensity_scale else None
+    for peak_rec in peaks:
+        s = self._scale_factor(peak_rec.intensity, ref if ref is not None else 1.0)
+        center = (peak_rec.ih, peak_rec.ik, peak_rec.il)
+        spare = protect if peak_rec.found_by == "search" else None
+        if peak_rec.shape_hkl is not None:
+            a = peak_rec.shape_hkl if peak_rec.profile_shape else self._inflate_for_frame(
+                vol,
+                self._fold_phi_tail(
+                    vol, peak_rec.shape_hkl / (s * s), peak_rec.center_hkl,
+                    max(0.0, float(self.phi_tail_hkl)) * s),
+                self.margin)
+            self._punch_one(
+                vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
+                center_hkl=peak_rec.center_hkl,
+                h_guard=self._h_guard_for(peak_rec), shape_matrix=a, protect=spare)
+            continue
+        _a = self._active_shape_matrix(
+            vol, peak_rec.center_hkl, scale=s, margin_q=self.margin)
+        if _a is not None:
+            a = self._fold_phi_tail(
+                vol, _a, peak_rec.center_hkl,
+                max(0.0, float(self.phi_tail_hkl)) * s)
+            self._punch_one(
+                vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
+                center_hkl=peak_rec.center_hkl,
+                h_guard=self._h_guard_for(peak_rec), shape_matrix=a, protect=spare)
+            continue
+        rh_base, rk_base, rl_base = r_base
+        mh, mk, ml = self._axis_hkl_margins_from_q_margin(vol, self.margin)
+        radii = (rh_base * s + mh, rk_base * s + mk, rl_base * s + ml)
+        self._punch_one(
+            vol, keep, center, radii,
+            max(0.0, float(self.phi_tail_hkl)) * s,
+            center_hkl=peak_rec.center_hkl,
+            h_guard=self._h_guard_for(peak_rec), protect=spare,
+        )
+    return keep
+
+
+def test_off_is_the_punch_before_thy60(monkeypatch):
+    """With both off, every crystal is punched as main punched it, voxel for
+    voxel, on whatever platform runs the test: against main's punch rebuilt
+    live, the THY-60 steps taken out (no diagnosis, no stretch, no sweep) and
+    main's own ``_punch_centers``.  A hard-coded count is not portable: the
+    synthetic crystals' borderline voxels fall differently with the platform's
+    floating point (the features crystal punches 35,477 voxels on macOS arm64,
+    35,396 on CI's Linux x86-64, main's code and this branch's alike)."""
+    from nebula3d.analysis.misorientation import Misorientation
+    from nebula3d.analysis.tail_sweep import not_run
+
+    names = ("aligned", "random", "t03", "t05", "features")
+    off = {name: _punch(name, "off")._punched for name in names}  # type: ignore[attr-defined]
+    monkeypatch.setattr(BraggRemover, "_punch_centers", _main_punch_centers)
+    monkeypatch.setattr(BraggRemover, "_diagnose_rotation",
+                        lambda self, vol, peaks: Misorientation(status="no_peaks"))
+    monkeypatch.setattr(BraggRemover, "_stretch", lambda self, vol, peaks, turn: peaks)
+    monkeypatch.setattr(BraggRemover, "_sweep_tails",
+                        lambda self, vol, keep, peaks, reference: (keep, not_run("off", "off")))
+    for name in names:
+        main = punch_bragg(_crystal(name).vol, PunchParams(**SETTINGS["off"]))  # type: ignore[attr-defined]
+        assert np.array_equal(off[name], main._punched), name  # type: ignore[attr-defined]
+        assert main._bragg_profile["misorientation"] is None  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("name, off_min, kept_max", [("t03", 50, 2), ("t05", 700, 10)])
