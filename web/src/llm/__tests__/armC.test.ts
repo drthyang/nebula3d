@@ -93,7 +93,9 @@ const MIN_WORDS = 7;
  * not: inference the Pilot's own guidance shares with a skill word for word,
  * left out of arm C with the rest of the inference (inference.ts).
  */
-const SHARED_WITH_THE_SKILLS = ["reduction-qc: say so, and that the orientation needs the unsymmetrised file"];
+// None since THY-63 R4: reduction-qc's step 2 joins "say so, and that the orientation needs the unsymmetrised
+// file" to its rule with a colon, so the system prompt's copy is no sentence of the skill's.
+const SHARED_WITH_THE_SKILLS: string[] = [];
 
 /**
  * What arm B's text says with the skills on that the switch takes out: a

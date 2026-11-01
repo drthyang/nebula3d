@@ -244,9 +244,12 @@ const FEATURES: Call = { name: "dpdf_peaks", args: {} };
 /**
  * The largest reads of the turn (THY-63 R4: a skill's core by default, the
  * rest on request, each at most REFERENCE_MAX_CHARS): the two largest skills'
- * cores; the larger of their details, its first part; and, of the references
- * either cites, the page whose largest section is largest: its index, then
- * that section's first part.
+ * cores and, of the references either cites, the page whose largest section is
+ * largest: its index, then that section's first part. A skill's details, read
+ * on request, are one more section of at most REFERENCE_MAX_CHARS: the turn
+ * reads one section (docs/pilot-context-design.md C5: "two cores and one
+ * section"), the largest a read returns, and the loop's MAX_ROUNDS holds the
+ * turn's calls (12: these four reads, the seven checks and dpdf_peaks).
  */
 function largestReads(): {
   skills: string[];
@@ -284,7 +287,6 @@ const OTHER_SKILL = LARGEST.skills.find((s) => s !== SKILL_WITH_PAGE)!;
 const SKILL_READS: Call[] = [
   readOf(OTHER_SKILL),
   readOf(SKILL_WITH_PAGE),
-  ...(LARGEST.details ? [readOf(LARGEST.details.skill, undefined, DETAILS)] : []),
   readOf(SKILL_WITH_PAGE, LARGEST.reference.name),
   readOf(SKILL_WITH_PAGE, LARGEST.reference.name, LARGEST.reference.section),
 ];
@@ -293,8 +295,7 @@ const SKILL_READS: Call[] = [
 const ORDERS: Record<"skillsFirst" | "method" | "skillsLast", Call[]> = {
   skillsFirst: [...SKILL_READS, ...CHECKS, FEATURES],
   // Each skill before the checks of its topic: the other skill first, then the
-  // one whose page is read, with its details and its page, right before the
-  // ΔPDF's features.
+  // one whose page is read, with its page, right before the ΔPDF's features.
   method: [SKILL_READS[0], ...CHECKS, ...SKILL_READS.slice(1), FEATURES],
   skillsLast: [...CHECKS, FEATURES, ...SKILL_READS],
 };
@@ -456,9 +457,9 @@ afterAll(() => {
     [
       "NEBULA Pilot's worst turn, in the context guard's estimated tokens (provider/tokens.ts, uncalibrated)",
       `Skills read (their cores): ${LARGEST.skills.join(", ")}; ` +
-        `${LARGEST.details ? `${LARGEST.details.skill}'s details (${n(LARGEST.details.chars)} characters); ` : ""}` +
         `reference page: ${LARGEST.reference.skill} › ${LARGEST.reference.name}, its index (${n(LARGEST.reference.chars)} characters) ` +
-        `and its section "${LARGEST.reference.section}" (${n(LARGEST.reference.sectionChars)} characters; a read is at most ${n(REFERENCE_MAX_CHARS)} and a header)`,
+        `and its section "${LARGEST.reference.section}" (${n(LARGEST.reference.sectionChars)} characters; a read is at most ${n(REFERENCE_MAX_CHARS)} and a header)` +
+        `${LARGEST.details ? `; the larger details, not read here, are ${n(LARGEST.details.chars)} characters (${LARGEST.details.skill}, first part)` : ""}`,
       `Results: ${[...CHECKS, FEATURES].map((c) => c.name).join(", ")}`,
       "",
       ...table,

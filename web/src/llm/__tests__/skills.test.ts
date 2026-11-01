@@ -34,8 +34,10 @@ describe("the skills", () => {
     expect(allSkills().map((s) => s.name)).toEqual(["bragg-node-audit", "delta-pdf-interpretation", "reduction-qc"]);
     for (const s of allSkills()) {
       expect(s.description.length).toBeGreaterThan(80);
-      expect(s.body).toContain("Draft: awaiting the user's interview");
-      for (const part of ["## Steps", "## Firm rules (enforced in code)", "## Acceptance checklist", "## Failure modes", "## What to report"]) {
+      // The status line is a detail: not in the head compaction keeps (THY-63 R4).
+      expect(s.details).toContain("Draft: awaiting the user's interview");
+      expect(s.core).not.toContain("Draft: awaiting the user's interview");
+      for (const part of ["## Gates", "## Steps", "**Report**", "## Details", "### Firm rules (enforced in code)", "### Acceptance checklist", "### Failure modes"]) {
         expect(s.body, `${s.name}: ${part}`).toContain(part);
       }
       expect(s.body, `${s.name} marks its judgment calls`).toContain("(to confirm with the user)");
@@ -46,8 +48,10 @@ describe("the skills", () => {
   it("says when the flatten's Q² term goes on: when assess_stage reports a pedestal left (docs/pilot-review.md finding 5)", () => {
     const qc = allSkills().find((s) => s.name === "reduction-qc")!.body;
     const step = qc.slice(qc.indexOf("6. **The flatten floor.**"), qc.indexOf("7. **Symmetry kept.**"));
-    expect(step).toMatch(/When to turn the Q² term on:\*\* when `assess_stage` for the flatten\s+reports `pedestal_left`, set `flattenQ2` on, rerun/);
-    expect(step).toMatch(/Leave it off otherwise/);
+    expect(step).toMatch(/When to turn the Q² term on:\*\* when\s+`assess_stage` for the flatten\s+reports `pedestal_left`, set `flattenQ2` on,\s+rerun/);
+    // In the core, which read_skill returns and compaction keeps.
+    expect(allSkills().find((s) => s.name === "reduction-qc")!.core).toContain(step.trim());
+    expect(step).toMatch(/Leave it off\s+otherwise/);
     // It names the fields assess_stage gives, judged over the whole volume
     // since 4.1, not the planes' largest it gave before.
     expect(step).toContain("`floor_trend`");

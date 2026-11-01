@@ -15,8 +15,17 @@
 // 3. every number a skill writes is classified: a gate (GATES), bound to the
 //    constant it must equal, imported from the code or read off the rule that
 //    holds it, or marked "no constant" with a note; or not a gate (NOT_GATES).
-//    And the limits in UNSTATED, which a step's tool judges by, are among that
-//    step's gates.
+//    Every gate is stated once, in the skill's `## Gates` section. And the
+//    limits in GATED, which a tool judges by, are among the gates, on a line
+//    that names that tool;
+// 4. every skill has the skills' form (THY-63 R4, docs/pilot-context-design.md
+//    C5): a head (what it is for), `## Gates`, `## Steps` (numbered), then
+//    `## Details` and `## References`, in that order. The gates fit GATES_MAX
+//    (readings/compact.ts: what compaction keeps of them, 1,000 characters);
+//    the core read_skill returns by default (the head, the gates and the
+//    steps) fits REFERENCE_MAX_CHARS (skills.ts, 4,000: no read is longer);
+//    and the head fits compaction's TEXT_HEAD, so a shortened skill keeps it
+//    whole.
 //
 // What fails today is on the allow-list (ALLOWED), each entry with why: the
 // user's skill-review queue (agent plan 5.2), not something this test fixes.
@@ -38,7 +47,8 @@ import { pedestalLeft } from "../metrics/flatten";
 import { SECOND_GRAIN_DEG } from "../metrics/grains";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { FILL_BIAS_FLOOR } from "../metrics/texture";
-import { allSkills, joinPath } from "../skills";
+import { GATES_MAX, gatesOf, TEXT_HEAD } from "../readings/compact";
+import { allSkills, headingsOf, joinPath, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { callTool, CHAT_TOOLS, type ToolContext } from "../tools";
 import { TUNE_STAGES } from "../tune/catalog";
 import { outOfBounds } from "../tune/evaluate";
@@ -180,14 +190,15 @@ type Gate = { skill: SkillName; phrase: string; stated: number | null } & ({ lim
 const GATES: Gate[] = [
   // reduction-qc
   { skill: "reduction-qc", phrase: "the UB turned at 0.05° or more", stated: 0.05, limit: LIMITS.ubTurn },
-  { skill: "reduction-qc", phrase: "up to about 1e-3 is clean", stated: 1e-3, limit: LIMITS.openWeight },
+  { skill: "reduction-qc", phrase: "clean up to about 1e-3", stated: 1e-3, limit: LIMITS.openWeight },
+  // The tuning trials' limit is the coverage gate's (Details, firm rules): one number, stated once.
+  { skill: "reduction-qc", phrase: "clean up to about 1e-3", stated: 1e-3, limit: LIMITS.tuningWeight },
   { skill: "reduction-qc", phrase: "at least 0.15 of its median height", stated: 0.15, limit: LIMITS.ringHeight },
   { skill: "reduction-qc", phrase: "in 90 % of the directions", stated: 0.9, limit: LIMITS.ringDirections },
   { skill: "reduction-qc", phrase: "three times its noise above its flanks", stated: 3, limit: LIMITS.ringSnr },
   { skill: "reduction-qc", phrase: "a quarter of its height above a curve", stated: 0.25, limit: LIMITS.ringCurve },
   { skill: "reduction-qc", phrase: "beyond three times its plane's noise", stated: 3, limit: LIMITS.ringNoise },
   { skill: "reduction-qc", phrase: "holds to about 1e-3 or better", stated: 1e-3, limit: LIMITS.symmetryHolds },
-  { skill: "reduction-qc", phrase: "more than 1e-3 of its weight on unmeasured space", stated: 1e-3, limit: LIMITS.tuningWeight },
   { skill: "reduction-qc", phrase: "a trend and a span both 0.8 or more", stated: 0.8, limit: LIMITS.pedestalTrend },
   { skill: "reduction-qc", phrase: "a trend and a span both 0.8 or more", stated: 0.8, limit: LIMITS.pedestalSpan },
   {
@@ -197,7 +208,7 @@ const GATES: Gate[] = [
     none: "the judged range, not a line: the flatten's verdict reads the floors on the outer half of the shells the counts reach (judgedShells, metrics/flatten.ts), a fraction written in its code with no named constant (batch 1's provisional range; interview R10).",
   },
   // bragg-node-audit
-  { skill: "bragg-node-audit", phrase: "A rotation under 2°", stated: 2, limit: LIMITS.secondGrain },
+  { skill: "bragg-node-audit", phrase: "a rotation under 2°", stated: 2, limit: LIMITS.secondGrain },
   {
     skill: "bragg-node-audit",
     phrase: "several Bragg widths broad",
@@ -215,7 +226,8 @@ const GATES: Gate[] = [
   { skill: "delta-pdf-interpretation", phrase: "unmeasured space up to about 1e-3", stated: 1e-3, limit: LIMITS.openWeight },
   { skill: "delta-pdf-interpretation", phrase: "holds to about 1e-3 or better", stated: 1e-3, limit: LIMITS.symmetryHolds },
   { skill: "delta-pdf-interpretation", phrase: "a back-FFT r of 0.999 or more only shows the transform ran correctly", stated: 0.999, limit: LIMITS.backFftR },
-  { skill: "delta-pdf-interpretation", phrase: "more than 1e-3 of its weight on unmeasured space", stated: 1e-3, limit: LIMITS.tuningWeight },
+  // The tuning trials' limit is the coverage gate's (Details, firm rules): one number, stated once.
+  { skill: "delta-pdf-interpretation", phrase: "unmeasured space up to about 1e-3", stated: 1e-3, limit: LIMITS.tuningWeight },
 ];
 
 /** Numbers that are no gate: counts, positions, examples. */
@@ -223,9 +235,10 @@ const NOT_GATES: { skill: SkillName; phrase: string; why: string }[] = [
   { skill: "reduction-qc", phrase: "all three on a cubic cell", why: "the planes a cubic cell's symmetry makes equivalent" },
   { skill: "reduction-qc", phrase: "on all three planes", why: "the planes a cubic crystal's diffuse shows on" },
   { skill: "reduction-qc", phrase: "the opening cut at L = 0", why: "a cut's position" },
+  { skill: "reduction-qc", phrase: "cannot tell the two apart", why: "a ring and the crystal's own scattering at one |Q|" },
   { skill: "bragg-node-audit", phrase: "out of all three", why: "the three kinds of node the audit checks" },
   { skill: "bragg-node-audit", phrase: "The punch on three planes", why: "the planes assess_stage measures" },
-  { skill: "bragg-node-audit", phrase: "has several causes", why: "a count of causes" },  { skill: "bragg-node-audit", phrase: "on three planes and an off-zero cut", why: "the cuts the checklist asks for" },
+  { skill: "bragg-node-audit", phrase: "on three planes and an off-zero cut", why: "the cuts the checklist asks for" },
   { skill: "bragg-node-audit", phrase: "the opening cut at L = 0", why: "a cut's position" },
   { skill: "delta-pdf-interpretation", phrase: "the two sites'", why: "a pair's two sites" },
   { skill: "delta-pdf-interpretation", phrase: "a = 4.2 Å", why: "an example: the demo volume's cell" },
@@ -239,19 +252,19 @@ const NOT_GATES: { skill: SkillName; phrase: string; why: string }[] = [
 ];
 
 /**
- * The limits a step's tool judges by, which the step should state among its
- * gates. Which numbers a skill states is the user's call (interview X3, agent
- * plan 5.3): each entry is a question for the review, and one the user
- * declines leaves this table with the decision noted.
+ * The limits a tool judges by, which the skill states among its gates, on a
+ * line of `## Gates` that names that tool. Which numbers a skill states is the
+ * user's call (interview X3, agent plan 5.3): each entry is a question for the
+ * review, and one the user declines leaves this table with the decision noted.
  */
-const UNSTATED: { skill: SkillName; step: string; tool: string; limit: Limit; words: string }[] = [
-  { skill: "reduction-qc", step: "**The UB.**", tool: "ub_check", limit: LIMITS.ubTurn, words: "a turn of 0.05° or more from an unsymmetrised fit is a UB turned (D4)" },
-  { skill: "reduction-qc", step: "**Powder rings.**", tool: "assess_stage", limit: LIMITS.ringSnr, words: "a ring's height three times its noise" },
-  { skill: "reduction-qc", step: "**Powder rings.**", tool: "assess_stage", limit: LIMITS.ringCurve, words: "a quarter of the height above a curve through the flanks" },
-  { skill: "reduction-qc", step: "**Powder rings.**", tool: "assess_stage", limit: LIMITS.ringNoise, words: "a leftover or a dent counts beyond three times its plane's noise" },
-  { skill: "reduction-qc", step: "**The flatten floor.**", tool: "assess_stage", limit: LIMITS.pedestalTrend, words: "a pedestal: a floor trend of 0.8 or more" },
-  { skill: "reduction-qc", step: "**The flatten floor.**", tool: "assess_stage", limit: LIMITS.pedestalSpan, words: "a pedestal: a span of 0.8 or more of the diffuse level" },
-  { skill: "bragg-node-audit", step: "**The backfill.**", tool: "texture_check", limit: LIMITS.fillBiasFloor, words: "a fill bias counts at a fifth of the local diffuse level" },
+const GATED: { skill: SkillName; tool: string; limit: Limit; words: string }[] = [
+  { skill: "reduction-qc", tool: "ub_check", limit: LIMITS.ubTurn, words: "a turn of 0.05° or more from an unsymmetrised fit is a UB turned (D4)" },
+  { skill: "reduction-qc", tool: "assess_stage", limit: LIMITS.ringSnr, words: "a ring's height three times its noise" },
+  { skill: "reduction-qc", tool: "assess_stage", limit: LIMITS.ringCurve, words: "a quarter of the height above a curve through the flanks" },
+  { skill: "reduction-qc", tool: "assess_stage", limit: LIMITS.ringNoise, words: "a leftover or a dent counts beyond three times its plane's noise" },
+  { skill: "reduction-qc", tool: "assess_stage", limit: LIMITS.pedestalTrend, words: "a pedestal: a floor trend of 0.8 or more" },
+  { skill: "reduction-qc", tool: "assess_stage", limit: LIMITS.pedestalSpan, words: "a pedestal: a span of 0.8 or more of the diffuse level" },
+  { skill: "bragg-node-audit", tool: "texture_check", limit: LIMITS.fillBiasFloor, words: "a fill bias counts at a fifth of the local diffuse level" },
 ];
 
 // Field names a tool could give the symmetry a file declares under.
@@ -277,7 +290,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "reduction-qc", phrase: "`assess_stage` for the rings", what: "the rings' assessment", fields: ["rings"] },
   { skill: "reduction-qc", phrase: "`assess_stage` for the flatten", what: "the flatten's assessment", fields: ["flatten"] },
   { skill: "reduction-qc", phrase: "a span small against the diffuse level", what: "the floors' span against the diffuse level", fields: ["flatten.floor_span_fraction"] },
-  { skill: "reduction-qc", phrase: "An operation the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
+  { skill: "reduction-qc", phrase: "an operation the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
   { skill: "reduction-qc", phrase: "fits only the symmetric part of the UB on a symmetrised volume", what: "which part of the UB was fitted", fields: ["fit"] },
   // bragg-node-audit
   { skill: "bragg-node-audit", phrase: "the cell, the symmetry the file declares", what: "the cell", fields: ["cell"] },
@@ -309,7 +322,7 @@ const CLAIMS: { skill: SkillName; phrase: string; what: string; fields: string[]
   { skill: "delta-pdf-interpretation", phrase: "the symmetry used", what: "the symmetry used", fields: SYMMETRY_FIELDS },
   { skill: "delta-pdf-interpretation", phrase: "`qmax_coverage`: the window's weight on unmeasured space", what: "the window's weight on unmeasured space", fields: ["window_weight_on_unmeasured"] },
   { skill: "delta-pdf-interpretation", phrase: "the band inside the raw counts' edges", what: "the raw counts' edges", fields: ["raw_counts.q_max_edge"] },
-  { skill: "delta-pdf-interpretation", phrase: "each one the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
+  { skill: "delta-pdf-interpretation", phrase: "each operation the data were symmetrised with holds", what: "each operation's difference", fields: ["ops.rms_difference"] },
   { skill: "delta-pdf-interpretation", phrase: "`assess_stage` for the ΔPDF", what: "the ΔPDF's assessment", fields: ["pdf"] },
   { skill: "delta-pdf-interpretation", phrase: "a back-FFT r of 0.999 or more only shows", what: "the back-FFT r against the even part", fields: ["pdf.back_fft_pearson_r_even", "pearson_r_even"] },
   { skill: "delta-pdf-interpretation", phrase: "the range is set from the sections", what: "the colour range", fields: ["applied.limit"] },
@@ -349,6 +362,7 @@ const ALLOWED: { skill: SkillName; kind: Kind; names: string; why: string }[] = 
 /** A step, a bullet, a paragraph or a heading of a skill: the scope a name is read in. */
 interface Unit {
   skill: SkillName;
+  part: string; // the `## ` section it is in ("head" before the first)
   where: string; // for the messages
   text: string; // whitespace collapsed, list markers and link targets dropped
   ticks: string[]; // the names in backticks
@@ -362,29 +376,31 @@ const SNAKE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
 function unitsOf(name: SkillName): Unit[] {
   const skill = allSkills().find((s) => s.name === name);
   if (!skill) throw new Error(`no skill ${name}`);
-  const blocks: { section: string; lines: string[] }[] = [{ section: "description", lines: [skill.description] }];
+  const blocks: { section: string; part: string; lines: string[] }[] = [{ section: "description", part: "description", lines: [skill.description] }];
   let section = "introduction";
-  let open: { section: string; lines: string[] } | null = null;
+  let part = "head";
+  let open: { section: string; part: string; lines: string[] } | null = null;
   let blank = false;
   for (const line of skill.body.split("\n")) {
     if (!line.trim()) {
       blank = true;
       continue;
     }
-    const heading = /^#{1,6}\s+(.*)$/.exec(line);
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading) {
-      section = heading[1].trim();
-      blocks.push({ section, lines: [line.replace(/^#+\s+/, "")] });
+      section = heading[2].trim();
+      if (heading[1].length === 2) part = section;
+      blocks.push({ section, part, lines: [line.replace(/^#+\s+/, "")] });
       open = null;
     } else if (!open || (!/^\s/.test(line) && (blank || /^(\d+\.|[-*])\s/.test(line)))) {
-      open = { section, lines: [line] };
+      open = { section, part, lines: [line] };
       blocks.push(open);
     } else {
       open.lines.push(line);
     }
     blank = false;
   }
-  return blocks.map(({ section, lines }) => {
+  return blocks.map(({ section, part, lines }) => {
     const joined = lines
       .map((l) => l.replace(/^\s*(?:\d+\.|[-*])\s+(?:\[[ x]\]\s+)?/, ""))
       .join(" ")
@@ -398,7 +414,7 @@ function unitsOf(name: SkillName): Unit[] {
     const ticks = [...prose.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim());
     const words = [...prose.replace(/`[^`]*`/g, " ").matchAll(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)].map((m) => m[0]);
     const tools = [...new Set([...ticks, ...words].filter((t) => TOOL_NAMES.has(t)))];
-    return { skill: name, where: `${name}, ${section} ${head}`, text, ticks, words, tools };
+    return { skill: name, part, where: `${name}, ${section} ${head}`, text, ticks, words, tools };
   });
 }
 
@@ -690,6 +706,46 @@ function checkName(name: string, u: Unit): Violation | null {
   return at("name", `\`${name}\` is no tool, field, parameter or setting, and not in OTHER_NAMES`);
 }
 
+// ---------------------------------------------------------------- the skills' form
+
+/** The `## ` sections a skill has, in this order: the gates and the steps first, after the head. */
+const PARTS = ["Gates", "Steps", "Details", "References"];
+
+describe("the skills' form (THY-63 R4): a head, `## Gates`, `## Steps`, then `## Details` and `## References`", () => {
+  for (const name of SKILL_NAMES) {
+    const skill = allSkills().find((s) => s.name === name)!;
+
+    it(`${name}: its sections, in order, and a head before them`, () => {
+      const parts = headingsOf(skill.body)
+        .filter((h) => h.level === 2)
+        .map((h) => h.heading);
+      expect(parts.slice(0, 2), "the gates and the steps come first").toEqual(["Gates", "Steps"]);
+      expect(parts, `only ${PARTS.join(", ")}, in that order, each once`).toEqual(PARTS.filter((p) => parts.includes(p)));
+      // The head: the title, and a line or two on what the skill is for.
+      const head = skill.body.slice(0, skill.body.indexOf("\n## Gates")).trim();
+      expect(head, "a title, then the head's text").toMatch(/^# [^\n]+\n\n\S/);
+      expect(head.split("\n\n").length, "the head is the title and one paragraph").toBe(2);
+      // The steps are numbered.
+      const steps = UNITS[name].filter((u) => u.part === "Steps" && u.where.includes(", Steps "));
+      expect(steps.length).toBeGreaterThan(0);
+      expect(skill.body.slice(skill.body.indexOf("## Steps"))).toMatch(/^## Steps\n\n1\. /);
+    });
+
+    it(`${name}: its gates fit GATES_MAX, its head TEXT_HEAD, its core one read (REFERENCE_MAX_CHARS)`, () => {
+      const text = readSkill(name);
+      const at = gatesOf(text);
+      expect(at, "read_skill's text has a `## Gates` section compaction finds").not.toBeNull();
+      const gates = text.slice(at!.start, at!.end).trimEnd();
+      expect(gates.length, `${name}'s gates are ${gates.length} characters, past GATES_MAX`).toBeLessThanOrEqual(GATES_MAX);
+      // Compaction keeps the text before the gates whole when it fits TEXT_HEAD (readings/compact.ts).
+      expect(at!.start, `${name}'s name, title and head take ${at!.start} characters, past TEXT_HEAD`).toBeLessThanOrEqual(TEXT_HEAD);
+      expect(skill.core.length, `${name}'s core (head, gates, steps) is ${skill.core.length} characters, past REFERENCE_MAX_CHARS`).toBeLessThanOrEqual(
+        REFERENCE_MAX_CHARS,
+      );
+    });
+  }
+});
+
 describe("the skill lint", () => {
   it("reads the three skills, and samples every tool", () => {
     expect(allSkills().map((s) => s.name)).toEqual(SKILL_NAMES);
@@ -775,26 +831,29 @@ describe("the skill lint", () => {
     expectAllowed(["gate"], found);
   });
 
-  it("states among a step's gates the limits its tool judges by", () => {
-    const drift: string[] = [];
+  it("states every gate once, in `## Gates`", () => {
+    const outside = GATES.flatMap((g) =>
+      unitsWith(g.skill, g.phrase)
+        .filter((u) => u.part !== "Gates")
+        .map((u) => `${u.where}: the gate "${g.phrase}" is outside \`## Gates\``),
+    );
+    expect(outside, "a gate belongs in the skill's `## Gates` section, stated once").toEqual([]);
+  });
+
+  it("states among the gates the limits each tool judges by, on a line that names the tool", () => {
     const found: Violation[] = [];
-    for (const x of UNSTATED) {
-      const units = unitsWith(x.skill, x.step);
-      if (units.length !== 1 || !units[0].tools.includes(x.tool)) {
-        drift.push(`${x.skill}: the step "${x.step}" is in ${units.length} places, or names no ${x.tool}`);
-        continue;
-      }
-      const stated = GATES.some((g) => g.skill === x.skill && "limit" in g && g.limit === x.limit && units[0].text.includes(g.phrase));
+    for (const x of GATED) {
+      const lines = UNITS[x.skill].filter((u) => u.part === "Gates" && u.tools.includes(x.tool));
+      const stated = GATES.some((g) => g.skill === x.skill && "limit" in g && g.limit === x.limit && lines.some((u) => u.text.includes(g.phrase)));
       if (!stated) {
         found.push({
           skill: x.skill,
           kind: "unstated",
           names: x.limit.constant,
-          message: `${units[0].where}: ${x.tool} judges by ${x.limit.constant} = ${x.limit.value} (${x.words}), which the step does not state`,
+          message: `${x.skill}, Gates: ${x.tool} judges by ${x.limit.constant} = ${x.limit.value} (${x.words}), which no gate line naming ${x.tool} states`,
         });
       }
     }
-    expect(drift, "UNSTATED no longer matches the skills: update it").toEqual([]);
     expectAllowed(["unstated"], found);
   });
 

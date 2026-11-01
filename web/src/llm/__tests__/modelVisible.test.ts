@@ -442,6 +442,8 @@ const BUNCHED_NOTE = "a run whose punch record says its sharp peaks off the latt
 
 const SAMPLES: Sample[] = [
   { name: "read_skill", args: { name: "bragg-node-audit" } },
+  // A skill's details, read on request (THY-63 R4).
+  { name: "read_skill", args: { name: "bragg-node-audit", section: "Details" } },
   // A long reference page: its index, then one section (THY-63 R4).
   { name: "read_skill", args: { name: "delta-pdf-interpretation", reference: "delta_pdf" } },
   {

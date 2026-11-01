@@ -500,22 +500,15 @@ const read = (name: string, reference?: string, section?: string): Call => ({
 });
 
 // The budget test's reads (tokenBudget.test.ts, largestReads): the two largest
-// skills' cores; the larger of their details, its first part; and the page
-// whose largest section is largest: its index, then that section's first part.
+// skills' cores and the page whose largest section is largest: its index, then
+// that section's first part (a skill's details are one more such section).
 function budgetReads(): Call[] {
   const two = [...allSkills()].sort((a, b) => readSkill(b.name).length - readSkill(a.name).length).slice(0, 2);
-  const details = two.filter((s) => s.details).sort((a, b) => readSkill(b.name, undefined, DETAILS).length - readSkill(a.name, undefined, DETAILS).length)[0];
   const page = two
     .flatMap((s) => s.references.flatMap((r) => headingsOf(r.text).map((h) => ({ skill: s.name, ref: r.name, section: h.heading, chars: readSkill(s.name, r.name, h.heading).length }))))
     .sort((a, b) => b.chars - a.chars)[0];
   const other = two.find((s) => s.name !== page.skill)!.name;
-  return [
-    read(other),
-    read(page.skill),
-    ...(details ? [read(details.name, undefined, DETAILS)] : []),
-    read(page.skill, page.ref),
-    read(page.skill, page.ref, page.section),
-  ];
+  return [read(other), read(page.skill), read(page.skill, page.ref), read(page.skill, page.ref, page.section)];
 }
 const BUDGET_READS = budgetReads();
 
