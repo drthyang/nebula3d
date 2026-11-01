@@ -974,6 +974,18 @@ describe("results no tool returned are sent back, whatever the hedge (THY-63 R3,
     expect(r.note).toBeUndefined();
   });
 
+  it("keeps the answer it sent back, with what it fails, when its revision is cut off at the output limit", async () => {
+    // A smoke run's revision on the last request ran out of output (gemma4, thinking): the answer it revised stands.
+    script([
+      [{ toolCalls: [call] }],
+      [{ content: "The ring removal needs attention, and the flatten left no pedestal." }],
+      [{ content: "The ring removal needs" }, { truncated: true, stopReason: "length" }],
+    ]);
+    const r = await runAgent({ messages: question, tools: [assess], ctx, settings, signal: new AbortController().signal, maxRounds: 2 });
+    expect(r.content).toBe("The ring removal needs attention, and the flatten left no pedestal.");
+    expect(r.note).toMatch(/^Not measured in this reply: the flatten \(assess_stage with stage flatten\)\. The reply was cut off: /);
+  });
+
   it("keeps the answer it sent back, with what it fails, when the last request calls a tool instead of answering", async () => {
     script([
       [{ toolCalls: [call] }],

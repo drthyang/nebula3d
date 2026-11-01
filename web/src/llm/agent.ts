@@ -426,9 +426,20 @@ export async function runAgent({
     const before = content;
     content = joinText(content, roundText);
 
+    // An answer sent back stands, with what it still fails, when its revision
+    // wrote nothing in its place: none at all, only calls where none were left,
+    // or one cut off at the output limit (keepRejected). Returns what the kept
+    // answer fails, for the note ("" when none is kept).
+    const keepRejected = ({ cut = false } = {}): string => {
+      if (!rejected || (roundText.trim() && !cut)) return "";
+      content = joinText(before, rejected);
+      return rejectedIssues ? issuesNote(rejectedIssues) : "";
+    };
+
     // A reply that ran out of room may end mid-call: never run that round's tools.
     if (cutOff) {
-      note = CUT_OFF_NOTE;
+      const failed = keepRejected({ cut: true });
+      note = failed ? `${failed} ${CUT_OFF_NOTE}` : CUT_OFF_NOTE;
       break;
     }
     if (!calls.length || !useTools) {
@@ -459,14 +470,6 @@ export async function runAgent({
       if (issues) note = note ? `${note} ${issuesNote(issues)}` : issuesNote(issues);
       break;
     }
-    // A revision that called tools where none were left wrote nothing to
-    // replace: the answer it revised stands, with what it still fails.
-    // Returns what the kept answer still fails, for the note ("" when none is kept).
-    const keepRejected = (): string => {
-      if (!rejected || roundText.trim()) return "";
-      content = joinText(before, rejected);
-      return rejectedIssues ? issuesNote(rejectedIssues) : "";
-    };
     if (last) {
       const failed = keepRejected();
       const stopped = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
