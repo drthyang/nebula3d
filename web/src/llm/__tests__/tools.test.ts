@@ -22,6 +22,7 @@ import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf"
 import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
 import braggOverDiffuse from "../../state/__tests__/__fixtures__/laue-compare-bragg-over-diffuse.json";
 import hex6m from "../../state/__tests__/__fixtures__/laue-compare-hex-6m.json";
+import poorlyCovered from "../../state/__tests__/__fixtures__/laue-compare-poorly-covered.json";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -1318,11 +1319,23 @@ describe("compare_laue_classes", () => {
     expect(sixMmm.contains).toEqual(["-3m1", "-31m", "6/m"]);
     expect(sixMmm.verdict).toMatch(/^rose \d\.\d+× against /);
     expect(sixMmm.r_int).toHaveLength(2);
+    expect(sixMmm.chi2[0]).toBeGreaterThan(2);
+    expect(out.classes.find((c: { class: string }) => c.class === "6/m").chi2[0]).toBeCloseTo(1, 1);
     expect(out.classes[0].contains).toBeUndefined();
     expect(out.flag).toBeNull();
-    expect(out.rule).toMatch(/more than 10% and 2 standard errors/);
-    expect(out.refused).toContain("mmm: metric changes 100%");
+    expect(out.common_flag).toBeUndefined();
+    expect(out.rule).toMatch(/^Rises: x_noise above a subgroup's by >10% and 2 SE of the difference \(block bootstrap, \d+ effective blocks\)\./);
+    expect(out.refused).toEqual(["2/m (b unique), mmm, 4/m, 4/mmm, m-3, m-3m: metric changes 100%"]);
     expect(r.summary).toBe("suggests 6/m");
+  });
+
+  it("passes the common subset's flag, terse, only when it is raised", async () => {
+    api.compareLaueClasses.mockResolvedValue(poorlyCovered as unknown as LaueComparison);
+    const r = await run("compare_laue_classes", {});
+    const out = JSON.parse(r.text);
+    expect(out.suggestion).toBe("2/m (c unique)");
+    expect(out.common_flag).toMatch(/^On the voxels -1 can judge .* the rule supports 6\/m/);
+    expect(r.summary).toBe("suggests 2/m (c unique); common-subset flag: 6/m");
   });
 
   it("compares the form's custom class beside the presets", async () => {

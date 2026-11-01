@@ -344,7 +344,11 @@ class LaueReadingOut(BaseModel):
     r_int: float | None
     noise: float | None  # the noise floor: R_int from counting noise alone
     ratio: float | None  # r_int / noise
-    ratio_se: float | None
+    ratio_se: float | None  # from the spatial block bootstrap
+    # the same with orbits as independent samples (too small where voxels correlate)
+    ratio_se_orbits: float | None = None
+    chi2: float | None = None  # χ²/dof about each orbit's inverse-variance mean
+    dof: int = 0  # its degrees of freedom, Σ(n − 1)
     orbits: int  # orbits with two measured members or more
     voxels: int  # their measured members
     pairs: int  # pairs of measured equivalents they hold
@@ -356,6 +360,7 @@ class LaueVerdictOut(BaseModel):
     rises: bool  # its own rise fails the rule (not only a subgroup's)
     against: str | None  # the candidate subgroup it was weighed against
     rise: float | None  # its ratio over that subgroup's
+    se: float | None = None  # the tested difference's standard error (bootstrap, paired)
     judged: bool = True
 
 
@@ -370,6 +375,8 @@ class LaueCandidateOut(BaseModel):
     depth: int
     all: LaueReadingOut | None
     diffuse: LaueReadingOut | None
+    # the same two readings on the voxels the lowest class can judge
+    common: dict[str, LaueReadingOut | None] | None = None
     verdict: dict[str, LaueVerdictOut | None]
 
 
@@ -390,7 +397,8 @@ class LaueRuleOut(BaseModel):
 class LaueCompareOut(BaseModel):
     """Candidate Laue classes compared by R_int (analysis.laue_compare): the
     table, the classes refused, the |Q|-shell reference, the Bragg
-    neighbourhood the diffuse reading leaves out, the rule and its suggestion."""
+    neighbourhood the diffuse reading leaves out, the rule and its suggestion,
+    the block bootstrap behind the standard errors and the common subset."""
     id: str
     volume: str
     edge_trim: int
@@ -407,6 +415,8 @@ class LaueCompareOut(BaseModel):
     reason: str
     disagreement: str | None
     notes: list[str]
+    bootstrap: dict[str, Any] = {}
+    common: dict[str, Any] = {}
     limits: str
 
 

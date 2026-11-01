@@ -45,6 +45,7 @@ viewers, and reproducible command recipes in more detail.
 | [pilot.md](pilot.md) | Use or understand NEBULA Pilot, the console's agent: tools, guardrails, tuning, local models. |
 | [evals.md](evals.md) | Read how the agent is graded, its results per model, and the validation on synthetic cases with a planted truth. |
 | [pilot-review.md](pilot-review.md) | Read what each of the agent's tools computes, which are tested against a known answer, and what its skills lack. |
+| [pilot-context-design.md](pilot-context-design.md) | Read what each part of the agent's context costs in tokens (measured), and the proposed leaner design and token budget for new features. |
 | [pipeline.md](pipeline.md) | Prepare input data, or run the pipeline and its stages from the command line or Python. |
 | [modulation.md](modulation.md) | Declare a sample's modulation, see what the punch's search leaves alone, and read when its sharp peaks off the lattice bunch at a fraction. |
 | [commands.md](commands.md) | Run batch workflows and viewers from the CLI. |

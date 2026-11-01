@@ -47,10 +47,10 @@ const OLLAMA = "http://localhost:11434/v1";
  *
  * minLocalContextTokens: the least context window a local live run may have,
  * 56k. The Pilot's worst turn on a local model (arm B on the validation TASK,
- * two skills read whole, the ΔPDF's features a full list) is about 47.6k
- * tokens with the reply reserve before the loop's compaction, and 37.7k to
- * 42k after it (tokenBudget.test.ts); a model-visible addition must leave 3k
- * of the minimum free. A 32k window holds the turn only by shortening the
+ * two skills read whole, the ΔPDF's features a full list), with the reply
+ * reserve and before the loop's compaction, must fit it with 3k to spare:
+ * tokenBudget.test.ts holds it there, and scripts/measure_pilot_context.sh
+ * prints today's size. A 32k window holds the turn only by shortening the
  * skills just read to stubs, so a run at 32k would grade arm B on stubs of
  * the skills it read. The validation's runner (validation.live.test.ts) and
  * the scenario evals (live.test.ts, which scripts/eval-local.sh runs) refuse
@@ -206,7 +206,7 @@ export async function runContext(
 ): Promise<RunContext> {
   const min = model.minContextTokens;
   if (min == null) return { tokens: null, min_tokens: null, read_from: null, refusal: null };
-  const policy = `the run policy's minimum of ${tokens(min)} for a local live run (RUN_POLICY in validationModels.ts: the Pilot's worst turn needs about 47.6k tokens, tokenBudget.test.ts)`;
+  const policy = `the run policy's minimum of ${tokens(min)} for a local live run (RUN_POLICY in validationModels.ts: it holds the Pilot's worst turn with 3k to spare, as tokenBudget.test.ts checks; scripts/measure_pilot_context.sh prints the turn's size)`;
   if (isOllamaUrl(baseUrl)) {
     const { maxContext } = await ollamaModel(baseUrl, model.model, signal);
     const seen = { tokens: maxContext, min_tokens: min, read_from: "ollama-supported" as const };

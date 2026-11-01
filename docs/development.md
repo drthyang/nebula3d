@@ -277,6 +277,52 @@ npx vitest run src/llm/__tests__/modelVisible.test.ts -u
 Put `-u` after the file: before it, vitest takes the path as `-u`'s value and
 updates every snapshot in the suite.
 
+### The Pilot's token budget
+
+`web/src/llm/__tests__/tokenBudget.test.ts` drives the Pilot's worst
+realistic turn through the agent loop (the validation task, two skills and a
+reference page read whole, every check of the method) and counts each request
+with the context guard's estimator. It holds the turn to ceilings, not pins
+(`docs/pilot-context-design.md` §5.8):
+
+- each component of arm B's worst local request (system message, tools
+  offered, opening messages, skills, results), and every tool's definition as
+  the console sends them, has a ceiling: today's size (`MEASURED`) plus the
+  room held by name for the queued features (`RESERVED`: THY-59 to THY-62);
+- each configuration's largest prompt (the console; a local model before the
+  loop's compaction and after it, in three orders) has a ceiling of today's
+  size plus every reserve;
+- the 32k window-fit checks and the run policy's 56k checks hold as before.
+
+A saving passes without an edit; a growth past a ceiling fails, naming the
+component. The 20 % headroom target (the worst local turn after compaction,
+with the reply reserve, within 26,214 tokens) and the stretch goal (the same
+turn within 32,768 without compaction) are tracked with `it.fails`: they pass
+while the target is missed and print the gap, and fail on the change that
+meets it, which turns them into plain tests so the target holds from then on.
+
+`scripts/measure_pilot_context.sh` counts the same turn by the same estimator,
+by component and in more detail (every prompt section, tool definition, skill
+and result); its totals equal the test's.
+
+**Every model-visible change** (one that shows in the model-visible snapshots
+above) follows this rule:
+
+1. **It states its cost.** Run `scripts/measure_pilot_context.sh` on main and
+   on the branch, and put the difference by component in the PR body, for
+   example "+180 est. tokens: compare_laue_classes result +120, description
+   +60".
+2. **It fits the ceilings.** A change that needs more than the room left
+   cuts as much elsewhere, or spends its own `RESERVED` line by name (moving
+   the tokens into `MEASURED` and saying so in the PR), or has the user's yes
+   to raise the ceiling. A change that saves tokens may lower `MEASURED`; it
+   need not.
+3. **A new tool is scoped to topics.** It declares `offeredFor` in its facts
+   (left out, it is offered for every question); "always" needs a reason in
+   its PR. Its description is at most 500 characters: what it answers, when
+   to call it, and what it returns, with the method and the meaning of each
+   field in a skill, read on demand.
+
 ### The Pilot's tools
 
 The tools NEBULA Pilot's model calls live in `web/src/llm/tools/`, one module
@@ -329,7 +375,8 @@ To add a tool:
 3. Sample its result in `modelVisible.test.ts` and `skillLint.test.ts`, call it
    in `armC.test.ts`'s session if arm C is offered it, then update the
    model-visible snapshots (above) and read the diff. `tokenBudget.test.ts`
-   shows what its definition adds to every request.
+   shows what its definition adds to every request; the PR states that cost
+   and the tool's topics ("The Pilot's token budget", above).
 4. Write its result's contract (below) and call it in
    `contracts.replay.test.ts`.
 
