@@ -47,6 +47,7 @@ viewers, and reproducible command recipes in more detail.
 | [pilot-review.md](pilot-review.md) | Read what each of the agent's tools computes, which are tested against a known answer, and what its skills lack. |
 | [pilot-context-design.md](pilot-context-design.md) | Read what each part of the agent's context costs in tokens (measured), and the proposed leaner design and token budget for new features. |
 | [pilot-tools.md](pilot-tools.md) | Read the method text each Pilot tool's description held before the descriptions became 500-character contracts (THY-63 R2). |
+| [pilot-prompt.md](pilot-prompt.md) | Read where each rule of the Pilot's longer system prompt with tools went when it became a short core, and its old guidance word for word (THY-63 R3). |
 | [pipeline.md](pipeline.md) | Prepare input data, or run the pipeline and its stages from the command line or Python. |
 | [modulation.md](modulation.md) | Declare a sample's modulation, see what the punch's search leaves alone, and read when its sharp peaks off the lattice bunch at a fraction. |
 | [commands.md](commands.md) | Run batch workflows and viewers from the CLI. |

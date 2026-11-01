@@ -25,7 +25,7 @@ browser against the same API the viewers use:
   and `compare_laue_classes`, the evidence for a Laue class: every class the
   cell allows compared by R_int on the raw volume, on all measured voxels and
   on the diffuse, with the suggestion, its rule and the flag
-  ([laue_compare.md](algorithms/laue_compare.md)). The system prompt asks
+  ([laue_compare.md](algorithms/laue_compare.md)). Its description asks
   for it before the model suggests a class, which stays yours to set; a
   local model is offered it for a question about symmetry.
 - **Display:** `dpdf_contrast`, and `mark_region`, which marks a region in the
@@ -36,6 +36,22 @@ browser against the same API the viewers use:
   message asks for a regrid ([Regridding](regrid.md)).
 
 Each is described under [How it works](#how-it-works).
+
+**What the model starts from.** With *Tools* on, the system prompt is a short
+core, about 2.9k characters: the evidence rules (below), the checks that judge
+a run, each with its tool, how to act, and which facts about the sample stay
+yours. It states the round limit as a limit, not a target, and adds a line on
+an attached image only when a message carries one. Each tool's own rule is in
+its description or its result (a verdict with its criterion), and the method
+in the skills. The first user message, the context, is a summary of the
+dataset as the request found it: its name, cell, grid and H/K/L ranges,
+whether the raw volume is symmetrised, and the outputs on disk. Nothing in it
+is measured, so the model measures with the tools; earlier, models that
+answered from one cut's metrics without a tool call failed. With *Tools* off,
+the model reads one fixed cut's metrics (H–K at L=0 and the ΔPDF's z=0
+section) and a glossary of what each means, as before; with tools, that
+glossary, tersely, is in `measure_reciprocal_cut`'s and `measure_dpdf_cut`'s
+descriptions (`prompts/system.ts`, `prompts/templates.ts`).
 
 ## Guardrails
 
@@ -54,7 +70,9 @@ Each is described under [How it works](#how-it-works).
   still fails is noted under the reply (`answerChecks.ts`, `evidence.ts`).
 - **Numbers by reference.** The model writes a tool's number as
   `{{tool.field}}`, the field's path in that tool's result
-  (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.floor_trend}}`),
+  (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.floor_trend}}`;
+  a list item by its index, a column table's cell by row and then column name
+  or index, `{{radial_profile.shells.3.flattened}}`),
   and the app fills it in from the result before you read it: the number is
   the tool's, as the tool rounded it. A reference that names nothing goes back
   to the model, and one still unfilled stays as written, with a note
@@ -171,10 +189,11 @@ Each is described under [How it works](#how-it-works).
   more than a 32k window holds; 56k holds it with room for the reply and the
   3k a model-visible addition must leave free (measured through the agent
   loop and checked by `web/src/llm/__tests__/tokenBudget.test.ts`;
-  `scripts/measure_pilot_context.sh` prints today's size). A 32k window still runs, but the guard
-  then shortens the skills the model just read to stubs, and refuses a
-  request that still does not fit; 56k (57,344 tokens) or more avoids that on
-  long two-skill turns. In LM Studio, set the model's default Context Length
+  `scripts/measure_pilot_context.sh` prints today's size). A 32k window still
+  runs on the shortening above: on the longest two-skill turn the skill read
+  before the checks reaches the model as its stub, and the guard refuses a
+  request that still does not fit; 56k (57,344 tokens) or more keeps both
+  skills whole. In LM Studio, set the model's default Context Length
   to 57344 in its load settings (it reloads an idle model with its defaults),
   or load it with `lms load <model> --context-length 57344`. Ollama at its
   usual port gets its window from the app per request (`num_ctx`, up to the
@@ -319,7 +338,8 @@ reads a final answer, the agent loop checks it three ways:
 - **No verdict without its evidence.** A verdict on a stage (the ring removal is
   clean, the punch missed peaks, the window stays inside the coverage, the ΔPDF
   keeps its symmetry, a second grain, the UB) needs the tool that measures it to
-  have run in this reply. Small models had answered from the opening cut.
+  have run in this reply. Small models had answered from the opening cut,
+  which with Tools on is now a summary that holds no measurement.
 - **Numbers by reference.** Every number written must come from a tool result,
   the context, the user's words or the tools' guidance, within its written
   precision. A number found nowhere is listed.
@@ -405,15 +425,17 @@ miss is a note.
 - **`context/`** — `loadContext.ts` fetches one cut through every stage (H–K at
   L=0 and the ΔPDF z=0 section by default, any cut on request) plus the run's
   records; `pipelineContext.ts` folds the metrics into the budgeted JSON
-  context. **`prompts/`** — the domain system prompt (plus a tools section when
-  tools are on) and the per-stage message builders. **`provider/`** — a
+  context a model without tools reads, and the dataset's summary a model with
+  tools reads instead. **`prompts/`** — the system prompts (`SYSTEM`, the
+  metrics' glossary, without tools; `CORE`, the core, with them) and the
+  message builders. **`provider/`** — a
   dependency-free streaming client with function calling, OpenAI-compatible and
   through Ollama's own chat API (`/api/chat`), and Claude through Anthropic's
   SDK behind the same calls (`anthropic.ts`, loaded only when Anthropic is
   picked): system messages become the system prompt, a round's tool results go
   back in one user message, and a turn that called tools is replayed exactly as
   Claude returned it, thinking included. With Tools on, the first request alone
-  is about 8k tokens and a full assessment that reads two skills about 47.6k
+  is about 7.6k tokens and a full assessment that reads two skills about 42.6k
   with room for the reply (`__tests__/tokenBudget.test.ts`), so on LM Studio
   the chat reads the context length the model was loaded with
   (`/api/v0/models`) and, below 56k (`TOOLS_CONTEXT`, 57,344), says how far to

@@ -118,7 +118,7 @@ export const SYSTEM_PROMPT = SYSTEM.whole;
 // without its tool, numbers by reference, the computed verdict quoted), the
 // checks that judge a run, how to act, and who decides what. Each tool's own
 // rule is in its contract or its result (verdict, criterion), and the method
-// in the skills; docs/pilot.md lists where each sentence that left went.
+// in the skills; docs/pilot-prompt.md lists where each sentence that left went.
 //
 // With the skills off the properties a run is judged by are named as what
 // exists, unordered; the checklist's order and imperative, the readings each

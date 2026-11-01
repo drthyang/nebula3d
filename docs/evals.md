@@ -328,8 +328,9 @@ it, so nothing is cut out of a text after it is built. With it off:
   problems, as `{{achieved}}` reads them), as what exists and in no order, and
   leaves out the checklist, the readings each is settled with and the routing of a
   question to a tool; the tool descriptions, the tools' readings, the stages' goals
-  and criteria, the verdicts' words, the context's prose and the tuning prompts'
-  settings lose theirs. Each span is tagged once, where the text is written, and
+  and criteria, the verdicts' words, the tools-off context's prose and the tuning
+  prompts' settings lose theirs (with tools, the context is the dataset's
+  summary, which holds none, the same in both arms). Each span is tagged once, where the text is written, and
   `web/src/llm/__tests__/__snapshots__/model-visible/6-inference.md` lists every
   one, by class, in the text it sits in;
 - no send-back or refusal names a skill, a stage or a tool to run next: the answer
