@@ -930,6 +930,7 @@ async def _run_pdf_stages_gpu(
         _drop_sigma,
         _passed_through_notice,
         _pdf_is_current,
+        _pdf_source_record,
         _run_paths,
         _stage_input,
     )
@@ -970,7 +971,9 @@ async def _run_pdf_stages_gpu(
     dpdf: DeltaPDF | None = None
     pdf_vol: HKLVolume | None = None
     if "pdf" in stages:
-        is_current = _pdf_is_current(paths.delta_pdf, pdf_input.name, gpu_cfg, pdf_input)
+        source_record = _pdf_source_record(pdf_input, params, paths)  # type: ignore[arg-type]
+        is_current = _pdf_is_current(paths.delta_pdf, pdf_input.name, gpu_cfg, pdf_input,
+                                     expected_record=source_record)
         if is_current and not forced("pdf"):
             _cb_emit(cb, "pdf", "skip", None,
                      f"{paths.delta_pdf.name} is current")
@@ -988,7 +991,8 @@ async def _run_pdf_stages_gpu(
             if dpdf is None:
                 return False
             write_delta_pdf_h5(dpdf, pdf_vol, p, pdf_input.name,
-                               paths.delta_pdf, transform_config=gpu_cfg)
+                               paths.delta_pdf, transform_config=gpu_cfg,
+                               source_record=source_record)
             _cb_emit(cb, "pdf", "done", 1.0,
                      f"ΔPDF complete (|Q|max {dpdf.q_max:.2f} Å⁻¹, "
                      f"shape {dpdf.data.shape}) [WebGPU]")
@@ -1080,6 +1084,21 @@ def dataset_json(dataset_id: str) -> str:
     if ds is None:
         raise KeyError(f"unknown dataset id {dataset_id!r}")
     return _json(_dataset_dict(ds))
+
+
+def stale_outputs_json(dataset_id: str, params_json: str, flatten_enabled: bool) -> str:
+    """The outputs a run with these settings would make again, and why
+    (mirrors POST /api/pipeline/stale).  A ΔPDF the WebGPU core made, with its
+    own transform stamp, follows as well as one the CPU made: which one the
+    run uses is decided when it runs."""
+    cfg = _require_cfg()
+    ds = _ds.find_dataset(cfg, dataset_id)
+    if ds is None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    params = build_params(_make_request(params_json, flatten_enabled))
+    cpu = delta_pdf_transform_config(params.delta_pdf)
+    return _json({"stale": _ds.stale_outputs(cfg, ds, params,
+                                             pdf_configs=(cpu, cpu + _GPU_FFT_TOKEN))})
 
 
 # ---------------------------------------------------------------------------

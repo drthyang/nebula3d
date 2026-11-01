@@ -18,7 +18,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from nebula3d.pipeline import pipeline_paths
+from nebula3d.pipeline import (
+    FORCED_REASON,
+    MISSING_REASON,
+    PipelineParams,
+    pipeline_paths,
+    resume_plan,
+)
 from nebula3d.server import tuning
 from nebula3d.server.config import ServerConfig
 
@@ -340,3 +346,24 @@ def symmetry_declared_by(cfg: ServerConfig, volume_id: str) -> Path | None:
         except (OSError, ValueError):
             pass
     return raw_input_of(cfg, volume_id)
+
+
+#: resume_plan's stages → the dataset's stage (output) names.
+_PLAN_OUTPUTS = {
+    "symmetry_average": "symmetrized", "rings": "ringremoved", "punch": "braggpunched",
+    "backfill": "backfilled", "flatten": "flattened", "pdf": "delta_pdf",
+}
+
+
+def stale_outputs(cfg: ServerConfig, ds: Dataset, params: PipelineParams, *,
+                  pdf_configs: tuple[str, ...] | None = None) -> dict[str, str]:
+    """Each output of *ds* on disk that a run with *params* would make again,
+    and why (:func:`nebula3d.pipeline.resume_plan`): the Configure page's
+    stage track marks them stale before the run.  A tuning view is never run
+    as a whole: nothing.  *pdf_configs*: as for ``resume_plan``."""
+    if ds.artifacts is not None:
+        return {}
+    plan = resume_plan(ds.raw_path, params, proc_dir=cfg.processed_dir,
+                       pdf_configs=pdf_configs)
+    return {_PLAN_OUTPUTS[stage]: reason for stage, reason in plan.items()
+            if stage in _PLAN_OUTPUTS and reason not in (FORCED_REASON, MISSING_REASON)}

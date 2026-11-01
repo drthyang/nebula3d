@@ -15,11 +15,16 @@ from fastapi.responses import StreamingResponse
 from nebula3d.pipeline import STAGES
 from nebula3d.server import tuning
 from nebula3d.server.config import ServerConfig
-from nebula3d.server.datasets import find_dataset
+from nebula3d.server.datasets import find_dataset, stale_outputs
 from nebula3d.server.deps import get_config
 from nebula3d.server.jobs import JobManager
 from nebula3d.server.params import build_params
-from nebula3d.server.schemas import JobOut, PipelineRunRequest
+from nebula3d.server.schemas import (
+    JobOut,
+    PipelineRunRequest,
+    StaleOutputsIn,
+    StaleOutputsOut,
+)
 
 router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
@@ -72,6 +77,21 @@ def run(req: PipelineRunRequest, request: Request,
         ds.raw_path, params, proc_dir=proc_dir, stages=stages,
         force=force, force_from=req.force_from, inputs=inputs)
     return JobOut(**job.snapshot())
+
+
+@router.post("/stale", response_model=StaleOutputsOut)
+def stale(req: StaleOutputsIn, cfg: ServerConfig = Depends(get_config)) -> StaleOutputsOut:
+    """The outputs a run with the Configure page's settings would make again,
+    and why: those whose record no longer matches (another input, edge trim,
+    symmetry or settings), and those after them."""
+    ds = find_dataset(cfg, req.dataset_id)
+    if ds is None:
+        raise HTTPException(404, f"unknown dataset {req.dataset_id!r}")
+    try:
+        params = build_params(req)  # type: ignore[arg-type]  # duck-typed: no force/stages
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return StaleOutputsOut(stale=stale_outputs(cfg, ds, params))
 
 
 @router.get("/jobs/{jid}", response_model=JobOut)
