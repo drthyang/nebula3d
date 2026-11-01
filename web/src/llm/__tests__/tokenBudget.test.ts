@@ -179,7 +179,7 @@ const RESERVED: Record<string, { what: string; room: Partial<Record<Component, n
     room: { results: 270, tools: 30 },
   },
   "THY-61": {
-    what: "ring doublets, estimated: a doublet marker on shells_judged's entries, at most 200 characters",
+    what: "ring doublets, measured on its branch: the ring stage's record on assess_stage's rings (stage_shells), +35 on the synthetic crystal; a real record's line runs to about 140 characters",
     room: { results: 150 },
   },
   "THY-62": {
