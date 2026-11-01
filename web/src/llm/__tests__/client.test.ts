@@ -171,9 +171,9 @@ describe("streamChat", () => {
       /^small is loaded with a 8,192-token context\. .* replies will be cut off\. In LM Studio, set this model's default Context Length to 57,344 \(it supports up to 131,072\)/,
     );
     expect(contextWarning(await loadedContext("http://localhost:1234/v1", "roomy"), "roomy")).toBeNull();
-    // 32k: a full assessment that reads two skills needs about 48k (tokenBudget.test.ts), so 56k is suggested.
+    // 32k: a full assessment that reads two skills needs about 26k with the reply (tokenBudget.test.ts), earlier turns more, so 56k is suggested.
     expect(contextWarning({ loaded: 32_768, max: 131_072 }, "mid")).toMatch(
-      /^mid is loaded with a 32,768-token context\. .* reaches about 48k, so on a long assessment the skills it read are shortened to stubs, or a request is not sent\. In LM Studio, set this model's default Context Length to 57,344/,
+      /^mid is loaded with a 32,768-token context\. .* about 26k with room for the reply, before earlier turns add theirs, so in a long conversation older results are shortened, or a request is not sent\. In LM Studio, set this model's default Context Length to 57,344/,
     );
     expect(contextWarning({ loaded: 57_344, max: 131_072 }, "enough")).toBeNull();
     // 48k, enough until a full assessment carried a full list of the ΔPDF's features, is not now.

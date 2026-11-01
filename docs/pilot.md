@@ -450,15 +450,18 @@ miss is a note.
   picked): system messages become the system prompt, a round's tool results go
   back in one user message, and a turn that called tools is replayed exactly as
   Claude returned it, thinking included. With Tools on, the first request alone
-  is about 7.2k tokens and a full assessment that reads two skills about 42.2k
-  with room for the reply (`__tests__/tokenBudget.test.ts`), so on LM Studio
+  is about 7.2k tokens and a full assessment that reads two skills about 26.3k
+  with room for the reply (`__tests__/tokenBudget.test.ts`;
+  `scripts/measure_pilot_context.sh` prints them), so on LM Studio
   the chat reads the context length the model was loaded with
   (`/api/v0/models`) and, below 56k (`TOOLS_CONTEXT`, 57,344), says how far to
   raise it (`loadedContext`, `contextWarning`). The 56k is guidance: the
   window guard below goes by the window the model has. Before each request `provider/window.ts` estimates its
-  tokens (`tokens.ts`): prose at 3.5 characters a token and data at 1.4 (tool
+  tokens (`tokens.ts`): prose at 3.5 characters a token, data at 1.4 (tool
   results, call arguments and the fenced context JSON: a tokenizer may give
-  every digit its own token), scaled by the largest ratio of the server's own
+  every digit its own token), a result's rows of bare values at 1.2, and a
+  skill's Markdown as `read_skill` returns it at 3.0 (under the 3.3 to 4.1
+  local tokenizers read), scaled by the largest ratio of the server's own
   counts to that estimate. Ollama goes through `/api/chat` with
   `options.num_ctx`: the length the model already runs with when it holds the
   request and 6k for the reply (another app may be using the model, and any

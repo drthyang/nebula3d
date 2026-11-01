@@ -112,8 +112,10 @@ export const forgetToolsUnsupported = (): void => noTools.clear();
 export const TOOLS_UNSUPPORTED_NOTE =
   "This model cannot call tools, so it answered from the fixed-cut metrics only. Pick a tool-capable model (Ollama and LM Studio mark them) to let it measure other cuts.";
 
+// The sizes it quotes are the worst turn's, measured (tokenBudget.test.ts;
+// scripts/measure_pilot_context.sh prints them): restate them when they move.
 export const CUT_OFF_NOTE =
-  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (56k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 48k), or turn Tools off; Clear starts a shorter conversation.";
+  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (56k or more: with Tools on, the first request alone is about 7k tokens, and a full assessment that reads two skills about 26k with room for the reply, before earlier turns add theirs), or turn Tools off; Clear starts a shorter conversation.";
 
 // A reply its server could not parse ran none of its tools, so the same request
 // is sent again, at most this many times in one reply.
