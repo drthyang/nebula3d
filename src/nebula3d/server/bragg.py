@@ -34,3 +34,18 @@ def node_test_out(record: object) -> dict[str, Any] | None:
                 "notice": None if notice is None else str(notice)}
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def misorientation_out(record: object) -> dict[str, Any] | None:
+    """The punch record's ``misorientation`` (THY-60), or None (none, or not one)."""
+    if not isinstance(record, dict) or not isinstance(record.get("status"), str):
+        return None
+    return dict(record)
+
+
+def tail_sweep_out(record: object) -> dict[str, Any] | None:
+    """The punch record's ``tail_sweep`` (THY-60), or None (none, or not one)."""
+    if (not isinstance(record, dict) or not isinstance(record.get("setting"), str)
+            or not isinstance(record.get("ran"), bool)):
+        return None
+    return dict(record)

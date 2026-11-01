@@ -436,3 +436,50 @@ def test_round1_centres_an_unfitted_peak_where_the_turn_puts_its_node():
     found = dataclasses.replace(base, found_by="search", source_node_hkl=None)
     assert rem._stretch(vol, [found], turn) == [found]
     del peaks
+
+
+def test_the_run_writes_the_record_and_the_api_serves_it(tmp_path):
+    """Through the pipeline's punch stage and the API: the settings as the
+    page sends them, the punch record's code 2, and the profile's diagnosis
+    and sweep."""
+    from types import SimpleNamespace
+
+    import h5py
+    from fastapi.testclient import TestClient
+
+    import nebula3d
+    from nebula3d.pipeline import run_pipeline
+    from nebula3d.server import volumes as vol_mod
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+    from nebula3d.server.params import build_params
+    from nebula3d.server.schemas import StageParamsIn
+
+    stem = "sample_300K_test_cc_sub_bkg"
+    (tmp_path / "raw").mkdir()
+    raw = tmp_path / "raw" / f"{stem}.nxs"
+    nebula3d.save(_crystal("t05").vol, raw)  # type: ignore[attr-defined]
+
+    def params(**kw):
+        return build_params(SimpleNamespace(flatten_enabled=False, params=StageParamsIn(**kw)))
+
+    p = params(punch_rotation_aware=False, punch_tail_sweep="auto")
+    assert (p.punch.rotation_aware, p.punch.tail_sweep) == (False, "auto")
+    assert (params().punch.rotation_aware, params().punch.tail_sweep) == (True, "auto")
+    with pytest.raises(ValueError, match="punch_tail_sweep"):
+        params(punch_tail_sweep="always")
+    paths = run_pipeline(raw, p, proc_dir=tmp_path / "processed", stages=("punch",))
+    record = json.loads(paths.bragg_profile_json.read_text())
+    assert record["misorientation"]["active"] is True
+    assert record["misorientation"]["round1"]["stretched"] == 0  # rotation_aware off
+    ts = record["tail_sweep"]
+    assert ts["ran"] is True and ts["n_voxels"] > 0
+    with h5py.File(paths.braggpunched, "r") as fh:
+        code = fh[_PUNCHED_DATASET][...]
+    assert int((code == 2).sum()) == ts["n_voxels"]
+    vol_mod.clear_cache()
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    body = client.get("/api/bragg/sample-300K-test-cc-sub-bkg/profile").json()
+    assert body["misorientation"]["status"] == "active"
+    assert body["misorientation"]["angle_deg"] == pytest.approx(0.5, abs=0.01)
+    assert body["tail_sweep"]["n_voxels"] == ts["n_voxels"] == len(body["tail_sweep"]["voxels_hkl"])
