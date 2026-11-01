@@ -3,8 +3,10 @@
 // in at most DESCRIPTION_MAX characters, with the method in the skills and
 // docs. Each parameter's description is at most PARAMETER_MAX characters. A
 // tool whose description carries a catalogue (update_settings: the settings
-// it changes, the model's one source of their names and ranges) keeps its
-// contract to the cap in the first paragraph and the catalogue in the second.
+// it changes, the model's one source of their names and ranges;
+// measure_reciprocal_cut: what its fields mean, the model's one source of them
+// with tools, THY-63 R3) keeps its contract to the cap in the first paragraph
+// and the catalogue in the second.
 // Both arms are held: arm B's text, and arm C's without its inference.
 
 import { describe, expect, it } from "vitest";
@@ -15,7 +17,10 @@ import { CHAT_TOOLS } from "../tools";
 const DESCRIPTION_MAX = 500;
 const PARAMETER_MAX = 80;
 // The tools whose description has a second paragraph, and what it is.
-const CATALOGUES: Record<string, string> = { update_settings: "the settings it changes, with their values and ranges" };
+const CATALOGUES: Record<string, string> = {
+  measure_reciprocal_cut: "the fields it returns, with what each means (the glossary of a model without tools, tersely)",
+  update_settings: "the settings it changes, with their values and ranges",
+};
 
 type Schema = { description?: string; properties?: Record<string, Schema>; items?: Schema };
 /** Every parameter description in a schema, by its path. */

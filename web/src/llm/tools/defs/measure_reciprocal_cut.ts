@@ -1,7 +1,11 @@
-// measure_reciprocal_cut: the stage-quality metrics of the opening context, on
-// any reciprocal-space cut.
+// measure_reciprocal_cut: the stage-quality metrics of one reciprocal-space
+// cut. Its catalogue says what each field means: the system prompt's glossary
+// for a model without tools (prompts/system.ts, SYSTEM), tersely, for a model
+// with tools, whose context holds no cut (THY-63 C1).
 
-import { reading } from "../../inference";
+import { evidence, reading } from "../../inference";
+import { PEDESTAL_LIMIT } from "../../metrics/flatten";
+import { FLATTEN_FLOOR_SIGMA_NOTE, PEDESTAL_SHELLS, PEDESTAL_WHERE } from "../../verdicts/rules";
 import { RECIP } from "../facts";
 import { num, oneOf } from "../shared/args";
 import { cleanupView, measureRecip, RECIP_PLANES } from "../shared/cuts";
@@ -25,7 +29,8 @@ export const measure_reciprocal_cut: ChatTool = {
   name: "measure_reciprocal_cut",
   facts: { label: "Measured a reciprocal cut", acts: null, highlights: RECIP },
   ...described(
-    description("measure_reciprocal_cut")`Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.${reading(" Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).")}`,
+    description("measure_reciprocal_cut")`Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut: one cut, not the volume.${reading(" Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).")}
+Fields. ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per raw ring: residual_fraction against the diffuse beside it (negative a dent, positive a ring left), significant beyond 3 × noise_fraction. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels${evidence(": diffuse maxima, signal")}. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random${evidence(", near 1 an artefact")}. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over ${PEDESTAL_SHELLS} (floor_judged_q): both ${PEDESTAL_LIMIT} or more is a pedestal (the verdict reads ${PEDESTAL_WHERE} floors); after_floor_max_sigma is ${FLATTEN_FLOOR_SIGMA_NOTE}.`,
   ),
   parameters: {
     type: "object",

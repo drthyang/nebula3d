@@ -12,6 +12,7 @@ import type {
   FlattenSettings,
   ProtectedLabels,
   Slice,
+  StageStatus,
   VolumeMeta,
 } from "../../api/types";
 import { metricFromUb, qNorm, reciprocalMetric } from "../../components/reciprocal";
@@ -21,7 +22,7 @@ import { dpdfMetrics } from "../metrics/dpdf";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, flattenMetrics } from "../metrics/flatten";
 import { ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
-import type { RadiusFn } from "../metrics/sliceStats";
+import { roundSig, type RadiusFn } from "../metrics/sliceStats";
 
 // The slices, keyed by pipeline stage, taken at one shared reciprocal cut (plus
 // one real-space ΔPDF orthoslice).  Any of them may be absent.
@@ -61,6 +62,29 @@ export interface BuildContextInput {
   // records none (a note says so, and the defaults stand in); undefined: not
   // read, the defaults.
   flattenSettings?: FlattenSettings | null;
+  // The dataset's stage outputs as its listing has them, for the summary a
+  // model with tools starts from (summary, below). Without it, none is listed.
+  stages?: readonly StageStatus[];
+}
+
+/**
+ * What a model with tools starts from in place of the cut's metrics (THY-63
+ * C1, docs/pilot-context-design.md): facts about the dataset as the request
+ * found it, none measured on a slice. The context's other fields give the
+ * dataset's name, cell and grid; these are the rest. Left out of the JSON a
+ * model without tools reads (contextToJson), which stays as it was.
+ */
+export interface DatasetSummary {
+  // The reciprocal grid's H, K and L ranges (r.l.u.), as describe_dataset rounds them.
+  hkl_ranges?: [[number, number], [number, number], [number, number]];
+  // The point group the raw volume declares its data were symmetrised with
+  // (its name, else its number of operations); null when it declares none.
+  symmetry?: string | null;
+  // The Laue class a symmetrised export or a regrid's record declares for a
+  // raw volume that declares none (VolumeMeta.declared_for).
+  symmetry_declared_for?: string | null;
+  // The stage outputs on disk, in the listing's order (describe_dataset's names).
+  stages_on_disk?: string[];
 }
 
 export interface PipelineContext {
@@ -79,6 +103,9 @@ export interface PipelineContext {
   flatten?: ReturnType<typeof flattenMetrics>;
   delta_pdf?: ReturnType<typeof dpdfMetrics>;
   notes?: string[];
+  // With tools, the opening message is this and the fields above it, not the
+  // cut's metrics (prompts/templates.ts); never in contextToJson.
+  summary?: DatasetSummary;
 }
 
 /** Why no leftover is marked protected on a run whose punch record predates what its search left alone. */
@@ -112,6 +139,20 @@ export const qRadius = (
   };
 };
 
+const range4 = (r: [number, number]): [number, number] => [roundSig(r[0], 4), roundSig(r[1], 4)];
+
+/** The summary's facts, from the reciprocal volume's meta and the dataset's listing: each left out when not read. */
+export function datasetSummary(meta: VolumeMeta | null | undefined, stages: readonly StageStatus[] | undefined): DatasetSummary {
+  const summary: DatasetSummary = {};
+  if (meta?.h_range && meta.k_range && meta.l_range) summary.hkl_ranges = [range4(meta.h_range), range4(meta.k_range), range4(meta.l_range)];
+  if (meta) {
+    summary.symmetry = meta.symmetry || (meta.symmetry_ops?.length ? `${meta.symmetry_ops.length} operations` : null);
+    if (!summary.symmetry && meta.declared_for?.symmetry) summary.symmetry_declared_for = meta.declared_for.symmetry;
+  }
+  if (stages) summary.stages_on_disk = stages.filter((s) => s.exists).map((s) => s.name);
+  return summary;
+}
+
 export const buildPipelineContext = (input: BuildContextInput): PipelineContext => {
   const { datasetLabel, plane, cutValue, hklMeta, dpdfMeta, braggProfile, consistency, slices } = input;
   const notes: string[] = [];
@@ -127,6 +168,7 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
     ctx.cell_angles_deg = { alpha: lat.alpha, beta: lat.beta, gamma: lat.gamma };
   }
   if (hklMeta?.shape) ctx.grid = hklMeta.shape;
+  ctx.summary = datasetSummary(hklMeta, input.stages);
 
   const radius = qRadius(plane, cutValue, hklMeta ?? (lat ? { lattice: lat } : null));
 
@@ -195,8 +237,10 @@ export const CONTEXT_CHAR_BUDGET = 6000;
 // Serialize the context, trimming the only unbounded field (the leftover-peak
 // list) if the JSON overruns the budget — recorded, never silent. With the
 // skills off (the switch, skills.ts) its prose is its definitions only
-// (inference.ts).
-export const contextToJson = (context: PipelineContext, budget = CONTEXT_CHAR_BUDGET, { skills = true }: { skills?: boolean } = {}): string => {
+// (inference.ts). The summary for a model with tools is not part of it.
+export const contextToJson = (whole: PipelineContext, budget = CONTEXT_CHAR_BUDGET, { skills = true }: { skills?: boolean } = {}): string => {
+  const { summary: _summary, ...context } = whole;
+  void _summary;
   const shown = (c: PipelineContext): unknown => (skills ? c : withoutInference(c));
   let json = JSON.stringify(shown(context), null, 1);
   if (json.length <= budget) return json;

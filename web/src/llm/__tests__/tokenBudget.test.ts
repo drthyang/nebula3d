@@ -2,17 +2,17 @@
 // guard counts, against a 32k local context window, held to ceilings by
 // component (docs/pilot-context-design.md §5.8).
 //
-// VERDICT (measured 2026-11-01 with THY-63 R2's tool contracts, with
-// scripts/measure_pilot_context.sh, which counts the same way): OVER 32k in
-// both configurations.
+// VERDICT (measured 2026-11-01 with THY-63 R3's core prompt and dataset
+// summary, with scripts/measure_pilot_context.sh, which counts the same way):
+// OVER 32k in both configurations before compaction.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 41.8k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 41.2k + 6,144
-//   = 47.4k before the loop's compaction, and 39.1k to 43.4k after it, by the
-//   order the skills are read (39.1k in the method's order).
-// - A model LM Studio loaded with 32k gets the turn in only because the window
-//   guard then shortens the results down to the newest: the two skills just
-//   read reach the model as stubs of a few hundred characters.
+//   about 37.0k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 36.4k + 6,144
+//   = 42.6k before the loop's compaction, and 34.3k to 38.6k after it, by the
+//   order the skills are read (34.3k in the method's order).
+// - A model LM Studio loaded with 32k gets the turn in with the loop's own
+//   compaction: the window guard shortens nothing more (before R3 it cut
+//   both skills just read to stubs of a few hundred characters).
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
 // to reply, and leaves free the 3k a model-visible addition must leave (10.0k
@@ -149,22 +149,26 @@ const CLAUDE_REPLY = 64_000;
 type Component = (typeof ROWS)[number];
 
 // Today's sizes, in estimated tokens (uncalibrated), rounded up: measured
-// 2026-11-01 with THY-63 R2's tool contracts (on main 056382ce, R1 merged),
-// and the same in scripts/measure_pilot_context.sh. R2 lowered the tools
-// offered for the TASK (7,162 -> 5,554), every tool's definition (7,982 ->
-// 6,139), the results (8,236 -> 8,091: dpdf_peaks' reading moved to its
-// description, texture_check's criterion added) and every prompt.
+// 2026-11-01 with THY-63 R3's core prompt and dataset summary (on main
+// d8f44023, R2 merged), and the same in scripts/measure_pilot_context.sh. R3
+// lowered the system prompt (4,453 -> 1,357: the core in place of the
+// metrics' glossary and the tools' guidance) and the context (2,382 -> 288:
+// the dataset's summary in place of one cut's metrics), and every prompt. The
+// tools offered grew (5,554 -> 5,933; every definition 6,139 -> 6,518): the
+// glossary's field meanings moved into measure_reciprocal_cut's catalogue and
+// measure_dpdf_cut's contract, and dpdf_contrast's contract took the figure
+// rule; the cut elsewhere is 13 times that.
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 4_453, tools: 5_554, context: 2_382, skills: 20_758, results: 8_091 };
+const MEASURED: Record<Component, number> = { system: 1_357, tools: 5_933, context: 288, skills: 20_758, results: 8_091 };
 // Every tool's definition, as the console sends them (Claude).
-const MEASURED_ALL_TOOLS = 6_139;
+const MEASURED_ALL_TOOLS = 6_518;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 41_822,
-  localBefore: 41_237,
-  localSkillsFirst: 33_146,
-  localMethod: 32_926,
-  localSkillsLast: 37_265,
+  console: 37_012,
+  localBefore: 36_426,
+  localSkillsFirst: 28_335,
+  localMethod: 28_116,
+  localSkillsLast: 32_455,
 };
 
 // The room held for the queued model-visible features, by component, in
@@ -226,7 +230,7 @@ interface Call {
   args: Record<string, unknown>;
 }
 
-// One result of each tool the system prompt's method asks for (TOOLS_PROMPT,
+// One result of each tool the system prompt's method asks for (CORE,
 // prompts/system.ts): every stage's verdict, texture_check, qmax_coverage,
 // symmetry_check, ub_check and grain_check (its checks), radial_profile for
 // the rings, and dpdf_peaks for the correlations the TASK asks for.
@@ -573,18 +577,26 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     );
   }, TURN_TIMEOUT);
 
-  it("on LM Studio loaded with 32k: the guard shortens the results down to the newest, the skills read among them", async () => {
+  it("on LM Studio loaded with 32k: the loop's own compaction fits the window, and the guard shortens nothing more", async () => {
     model.loadedContext.mockResolvedValue({ loaded: WINDOW, max: 131_072 });
     const run = await drive(LM_STUDIO, ORDERS.method);
     // Every request is sent (none refused), each leaving at least MIN_REPLY.
     expect(run.result.note).toBeUndefined();
     expect(run.sent).toHaveLength(ORDERS.method.length + 1);
     for (const p of run.prompts) expect(p + MIN_REPLY).toBeLessThanOrEqual(WINDOW);
-    // The skills read in this reply reach its last request shortened.
+    // Since the core prompt and the dataset's summary (THY-63 R3) each request
+    // is the one the loop's own compaction sends (past SOFT_BUDGET, all but the
+    // newest KEEP_FULL shortened): the window guard, which shortens a request
+    // without MIN_REPLY free down to its newest result, has nothing to do.
+    // Before R3 it shortened both skills read to their stubs here.
+    const { after } = await localTurn();
+    expect(run.prompts).toEqual(after.method.prompts);
+    // So on the last request the skill read before the checks arrives as its
+    // stub, and the one read last, with its page, whole.
     const last = run.sent[run.sent.length - 1];
     const bodies = resultsOf(last, isSkillBody);
     expect(bodies).toHaveLength(2);
-    expect(bodies.every(isCompacted)).toBe(true);
+    expect(bodies.map(isCompacted)).toEqual([true, false]);
     const page = resultsOf(last, (c) => c.name === "read_skill" && c.args.reference !== undefined);
     const b = breakdown(run.sent[run.peak], run.key);
     // A skill with a `## Gates` section is shortened to its head and the
@@ -599,12 +611,12 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     expect(oneGated, `one skill gated at the cap: ${n(oneGated)} tokens with MIN_REPLY, in a window of ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
     // No ceiling of its own: the window-fit checks above bound this prompt
     // more tightly than any ceiling would.
-    columns.push({ head: ["LM Studio at 32k", "after the guard"], b, reserve: REPLY_RESERVE });
+    columns.push({ head: ["LM Studio at 32k", "after compaction"], b, reserve: REPLY_RESERVE });
     notes.push(
-      `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): a request without MIN_REPLY free is shortened down to its newest result. ` +
+      `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): every request fits with MIN_REPLY free after the loop's own compaction, so the guard shortens nothing more. ` +
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
-        `On the last request both skills read arrive as ${n(Math.max(...bodies.map((t) => t.length)))}-character stubs; ` +
-        `the reference page ${page.every(isCompacted) ? "too" : "stays whole"}. ` +
+        `On the last request the skill read first arrives as a ${n(Math.min(...bodies.map((t) => t.length)))}-character stub, the one read last whole; ` +
+        `the reference page ${page.every(isCompacted) ? "shortened" : "whole"}. ` +
         `One skill gated at the cap (${n(SKILL_STUB_MAX)}-character stub) leaves ${n(WINDOW - oneGated)} to spare past MIN_REPLY.`,
     );
   }, TURN_TIMEOUT);

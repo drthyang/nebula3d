@@ -7,9 +7,10 @@ import { describe, expect, it } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
-import { SYSTEM, SYSTEM_PROMPT, TOOLS, TOOLS_PROMPT } from "../prompts/system";
+import { CORE, CORE_PROMPT, IMAGE_LINE, roundsLine, SYSTEM, SYSTEM_PROMPT } from "../prompts/system";
 import { buildChatMessages, buildStageReviewMessages, systemPrompt } from "../prompts/templates";
 import type { ChatMessage } from "../provider/client";
+import { MAX_TOOL_ROUNDS } from "../runPolicy";
 import {
   allSkills,
   frontmatter,
@@ -186,13 +187,22 @@ describe("the switch", () => {
   });
 
   it("builds the system prompt from its sections, the skills' section only with the tools and the skills on", () => {
-    expect(systemPrompt({ tools: true })).toBe([SYSTEM_PROMPT, TOOLS_PROMPT, skillsPrompt()].join("\n"));
+    // With tools: the core (not the metrics' glossary), the rounds a reply may make, then the skills' section.
+    const rounds = roundsLine(MAX_TOOL_ROUNDS);
+    expect(systemPrompt({ tools: true })).toBe([CORE_PROMPT, rounds, skillsPrompt()].join("\n"));
     expect(systemPrompt({ tools: true, skills: true })).toBe(systemPrompt({ tools: true }));
     expect(systemPrompt({ tools: false })).toBe(SYSTEM_PROMPT);
     // Off: no skills' section, and the other sections without their inference (inference.ts).
-    expect(systemPrompt({ tools: true, skills: false })).toBe([SYSTEM.definitions, TOOLS.definitions].join("\n"));
+    expect(systemPrompt({ tools: true, skills: false })).toBe([CORE.definitions, rounds].join("\n"));
     expect(systemPrompt({ tools: false, skills: false })).toBe(SYSTEM.definitions);
-    expect([SYSTEM.whole, TOOLS.whole]).toEqual([SYSTEM_PROMPT, TOOLS_PROMPT]);
+    expect([SYSTEM.whole, CORE.whole]).toEqual([SYSTEM_PROMPT, CORE_PROMPT]);
+    // A run's own round limit, and a line on an image only when a message carries one, in either arm.
+    expect(systemPrompt({ tools: true, rounds: 8 })).toBe([CORE_PROMPT, roundsLine(8), skillsPrompt()].join("\n"));
+    expect(roundsLine(8)).toMatch(/at most 8 rounds of calls, a limit, not a target\.$/);
+    expect(systemPrompt({ tools: true, image: true })).toBe([CORE_PROMPT, rounds, IMAGE_LINE, skillsPrompt()].join("\n"));
+    const withImage = buildStageReviewMessages({} as never, "dpdf", "data:image/png;base64,", { tools: true, skills: false });
+    expect(withImage[0].content).toBe([CORE.definitions, rounds, IMAGE_LINE].join("\n"));
+    expect(buildChatMessages({} as never, [], "q", null, { tools: true })[0].content).not.toContain(IMAGE_LINE);
     // Every builder of the opening messages reads it: the chat and the stage reviews.
     const chat = buildChatMessages({} as never, [], "How clean is this reduction?", null, { tools: true, skills: false });
     const review = buildStageReviewMessages({} as never, "flatten", null, { tools: true, skills: false });
@@ -229,7 +239,9 @@ describe("the switch", () => {
     // Every description that holds inference (inference.ts) has its definitions only, and only those differ.
     expect(off.filter((t) => t.description !== of(CHAT_TOOLS, t.name)).map((t) => t.name)).toEqual([
       "measure_reciprocal_cut",
+      "measure_dpdf_cut",
       "symmetry_check",
+      "dpdf_contrast",
       "dpdf_peaks",
       "ub_check",
       "compare_laue_classes",

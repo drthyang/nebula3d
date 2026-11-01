@@ -316,7 +316,7 @@ export async function runCase(spec: RunSpec): Promise<RunRecord> {
   const cut = new TruncationTracker(policy.transport);
   await startFresh(dataset, { settleMs: spec.settleMs });
   const { context: pipelineContext } = await loadPipelineContext(dataset);
-  const setup = armSetup(job.arm, pipelineContext);
+  const setup = armSetup(job.arm, pipelineContext, spec.rounds);
   const before = await fetchDatasets();
   // The calibration the run starts from, before its first request.
   const calibration = tokenCalibration(`${settings.baseUrl}|${settings.model}`);
