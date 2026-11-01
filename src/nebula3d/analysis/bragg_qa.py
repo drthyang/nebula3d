@@ -366,6 +366,49 @@ def score_against_truth(
     return out
 
 
+def bright_fill_fraction(
+    vol: HKLVolume,
+    punched: NDArray[np.bool_],
+    filled: NDArray[np.floating],
+    *,
+    n_sigma: float = 3.0,
+    ring: int = 3,
+) -> float:
+    """Share of the punched voxels whose fill sits *n_sigma* (their own σ) or
+    more above their hole's surroundings: the median of the measured,
+    unpunched voxels within *ring* voxels of the hole (26-connected holes).
+
+    The volume's counterpart of the console's bright-fill check
+    (``web/src/llm/metrics/backfill.ts``: a fill 3σ above its local
+    background is a plug where a peak was not fully removed), per hole and
+    in each voxel's own σ.  *vol* is the punched volume (``vol.data`` the
+    original values, ``vol.mask`` without the holes), *filled* the backfill's
+    data.  NaN without a punched voxel.  Native QA (a few volume-sized
+    temporaries), not for the browser.
+    """
+    labels, n = ndimage.label(punched, structure=np.ones((3, 3, 3), dtype=bool))
+    if n == 0:
+        return float("nan")
+    near = ndimage.grey_dilation(labels, size=(2 * ring + 1,) * 3)
+    genuine = vol.mask & np.isfinite(vol.data) & ~punched & (near > 0)
+    key = near[genuine].astype(np.int64)
+    vals = np.asarray(vol.data, dtype=np.float64)[genuine]
+    order = np.argsort(key, kind="stable")
+    key, vals = key[order], vals[order]
+    bounds = np.searchsorted(key, np.arange(n + 2))
+    ref = np.full(n + 1, np.nan)
+    for k in range(1, n + 1):
+        seg = vals[bounds[k]:bounds[k + 1]]
+        if seg.size:
+            ref[k] = float(np.median(seg))
+    sig = np.asarray(vol.sigma, dtype=np.float64)[punched]
+    f = np.asarray(filled, dtype=np.float64)[punched]
+    lab = labels[punched]
+    ok = np.isfinite(ref[lab]) & np.isfinite(f)
+    bright = ok & (f - ref[lab] >= n_sigma * np.where(sig > 0, sig, np.inf))
+    return float(bright.sum() / max(int(ok.sum()), 1))
+
+
 #: |r| bands (Å) the refill test reports the ΔPDF error in.
 PDF_BANDS_A: tuple[tuple[float, float], ...] = ((2.0, 5.0), (5.0, 10.0), (10.0, 20.0),
                                                 (20.0, 40.0), (40.0, 80.0))
