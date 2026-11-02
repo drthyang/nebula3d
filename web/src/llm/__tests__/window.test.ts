@@ -10,6 +10,8 @@ import {
   baseTokens,
   DATA_CHARS_PER_TOKEN,
   estimateTokens,
+  MARKDOWN_CHARS_PER_TOKEN,
+  MARKDOWN_RESULT,
   observeTokens,
   ollamaWindow,
   PROSE_CHARS_PER_TOKEN,
@@ -19,6 +21,8 @@ import {
   tokenScale,
 } from "../provider/tokens";
 import { planWindow } from "../provider/window";
+import { shorten } from "../readings";
+import { allSkills, headingsOf, readSkill } from "../skills";
 
 beforeEach(() => resetTokenState());
 afterEach(() => vi.unstubAllGlobals());
@@ -54,6 +58,29 @@ describe("the token estimate", () => {
     // A list of objects, or rows in a message that is no tool result, count as before.
     expect(tableChars('{"rows":[{"q":1}]}')).toBe(0);
     close(baseTokens([{ role: "user", content: table }]), 5 + table.length / PROSE_CHARS_PER_TOKEN);
+  });
+
+  it("reads read_skill's Markdown at 3.0: a skill's core, a section, a reference page, and their shortened copies (THY-63 R5, C6)", () => {
+    const tool = (content: string): ChatMessage => ({ role: "tool", tool_call_id: "c", content });
+    const reads = allSkills().flatMap((s) => [
+      readSkill(s.name),
+      readSkill(s.name, undefined, "Details"),
+      ...s.references.flatMap((r) => [readSkill(s.name, r.name), ...headingsOf(r.text).slice(0, 2).map((h) => readSkill(s.name, r.name, h.heading))]),
+    ]);
+    expect(reads.length).toBeGreaterThan(10);
+    for (const text of [...reads, ...reads.map(shorten)]) {
+      expect(MARKDOWN_RESULT.test(text), text.slice(0, 80)).toBe(true);
+      close(baseTokens([tool(text)]), 5 + text.length / MARKDOWN_CHARS_PER_TOKEN);
+    }
+    // Under the lowest rate measured on a real tokenizer (3.30): the estimate stays on the long side.
+    expect(MARKDOWN_CHARS_PER_TOKEN).toBeLessThan(3.3);
+    // Only read_skill's own texts: JSON, an error, or the same words from the user count as before.
+    const json = '{"verdict":"Skill reduction-qc\\n\\nmeets its goal"}';
+    close(baseTokens([tool(json)]), 5 + json.length / DATA_CHARS_PER_TOKEN);
+    const error = "Error: no skill named \"x\"";
+    close(baseTokens([tool(error)]), 5 + error.length / DATA_CHARS_PER_TOKEN);
+    const pasted = readSkill("reduction-qc");
+    close(baseTokens([{ role: "user", content: pasted }]), 5 + pasted.length / PROSE_CHARS_PER_TOKEN);
   });
 
   it("counts an image as about a thousand tokens, and the tools' definitions as prose", () => {

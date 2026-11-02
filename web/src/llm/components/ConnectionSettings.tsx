@@ -40,8 +40,8 @@ function HelpConnect() {
           </li>
           <li>
             With <b>Tools</b> on, give the model room: add <code>OLLAMA_CONTEXT_LENGTH=57344</code> to that
-            command (on a small GPU Ollama picks as little as 4k; the first request alone is about 8k
-            tokens, and a full assessment that reads two skills reaches about 48k).
+            command (on a small GPU Ollama picks as little as 4k; the first request alone is about 7k
+            tokens, and a full assessment that reads two skills about 26k with room for the reply).
           </li>
         </ol>
 
@@ -49,8 +49,8 @@ function HelpConnect() {
         <ol>
           <li>
             Load a model with a <b>Context Length</b> of 56k (57344): with <b>Tools</b> on, the first request
-            alone is about 8k tokens, and a full assessment that reads two skills reaches about 48k. In a smaller
-            window, a long assessment has the skills the model read shortened to stubs.
+            alone is about 7k tokens, and a full assessment that reads two skills about 26k with room for the
+            reply. In a smaller window, a long conversation has its older results shortened.
           </li>
           <li>Open the <b>Developer</b> (Local Server) tab, turn on <b>Enable CORS</b>, then Start Server.</li>
           <li>

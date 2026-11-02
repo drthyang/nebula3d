@@ -77,8 +77,10 @@ describe("the skills", () => {
     const qc = skillNamed("reduction-qc")!;
     expect(text.startsWith(`Skill reduction-qc\n\n${qc.core}\n\n---\n`)).toBe(true);
     expect(text.startsWith("Skill reduction-qc\n\n# Reduction QC")).toBe(true);
-    expect(text).toContain("References of this skill");
-    expect(text).toContain("- ub_refinement: how the UB is refined and checked");
+    // The references by name only (THY-63 R5): a page's own read says what it holds, a long one by its headings.
+    expect(text).toContain("References of this skill (read one with read_skill and `reference`; a long one opens with its sections): ub_refinement; delta_pdf");
+    expect(text).not.toContain("how the UB is refined and checked");
+    for (const r of qc.references) expect(readSkill("reduction-qc", r.name)).toMatch(r.text.length > REFERENCE_MAX_CHARS ? /\nSections \(read one with read_skill/ : /\n# /);
     expect(() => readSkill("nope")).toThrow(/no skill named "nope"; the skills are bragg-node-audit, delta-pdf-interpretation, reduction-qc/);
     for (const s of allSkills()) {
       const read = readSkill(s.name);

@@ -297,9 +297,9 @@ with the context guard's estimator. It holds the turn to ceilings, not pins
 A saving passes without an edit; a growth past a ceiling fails, naming the
 component. The 20 % headroom target (the worst local turn after compaction,
 with the reply reserve, within 26,214 tokens) and the stretch goal (the same
-turn within 32,768 without compaction) are tracked with `it.fails`: they pass
-while the target is missed and print the gap, and fail on the change that
-meets it, which turns them into plain tests so the target holds from then on.
+turn within 32,768 without compaction) were tracked with `it.fails` until met,
+and are plain tests now (THY-63 R3 to R5): a change that takes the worst turn
+past either fails, and the test prints the room left.
 
 `scripts/measure_pilot_context.sh` counts the same turn by the same estimator,
 by component and in more detail (every prompt section, tool definition, skill
@@ -492,17 +492,20 @@ by its heading, and a reference page longer than 4,000 characters
 headings, a section at a time, a long section part by part. Only a core read
 opens a stage's gate.
 
-When the agent loop compacts an older `read_skill` result in a long reply, a
-skill's text keeps its name and its first 400 characters
-(`web/src/llm/readings/compact.ts`), which can cut its thresholds away; a
-skill with a `## Gates` heading keeps that section whole, up to the next
-heading of level 1 or 2, beside the head. The section is capped at
-`GATES_MAX`, 1,000 characters (lowered from 1,200 on 2026-10-24; on the worst
-turn a 32k window holds one gated skill at the cap and the live runs' 56k
-two, review finding P5.3b); past it, it is cut at a line boundary and a marker
-says how many lines were left out. `skillLint.test.ts` holds each skill to the
-form: the sections in order, the gates within `GATES_MAX`, the name, title and
-head within compaction's 400 characters (so the head is kept whole), and the
-core within `REFERENCE_MAX_CHARS`. `web/src/llm/__tests__/readings.test.ts`
-checks that every number in each skill's gates survives compaction. Which
+When the agent loop compacts an older `read_skill` result in a long reply
+(`web/src/llm/readings/compact.ts`, THY-63 R5), a skill's core keeps its name,
+its head and everything from `## Gates` to the end of `## Steps`: the method
+stays in view, and only the list of what is left for later goes. The kept part
+is capped at `SKILL_CORE_MAX`, 4,000 characters (past it, it is cut at a line
+boundary and a marker says how many lines were left out), and a shortened skill
+is at most `SKILL_STUB_MAX` characters. A section read on request (Details, a
+part of it, a reference page or its section) shortens to the one line that
+names it; read it again for the text. A text that is no skill's and no JSON
+(an error) keeps its first 400 characters. `skillLint.test.ts` holds each
+skill to the form: the sections in order, the gates within `GATES_MAX`
+(1,000 characters, the cap the `## Gates` text is written to), the name, title
+and head within compaction's 400 characters (so the head is kept whole), and
+the core within `REFERENCE_MAX_CHARS` and `SKILL_CORE_MAX`.
+`web/src/llm/__tests__/readings.test.ts` checks that each skill shortens to its
+name, its core whole and the note. Which
 gates a skill states, and their words, are the user's.

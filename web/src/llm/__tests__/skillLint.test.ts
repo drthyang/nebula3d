@@ -23,8 +23,9 @@
 //    `## Details` and `## References`, in that order. The gates fit GATES_MAX
 //    (readings/compact.ts: what compaction keeps of them, 1,000 characters);
 //    the core read_skill returns by default (the head, the gates and the
-//    steps) fits REFERENCE_MAX_CHARS (skills.ts, 4,000: no read is longer);
-//    and the head fits compaction's TEXT_HEAD, so a shortened skill keeps it
+//    steps) fits REFERENCE_MAX_CHARS (skills.ts, 4,000: no read is longer)
+//    and SKILL_CORE_MAX (readings/compact.ts: compaction keeps it whole); and
+//    the head fits compaction's TEXT_HEAD, so a shortened skill keeps it
 //    whole.
 //
 // What fails today is on the allow-list (ALLOWED), each entry with why: the
@@ -48,7 +49,7 @@ import { pedestalLeft } from "../metrics/flatten";
 import { SECOND_GRAIN_DEG } from "../metrics/grains";
 import { SYMMETRY_HOLDS } from "../metrics/symmetry";
 import { FILL_BIAS_FLOOR } from "../metrics/texture";
-import { GATES_MAX, gatesOf, TEXT_HEAD } from "../readings/compact";
+import { GATES_MAX, gatesOf, SKILL_CORE_MAX, TEXT_HEAD } from "../readings/compact";
 import { allSkills, headingsOf, joinPath, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { callTool, CHAT_TOOLS, type ToolContext } from "../tools";
 import { TUNE_STAGES } from "../tune/catalog";
@@ -761,8 +762,9 @@ describe("the skills' form (THY-63 R4): a head, `## Gates`, `## Steps`, then `##
       expect(gates.length, `${name}'s gates are ${gates.length} characters, past GATES_MAX`).toBeLessThanOrEqual(GATES_MAX);
       // Compaction keeps the text before the gates whole when it fits TEXT_HEAD (readings/compact.ts).
       expect(at!.start, `${name}'s name, title and head take ${at!.start} characters, past TEXT_HEAD`).toBeLessThanOrEqual(TEXT_HEAD);
+      // Read whole in one read, and kept whole through compaction (SKILL_CORE_MAX, readings/compact.ts).
       expect(skill.core.length, `${name}'s core (head, gates, steps) is ${skill.core.length} characters, past REFERENCE_MAX_CHARS`).toBeLessThanOrEqual(
-        REFERENCE_MAX_CHARS,
+        Math.min(REFERENCE_MAX_CHARS, SKILL_CORE_MAX),
       );
     });
   }

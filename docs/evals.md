@@ -715,7 +715,8 @@ the run policy (`RUN_POLICY.minLocalContextTokens` in
 `web/src/llm/evals/validationModels.ts`); the scenario evals and the local
 tier hold a local model to it too (`modelAt`; see "Running it" under the
 scenarios, above). The sibling app RMC keeps its own rule, 48k. Arm B's worst
-turn on a local model, the validation task with two skills read whole and the
+turn on a local model, the validation task with two skills' cores and a
+section of a page read and the
 3D-ΔPDF's strongest features a full list (the dev control's, at
 `dpdf_peaks`' default), with the reply reserve and before the loop's
 compaction, fits the minimum with the 3k of headroom a model-visible addition
@@ -724,9 +725,11 @@ must leave: `web/src/llm/__tests__/tokenBudget.test.ts` checks it, and
 compaction. The minimum was 48k (49,152) until
 the worst turn carried a full list. Until THY-63 R3 a 32k window held the
 turn only by shortening the skills just read to stubs, so a run at 32k would
-have graded arm B on stubs of its method; since the core prompt it holds the
-turn as the loop's own compaction leaves it (the skill read first a stub, as
-at any window), with about 5k left for the reply. Before the plan starts,
+have graded arm B on stubs of its method. Since R3 to R5 (the core prompt,
+the skill cores, a skill's Markdown counted at 3.0 characters a token) it
+holds the whole turn, about 20.1k tokens, with nothing shortened and about
+12.6k left for the reply; a shortened skill keeps its gates and steps.
+Before the plan starts,
 and again before each run, the runner reads the window the run will get
 (`runContext`), without loading anything, and refuses one under the minimum or
 one it cannot read, saying the model, the window found, the minimum and how
