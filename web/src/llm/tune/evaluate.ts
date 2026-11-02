@@ -403,8 +403,8 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
       const off = typeof sharp === "number" && typeof kept === "number" ? sharp - kept : v("leftover_off_lattice_sharp");
       const onProtected = typeof kept === "number" && kept > 0 ? ` (${kept} more on protected planes, kept)` : "";
       // A turn the punch acted on, named (metrics/ubTurn.ts).
-      const turn = e.ub_turn as { status?: string; deg?: number | null; sd?: number | null } | undefined;
-      const turned = turn?.status === "active" ? ` · UB turned ${turn.deg}° ± ${turn.sd}°` : "";
+      const turn = e.ub_turn as { verdict?: string; deg?: number | null; sd?: number | null } | undefined;
+      const turned = turn?.verdict?.startsWith("acted on") ? ` · UB turned ${turn.deg}° ± ${turn.sd}°` : "";
       return `${v("leftover_at_nodes")} missed at nodes · ${off} sharp off-lattice${onProtected} · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}${turned}`;
     }
     case "backfill":
