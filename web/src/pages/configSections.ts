@@ -89,7 +89,16 @@ export function advancedFields(stage: SectionStage, s: ModelOf): Key[] {
           return ["ringSliceAxis", "ringPooledSectors", "ringPooledWindow"];
       }
     case "punch":
-      return ["punchProfileNSigma", "punchHGuard", "punchSearchFloor", "punchSearchMaxWidth", "punchFitUnconstrained", "incidentBeamFitCovariance"];
+      return [
+        "punchProfileNSigma",
+        "punchHGuard",
+        "punchSearchFloor",
+        "punchSearchMaxWidth",
+        "punchTailSweep",
+        "punchRotationAware",
+        "punchFitUnconstrained",
+        "incidentBeamFitCovariance",
+      ];
     case "backfill":
       return [];
     case "flatten":

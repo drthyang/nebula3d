@@ -5,8 +5,9 @@
 //
 // The view resamples its slice in r.l.u. under each display pixel (one scale on
 // both axes, so a peak's shape is not stretched), then overlays the punch fit
-// ellipses (fitted / measured / |Q|-floor), a crosshair at the peak centre and,
-// with "Unit cell" on, dashed lines at integer h, k, l.  The raster and the
+// ellipses (fitted / measured / |Q|-floor), a crosshair at the peak centre,
+// the voxels the punch's tail sweep added on this plane (THY-60) and, with
+// "Unit cell" on, dashed lines at integer h, k, l.  The raster and the
 // overlay map r.l.u. to pixels with the same viewport (viewport.ts), so the
 // ellipses stay registered to the data at any zoom.
 
@@ -44,6 +45,9 @@ interface Props {
   fitted: Ellipse;
   measured?: Ellipse | null;
   floor?: Ellipse | null;
+  // The tail sweep's voxels on this plane (x, y in r.l.u.) and a voxel's size.
+  swept?: [number, number][];
+  sweptStep?: [number, number];
 }
 
 const MAX_RASTER = 480; // raster px along the longer side; CSS scales it to the view
@@ -123,9 +127,17 @@ function TileOverlay({
   fitted,
   measured,
   floor,
-}: Pick<Props, "centre" | "viewport" | "fitted" | "measured" | "floor">) {
+  swept,
+  sweptStep,
+}: Pick<Props, "centre" | "viewport" | "fitted" | "measured" | "floor" | "swept" | "sweptStep">) {
   const { w, h } = useViewSize();
   const [X, Y] = displayToPixel(viewport, centre[0], centre[1], w, h);
+  const voxel = (x: number, y: number, i: number) => {
+    const [dx, dy] = sweptStep ?? [0, 0];
+    const [x0, y0] = displayToPixel(viewport, x - dx / 2, y + dy / 2, w, h);
+    const [x1, y1] = displayToPixel(viewport, x + dx / 2, y - dy / 2, w, h);
+    return <rect key={i} x={x0} y={y0} width={Math.max(1, x1 - x0)} height={Math.max(1, y1 - y0)} className="bragg-r2" />;
+  };
   const ell = (e: Ellipse, className: string) => {
     const p = ellipseInView(e, centre, viewport, w, h);
     return (
@@ -143,6 +155,7 @@ function TileOverlay({
     <svg className="bragg-overlay" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
       <line x1={X} y1={0} x2={X} y2={h} className="bragg-cross" />
       <line x1={0} y1={Y} x2={w} y2={Y} className="bragg-cross" />
+      {swept?.map(([x, y], i) => voxel(x, y, i))}
       {floor && ell(floor, "bragg-ell-floor")}
       {measured && ell(measured, "bragg-ell-meas")}
       {ell(fitted, "bragg-ell-fit")}
@@ -171,7 +184,7 @@ export function BraggPeakSlice({ slice, failed = false, ...p }: Props) {
     >
       <TileRaster slice={slice} viewport={p.viewport} lut={p.lut} levels={p.levels} scale={p.scale} soft={p.soft} />
       {p.gridlines && <HklGrid viewport={p.viewport} geom={RLU_GEOM} lut={p.lut} />}
-      <TileOverlay centre={p.centre} viewport={p.viewport} fitted={p.fitted} measured={p.measured} floor={p.floor} />
+      <TileOverlay centre={p.centre} viewport={p.viewport} fitted={p.fitted} measured={p.measured} floor={p.floor} swept={p.swept} sweptStep={p.sweptStep} />
     </ViewFrame>
   );
 }

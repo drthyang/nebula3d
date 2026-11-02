@@ -20,13 +20,15 @@
 //
 // The overlay maps display units (Å⁻¹) to the view's pixels with the
 // viewport the canvas draws by, so the footprints stay on the peaks at any
-// zoom (punchGeometry.ts).
+// zoom (punchGeometry.ts). Over them, in their own colour, the voxels the last
+// run's tail sweep added (round 2 of the punch, THY-60), from its record.
 
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { fetchSlice } from "../api/client";
-import type { Slice, VolumeMeta } from "../api/types";
+import { useBraggProfile } from "../api/hooks";
+import type { Slice, TailSweepRecord, VolumeMeta } from "../api/types";
 import { COLORMAPS, SEQUENTIAL_NAMES } from "../colormaps/luts";
 import { useConfigViewStore, previewView } from "../state/configViewStore";
 import { useDpdfStore } from "../state/dpdfStore";
@@ -53,6 +55,7 @@ import {
 import { SliceCanvas } from "./SliceCanvas";
 import { TabList } from "./Tabs";
 import { tabId, tabPanelId } from "./tabKeys";
+import { sweptOnPlane } from "./ubTurn";
 import { HelpTip, Slider } from "./ui";
 import { HklGrid } from "./UnitCellGrid";
 import { useLevels } from "./useLevels";
@@ -92,6 +95,7 @@ function PunchOverlay({
   viewport,
   bands,
   cut,
+  sweep,
 }: {
   plane: PunchPlane;
   geom: PunchGeom;
@@ -99,6 +103,7 @@ function PunchOverlay({
   viewport: Viewport;
   bands: [number, number];
   cut: number;
+  sweep?: TailSweepRecord | null;
 }) {
   const { w, h } = useViewSize();
   const clip = useId();
@@ -130,6 +135,17 @@ function PunchOverlay({
       extentY,
       cell: [geom.supercell[axisIndex(axisX)], geom.supercell[axisIndex(axisY)]],
     }) ?? [];
+  // The last run's tail-sweep voxels on this plane, as squares a voxel wide.
+  const cutAxis = PUNCH_PLANES.find((p) => p.id === plane)!.cutAxis;
+  const [ix, iy, ic] = [axisIndex(axisX), axisIndex(axisY), axisIndex(cutAxis)] as (0 | 1 | 2)[];
+  const sx = axisRange(meta, axisX).step;
+  const sy = axisRange(meta, axisY).step;
+  const swept = sweptOnPlane(sweep, ic, cut, axisRange(meta, cutAxis).step, ix, iy);
+  const voxel = ([x, y]: [number, number], i: number) => {
+    const [x0, y0] = displayToPixel(viewport, (x - sx / 2) * qScaleX, (y + sy / 2) * qScaleY, w, h);
+    const [x1, y1] = displayToPixel(viewport, (x + sx / 2) * qScaleX, (y - sy / 2) * qScaleY, w, h);
+    return <rect key={`r2-${i}`} x={x0} y={y0} width={Math.max(1, x1 - x0)} height={Math.max(1, y1 - y0)} className="punch-r2" />;
+  };
   const band = bands.flatMap((R) => {
     const e = R > 0 ? qShellEllipseForPlane(plane, R, lattice, ub, cut) : null;
     return e ? [e] : [];
@@ -171,6 +187,7 @@ function PunchOverlay({
             ? shape(at(0, 0, beam), "punch-ib", "beam")
             : shape(at(x, y, ellipseForNode(plane, geom, bragg, lattice, ub, x, y, cut)), "punch-fp", `${x},${y}`),
         )}
+        {swept.map(voxel)}
       </g>
     </svg>
   );
@@ -267,6 +284,7 @@ function PlaneBody({
   vmax,
   scale,
   soft,
+  sweep,
 }: {
   frame: PlaneFrame;
   query: PlaneQuery;
@@ -284,6 +302,7 @@ function PlaneBody({
   vmax: number;
   scale: ScaleKind;
   soft: number;
+  sweep?: TailSweepRecord | null;
 }) {
   const slice: Slice | undefined = query.data;
   if (query.isError) return <div className="panel-err">{(query.error as Error)?.message ?? "Slice unavailable"}</div>;
@@ -316,7 +335,7 @@ function PlaneBody({
         latCut={frame.latCut}
       />
       {gridlines && <HklGrid viewport={viewport} geom={geom} lut={lut} />}
-      <PunchOverlay plane={frame.spec.id} geom={punch} meta={meta} viewport={viewport} bands={bands} cut={cut} />
+      <PunchOverlay plane={frame.spec.id} geom={punch} meta={meta} viewport={viewport} bands={bands} cut={cut} sweep={sweep} />
       {query.isFetching && <span className="spin vf-spin" />}
     </ViewFrame>
   );
@@ -357,6 +376,8 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
   const wide = useSideBySide(cardRef) && Boolean(inputId);
 
   const frames = useMemo(() => PUNCH_PLANES.map((spec) => planeFrame(meta, spec)), [meta]);
+  // The last run's tail sweep (its punch record), drawn over the planes.
+  const sweep = useBraggProfile(datasetId ?? undefined).data?.tail_sweep;
   const tabFrame = frames.find((f) => f.spec.id === tab) ?? frames[0];
   const shown = (plane: PunchPlane) => wide || plane === tabFrame.spec.id;
   const cutOf = (spec: PlaneSpec) => {
@@ -456,6 +477,7 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
         vmax={lv.levels.hi}
         scale={scale}
         soft={lv.soft}
+        sweep={sweep}
       />
     );
   };
@@ -481,6 +503,12 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
           <span>
             <span className="sw qband" />
             |Q| band
+          </span>
+        )}
+        {(sweep?.n_voxels ?? 0) > 0 && (
+          <span title="Voxels the last run's tail sweep (round 2 of the punch) added beside the Bragg holes, along ω × q̂">
+            <span className="sw r2" />
+            tail sweep
           </span>
         )}
       </div>
