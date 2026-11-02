@@ -73,7 +73,14 @@ glossary, tersely, comes with `measure_reciprocal_cut`'s and
   when it came with no round of tool calls to spare: it is then the reply's
   last request, which offers no tools, and the model is asked to leave out, or
   call unmeasured, what no tool supports. What still fails is noted under the
-  reply (`answerChecks.ts`, `evidence.ts`).
+  reply (`answerChecks.ts`, `evidence.ts`). When the revision writes nothing in
+  the answer's place (cut off at the output limit, or calls where none were
+  left), the answer it revised stands, its words unchanged: each line that holds
+  a claim the checks found unsupported is marked ⚠, and the note quotes those
+  claims ("The lines marked ⚠ hold what no tool result in this reply supports:
+  “Feature 1: …”"). The features check reads LaTeX too: `\Delta\text{PDF}`,
+  a distance or a vector in `\text{Å}` or `\AA`, and a vector in Å written with
+  a sign or a size in σ, as under a heading that names the correlations.
 - **Numbers by reference.** The model writes a tool's number as
   `{{tool.field}}`, the field's path in that tool's result
   (`{{ub_check.orientation_change_deg}}`, `{{assess_stage.flatten.floor_trend}}`;
@@ -121,6 +128,18 @@ glossary, tersely, comes with `measure_reciprocal_cut`'s and
   with "edge"), and never in a tuning run. The magnetic ion, the |Q| band and
   the symmetry average's settings (the Laue class above all) the model
   cannot change at all.
+- **Rings are changed on the 3D verdict, not on a cut.** A change to the
+  ring removal's settings, or a tuning of it, waits for `assess_stage`'s ring
+  verdict, judged in 3D on the outputs as they now are, to find a ring left
+  or dented. A bump on one cut (`measure_reciprocal_cut`'s `ring_residuals`,
+  significant or not) is no such verdict: the crystal's own scattering makes
+  them too, and a ring model sent after them takes the crystal's diffuse shell
+  with it. `update_settings` refuses the change, in words that name no tool,
+  stage or skill, and makes the rest of the call; `tune_pipeline` leaves the
+  rings out and tunes the rest. Your latest message lifts the gate when it
+  names the change: a ring setting by name, "ring model" (or sectors, window,
+  subtraction), a ring model's name, or a tuning of the rings
+  (`tools/shared/ringGate.ts`).
 - **The questions only you can answer are asked, never answered for you.**
   When a run's sharp peaks off the lattice bunch at one commensurate
   fraction, as the satellites of a modulation nobody declared would, the
