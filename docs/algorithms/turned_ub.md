@@ -1,7 +1,8 @@
 # A UB Turned in the Reduction (THY-60)
 
-The punch reads a slightly turned UB off its own peaks, follows it in round 1,
-and sweeps the tails it leaves in round 2, before the one backfill. Modules:
+The punch reads a slightly turned UB off its own peaks and sweeps the tails it
+leaves in round 2, before the one backfill; as an option, round 1 follows the
+turn too. Modules:
 `nebula3d.analysis.misorientation` (the diagnosis, the capsule kernel) and
 `nebula3d.analysis.tail_sweep` (round 2); settings `PunchParams.rotation_aware`
 and `PunchParams.tail_sweep`.
@@ -72,9 +73,11 @@ The remedy is upstream: **refine the UB in the data reduction.** The volume
 may not be reliably fixable downstream, so the console does not offer a
 regrid for this; the diagnosis and the Pilot's skill say so.
 
-## Round 1, rotation-aware (`rotation_aware`, on)
+## Round 1, rotation-aware (`rotation_aware`, an option, off)
 
-With ω active, each integer-pass punch whose predicted shift |ω × q| reaches
+Off by default (the user's decision, 2026-11-01): it punches more diffuse at
+every node, where the sweep takes only the tails it finds (the validation,
+below). With it on and ω active, each integer-pass punch whose predicted shift |ω × q| reaches
 half a voxel is **stretched by |ω × q| along ω × q̂**: its final footprint
 swept ±½(ω × q) about its centre. The swept shape is exact
 (`capsule_inside`: a voxel is inside when min over t ∈ [−1, 1] of
@@ -91,7 +94,9 @@ across s; the integer-H guard and the declared modulation clip it as before.
 - **Order:** with `mode="both"` the off-lattice search reads the residual of
   the stretched integer punches.
 
-Otherwise round 1 is exactly as before (tested bit for bit).
+Otherwise, and by default, round 1 is exactly as before (tested bit for bit:
+the default punch is main's punch plus round 2's recorded voxels, and nothing
+else).
 
 ## Round 2, the tail sweep (`tail_sweep`: off | auto | on, auto)
 
@@ -152,16 +157,21 @@ and the sweep.
 
 ## In the console
 
-- Configure → Bragg punch → Advanced: *Tail sweep* (Auto, Off, On) and
-  *Follow a turned UB*; after a run with a significant turn, one line of what
-  the last punch read, the evidence behind "?".
-- Bragg profile: a *UB turn* stat (one line per status, details behind "?"),
-  and the swept voxels in magenta on the selected peak's three slices.
+- Configure → Bragg punch → Advanced: *Tail sweep* (Auto, the default; Off;
+  On) and *Follow a turned UB* (off by default); after a run with a
+  significant turn, one line of what the last punch read, the evidence behind
+  "?".
+- Bragg profile: a *UB turn* line under the stats (one line per status,
+  details behind "?"), and the swept voxels in magenta on the selected peak's
+  three slices.
 - Configure's preview: the last run's swept voxels in the punch overlay.
-- NEBULA Pilot: the punch's `assess_stage` carries `ub_turn` (numbers only,
-  and only for a significant turn); bragg-node-audit's section "A UB turned in
-  the reduction" says how to read it, what to recommend and how to verify.
-  The settings stay the user's.
+- NEBULA Pilot: the punch's `assess_stage` carries `ub_turn` only for a
+  significant turn, in R1's form: a computed verdict with its rule ("acted on:
+  0.501° ± 0.0024°, R² 1, p 5.65e-260 (acts at p < 0.001, R² ≥ 0.5, shift ≥
+  0.5 voxel)"), then the numbers and the sweep's before → after, about 275
+  characters. bragg-node-audit says how to read it (a gate, a pointer in step
+  3, and the part "A UB turned in the reduction" of its details), what to
+  recommend and how to verify. The settings stay the user's.
 
 ## Validation (synthetic)
 
@@ -174,27 +184,34 @@ common rotation), a broad maximum and a diffuse rod beside two nodes along
 their tails' way, and a thermal-diffuse-like halo at every node. Numbers from
 `tests/test_misorientation_punch.py` on one platform:
 
-| Crystal | Fit | Bragg tails left (≥ 5σ of Bragg) off → round 2 → both | Punched voxels off → both |
+"Default" is the sweep on auto with round 1 as before; "+ round 1" adds the
+rotation-aware punch.
+
+| Crystal | Fit | Bragg tails left (≥ 5σ of Bragg): off → default → + round 1 | Punched voxels: off → default → + round 1 |
 | --- | --- | --- | --- |
-| aligned | 0.001° ± 0.006°, not significant | 0 → 0 → 0 | 26,162 → 26,162 (identical) |
-| random offsets | R² 0.015, not significant | 20 → 20 → 20 | 26,782 → 26,782 (identical) |
-| 0.1° | 0.102° ± 0.002° (axis 3° off, σ 2.9°) | 0 → 0 → 0 | 26,503 → 26,548 |
-| 0.3° | 0.302° ± 0.002° (axis 1.5° off, σ 1.1°) | 55 → 2 → 0 | 27,660 → 32,325 |
-| 0.5° | 0.501° ± 0.002° (axis 0.3° off, σ 0.7°) | 756 → 9 → 5 | 35,298 → 36,093 |
+| aligned | 0.001° ± 0.006°, not significant | 0 → 0 → 0 | 26,162 → 26,162 → 26,162 (identical) |
+| random offsets | R² 0.015, not significant | 20 → 20 → 20 | 26,782 → 26,782 → 26,782 (identical) |
+| 0.1° | 0.102° ± 0.002° (axis 3° off, σ 2.9°) | 0 → 0 → 0 | 26,503 → 26,503 → 26,548 |
+| 0.3° | 0.302° ± 0.002° (axis 1.5° off, σ 1.1°) | 55 → 2 → 0 | 27,660 → 27,814 → 32,325 |
+| 0.5° | 0.501° ± 0.002° (axis 0.3° off, σ 0.7°) | 756 → 9 → 5 | 35,298 → 36,519 → 36,093 |
+| 0.5°, a broad maximum and a rod beside two nodes | 0.501° ± 0.002° | 736 → 42 → 63 | 35,477 → 36,611 → 35,980 |
 
 - The fit recovers angle and axis within 3σ in each case; random offsets and
   a cell error along Q are not a turn.
-- The sweep's own record, from the data alone (0.5°, round 2 only): voxels at
-  the gate beside the holes 788 → 0; bright fills at the swept nodes 0.14 % →
-  0; over the volume, after the backfill, 0.03 % → 0.
+- By default (0.5°): the sweep adds 1,221 voxels at 58 nodes; its own record,
+  from the data alone, takes the voxels at the gate beside the holes from 788
+  to 0 and the bright fills at the swept nodes from 0.14 % to 0; over the
+  volume, after the backfill, bright fills fall from 0.03 % to 0. At 0.3° it
+  adds 154 voxels (0.6 % more punched).
 - With the broad maximum and the rod beside two nodes, round 2 takes none of
-  their voxels and leaves both nodes alone.
-- Round 1's stretch has a cost: at 0.3° it punches 17 % more voxels than the
-  punch without it, mostly diffuse, where round 2 alone gets the tails down
-  from 55 to 2 for 0.6 % more. On the validation's dev case `dev-ub` (a pure
-  0.6° turn about [1 1 0], no smear) the punch reads 0.581° ± 0.010° about
-  [0.97 1 −0.03], round 1 punches 6 % more voxels, and the sweep, finding the
-  node-centred thermal diffuse there extended, adds none.
+  their voxels and leaves both nodes alone (their tails stay: 42 voxels).
+- Round 1's stretch, the option, has a cost: at 0.3° it punches 17 % more
+  voxels than the default, mostly diffuse, for tails 2 → 0. On the
+  validation's dev case `dev-ub` (a pure 0.6° turn about [1 1 0], no smear)
+  the punch reads 0.581° ± 0.010° about [0.97 1 −0.03]; by default the sweep,
+  finding the node-centred thermal diffuse there extended or broad, adds
+  nothing and the punch is unchanged (29,820 voxels); round 1 on would punch
+  6 % more.
 
 ## Limits
 
