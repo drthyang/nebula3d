@@ -47,20 +47,14 @@ export const tune_pipeline: ChatTool = {
     },
   },
   description:
-    "Search for the best settings, one stage at a time: for each stage it runs the current settings, has you " +
-    "propose alternatives, runs each, judges which best meets the stage's goal, keeps it and moves on, so later " +
-    "stages build on the best earlier ones. Trials run in a tuning folder: the dataset's own outputs are not " +
-    "changed, and the chosen settings end up on the Configure page. The user watches the trials in the chat, under " +
-    "this reply, and each run on the Execution page. Takes minutes (one run per trial). Returns every trial's changes " +
-    "and numbers (a trial that matched the current settings' numbers exactly is marked no_effect), and each stage's " +
-    "chosen trial and why: quote these, never numbers the result does not hold.",
+    "Search for the best settings, one stage at a time: the current settings run, you propose alternatives, each runs and is judged against the stage's goal, the best is kept, and later stages build on it. Trials run in a tuning folder: the dataset's outputs stay, and the chosen settings land on the Configure page. Minutes (one run per trial). Returns each trial's changes and numbers (no_effect: the current settings' numbers exactly) and each stage's choice and why: quote these, nothing else.",
   parameters: {
     type: "object",
     properties: {
       stages: {
         type: "array",
         items: { type: "string", enum: TUNE_STAGES },
-        description: "Stages to tune (default all); the stages between them are re-run once with their settings",
+        description: "Stages to tune (default all); stages between are re-run once as set",
       },
       trials_per_stage: {
         type: "integer",

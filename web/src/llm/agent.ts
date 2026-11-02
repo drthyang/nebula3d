@@ -112,8 +112,10 @@ export const forgetToolsUnsupported = (): void => noTools.clear();
 export const TOOLS_UNSUPPORTED_NOTE =
   "This model cannot call tools, so it answered from the fixed-cut metrics only. Pick a tool-capable model (Ollama and LM Studio mark them) to let it measure other cuts.";
 
+// The sizes it quotes are the worst turn's, measured (tokenBudget.test.ts;
+// scripts/measure_pilot_context.sh prints them): restate them when they move.
 export const CUT_OFF_NOTE =
-  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (56k or more: with Tools on, the first request alone is about 10k tokens, and a full assessment that reads two skills reaches about 48k), or turn Tools off; Clear starts a shorter conversation.";
+  "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (56k or more: with Tools on, the first request alone is about 7k tokens, and a full assessment that reads two skills about 26k with room for the reply, before earlier turns add theirs), or turn Tools off; Clear starts a shorter conversation.";
 
 // A reply its server could not parse ran none of its tools, so the same request
 // is sent again, at most this many times in one reply.
@@ -134,7 +136,12 @@ const ANSWER_NOW = "The tool calls are bringing nothing new. Answer now from the
 // A final answer that fails its checks (answerChecks.ts: a verdict without its
 // tool, a number from nowhere, a stage called clean that the tools judged to
 // need attention) goes back to the model this many times; what still fails is
-// noted under the reply.
+// noted under the reply. An answer that arrives with no round of calls to
+// spare goes back all the same, as the reply's last request, which offers no
+// tools: the send-back then asks for the claim to be left out, or said to be
+// unmeasured, instead of a call (issuesPrompt's `final`). Before THY-63 R3 it
+// was only noted, and a model that used every round but one kept a verdict,
+// or a list of results, no tool had returned.
 export const ANSWER_REVISIONS = 1;
 export const REVISING_NOTE = "Checking the answer against its evidence…";
 
@@ -227,6 +234,7 @@ export async function runAgent({
   const arrived = convo.length;
   let revisions = 0;
   let rejected = ""; // the last answer sent back, kept if the revision writes nothing
+  let rejectedIssues: ReturnType<typeof answerIssues> = null; // what it failed, noted if it is kept
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";
@@ -260,7 +268,7 @@ export async function runAgent({
       forgotten.push(r.key);
       shortened.add(r.id);
     }
-    if (history && forgotten.length) history = forget(history, forgotten);
+    if (history && forgotten.length) history = forget(history, forgotten, shortened);
     if (shortened.size) steps = steps.map((s) => (shortened.has(s.id) ? { ...s, shortened: true } : s));
     return shortened.size > 0;
   };
@@ -420,9 +428,20 @@ export async function runAgent({
     const before = content;
     content = joinText(content, roundText);
 
+    // An answer sent back stands, with what it still fails, when its revision
+    // wrote nothing in its place: none at all, only calls where none were left,
+    // or one cut off at the output limit (keepRejected). Returns what the kept
+    // answer fails, for the note ("" when none is kept).
+    const keepRejected = ({ cut = false } = {}): string => {
+      if (!rejected || (roundText.trim() && !cut)) return "";
+      content = joinText(before, rejected);
+      return rejectedIssues ? issuesNote(rejectedIssues) : "";
+    };
+
     // A reply that ran out of room may end mid-call: never run that round's tools.
     if (cutOff) {
-      note = CUT_OFF_NOTE;
+      const failed = keepRejected({ cut: true });
+      note = failed ? `${failed} ${CUT_OFF_NOTE}` : CUT_OFF_NOTE;
       break;
     }
     if (!calls.length || !useTools) {
@@ -432,16 +451,20 @@ export async function runAgent({
       const earlier = earlierSources(ctx?.earlierSteps ?? [], steps);
       const sources = numberSources(convo, arrived, steps.map(whole), tools, earlier.standing);
       const issues = useTools && checkAnswers ? answerIssues(answer, steps, sources, earlier.stale, ctx?.marksEarlier) : null;
-      if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round + 1 < maxRounds && !signal.aborted) {
+      if (issues && roundText.trim() && revisions < ANSWER_REVISIONS && round < maxRounds && !signal.aborted) {
         revisions += 1;
         rejected = roundText;
+        rejectedIssues = issues;
         content = before;
         convo.push({ role: "assistant", content: roundText });
         // The tools the fix asks for are offered. With the skills off the
         // send-back names none of them (issuesPrompt reads the switch), and
         // the guardrail still keeps them within reach.
         for (const t of [...issues.missing, ...issues.stale]) tools.forEach((tool) => t.evidence.includes(tool.name) && offer(tool.name));
-        convo.push({ role: "user", content: issuesPrompt(issues, { skills: skillsOn(ctx) }) });
+        // The revision is the last request when no round of calls is left (or
+        // the model was asked to answer now): it can only rewrite.
+        const final = round + 1 >= maxRounds || answerNow;
+        convo.push({ role: "user", content: issuesPrompt(issues, { skills: skillsOn(ctx), final }) });
         emit(`_${REVISING_NOTE}_`);
         continue;
       }
@@ -450,10 +473,16 @@ export async function runAgent({
       break;
     }
     if (last) {
-      note = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
+      const failed = keepRejected();
+      const stopped = `Stopped after ${maxRounds} rounds of tool calls; the answer uses what was gathered so far.`;
+      note = failed ? `${failed} ${stopped}` : stopped;
       break;
     }
-    if (answerNow) break; // asked to answer, it called again: what it has stands
+    if (answerNow) {
+      const failed = keepRejected();
+      if (failed) note = note ? `${note} ${failed}` : failed;
+      break; // asked to answer, it called again: what it has stands
+    }
 
     // The executor runs the round's calls (tools/round.ts). The transcript
     // shows each step as it changes; the console follows what the model

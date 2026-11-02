@@ -12,15 +12,25 @@ description: >-
 
 # Bragg-node audit
 
-**Status:** Draft: awaiting the user's interview (questions in
-`docs/SKILL_INTERVIEWS.md`). Ported from the scattering-agent-tools plugin
-skill of the same name, from its NeXus Viewer and NEXPLAN tools to the
-console's own.
-
 The punch removes what sits at the Bragg nodes, so the 3D-ΔPDF sees only the
 diffuse scattering. An audit checks the nodes the cell allows, the nodes it
 forbids and the peaks off every node, and keeps the broad diffuse maxima out of
 all three.
+
+## Gates
+
+- A real leftover at an allowed node is sharp and stands above its own
+  neighbourhood: widen or deepen the punch only for those.
+- A forbidden node's signal is intensity clearly above the local background;
+  name its cause only with the evidence for it.
+- `grain_check`: a rotation under 2° is the UB, not a grain: check it with
+  `ub_check` (reduction-qc). The leftover counts are only what the punch missed
+  on one cut, never what its search found.
+- A maximum several Bragg widths broad along any axis is diffuse scattering,
+  the signal: never a missed peak.
+- `texture_check`: no fills sitting systematically outside the range their
+  rims allow, a bias counting only at a fifth of the local diffuse level or
+  more; on the cuts, an azimuthal ratio near 1.
 
 ## Steps
 
@@ -29,60 +39,77 @@ all three.
    Bragg nodes every n along H, K and L, for a volume indexed on a supercell)
    and the sample's modulation (`modulation`: its satellites, or the planes
    through them, which the punch's search leaves alone). These are facts about
-   the sample, set only when the user asks. None is declared by default: the
-   search then leaves no position alone, and when the sharp peaks it found off
-   the lattice bunch at one commensurate fraction, the punch's assessment and
-   the run carry a question for the user: whether the sample has that
-   modulation. `describe_dataset` and `configure_settings` do not
-   give the declared symmetry: `grain_check` does (`declared_symmetry`). Which
-   cell is the parent, and whether the supercell's other nodes hold Bragg peaks
-   or diffuse scattering (to confirm with the user).
+   the sample, set only when the user asks. Neither tool gives the declared
+   symmetry: `grain_check` does (`declared_symmetry`).
 2. **The punch on three planes.** `assess_stage` for the punch: the peaks left
    at nodes, the sharp peaks off the lattice, the broad maxima kept, and how
    much was punched to get there. It reads the planes through the origin:
    check an off-zero cut too, with `measure_reciprocal_cut`.
 3. **Leftovers at allowed nodes.** Look at each (`show_in_viewer`,
-   `line_profile`). A real leftover is sharp and stands above its own
-   neighbourhood; widen or deepen the punch only for those.
-4. **Forbidden nodes.** Intensity clearly above the local background at a node
-   the space group forbids has several causes. Say which evidence points where,
-   and do not pick one without it:
+   `line_profile`).
+4. **Forbidden nodes.** Say which evidence points where, and do not pick a
+   cause without it:
    - λ/2 contamination: is the 2h 2k 2l reflection strong?
    - multiple scattering: sharp, and often only some members of an orbit;
    - a lower true symmetry, or a superlattice.
-
-   What counts as clearly above the background (to confirm with the user).
 5. **Peaks off the lattice.** `grain_check`: the off-lattice peaks the punch's
    search found, grouped into symmetry orbits, tested against the nodes (a
    Bragg peak displaced by a UB that is slightly off) and as a rotated copy of
    the lattice (a second grain), judged against the same search at random
-   directions; the test against the nodes has no such control. A rotation
-   under 2° is the UB, not a grain: check it with `ub_check` (reduction-qc).
-   The leftover counts are only what the punch missed on one cut, never what
-   its search found.
-6. **Broad maxima stay.** A maximum several Bragg widths broad along any axis
-   is diffuse scattering, the signal. Never report it as a missed peak. The
-   search's width limit (`punchSearchMaxWidth`) leaves such maxima unpunched,
-   but it is off by default: then the search punches every candidate, broad
-   or sharp.
-7. **The backfill.** `texture_check`: over every punch hole of the volume, no
-   fills sitting systematically outside the range their rims allow; on the
-   cuts, an azimuthal ratio near 1. The diffuse often peaks at the nodes
-   (thermal diffuse scattering), so a sound fill sits above its rim's median;
-   the range runs from the diffuse at the hole's edge to its rise continued to
-   the node, and a bias counts only when it is also a fifth of the local
-   diffuse level or more. A lattice-periodic fill pattern is texture that the
-   3D-ΔPDF will show.
-8. **Report** (below).
+   directions; the test against the nodes has no such control.
+6. **Broad maxima stay.** The search's width limit (`punchSearchMaxWidth`)
+   leaves such maxima unpunched, but it is off by default: then the search
+   punches every candidate, broad or sharp.
+7. **The backfill.** `texture_check`, over every punch hole of the volume and
+   on the cuts. A lattice-periodic fill pattern is texture that the 3D-ΔPDF
+   will show.
+8. **Report** the audit in the order above. For each signal, the evidence and
+   its likely cause, or that it was not tested; what to change and why; and
+   what only the user can decide (the cell, the satellites, the sample's
+   modulation). Mark a signal the user should look at (satellites, a leftover
+   peak, intensity at a forbidden node) with `mark_region` on the stage that
+   shows it, its positions as points, resting on the call that measured it;
+   name the mark by its id beside the signal.
 
-## Firm rules (enforced in code)
+## Details
+
+**Status:** Draft: awaiting the user's interview (questions in
+`docs/SKILL_INTERVIEWS.md`). Ported from the scattering-agent-tools plugin
+skill of the same name, from its NeXus Viewer and NEXPLAN tools to the
+console's own.
+
+### Settle the nodes
+
+- No modulation is declared by default: the search then leaves no position
+  alone, and when the sharp peaks it found off the lattice bunch at one
+  commensurate fraction, the punch's assessment and the run carry a question
+  for the user: whether the sample has that modulation.
+- Which cell is the parent, and whether the supercell's other nodes hold Bragg
+  peaks or diffuse scattering (to confirm with the user).
+
+### Forbidden nodes
+
+What counts as clearly above the background (to confirm with the user).
+
+### Peaks off the lattice
+
+Symmetrising data whose UB is slightly off makes the displaced copies the test
+against the nodes finds.
+
+### The backfill
+
+The diffuse often peaks at the nodes (thermal diffuse scattering), so a sound
+fill sits above its rim's median; the range a fill is judged against runs from
+the diffuse at the hole's edge to its rise continued to the node.
+
+### Firm rules (enforced in code)
 
 - Changing a punch or backfill setting, or tuning those stages, is refused
   until this skill has been read in the conversation.
 - The sample's modulation and the punch cell are facts about the sample:
   they change only when the user asks, never to improve a number.
 
-## Acceptance checklist
+### Acceptance checklist
 
 - [ ] the cell and nodes used, and who set them;
 - [ ] the leftovers at allowed nodes, on three planes and an off-zero cut;
@@ -94,7 +121,7 @@ all three.
 - [ ] the backfill's texture verdict;
 - [ ] every number with what produced it (settings, planes).
 
-## Failure modes
+### Failure modes
 
 - Reading the leftover count as "no off-lattice peaks", or as everything the
   search found.
@@ -104,16 +131,6 @@ all three.
 - Changing the sample's modulation or the punch cell to make a number look
   better.
 - Judging from the opening cut at L = 0 alone.
-
-## What to report
-
-The audit in the order above. For each signal, the evidence and its likely
-cause, or that it was not tested; what to change and why; and what only the
-user can decide (the cell, the satellites, the sample's modulation). Mark a
-signal the user should look at (satellites, a leftover peak, intensity at a
-forbidden node) with `mark_region` on the stage that shows it, its positions
-as points, resting on the call that measured it; name the mark by its id
-beside the signal.
 
 ## References
 

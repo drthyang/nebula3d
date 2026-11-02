@@ -83,7 +83,7 @@ export interface HttpError extends Error {
 const CONTEXT_OVERFLOW = /context (length|window|size)|n_ctx|maximum context|too many tokens|exceeds? the (model's )?context|prompt is too long|tokens to keep/i;
 export const withContextHint = (message: string): string =>
   CONTEXT_OVERFLOW.test(message)
-    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings to 56k (57344) and reload it; start Ollama with OLLAMA_CONTEXT_LENGTH=57344. With Tools on, the first request alone is about 8k tokens, and a full assessment that reads two skills reaches about 48k; Tools off, or Clear, also helps.`
+    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings to 56k (57344) and reload it; start Ollama with OLLAMA_CONTEXT_LENGTH=57344. ${TOOLS_NEED}; Tools off, or Clear, also helps.`
     : message;
 
 // A local model that writes a reply its own server cannot parse — most often a
@@ -182,6 +182,13 @@ export const loadedContext = async (
 };
 
 // The context window the console suggests loading a local model with when
+// What Tools need, as the hints and the warning say it: the worst turn's
+// sizes in the context guard's estimate (tokenBudget.test.ts, which holds
+// them; scripts/measure_pilot_context.sh prints them). Restate it when they
+// move.
+export const TOOLS_NEED =
+  "With Tools on, the first request alone is about 7k tokens, and a full assessment that reads two skills about 26k with room for the reply, before earlier turns add theirs";
+
 // Tools are on: 56k. It holds a full assessment that reads two skills, with
 // room for the reply and the 3k of headroom a model-visible addition must
 // leave (measured through the agent loop and checked by
@@ -205,17 +212,15 @@ export const contextWarning = (context: ModelContext | null, model: string): str
   const fix =
     `In LM Studio, set this model's default Context Length to ${n(target)}${context.max != null ? ` (it supports up to ${n(context.max)})` : ""}: ` +
     "it loads an idle model again with its defaults.";
-  const need =
-    "With Tools on, the first request alone is about 8k tokens and a full assessment that reads two skills reaches about 48k";
   if (context.loaded == null) {
-    return `${model} is not loaded: LM Studio will load it with its default Context Length on the next request. ${need}. ${fix}`;
+    return `${model} is not loaded: LM Studio will load it with its default Context Length on the next request. ${TOOLS_NEED}. ${fix}`;
   }
   return (
-    `${model} is loaded with a ${n(context.loaded)}-token context. ${need}, so ` +
+    `${model} is loaded with a ${n(context.loaded)}-token context. ${TOOLS_NEED}, so ` +
     `${
       context.loaded < 12000
         ? "replies will be cut off"
-        : "on a long assessment the skills it read are shortened to stubs, or a request is not sent"
+        : "in a long conversation older results are shortened, or a request is not sent"
     }. ${fix}`
   );
 };

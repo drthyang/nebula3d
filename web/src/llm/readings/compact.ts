@@ -1,7 +1,8 @@
 // A tool result shortened to save room in a long reply: its verdict, headline
 // and the numbers its measures stand on stay; per-plane lists and long texts
-// go. A text that is no JSON (a skill, an error) keeps its head; a skill that
-// gives its gates a `## Gates` section keeps that section too (below).
+// go. A skill's core keeps its head, its `## Gates` and its `## Steps`; one
+// section read on request, or a reference page, becomes one line naming it;
+// another text that is no JSON (an error) keeps its head (below).
 // Implementation behind readings/index.ts (`shorten`): it shortens the model's
 // copy of a result, in the conversation, and never the step's readings. The
 // model can call the tool again for the whole result, and the answer checks
@@ -12,44 +13,42 @@ export const COMPACTED = "shortened to save room; call the tool again for the wh
 // A text that is no JSON keeps its first TEXT_HEAD characters.
 export const TEXT_HEAD = 400;
 
-// A skill's gates: the thresholds and rules the model works by, which a head
-// of TEXT_HEAD characters cuts away. A skill opts in by writing them under a
-// `## Gates` heading. Its text as read_skill returns it ("Skill <name>", then
-// the body: skills.ts, readSkill) is then shortened to its head, as any text
-// is, and the section whole, which runs to the next heading of level 1 or 2,
-// a `---` line (readSkill's list of references follows one) or the end. A
-// skill without the section is shortened as before, byte for byte.
+// A skill's core (THY-63 R4 and R5, docs/pilot-context-design.md C5 and C7):
+// read_skill returns "Skill <name>", a blank line, the head (title and what
+// the skill is for), `## Gates` (the thresholds and the rules), `## Steps`,
+// then, after a `---` line, the parts left for a read on request (Details,
+// references). Shortened, it keeps the head and everything from `## Gates` to
+// the end of `## Steps` (the next heading of level 1 or 2 after them, a `---`
+// line or the end): the method the model works by, which a head of TEXT_HEAD
+// characters alone cut away until R5. What goes is the list of what is left
+// for later. A skill's text without `## Gates` is shortened to its head, as
+// any text.
 //
-// GATES_MAX bounds the section kept: past it, the section is cut at a line
-// boundary and a marker says how many lines were left out. 1,000 characters
-// hold 8 to 10 gates of a line each (a quantity, its limit and what follows,
-// about 100 characters), nearly twice the most a skill states today
-// (reduction-qc states 5: skillLint.test.ts, GATES). They cost about 710
-// tokens at the estimator's data rate (provider/tokens.ts: 1.4 characters a
-// token). A gated skill's stub stays under SKILL_STUB_MAX characters (1,600),
-// well under half of any skill read today. On the worst turn
-// (tokenBudget.test.ts holds both): a 32k window keeps MIN_REPLY with one
-// skill gated at the cap, about 1.1k tokens to spare; the live runs' 56k keep
-// their 3,072-token headroom with both skills read whole and gated at the
-// cap, about 7.5k to spare. Two gated skills at the cap need more than 32k,
-// by the manager's decision on the user's delegation of 2026-10-24 (review
-// finding P5.3b), which the user may reverse.
+// SKILL_CORE_MAX bounds what is kept: the head and the gates and steps
+// together, as skillLint.test.ts holds each skill's core (head, gates, steps)
+// within it, REFERENCE_MAX_CHARS (skills.ts: no read is longer). A text past it
+// keeps its gates and steps to the cap, cut at a line boundary, and a marker
+// says how many lines were left out. A shortened skill is at most
+// SKILL_STUB_MAX characters: the cap, its name's line, the marker and the note.
 //
-// The cap was 1,200 until 2026-10-24, when the worst turn's growth (4.2's
-// texture_check over every hole) left the 32k guard, then held for two gated
-// skills, 24 tokens short; the manager lowered it on the user's delegation.
-// It binds the user's own `## Gates` text (plan 5.3): each skill's section has
-// at most 1,000 characters.
+// GATES_MAX is the cap the user's `## Gates` text is written to (plan 5.3;
+// skillLint.test.ts): 1,000 characters, 8 to 10 gates of a line each. It was
+// 1,200 until 2026-10-24, lowered on the user's delegation (review finding
+// P5.3b) when the skills were read whole and kept only their gates.
 export const GATES_MAX = 1_000;
-const GATES_MARKER = (lines: number): string =>
-  `[${lines} more line${lines === 1 ? "" : "s"} of the gates left out to save room: read the skill again for them]`;
-/** The longest a shortened skill with gates can be: the head, the section at its cap, the marker and the note. */
-export const SKILL_STUB_MAX = TEXT_HEAD + GATES_MAX + 200;
+export const SKILL_CORE_MAX = 4_000;
+export const SKILL_STUB_MAX = SKILL_CORE_MAX + 300;
+const CORE_MARKER = (lines: number): string =>
+  `[${lines} more line${lines === 1 ? "" : "s"} of the gates and steps left out to save room: read the skill again for them]`;
 
-// read_skill's text of a skill (skills.ts, readSkill): "Skill <name>", a blank line, the body.
+// read_skill's text of a skill's core (skills.ts, readSkill): "Skill <name>", a blank line, the body.
 const SKILL_TEXT = /^Skill [\w.-]+\n\n/;
 const GATES_START = /^## Gates[ \t]*$/m;
 const SECTION_END = /^(?:#{1,2} |---[ \t]*$)/m;
+// Where the kept part ends: a heading of level 1, one of level 2 other than the gates and the steps, or a `---` line.
+const CORE_END = /^(?:# |## (?!(?:Gates|Steps)[ \t]*$)|---[ \t]*$)/m;
+// read_skill's text of one section of a skill, or of a reference page (whole, its index, or one section): its first line names it.
+const SECTION_READ = /^(Skill [\w.-]+, section "[^"\n]*"|Reference "[^"\n]+" of skill [\w.-]+ \([^)\n]*\)(?:, section "[^"\n]*")?)\n/;
 
 /** Where a skill's `## Gates` section is in read_skill's text of it, or null: no skill's text, or no section. */
 export function gatesOf(text: string): { start: number; end: number } | null {
@@ -61,29 +60,45 @@ export function gatesOf(text: string): { start: number; end: number } | null {
   return { start: heading.index, end: next ? bodyAt + next.index : text.length };
 }
 
-/** A section cut to `max` characters at a line boundary, with the marker; whole when it fits. */
-function capSection(section: string, max: number): string {
-  if (section.length <= max) return section;
-  const lines = section.split("\n");
+/** Where a skill's kept part (its `## Gates` to the end of its `## Steps`) is in read_skill's text of it, or null: no skill's core with gates. */
+export function coreOf(text: string): { start: number; end: number } | null {
+  const gates = gatesOf(text);
+  if (!gates) return null;
+  const next = CORE_END.exec(text.slice(gates.end));
+  return { start: gates.start, end: next ? gates.end + next.index : text.length };
+}
+
+/** A part cut to `max` characters at a line boundary, with the marker; whole when it fits. */
+function capPart(part: string, max: number): string {
+  if (part.length <= max) return part;
+  const lines = part.split("\n");
   let kept = lines[0]; // the heading
   let i = 1;
   for (; i < lines.length && kept.length + 1 + lines[i].length <= max; i++) kept += `\n${lines[i]}`;
   const left = lines.slice(i).filter((l) => l.trim()).length;
-  return `${kept.trimEnd()}\n${GATES_MARKER(left)}`;
+  return `${kept.trimEnd()}\n${CORE_MARKER(left)}`;
 }
 
 /**
- * A skill's text shortened to its head and its `## Gates` section; the text
- * whole where that saves nothing (a short skill keeps its gates whole too);
- * null when it is no skill's text with the section.
+ * A skill's text shortened to its head and its gates and steps; the text
+ * whole where that saves nothing; null when it is no skill's core with gates.
  */
-function skillWithGates(text: string): string | null {
-  const at = gatesOf(text);
+function skillCore(text: string): string | null {
+  const at = coreOf(text);
   if (!at) return null;
   const before = text.slice(0, at.start);
   const head = before.length > TEXT_HEAD ? `${text.slice(0, TEXT_HEAD)}…` : before.trimEnd();
-  const gates = capSection(text.slice(at.start, at.end).trimEnd(), GATES_MAX);
-  const out = `${head}\n\n${gates}\n\n(${COMPACTED})`;
+  const name = SKILL_TEXT.exec(text)![0].length;
+  const kept = capPart(text.slice(at.start, at.end).trimEnd(), Math.max(GATES_MAX, SKILL_CORE_MAX - (head.length - name)));
+  const out = `${head}\n\n${kept}\n\n(${COMPACTED})`;
+  return out.length < text.length ? out : text;
+}
+
+/** One section of a skill, or a reference page, shortened to the line that names it; null when the text is neither. */
+function sectionRead(text: string): string | null {
+  const m = SECTION_READ.exec(text);
+  if (!m) return null;
+  const out = `${m[1]} (${COMPACTED})`;
   return out.length < text.length ? out : text;
 }
 
@@ -120,16 +135,16 @@ function prune(value: Json, key: string, depth: number): Json | undefined {
 
 /**
  * A tool result's text, shortened: a JSON result pruned to its readings and
- * numbers; a skill's text with a `## Gates` section to its head and the
- * section; other text cut to its head.
+ * numbers; a skill's core to its head, gates and steps; a section of a skill
+ * or a reference page to the line that names it; other text cut to its head.
  */
 export function compactResult(text: string): string {
   let parsed: Json;
   try {
     parsed = JSON.parse(text) as Json;
   } catch {
-    const gated = skillWithGates(text);
-    if (gated !== null) return gated;
+    const core = skillCore(text) ?? sectionRead(text);
+    if (core !== null) return core;
     return text.length > TEXT_HEAD ? `${text.slice(0, TEXT_HEAD)}… (${COMPACTED})` : text;
   }
   if (isPlain(parsed)) return text;

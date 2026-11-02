@@ -5,12 +5,62 @@
 // Prose runs about 3.5 characters a token. Number-dense JSON runs far fewer: a
 // tokenizer may give every digit its own token, and RMC's review measured tool
 // results at 1.64 characters a token on gemma4:26b. So tool results, call
-// arguments and fenced JSON (the run's context block) start at 1.4.
+// arguments and fenced JSON (the run's context block) start at 1.4, a
+// result's rows of bare values at 1.2 (TABLE_CHARS_PER_TOKEN), and read_skill's
+// Markdown at 3.0 (MARKDOWN_CHARS_PER_TOKEN).
 
 import type { ChatMessage, ToolSpec } from "./client";
 
 export const PROSE_CHARS_PER_TOKEN = 3.5;
 export const DATA_CHARS_PER_TOKEN = 1.4;
+
+// A tool result's rows of bare values, a column table's (tools/shared/table.ts:
+// "rows": [[...], ...]) or line_profile's points ("points": [[x, y], ...]),
+// run denser than other JSON: no key between the numbers. Local tokenizers
+// read radial_profile's table at 1.21 characters a token and line_profile's
+// points at 1.31 to 1.37 (gemma4:26b, qwen3:32b; docs/pilot-context-design.md
+// §4.6), so their characters count at 1.2, under the densest measured.
+export const TABLE_CHARS_PER_TOKEN = 1.2;
+const ROWS_START = /"(?:rows|points)":\[\[/g;
+
+// read_skill's results are Markdown prose, not JSON (THY-63 R5;
+// docs/pilot-context-design.md C6, §4.6 and §5.7). Local tokenizers read the
+// skills at 3.30 to 4.10 characters a token and the reference pages at 3.48 to
+// 3.60 (gemma4:26b, qwen3:32b), where the data rate counted them 2.5 to 2.8
+// times too long. They count at 3.0, 9 % under the lowest measured, so the
+// estimate stays on the long side for them. What guards a model against a
+// prompt cut short stays as it was: a server's own counts scale the estimate
+// up (observeTokens keeps the largest ratio seen), Ollama's window is sized to
+// the estimate with REPLY_RESERVE on top, and a request that leaves less than
+// MIN_REPLY is refused (window.ts).
+export const MARKDOWN_CHARS_PER_TOKEN = 3.0;
+// A read_skill result, by its first line (skills.ts, readSkill): a skill's core
+// ("Skill <name>" and a blank line), one section of a skill ('Skill <name>,
+// section "…"'), or a reference page ('Reference "…" of skill <name> (…)').
+// Their shortened copies (readings/compact.ts) begin the same way.
+export const MARKDOWN_RESULT = /^(?:Skill [\w.-]+(?:\n\n|, section ")|Reference "[^"\n]+" of skill [\w.-]+ \()/;
+
+/** The characters of a JSON text's rows of bare values (ROWS_START to its closing bracket), strings read as strings. */
+export function tableChars(text: string): number {
+  let total = 0;
+  for (const m of text.matchAll(ROWS_START)) {
+    const start = m.index + m[0].length - 2; // the list's opening bracket
+    let depth = 0;
+    let inString = false;
+    let i = start;
+    for (; i < text.length; i++) {
+      const c = text[i];
+      if (inString) {
+        if (c === "\\") i++;
+        else if (c === '"') inString = false;
+      } else if (c === '"') inString = true;
+      else if (c === "[") depth++;
+      else if (c === "]" && --depth === 0) break;
+    }
+    total += Math.min(i + 1, text.length) - start;
+  }
+  return total;
+}
 
 // An attached image costs the model about a thousand tokens, not the length of
 // its base64 text; each message, a few for its role and the template's markers.
@@ -33,6 +83,8 @@ const splitText = (text: string): { prose: number; data: number } => {
 const messageTokens = (m: ChatMessage): number => {
   let prose = 0;
   let data = 0;
+  let table = 0;
+  let markdown = 0;
   let images = 0;
   for (const part of typeof m.content === "string" ? [m.content] : m.content) {
     if (typeof part !== "string" && part.type === "image_url") {
@@ -40,7 +92,12 @@ const messageTokens = (m: ChatMessage): number => {
       continue;
     }
     const text = typeof part === "string" ? part : part.text;
-    if (m.role === "tool") data += text.length;
+    if (m.role === "tool" && MARKDOWN_RESULT.test(text)) markdown += text.length;
+    else if (m.role === "tool") {
+      const rows = tableChars(text);
+      table += rows;
+      data += text.length - rows;
+    }
     else {
       const s = splitText(text);
       prose += s.prose;
@@ -51,7 +108,14 @@ const messageTokens = (m: ChatMessage): number => {
     prose += c.function.name.length;
     data += c.function.arguments.length;
   }
-  return MESSAGE_TOKENS + images * IMAGE_TOKENS + prose / PROSE_CHARS_PER_TOKEN + data / DATA_CHARS_PER_TOKEN;
+  return (
+    MESSAGE_TOKENS +
+    images * IMAGE_TOKENS +
+    prose / PROSE_CHARS_PER_TOKEN +
+    data / DATA_CHARS_PER_TOKEN +
+    table / TABLE_CHARS_PER_TOKEN +
+    markdown / MARKDOWN_CHARS_PER_TOKEN
+  );
 };
 
 /**

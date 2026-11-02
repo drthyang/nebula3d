@@ -9,6 +9,7 @@ import type { Dataset, DeltaPdfMeta, VolumeMeta } from "../../../api/types";
 import type { FixedAxis } from "../../../state/viewerStore";
 import { dpdfVolumeId, hklVolumeId, loadPipelineContext, safe } from "../../context/loadContext";
 import { roundSig } from "../../metrics/sliceStats";
+import type { AgentStep } from "../../agent";
 import type { ViewTarget } from "../openView";
 import { ToolArgError } from "../types";
 
@@ -105,4 +106,22 @@ export async function measureDpdf(dataset: Dataset, plane: string, value: number
   delete dpdf.consistency_pearson_r;
   delete dpdf.consistency_normalized_rms;
   return { cut: planeLabel(plane, value), delta_pdf: dpdf };
+}
+
+// ---------------------------------------------------------------- what the fields mean
+
+/**
+ * Whether an earlier call of `tool` in this reply returned its `fields` (what
+ * each field means, THY-63 R3): the reply's first result carries them, and
+ * the later ones not, as assess_stage sends a stage's whole criterion once.
+ */
+export function fieldsSent(steps: readonly AgentStep[] | undefined, tool: string): boolean {
+  return (steps ?? []).some((s) => {
+    if (s.name !== tool || s.status !== "done" || !s.result) return false;
+    try {
+      return typeof (JSON.parse(s.result) as { fields?: unknown } | null)?.fields === "string";
+    } catch {
+      return false;
+    }
+  });
 }

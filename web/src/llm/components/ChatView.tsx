@@ -1,8 +1,9 @@
 // The conversation surface: a transcript with collapsible model "thinking", the
 // tool calls the model made (each a one-line step that opens to its result),
 // markdown-rendered answers, a prompt box, and the one-click stage reviews.
-// Every request re-sends the compact diagnostic context; stage reviews
-// optionally attach the rendered slice image when the vision opt-in is on.
+// Every request re-sends the opening context (with tools, the dataset's
+// summary; without, one cut's metrics); stage reviews optionally attach the
+// rendered slice image when the vision opt-in is on.
 // The reply itself is driven by session.ts, so it outlives this component.
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";

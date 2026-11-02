@@ -280,8 +280,8 @@ updates every snapshot in the suite.
 ### The Pilot's token budget
 
 `web/src/llm/__tests__/tokenBudget.test.ts` drives the Pilot's worst
-realistic turn through the agent loop (the validation task, two skills and a
-reference page read whole, every check of the method) and counts each request
+realistic turn through the agent loop (the validation task, two skills' cores
+and a section of a reference page, every check of the method) and counts each request
 with the context guard's estimator. It holds the turn to ceilings, not pins
 (`docs/pilot-context-design.md` §5.8):
 
@@ -297,9 +297,9 @@ with the context guard's estimator. It holds the turn to ceilings, not pins
 A saving passes without an edit; a growth past a ceiling fails, naming the
 component. The 20 % headroom target (the worst local turn after compaction,
 with the reply reserve, within 26,214 tokens) and the stretch goal (the same
-turn within 32,768 without compaction) are tracked with `it.fails`: they pass
-while the target is missed and print the gap, and fail on the change that
-meets it, which turns them into plain tests so the target holds from then on.
+turn within 32,768 without compaction) were tracked with `it.fails` until met,
+and are plain tests now (THY-63 R3 to R5): a change that takes the worst turn
+past either fails, and the test prints the room left.
 
 `scripts/measure_pilot_context.sh` counts the same turn by the same estimator,
 by component and in more detail (every prompt section, tool definition, skill
@@ -321,7 +321,7 @@ above) follows this rule:
    (left out, it is offered for every question); "always" needs a reason in
    its PR. Its description is at most 500 characters: what it answers, when
    to call it, and what it returns, with the method and the meaning of each
-   field in a skill, read on demand.
+   field in a skill, read on demand (`toolContracts.test.ts` holds the cap).
 
 ### The Pilot's tools
 
@@ -366,7 +366,14 @@ To add a tool:
    `<tool_name>` (a `ChatTool`) and nothing else, with its facts (below). A
    description that holds inference is written with `description("<tool_name>")`
    (`shared/describe.ts`) and the spans of `web/src/llm/inference.ts`, so that
-   validation arm C reads it without them. A tool that judges a check imports
+   validation arm C reads it without them. The description is a contract of
+   at most 500 characters (what the tool answers, its inputs, what it returns,
+   when to call it), each parameter's at most 80, and both arms are held to
+   it (`toolContracts.test.ts`); the method goes in a skill or an algorithm
+   page, and a threshold an answer may quote in the tool's result (its verdict
+   or criterion). update_settings alone adds a second paragraph, its catalogue
+   of settings. `docs/pilot-tools.md` keeps the method text the descriptions
+   held before. A tool that judges a check imports
    `judge` and `WORDS` from `verdicts/rules.ts`, never from the verdicts
    barrel: its readers import the registry back.
 2. Import it in `registry.ts` and put it in `CHAT_TOOLS` where the model should
@@ -413,6 +420,29 @@ When a tool's result changes on purpose (a field added, renamed, retyped, or
 left out on a new path), change its contract in the same commit: the
 contract follows the tool. When the result changed by accident, fix the tool.
 
+A result follows the compact formats of `docs/pilot-context-design.md` §5.5:
+
+- **Bulk lists are column tables**, `{"cols": [...], "rows": [[...], ...]}`
+  (`web/src/llm/tools/shared/table.ts`, the contracts' `table` shape):
+  radial_profile's shells, bragg_peaks' peaks, run_log's lines. A reference
+  reads a row by its index and a value by its column's name
+  (`{{radial_profile.shells.3.flattened}}`, `references.ts`), and the context
+  guard counts a table's rows at 1.2 characters a token
+  (`TABLE_CHARS_PER_TOKEN`, `provider/tokens.ts`), as dense as local
+  tokenizers read them. A list an answer cites entry by entry stays a list of
+  objects: `contracts.test.ts` lists each with why, and a new list of objects
+  fails there until it is a table or listed.
+- **A number carries its sign**: dpdf_peaks' `size_sigma` is −1520, not
+  `"sign": "−"` beside 1520, so an answer's signed number traces to it.
+- **A verdict carries its rule**: the outcome with the numbers and the limit
+  it was judged by (ub_check: "the UB is right: turned 0.003°, under the
+  0.05° that counts as turned"). assess_stage sends a stage's whole criterion
+  once in a reply and the terse one (`TERSE_CRITERION`, at most 160
+  characters, its limits only) on its later results there.
+- **A field left out repeats nothing**: dpdf_peaks leaves out
+  `mean_size_sigma` and `multiplicity` where they equal `size_sigma` and
+  `n_vectors`.
+
 ### The limits both languages hold
 
 `web/src/llm/__tests__/sharedLimits.replay.test.ts` pins each limit or
@@ -435,11 +465,12 @@ tools that step names, as each tool returns it on the synthetic crystal
 (`CLAIMS` adds the quantities a step says its tools give, such as "the symmetry
 the file declares"); that every setting it names exists; and that every number
 it writes is either a gate, bound to the constant in the code it must equal
-(`GATES`), or listed as no gate (`NOT_GATES`). `UNSTATED` lists the limits a
-step's tool judges by, which the step should state among its gates. A failure
-names the skill, its step, and what disagrees: a field the tool does not give
-(and where it is instead), a gate whose number differs from its constant, a
-limit the step leaves out. A failure of the tables themselves (a phrase the
+(`GATES`), stated once in the skill's `## Gates`, or listed as no gate
+(`NOT_GATES`). `GATED` lists the limits a tool judges by, which the skill
+states on a gate line naming that tool. It also holds each skill to its form
+(below). A failure names the skill, its step, and what disagrees: a field the
+tool does not give (and where it is instead), a gate whose number differs from
+its constant, a limit the gates leave out. A failure of the tables themselves (a phrase the
 skill no longer holds, a number nobody classified) means the skill's words
 changed: update the table with them. Today's disagreements are on the
 allow-list, `ALLOWED`, each with why. It is the user's skill-review queue
@@ -447,22 +478,34 @@ allow-list, `ALLOWED`, each with why. It is the user's skill-review queue
 that is not on it, and on an entry that no longer fails, so the list shrinks
 as the skills are corrected.
 
-### A skill's gates, through compaction
+### A skill's form, and its gates through compaction
 
-When the agent loop compacts an older `read_skill` result in a long reply, a
-skill's text keeps its name and its first 400 characters
-(`web/src/llm/readings/compact.ts`), which can cut its thresholds away. A
-skill opts in to keeping them by writing its gates under a heading of its
-own, exactly `## Gates`: compaction then keeps that section whole, up to the
-next heading of level 1 or 2, beside the head. The section is capped at
-`GATES_MAX`, 1,000 characters (lowered from 1,200 on 2026-10-24; on the worst
-turn a 32k window holds one gated skill at the cap and the live runs' 56k
-two, review finding P5.3b; it bounds the `## Gates` text the user writes for
-each skill, plan 5.3); past it, it is cut
-at a line boundary and a marker says how many lines were left out. A skill
-without the section is shortened as before, byte for byte.
-`web/src/llm/__tests__/readings.test.ts`
-pins the real skills that have no `## Gates` to the old rule, and has a test
-per skill, skipped until that skill gains the section, that every number in
-it survives compaction; a section past the cap fails it. Which gates a skill
-states, and their words, are the user's.
+Each skill is written in four parts (THY-63 R4, `docs/pilot-context-design.md`
+C5): a head (the title and one paragraph on what the skill is for);
+`## Gates`, its thresholds and the pass/fail rules bound to them, each number
+once; `## Steps`, numbered and short; and `## Details`, the explanations, the
+firm rules, the acceptance checklist and the failure modes. `## References`
+comes last. `read_skill` returns the core (the head, the gates and the steps)
+and names what it leaves for later; `section` reads Details, or one part of it
+by its heading, and a reference page longer than 4,000 characters
+(`REFERENCE_MAX_CHARS`, `web/src/llm/skills.ts`) is read from an index of its
+headings, a section at a time, a long section part by part. Only a core read
+opens a stage's gate.
+
+When the agent loop compacts an older `read_skill` result in a long reply
+(`web/src/llm/readings/compact.ts`, THY-63 R5), a skill's core keeps its name,
+its head and everything from `## Gates` to the end of `## Steps`: the method
+stays in view, and only the list of what is left for later goes. The kept part
+is capped at `SKILL_CORE_MAX`, 4,000 characters (past it, it is cut at a line
+boundary and a marker says how many lines were left out), and a shortened skill
+is at most `SKILL_STUB_MAX` characters. A section read on request (Details, a
+part of it, a reference page or its section) shortens to the one line that
+names it; read it again for the text. A text that is no skill's and no JSON
+(an error) keeps its first 400 characters. `skillLint.test.ts` holds each
+skill to the form: the sections in order, the gates within `GATES_MAX`
+(1,000 characters, the cap the `## Gates` text is written to), the name, title
+and head within compaction's 400 characters (so the head is kept whole), and
+the core within `REFERENCE_MAX_CHARS` and `SKILL_CORE_MAX`.
+`web/src/llm/__tests__/readings.test.ts` checks that each skill shortens to its
+name, its core whole and the note. Which
+gates a skill states, and their words, are the user's.

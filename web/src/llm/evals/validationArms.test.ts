@@ -12,8 +12,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Dataset } from "../../api/types";
 import { runAgent } from "../agent";
 import { toolsFor } from "../localTools";
-import { SYSTEM, TOOLS } from "../prompts/system";
+import { CORE, roundsLine } from "../prompts/system";
 import { systemPrompt } from "../prompts/templates";
+import { MAX_TOOL_ROUNDS } from "../runPolicy";
 import { allSkills, skillsPrompt } from "../skills";
 import { CHAT_TOOLS, type AgentTool } from "../tools";
 import { OfferRecorder, offerChanges, toolNamesIn } from "./offers";
@@ -190,8 +191,8 @@ describe.each([
       const system = (x: Body) => String(x.messages[0].content);
       expect(system(body)).toBe(systemPrompt({ tools: true }));
       expect(system(other)).toBe(systemPrompt({ tools: true, skills: false }));
-      expect(system(body)).toBe(`${SYSTEM.whole}\n${TOOLS.whole}\n${listing}`);
-      expect(system(other)).toBe(`${SYSTEM.definitions}\n${TOOLS.definitions}`);
+      expect(system(body)).toBe(`${CORE.whole}\n${roundsLine(MAX_TOOL_ROUNDS)}\n${listing}`);
+      expect(system(other)).toBe(`${CORE.definitions}\n${roundsLine(MAX_TOOL_ROUNDS)}`);
       for (const s of allSkills()) expect(system(other)).not.toContain(s.name);
       expect(other.tools).toEqual(withoutSkills(body.tools));
       // The rest of each request: the model, the settings and every other message are the same.

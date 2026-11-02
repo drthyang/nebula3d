@@ -13,6 +13,7 @@
 
 import type { AgentStep } from "../agent";
 import { seen } from "../readings";
+import { readsCore } from "../skills";
 import { crossChecked, type GradedSpan } from "./graderReading";
 import type { Check, EvalRun } from "./harness";
 
@@ -47,7 +48,7 @@ export function ran(name: string, args?: (a: Record<string, unknown>) => boolean
 }
 
 /**
- * The skill was read (read_skill, no reference, without an error) before
+ * The skill's core was read (read_skill, no reference or section, without an error) before
  * *tool* first ran without an error: the skills' firm rule, held by the
  * executor; this check sees that it held.
  */
@@ -56,7 +57,7 @@ export function readSkillBefore(skill: string, tool: string): Check {
     name: `reads the ${skill} skill before ${tool}`,
     grade: (run) => {
       const done = (s: { status: string }) => s.status === "done";
-      const read = run.steps.findIndex((s) => s.name === "read_skill" && done(s) && s.args.name === skill && s.args.reference === undefined);
+      const read = run.steps.findIndex((s) => s.name === "read_skill" && done(s) && s.args.name === skill && readsCore(s.args));
       const acted = run.steps.findIndex((s) => s.name === tool && done(s));
       if (read < 0) return fail(`never read ${skill}`);
       if (acted >= 0 && acted < read) return fail(`${tool} ran before ${skill} was read`);
