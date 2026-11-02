@@ -1,0 +1,519 @@
+/* Mockup only (docs/pilot-auto-mode-design.md): the proposed Apply cards, auto
+   panel and highlights, drawn over a static snapshot of the console. Built on
+   the console's own tokens (web/src/index.css), which this page loads first. */
+
+/* ---- a corner badge: this is a mockup, on synthetic data ---- */
+.mk-badge {
+  position: fixed;
+  top: 10px;
+  left: 44%;
+  z-index: 50;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(11, 13, 16, 0.82);
+  border: 1px solid var(--border-strong);
+  color: var(--text-3);
+  font: 600 10px/1.4 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.mk-copy {
+  position: fixed;
+  left: 10px;
+  bottom: 2px;
+  z-index: 50;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(11, 13, 16, 0.78);
+  color: var(--text-2);
+  font-size: 10.5px;
+  pointer-events: none;
+}
+
+/* ---- Apply cards ---- */
+.pc-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pc-group-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.pc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.pc--fact {
+  border-color: rgba(232, 180, 84, 0.45);
+}
+.pc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pc-kind {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.pc-kind--fact {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+.pc-kind--run {
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+}
+.pc-line {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.pc-line .from {
+  color: var(--text-2);
+  font-weight: 500;
+}
+.pc-line .arrow {
+  color: var(--text-3);
+  margin: 0 3px;
+}
+.pc-ev {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.pc-src {
+  color: var(--accent-hi);
+  white-space: nowrap;
+}
+.pc-note {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.pc-details {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.pc-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pc-actions .btn {
+  padding: 4px 13px;
+  font-size: 12px;
+}
+.pc-actions .btn-quiet {
+  background: none;
+  border-color: transparent;
+  color: var(--text-3);
+}
+.pc-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.pc-done .ok {
+  color: var(--green);
+  font-weight: 700;
+}
+.pc-done b {
+  color: var(--text);
+  font-weight: 600;
+}
+.pc-link {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-hi);
+  font-size: 12px;
+  cursor: pointer;
+}
+.gh-trigger.pc-q {
+  flex: none;
+}
+
+/* ---- the Changes list (the decision log), MarksList's frame ---- */
+.ch-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 5px;
+  font-size: 12px;
+}
+.ch-row .who {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font: 600 10px/1.6 var(--font-mono);
+}
+.ch-row .who.auto {
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+}
+.ch-row .what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.ch-row .when {
+  margin-left: auto;
+  color: var(--text-3);
+  font: 11px var(--font-mono);
+}
+
+/* ---- the Auto panel ---- */
+.auto {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 9px;
+  border: 1px solid rgba(79, 143, 247, 0.45);
+  border-radius: var(--radius);
+  background: linear-gradient(var(--accent-soft), transparent 70%), var(--surface);
+}
+.auto--paused {
+  border-color: rgba(232, 180, 84, 0.6);
+  background: linear-gradient(var(--amber-soft), transparent 70%), var(--surface);
+}
+.auto-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auto-title {
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.auto-state {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+}
+.auto--paused .auto-state {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+.auto-clock {
+  margin-left: auto;
+  font: 500 11.5px var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.auto-stop {
+  padding: 3px 11px;
+  border: 1px solid rgba(239, 106, 106, 0.55);
+  border-radius: var(--radius-sm);
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.auto-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.auto-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.auto--paused .auto-bar > i {
+  background: var(--amber);
+}
+.auto-plan {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.auto-step {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.auto-step .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-3);
+}
+.auto-step.done .dot {
+  background: var(--green);
+  border-color: var(--green);
+}
+.auto-step.done {
+  color: var(--text);
+}
+.auto-step.now {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.auto-step.now .dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.auto-step.wait {
+  background: var(--amber-soft);
+  color: var(--text);
+}
+.auto-step.wait .dot {
+  border-color: var(--amber);
+  background: var(--amber);
+}
+.auto-step .meta {
+  font: 11px var(--font-mono);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.auto-step.now .meta {
+  color: var(--accent-hi);
+}
+.auto-step.wait .meta {
+  color: var(--amber);
+}
+.auto-step .sub {
+  color: var(--text-3);
+}
+.auto-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.auto-foot .gh-trigger {
+  margin-left: auto;
+}
+.auto-msg {
+  font-size: 12px;
+  color: var(--text-2);
+}
+/* the phone's one-line bar */
+.auto-line {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid rgba(232, 180, 84, 0.6);
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.auto-line.run {
+  border-color: rgba(79, 143, 247, 0.45);
+  background: var(--accent-soft);
+}
+.auto-line .auto-clock {
+  margin-left: auto;
+}
+.auto-line .chev {
+  color: var(--text-3);
+}
+
+/* a step the controller ran (seeded), and a step whose overlays are drawn */
+.auto-tag {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+  font: 600 9.5px/1.6 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.hl-swatch {
+  flex: none;
+  align-self: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1.5px solid var(--amber);
+  box-shadow: inset 0 0 0 2px var(--surface), inset 0 0 0 5px rgba(239, 106, 106, 0.9);
+}
+.ai-step.is-shown > details > summary {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.ai-chip-stop {
+  border-color: rgba(239, 106, 106, 0.55) !important;
+  color: var(--red) !important;
+  background: var(--red-soft) !important;
+  opacity: 1 !important;
+}
+
+/* ---- Now examining ---- */
+.ex-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+  padding: 7px 12px;
+  border: 1px solid rgba(79, 143, 247, 0.4);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.ex-bar--paused {
+  border-color: rgba(232, 180, 84, 0.55);
+}
+.ex-pulse {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ex-bar--paused .ex-pulse {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-soft);
+}
+.ex-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.ex-what {
+  color: var(--text);
+  font-weight: 600;
+}
+.ex-step {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-hi);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ex-end {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ex-legend {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.lg b {
+  color: var(--text);
+  font: 600 11px var(--font-mono);
+}
+.lg.off {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.lg svg {
+  flex: none;
+}
+.lg .code {
+  font: 700 9.5px var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* the overlay layer over a slice view (one SVG, as RegionMarks draws) */
+.hl-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+}
+.view.hl-primary {
+  border-color: rgba(79, 143, 247, 0.65);
+  box-shadow: 0 0 0 1px rgba(79, 143, 247, 0.35);
+}
+.view.hl-reading {
+  border-color: rgba(79, 143, 247, 0.4);
+}
+
+/* ---- phone ---- */
+html[data-device="phone"] .ex-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 0 10px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+html[data-device="phone"] .pc-actions .btn {
+  flex: 1;
+}
+html[data-device="phone"] .auto-plan {
+  gap: 0;
+}
