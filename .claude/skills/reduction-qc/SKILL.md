@@ -152,6 +152,8 @@ Evidence for the user's choice of the class for the symmetry average.
   (all three on a cubic cell, h0l and 0kl on a hexagonal or tetragonal one).
 - The removal subtracts only confirmed rings, so a crystal with none keeps all
   its diffuse.
+- `stage_shells`: shells left and why: height, isotropy: the crystal's own;
+  snr, curve, member (of a doublet): too faint; flank, grid, cells: unjudged.
 - The ring rule's numbers (Gates): to confirm with the user.
 - Not every instrument's data have rings (TOPAZ has no aluminium ring
   background): rings there are not routine cleanup.
