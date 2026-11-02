@@ -249,7 +249,8 @@ describe("evaluateStage", () => {
     const judged = e.shells_judged as { at: number; ring: boolean }[];
     expect(judged.map((x) => x.ring)).toEqual([true, false]);
     expect(judged[1].at).toBeGreaterThan(dent.at);
-    expect(e.ring_rule).toEqual({ direction_share: 0.9, height_share: 0.15 });
+    // Judged, the rule's two shares are the criterion's numbers: not repeated.
+    expect(e).not.toHaveProperty("ring_rule");
     // The plane's own detail agrees: its bump is marked, and is not its worst ring.
     type Plane = { worst_ring_left: unknown; worst_ring_dent: { at: number } | null; ring_residuals: { at: number; ring?: boolean }[] };
     const h0l = (e.per_plane as Record<string, Plane>).h0l;
@@ -308,6 +309,7 @@ describe("evaluateStage", () => {
       has_diagnostics: true,
       status: "no_confirmed_rings",
       unconfirmed_at_grid: { count: 4, needs: "1 voxel across 0.16 Å⁻¹", notice, q_centers: [2.668, 3.071, 4.36, 5.165] },
+      summary: null,
     };
     api.fetchRingDiagnostics.mockResolvedValue(record);
     ringAndBump();
@@ -324,6 +326,19 @@ describe("evaluateStage", () => {
     }
     api.fetchRingDiagnostics.mockRejectedValue(new Error("404 Not Found"));
     expect(await evaluateStage("rings", dataset)).not.toHaveProperty("notice");
+  });
+
+  it("gives the ring stage's own record of its shells, after its notice, where it wrote one", async () => {
+    ringAndBump();
+    judgeIn3d();
+    const summary = "Al a=4.041 Å; removed 15 (Al 14); left 2: 10.21 Al533 member, 10.33 Al622 member";
+    const record = { dataset_id: "demo", diagnostics_path: "p", has_diagnostics: true, status: "fitted", unconfirmed_at_grid: null, summary };
+    api.fetchRingDiagnostics.mockResolvedValue(record);
+    const e = await evaluateStage("rings", dataset);
+    expect(e.stage_shells).toBe(summary);
+    expect(Object.keys(e)[0]).toBe("stage_shells");
+    api.fetchRingDiagnostics.mockResolvedValue({ ...record, summary: null });
+    expect(await evaluateStage("rings", dataset)).not.toHaveProperty("stage_shells");
   });
 
   it("asks for the grid's limit with no bump on the planes, and passes an empty shell list as before where the grid is fine", async () => {
