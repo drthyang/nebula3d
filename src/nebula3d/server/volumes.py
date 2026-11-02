@@ -289,6 +289,15 @@ def volume_coverage(path: Path) -> dict:
 _ub_cache: dict[tuple, dict] = {}
 
 
+def release() -> None:
+    """Every cache here emptied, the small per-volume answers too: the
+    console closed its volume (``POST /api/release``) or changed folder."""
+    clear_cache()
+    with _lock:
+        _coverage_cache.clear()
+        _ub_cache.clear()
+
+
 def symmetry_ops_for(path: Path) -> tuple[tuple[np.ndarray, ...] | None, str | None]:
     """The symmetry operations *path* declares, else those of a symmetrised
     export in the same folder that names *path* as its source (the NeXus
