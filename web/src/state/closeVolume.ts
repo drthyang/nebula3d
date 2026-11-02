@@ -19,7 +19,8 @@ import { resetVolumeState } from "./volumeReset";
 
 export const CLOSE_CONFIRM = "Close this volume? Unsaved settings will be lost.";
 
-// How long Close waits for a cancelled native run to be heard to end.
+// How long Close waits for a cancelled native run to be heard to end, and
+// for the requests already sent to finish.
 const SETTLE_MS = 15_000;
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -41,7 +42,7 @@ export async function closeVolume(): Promise<void> {
   // What runs stops first: the reply, a tuning run, and the pipeline run,
   // cancelled and heard to end (a native job's end comes over its stream).
   stopAssistant();
-  stopTuning();
+  if (useTuneStore.getState().active) stopTuning(); // it cancels its trial's run
   const run = usePipelineStore.getState();
   if (pipelineBusy(run)) await run.cancel();
   await settle(() => !usePipelineStore.getState().running && !useChatStore.getState().busy && !useTuneStore.getState().active, SETTLE_MS);
@@ -53,14 +54,17 @@ export async function closeVolume(): Promise<void> {
   useDatasetStore.getState().closeDataset();
   resetVolumeState();
 
+  // The in-browser engine goes at once (what it was computing goes with it).
   if (PYODIDE_MODE) restartEngine();
-  else await releaseServerCaches().catch(() => undefined); // an older server keeps them until evicted
 
-  // The closed volume's queries lose their components on the next render;
-  // then they are forgotten (their slices with them) and the rest, the
-  // dataset list among them, are fetched afresh.
+  // The closed volume's queries lose their components on the next render.
+  // The requests already sent finish (a native one would fill the server's
+  // caches again after the release), then those queries are forgotten,
+  // their slices with them, the server lets go of its cached volumes, and
+  // the rest, the dataset list among them, are fetched afresh.
   await pause(50);
-  await queryClient.cancelQueries();
+  if (!PYODIDE_MODE) await settle(() => queryClient.isFetching() === 0, SETTLE_MS);
   queryClient.removeQueries({ predicate: (q) => q.getObserversCount() === 0 });
+  if (!PYODIDE_MODE) await releaseServerCaches().catch(() => undefined); // an older server keeps them until evicted
   await queryClient.resetQueries();
 }
