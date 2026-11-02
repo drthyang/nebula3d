@@ -819,6 +819,9 @@ describe("assess_stage", () => {
     expect(JSON.parse((await again({ stage: "flatten" }, [])).text).flatten.criterion).toBe(whole);
     const terseOnly: AgentStep[] = [{ ...earlier[0], result: JSON.stringify({ flatten: { criterion: TERSE_CRITERION.flatten } }) }];
     expect(JSON.parse((await again({ stage: "flatten" }, terseOnly)).text).flatten.criterion).toBe(whole);
+    // The result that carried it, shortened since (compaction, THY-63 R5): the model reads the whole criterion no more, so it comes again.
+    const shortened: AgentStep[] = [{ ...earlier[0], shortened: true }];
+    expect(JSON.parse((await again({ stage: "flatten" }, shortened)).text).flatten.criterion).toBe(whole);
   });
 
   it("keeps each stage's outcome beside its result, never in it", async () => {

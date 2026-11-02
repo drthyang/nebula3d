@@ -681,10 +681,12 @@ describe("runAgent", () => {
       expect(readings.found(r.steps[0])).toMatchObject({ peak: 1, series: expect.arrayContaining([1.199]) });
     });
 
-    it("keeps a skill's `## Gates` section when it shortens the skill's text", async () => {
+    it("keeps a skill's `## Gates` and `## Steps` when it shortens the skill's text, and lets what is left for later go", async () => {
       // A skill's text as read_skill returns it, synthetic: its gates are made up.
       const gates = "## Gates\n\n- Rings: a ring left at most 0.37 of its plane's noise.\n- Punch: a node punched at 4.5σ or more.";
-      const text = `Skill synthetic-method\n\n# A synthetic method\n\n${"Read the volume first. ".repeat(40)}\n\n${gates}\n\n## Steps\n\n${"A step. ".repeat(60)}`;
+      const steps = `## Steps\n\n1. ${"A step. ".repeat(30).trim()}\n2. ${"Another step. ".repeat(10).trim()}`;
+      const later = `---\nDetails of this skill (read with read_skill and \`section\` "Details"): ${"A part; ".repeat(40)}`;
+      const text = `Skill synthetic-method\n\n# A synthetic method\n\n${"Read the volume first. ".repeat(40)}\n\n${gates}\n\n${steps}\n\n${later}`;
       const method: AgentTool = {
         name: "read_method",
         description: "a skill's text",
@@ -701,7 +703,7 @@ describe("runAgent", () => {
       const r = await runAgent({ messages: base, tools: [method, seriesTool], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
       const sent = toolTexts(seen[4].messages);
       expect(sent.map(isCompacted)).toEqual([true, false, false, false]);
-      expect(sent[0]).toBe(`${text.slice(0, 400)}…\n\n${gates}\n\n(shortened to save room; call the tool again for the whole result)`);
+      expect(sent[0]).toBe(`${text.slice(0, 400)}…\n\n${gates}\n\n${steps}\n\n(shortened to save room; call the tool again for the whole result)`);
       expect(r.steps[0]).toMatchObject({ name: "read_method", shortened: true });
       expect(readings.seen(r.steps[0])).toBe(text);
     });
@@ -737,6 +739,30 @@ describe("runAgent", () => {
       expect(r.steps.map((s) => s.summary)).toEqual(["series 1", "changed", "series 1", "series 2", "series 1"]);
       expect(r.steps.map((s) => s.shortened)).toEqual([true, undefined, undefined, undefined, undefined]);
       expect(Object.keys(r.steps[0])).toEqual(["id", "name", "args", "status", "progress", "summary", "result", "view", "outcomes", "shortened"]);
+    });
+
+    it("tells the next round's calls which earlier results it shortened, so assess_stage can send a whole criterion again (THY-63 R5)", async () => {
+      const marks: (true | undefined)[][] = [];
+      const probe: AgentTool = {
+        ...seriesTool,
+        run: async (args, c, io) => {
+          marks.push((c.replySteps ?? []).map((s) => s.shortened));
+          return seriesTool.run(args, c, io);
+        },
+      };
+      script([
+        [{ toolCalls: [call("c1", "series", { x: 1 })] }],
+        [{ toolCalls: [call("c2", "series", { x: 2 })] }],
+        [{ toolCalls: [call("c3", "series", { x: 3 })] }],
+        [{ toolCalls: [call("c4", "series", { x: 4 })] }],
+        // Before this request the first result is shortened: this call reads it so.
+        [{ toolCalls: [call("c5", "series", { x: 5 })] }],
+        [{ content: "Done." }],
+      ]);
+      const r = await runAgent({ messages: base, tools: [probe], ctx, settings, signal: new AbortController().signal, softBudget: 1000 });
+      // Before the answer's request the second is shortened too.
+      expect(r.steps.map((s) => s.shortened)).toEqual([true, true, undefined, undefined, undefined]);
+      expect(marks).toEqual([[], [undefined], [undefined, undefined], [undefined, undefined, undefined], [true, undefined, undefined, undefined]]);
     });
 
     it("shortens a request too long for LM Studio's window down to its newest result before refusing it", async () => {

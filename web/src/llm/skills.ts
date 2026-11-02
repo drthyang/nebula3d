@@ -303,7 +303,7 @@ function indexOf(text: string): string {
 /**
  * What read_skill returns, plain Markdown, so the model reads it as written:
  * - a skill's core (head, gates and steps), with what it leaves for a read on
- *   request: its details' parts and its references;
+ *   request: its details' parts and its references, by name;
  * - with `section`, one section of the skill (Details, or a part of it by its
  *   heading);
  * - with `reference`, one document the skill cites: whole when short, else its
@@ -333,12 +333,14 @@ export function readSkill(name: string, reference?: string, section?: string): s
     return `Skill ${skill.name}, section "${part.heading}"\n\n${part.text}`;
   }
   const parts = headingsOf(skill.details).filter((h) => h.level === 3).map((h) => h.heading);
+  // Names only (THY-63 R5): what each part or page holds, its own read says (a
+  // long page opens with its headings).
   const later = [
     skill.details
       ? `Details of this skill (read with read_skill and \`section\` "${DETAILS}", or one part by its heading)${parts.length ? `: ${parts.join("; ")}` : ""}.`
       : "",
     skill.references.length
-      ? `References of this skill (read one with read_skill and \`reference\`):\n${skill.references.map((r) => `- ${r.name}: ${r.description}`).join("\n")}`
+      ? `References of this skill (read one with read_skill and \`reference\`; a long one opens with its sections): ${skill.references.map((r) => r.name).join("; ")}.`
       : "",
   ].filter(Boolean);
   return `Skill ${skill.name}\n\n${skill.core}${later.length ? `\n\n---\n${later.join("\n")}` : ""}`;
