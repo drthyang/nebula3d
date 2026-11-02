@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 21590 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 21606 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -27,7 +27,7 @@ Parameters:
     },
     "section": {
       "type": "string",
-      "description": "With reference: one section of that document, by its heading"
+      "description": "A section by its heading: of the reference, else of the skill (e.g. Details)"
     }
   },
   "required": ["name"]

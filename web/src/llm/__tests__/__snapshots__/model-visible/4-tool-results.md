@@ -6,22 +6,32 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-5976 characters sent.
+3912 characters sent.
 
 ```text
 Skill bragg-node-audit
 
 # Bragg-node audit
 
-**Status:** Draft: awaiting the user's interview (questions in
-`docs/SKILL_INTERVIEWS.md`). Ported from the scattering-agent-tools plugin
-skill of the same name, from its NeXus Viewer and NEXPLAN tools to the
-console's own.
-
 The punch removes what sits at the Bragg nodes, so the 3D-ΔPDF sees only the
 diffuse scattering. An audit checks the nodes the cell allows, the nodes it
 forbids and the peaks off every node, and keeps the broad diffuse maxima out of
 all three.
+
+## Gates
+
+- A real leftover at an allowed node is sharp and stands above its own
+  neighbourhood: widen or deepen the punch only for those.
+- A forbidden node's signal is intensity clearly above the local background;
+  name its cause only with the evidence for it.
+- `grain_check`: a rotation under 2° is the UB, not a grain: check it with
+  `ub_check` (reduction-qc). The leftover counts are only what the punch missed
+  on one cut, never what its search found.
+- A maximum several Bragg widths broad along any axis is diffuse scattering,
+  the signal: never a missed peak.
+- `texture_check`: no fills sitting systematically outside the range their
+  rims allow, a bias counting only at a fifth of the local diffuse level or
+  more; on the cuts, an azimuthal ratio near 1.
 
 ## Steps
 
@@ -30,60 +40,90 @@ all three.
    Bragg nodes every n along H, K and L, for a volume indexed on a supercell)
    and the sample's modulation (`modulation`: its satellites, or the planes
    through them, which the punch's search leaves alone). These are facts about
-   the sample, set only when the user asks. None is declared by default: the
-   search then leaves no position alone, and when the sharp peaks it found off
-   the lattice bunch at one commensurate fraction, the punch's assessment and
-   the run carry a question for the user: whether the sample has that
-   modulation. `describe_dataset` and `configure_settings` do not
-   give the declared symmetry: `grain_check` does (`declared_symmetry`). Which
-   cell is the parent, and whether the supercell's other nodes hold Bragg peaks
-   or diffuse scattering (to confirm with the user).
+   the sample, set only when the user asks. Neither tool gives the declared
+   symmetry: `grain_check` does (`declared_symmetry`).
 2. **The punch on three planes.** `assess_stage` for the punch: the peaks left
    at nodes, the sharp peaks off the lattice, the broad maxima kept, and how
    much was punched to get there. It reads the planes through the origin:
    check an off-zero cut too, with `measure_reciprocal_cut`.
 3. **Leftovers at allowed nodes.** Look at each (`show_in_viewer`,
-   `line_profile`). A real leftover is sharp and stands above its own
-   neighbourhood; widen or deepen the punch only for those.
-4. **Forbidden nodes.** Intensity clearly above the local background at a node
-   the space group forbids has several causes. Say which evidence points where,
-   and do not pick one without it:
+   `line_profile`).
+4. **Forbidden nodes.** Say which evidence points where, and do not pick a
+   cause without it:
    - λ/2 contamination: is the 2h 2k 2l reflection strong?
    - multiple scattering: sharp, and often only some members of an orbit;
    - a lower true symmetry, or a superlattice.
-
-   What counts as clearly above the background (to confirm with the user).
 5. **Peaks off the lattice.** `grain_check`: the off-lattice peaks the punch's
    search found, grouped into symmetry orbits, tested against the nodes (a
    Bragg peak displaced by a UB that is slightly off) and as a rotated copy of
    the lattice (a second grain), judged against the same search at random
-   directions; the test against the nodes has no such control. A rotation
-   under 2° is the UB, not a grain: check it with `ub_check` (reduction-qc).
-   The leftover counts are only what the punch missed on one cut, never what
-   its search found.
-6. **Broad maxima stay.** A maximum several Bragg widths broad along any axis
-   is diffuse scattering, the signal. Never report it as a missed peak. The
-   search's width limit (`punchSearchMaxWidth`) leaves such maxima unpunched,
-   but it is off by default: then the search punches every candidate, broad
-   or sharp.
-7. **The backfill.** `texture_check`: over every punch hole of the volume, no
-   fills sitting systematically outside the range their rims allow; on the
-   cuts, an azimuthal ratio near 1. The diffuse often peaks at the nodes
-   (thermal diffuse scattering), so a sound fill sits above its rim's median;
-   the range runs from the diffuse at the hole's edge to its rise continued to
-   the node, and a bias counts only when it is also a fifth of the local
-   diffuse level or more. A lattice-periodic fill pattern is texture that the
-   3D-ΔPDF will show.
-8. **Report** (below).
+   directions; the test against the nodes has no such control.
+6. **Broad maxima stay.** The search's width limit (`punchSearchMaxWidth`)
+   leaves such maxima unpunched, but it is off by default: then the search
+   punches every candidate, broad or sharp.
+7. **The backfill.** `texture_check`, over every punch hole of the volume and
+   on the cuts. A lattice-periodic fill pattern is texture that the 3D-ΔPDF
+   will show.
+8. **Report** the audit in the order above. For each signal, the evidence and
+   its likely cause, or that it was not tested; what to change and why; and
+   what only the user can decide (the cell, the satellites, the sample's
+   modulation). Mark a signal the user should look at (satellites, a leftover
+   peak, intensity at a forbidden node) with `mark_region` on the stage that
+   shows it, its positions as points, resting on the call that measured it;
+   name the mark by its id beside the signal.
 
-## Firm rules (enforced in code)
+---
+Details of this skill (read with read_skill and `section` "Details", or one part by its heading): Settle the nodes; Forbidden nodes; Peaks off the lattice; The backfill; Firm rules (enforced in code); Acceptance checklist; Failure modes.
+References of this skill (read one with read_skill and `reference`):
+- bragg_cleanup: the punch: node detection, the off-lattice search, footprints, the significance gate and the backfill
+```
+
+## read_skill {"name":"bragg-node-audit","section":"Details"}
+
+2409 characters sent.
+
+```text
+Skill bragg-node-audit, section "Details"
+
+## Details
+
+**Status:** Draft: awaiting the user's interview (questions in
+`docs/SKILL_INTERVIEWS.md`). Ported from the scattering-agent-tools plugin
+skill of the same name, from its NeXus Viewer and NEXPLAN tools to the
+console's own.
+
+### Settle the nodes
+
+- No modulation is declared by default: the search then leaves no position
+  alone, and when the sharp peaks it found off the lattice bunch at one
+  commensurate fraction, the punch's assessment and the run carry a question
+  for the user: whether the sample has that modulation.
+- Which cell is the parent, and whether the supercell's other nodes hold Bragg
+  peaks or diffuse scattering (to confirm with the user).
+
+### Forbidden nodes
+
+What counts as clearly above the background (to confirm with the user).
+
+### Peaks off the lattice
+
+Symmetrising data whose UB is slightly off makes the displaced copies the test
+against the nodes finds.
+
+### The backfill
+
+The diffuse often peaks at the nodes (thermal diffuse scattering), so a sound
+fill sits above its rim's median; the range a fill is judged against runs from
+the diffuse at the hole's edge to its rise continued to the node.
+
+### Firm rules (enforced in code)
 
 - Changing a punch or backfill setting, or tuning those stages, is refused
   until this skill has been read in the conversation.
 - The sample's modulation and the punch cell are facts about the sample:
   they change only when the user asks, never to improve a number.
 
-## Acceptance checklist
+### Acceptance checklist
 
 - [ ] the cell and nodes used, and who set them;
 - [ ] the leftovers at allowed nodes, on three planes and an off-zero cut;
@@ -95,7 +135,7 @@ all three.
 - [ ] the backfill's texture verdict;
 - [ ] every number with what produced it (settings, planes).
 
-## Failure modes
+### Failure modes
 
 - Reading the leftover count as "no off-lattice peaks", or as everything the
   search found.
@@ -105,26 +145,106 @@ all three.
 - Changing the sample's modulation or the punch cell to make a number look
   better.
 - Judging from the opening cut at L = 0 alone.
+```
 
-## What to report
+## read_skill {"name":"delta-pdf-interpretation","reference":"delta_pdf"}
 
-The audit in the order above. For each signal, the evidence and its likely
-cause, or that it was not tested; what to change and why; and what only the
-user can decide (the cell, the satellites, the sample's modulation). Mark a
-signal the user should look at (satellites, a leftover peak, intensity at a
-forbidden node) with `mark_region` on the stage that shows it, its positions
-as points, resting on the call that measured it; name the mark by its id
-beside the signal.
+928 characters sent.
 
-## References
+```text
+Reference "delta_pdf" of skill delta-pdf-interpretation (docs/algorithms/delta_pdf.md)
 
-- [bragg_cleanup](../../../docs/algorithms/bragg_cleanup.md) — the punch: node
-  detection, the off-lattice search, footprints, the significance gate and the
-  backfill
+# 3D-ΔPDF Transform
 
----
-References of this skill (read one with read_skill and `reference`):
-- bragg_cleanup: the punch: node detection, the off-lattice search, footprints, the significance gate and the backfill
+Sections (read one with read_skill, `reference` and `section`, by its heading):
+- Purpose
+- Correct transform recipe
+  - Non-orthogonal cells (hexagonal, monoclinic, triclinic)
+- The strongest features, grouped by the declared symmetry (2026-10-19)
+- Inverse transform & consistency check (`invert_delta_pdf`)
+- The centring bug (fixed 2026-06-05)
+- Near-origin spike (expected, not the bug)
+- The dashed axis streaks were the DC subtraction (fixed 2026-10-07)
+- The window respects the lattice symmetry (2026-10-07)
+  - The window and the measured coverage (`support`)
+- The axis cross is the residual diffuse background (diagnosed 2026-06-05)
+  - Methods compared (smooth-bg wins)
+  - Background removal in the pipeline: the radial flatten (step 4)
+    - A background that rises with |Q|, and what the literature does
+```
+
+## read_skill {"name":"delta-pdf-interpretation","reference":"delta_pdf","section":"The window and the measured coverage (`support`)"}
+
+4125 characters sent.
+
+```text
+Reference "delta_pdf" of skill delta-pdf-interpretation (docs/algorithms/delta_pdf.md), section "The window and the measured coverage (`support`) (part 1 of 2)"
+
+### The window and the measured coverage (`support`)
+
+A backfill that leaves unmeasured space masked, rather than inventing
+intensity there, hands the transform a volume whose data end inside the box.
+Read as `I = 0`, that region does two things: it pulls the weighted mean `c`
+down, and the box-sized window still weights it. On the hexagonal data the
+separable window puts a few percent of its weight on unmeasured space, so the
+coverage edge becomes a step with a truncation ripple (period ≈ 2π/Q_edge,
+with Q_edge the `|Q|` where the coverage ends).
+
+`compute_delta_pdf(support=mask)` (pipeline `DeltaPdfParams.window_support`,
+default on, passes the input volume's `mask`; server `pdf_window_support`;
+*Taper to the measured coverage* in the web app):
+
+- **ΔI = 0 off the data.** The mean is weighted over the support only, and
+  voxels outside it are zeroed after it is subtracted. They then add no
+  step of `−c`, and the input still sums to zero.
+- **The window fits the coverage.** Unsupported space that reaches the box
+  faces is where the coverage ends. It is found by `binary_fill_holes`
+  (26-connected; bool arrays only), so holes enclosed by data do not count.
+  The ellipsoid is shrunk until at most `support_tol` (default 10⁻³) of its
+  weight lies there. With `"auto"`, an orthogonal box switches to the
+  ellipsoid when the separable window puts more than that on it. A shrunk
+  ellipsoid is the same ellipsoid scaled, so it stays invariant. The scale
+  is logged as `window_scale`.
+- **The weight left there is recorded.** The share of the window's weight on
+  that open space is `DeltaPDF.window_open_weight`, logged as
+  `window_open_weight` beside `window_scale` and served with the ΔPDF's
+  metadata (`/api/deltapdf/{id}/meta`, `dpdf_meta_json`). The web app's
+  coverage check reports it: the measure of a transform reaching past the
+  data, whatever the window's shape. On a measured volume the auto window, an
+  ellipsoid at scale 1.0, kept a negligible share there and nothing on a box
+  face.
+- `invert_delta_pdf` leaves unsupported voxels out of the reliable `mask`.
+- An all-True support (a backfill that fills the whole box, e.g.
+  `unmeasured="all"`) changes nothing, bit for bit.
+
+The tolerance is not cosmetic. Coverage edges are ragged, and thin channels
+of unmeasured voxels reach far in. On the raw hexagonal data the nearest open
+voxel sits well inside the ellipsoid, although only a tiny fraction of the
+window's weight (below the default tolerance) is open. Even on orthorhombic
+data with full coverage, a thin channel of open voxels reaches inside the
+ellipsoid, with a negligible share of the weight. Shrinking to the
+nearest open voxel (`support_tol=0`) would shrink the hexagonal window
+substantially (real-space peaks markedly broader) and cut its main peak
+sharply; the weight criterion ignores such channels.
+
+Measured on the hexagonal data (the pipeline's flattened input with the
+unmeasured space that reaches the box edge masked, as the unmeasured-aware
+backfill leaves it; Gaussian σ = 0.4; differences at 2–15 Å relative to the
+strongest 1.5–15 Å correlation):
+
+| window | `c` | effect of the support | scale |
+|---|---|---|---|
+| separable | rises | a few % max, well below 1 % RMS (the mean's share of the ripple) | — (cannot shrink) |
+| ellipsoid (`auto`) | essentially unchanged | negligible (≪ 1 %) | 1.0 (already inside the coverage) |
+| ellipsoid, `support_tol=0` | much lower | main peak sharply reduced | shrunk substantially |
+
+So for this hexagonal cell the ellipsoid already keeps clear of the coverage
+edge, and the support only fixes the mean's handling of the empty region. It
+matters most for an orthogonal cell whose coverage ends inside the box, where
+`"auto"` now moves to a fitted ellipsoid. `_open_space` takes 2–3 s on 401³
+natively and runs only when the support has unsupported voxels.
+
+[The section continues: read section "The window and the measured coverage (`support`) (part 2)".]
 ```
 
 ## describe_dataset {}

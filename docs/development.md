@@ -280,8 +280,8 @@ updates every snapshot in the suite.
 ### The Pilot's token budget
 
 `web/src/llm/__tests__/tokenBudget.test.ts` drives the Pilot's worst
-realistic turn through the agent loop (the validation task, two skills and a
-reference page read whole, every check of the method) and counts each request
+realistic turn through the agent loop (the validation task, two skills' cores
+and a section of a reference page, every check of the method) and counts each request
 with the context guard's estimator. It holds the turn to ceilings, not pins
 (`docs/pilot-context-design.md` §5.8):
 
@@ -465,11 +465,12 @@ tools that step names, as each tool returns it on the synthetic crystal
 (`CLAIMS` adds the quantities a step says its tools give, such as "the symmetry
 the file declares"); that every setting it names exists; and that every number
 it writes is either a gate, bound to the constant in the code it must equal
-(`GATES`), or listed as no gate (`NOT_GATES`). `UNSTATED` lists the limits a
-step's tool judges by, which the step should state among its gates. A failure
-names the skill, its step, and what disagrees: a field the tool does not give
-(and where it is instead), a gate whose number differs from its constant, a
-limit the step leaves out. A failure of the tables themselves (a phrase the
+(`GATES`), stated once in the skill's `## Gates`, or listed as no gate
+(`NOT_GATES`). `GATED` lists the limits a tool judges by, which the skill
+states on a gate line naming that tool. It also holds each skill to its form
+(below). A failure names the skill, its step, and what disagrees: a field the
+tool does not give (and where it is instead), a gate whose number differs from
+its constant, a limit the gates leave out. A failure of the tables themselves (a phrase the
 skill no longer holds, a number nobody classified) means the skill's words
 changed: update the table with them. Today's disagreements are on the
 allow-list, `ALLOWED`, each with why. It is the user's skill-review queue
@@ -477,22 +478,31 @@ allow-list, `ALLOWED`, each with why. It is the user's skill-review queue
 that is not on it, and on an entry that no longer fails, so the list shrinks
 as the skills are corrected.
 
-### A skill's gates, through compaction
+### A skill's form, and its gates through compaction
+
+Each skill is written in four parts (THY-63 R4, `docs/pilot-context-design.md`
+C5): a head (the title and one paragraph on what the skill is for);
+`## Gates`, its thresholds and the pass/fail rules bound to them, each number
+once; `## Steps`, numbered and short; and `## Details`, the explanations, the
+firm rules, the acceptance checklist and the failure modes. `## References`
+comes last. `read_skill` returns the core (the head, the gates and the steps)
+and names what it leaves for later; `section` reads Details, or one part of it
+by its heading, and a reference page longer than 4,000 characters
+(`REFERENCE_MAX_CHARS`, `web/src/llm/skills.ts`) is read from an index of its
+headings, a section at a time, a long section part by part. Only a core read
+opens a stage's gate.
 
 When the agent loop compacts an older `read_skill` result in a long reply, a
 skill's text keeps its name and its first 400 characters
-(`web/src/llm/readings/compact.ts`), which can cut its thresholds away. A
-skill opts in to keeping them by writing its gates under a heading of its
-own, exactly `## Gates`: compaction then keeps that section whole, up to the
-next heading of level 1 or 2, beside the head. The section is capped at
+(`web/src/llm/readings/compact.ts`), which can cut its thresholds away; a
+skill with a `## Gates` heading keeps that section whole, up to the next
+heading of level 1 or 2, beside the head. The section is capped at
 `GATES_MAX`, 1,000 characters (lowered from 1,200 on 2026-10-24; on the worst
 turn a 32k window holds one gated skill at the cap and the live runs' 56k
-two, review finding P5.3b; it bounds the `## Gates` text the user writes for
-each skill, plan 5.3); past it, it is cut
-at a line boundary and a marker says how many lines were left out. A skill
-without the section is shortened as before, byte for byte.
-`web/src/llm/__tests__/readings.test.ts`
-pins the real skills that have no `## Gates` to the old rule, and has a test
-per skill, skipped until that skill gains the section, that every number in
-it survives compaction; a section past the cap fails it. Which gates a skill
-states, and their words, are the user's.
+two, review finding P5.3b); past it, it is cut at a line boundary and a marker
+says how many lines were left out. `skillLint.test.ts` holds each skill to the
+form: the sections in order, the gates within `GATES_MAX`, the name, title and
+head within compaction's 400 characters (so the head is kept whole), and the
+core within `REFERENCE_MAX_CHARS`. `web/src/llm/__tests__/readings.test.ts`
+checks that every number in each skill's gates survives compaction. Which
+gates a skill states, and their words, are the user's.

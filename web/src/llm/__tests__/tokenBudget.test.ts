@@ -2,23 +2,24 @@
 // guard counts, against a 32k local context window, held to ceilings by
 // component (docs/pilot-context-design.md §5.8).
 //
-// VERDICT (measured 2026-11-01 with THY-63 R3's core prompt and dataset
-// summary, with scripts/measure_pilot_context.sh, which counts the same way):
-// OVER 32k in both configurations before compaction.
+// VERDICT (measured 2026-11-01 with THY-63 R3's core prompt, R4's skill
+// cores and THY-59's skill text, with scripts/measure_pilot_context.sh, which
+// counts the same way): UNDER 32k before compaction on a local model.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 36.7k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 36.1k + 6,144
-//   = 42.2k before the loop's compaction, and 33.9k to 38.3k after it, by the
-//   order the skills are read (33.9k in the method's order).
+//   about 26.0k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 25.4k + 6,144
+//   = 31.5k before the loop's compaction, inside 32k (the stretch goal, met),
+//   and 28.4k to 29.7k after it, by the order the skills are read (29.7k in
+//   the method's order): the 20 % target (26,214) is missed by 3.4k.
 // - A model LM Studio loaded with 32k gets the turn in with the loop's own
-//   compaction: the window guard shortens nothing more (before R3 it cut
-//   both skills just read to stubs of a few hundred characters).
+//   compaction: the window guard shortens nothing more.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (10.0k
-// now). The estimate is conservative (every tool result, the skills' prose
-// included, counts at the data rate), but at the prose rate for the skills
-// the turn is still over 32k.
+// to reply, and leaves free the 3k a model-visible addition must leave (25.8k
+// now). The estimate is conservative (every tool result, the skills' Markdown
+// included, counts at the data rate, 1.4 characters a token); at 3.0 for the
+// skills' 13.8k characters (C6, R5) the turn before compaction is about 26.1k
+// with the reply reserve.
 //
 // The turn is driven through the real agent loop (runAgent, agent.ts) with a
 // scripted model, and every request it sends is counted by the guard's own
@@ -28,9 +29,10 @@
 //   TASK, over the synthetic crystal of modelVisible.test.ts (syntheticCrystal.ts);
 // - the tools sent: all of CHAT_TOOLS (the console, Claude), or what a local
 //   model is offered for the TASK (localTools.ts), with any tool it calls;
-// - the two largest skills, read whole with read_skill, and the largest
-//   reference page either of them cites (read_skill cuts a page at 12,000
-//   characters, REFERENCE_MAX_CHARS);
+// - the skills as read_skill returns them (THY-63 R4): the two largest
+//   skills' cores (head, gates and steps), and of the pages either cites the
+//   one with the largest section, its index of sections and that section
+//   (each read at most REFERENCE_MAX_CHARS, 4,000 characters);
 // - one result of each tool the system prompt's method asks for, as the
 //   executor hands it over (runToolCall): the synthetic crystal's, but for
 //   dpdf_peaks, whose list a real ΔPDF fills to the tool's default limit
@@ -74,7 +76,8 @@
 // it passes while the target is missed (printing the gap), and fails the day
 // the turn meets it, to be turned into a plain `it` then, so the target is
 // enforced from that change on. The stretch goal (the same turn fits 32k
-// without compaction) is tracked the same way.
+// without compaction) was tracked the same way, and is met since THY-63 R3
+// and R4 together: it is enforced.
 //
 // Hermetic and synthetic: no model is loaded, no backend or API is called, and
 // no measured data is used (the dev control is a synthetic case, its list
@@ -102,7 +105,7 @@ import {
 } from "../provider/tokens";
 import { GATES_MAX, isCompacted, SKILL_STUB_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
-import { allSkills, readSkill, REFERENCE_MAX_CHARS } from "../skills";
+import { allSkills, DETAILS, headingsOf, readsCore, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { callTool, CHAT_TOOLS } from "../tools";
 import devControlPeaks from "./__fixtures__/dpdf-peaks-dev-control.json";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
@@ -149,26 +152,30 @@ const CLAUDE_REPLY = 64_000;
 type Component = (typeof ROWS)[number];
 
 // Today's sizes, in estimated tokens (uncalibrated), rounded up: measured
-// 2026-11-01 with THY-63 R3's core prompt and dataset summary (on main
-// d8f44023, R2 merged), and the same in scripts/measure_pilot_context.sh. R3
-// lowered the system prompt (4,453 -> 1,357: the core in place of the
-// metrics' glossary and the tools' guidance) and the context (2,382 -> 288:
-// the dataset's summary in place of one cut's metrics), and every prompt. The
-// glossary's field meanings went into the cut tools' results, a reply's first
-// call (fields), which this turn does not make; the tools offered grew a
-// little (5,554 -> 5,584; every definition 6,139 -> 6,169: the cut tools say
-// they return fields, and dpdf_contrast's contract took the figure rule).
+// 2026-11-01 on main df9823a8 (R1 to R3 merged) with THY-63 R4's skill cores,
+// and the same in scripts/measure_pilot_context.sh. R3 lowered the system
+// prompt (4,453 -> 1,357: the core in place of the metrics' glossary and the
+// tools' guidance) and the context (2,382 -> 288: the dataset's summary in
+// place of one cut's metrics); the tools offered grew a little (5,554 ->
+// 5,584; every definition 6,139 -> 6,169: the cut tools say they return
+// fields, and dpdf_contrast's contract took the figure rule). R4 lowered the
+// skills read on the worst turn (20,758 -> 9,929: two cores and one section
+// of a page, for two whole skills and a page cut at 12,000 characters);
+// read_skill's `section` parameter grew the tools by 4. THY-59's skill text
+// (reduction-qc's Laue class: its description, two gates and a step's words
+// in the core, its section in the details) spent its reserve line: system +6
+// (the description), skills +131 (the core).
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 1_357, tools: 5_584, context: 288, skills: 20_758, results: 8_091 };
+const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 10_060, results: 8_091 };
 // Every tool's definition, as the console sends them (Claude).
-const MEASURED_ALL_TOOLS = 6_169;
+const MEASURED_ALL_TOOLS = 6_173;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 36_663,
-  localBefore: 36_078,
-  localSkillsFirst: 27_987,
-  localMethod: 27_767,
-  localSkillsLast: 32_106,
+  console: 25_975,
+  localBefore: 25_390,
+  localSkillsFirst: 23_510,
+  localMethod: 23_510,
+  localSkillsLast: 22_265,
 };
 
 // The room held for the queued model-visible features, by component, in
@@ -178,10 +185,6 @@ const MEASURED_PROMPT = {
 // scripts/measure_pilot_context.sh. Results and skills count at the data
 // rate (1.4 characters a token), definitions at the prose rate (3.5).
 const RESERVED: Record<string, { what: string; room: Partial<Record<Component, number>> }> = {
-  "THY-59": {
-    what: "Laue R_int statistics, measured on its branch: reduction-qc's new section, +2,139 characters (its result and description shrink by 22 and 21 characters, not credited)",
-    room: { skills: 1_528 },
-  },
   "THY-60": {
     what: "UB-aware punch, estimated: the turned-UB diagnosis and the tail sweep in the punch record, at most 400 characters of result and 100 of description",
     room: { results: 270, tools: 30 },
@@ -245,27 +248,62 @@ const CHECKS: Call[] = [
 ];
 const FEATURES: Call = { name: "dpdf_peaks", args: {} };
 
-/** The two largest skills as read_skill returns them, and the largest reference page either cites. */
-function largestReads(): { skills: string[]; reference: { skill: string; name: string; chars: number } } {
+/**
+ * The largest reads of the turn (THY-63 R4: a skill's core by default, the
+ * rest on request, each at most REFERENCE_MAX_CHARS): the two largest skills'
+ * cores and, of the references either cites, the page whose largest section is
+ * largest: its index, then that section's first part. A skill's details, read
+ * on request, are one more section of at most REFERENCE_MAX_CHARS: the turn
+ * reads one section (docs/pilot-context-design.md C5: "two cores and one
+ * section"), the largest a read returns, and the loop's MAX_ROUNDS holds the
+ * turn's calls (12: these four reads, the seven checks and dpdf_peaks).
+ */
+function largestReads(): {
+  skills: string[];
+  details: { skill: string; chars: number } | null;
+  reference: { skill: string; name: string; chars: number; section: string; sectionChars: number };
+} {
   const bySize = [...allSkills()].sort((a, b) => readSkill(b.name).length - readSkill(a.name).length);
   const two = bySize.slice(0, 2);
-  const pages = two.flatMap((s) => s.references.map((r) => ({ skill: s.name, name: r.name, chars: readSkill(s.name, r.name).length })));
-  const reference = pages.sort((a, b) => b.chars - a.chars)[0];
-  return { skills: two.map((s) => s.name), reference };
+  const details = two
+    .filter((s) => s.details)
+    .map((s) => ({ skill: s.name, chars: readSkill(s.name, undefined, DETAILS).length }))
+    .sort((a, b) => b.chars - a.chars)[0];
+  const sections = two.flatMap((s) =>
+    s.references.flatMap((r) =>
+      headingsOf(r.text).map((h) => ({
+        skill: s.name,
+        name: r.name,
+        chars: readSkill(s.name, r.name).length,
+        section: h.heading,
+        sectionChars: readSkill(s.name, r.name, h.heading).length,
+      })),
+    ),
+  );
+  const reference = sections.sort((a, b) => b.sectionChars - a.sectionChars)[0];
+  return { skills: two.map((s) => s.name), details: details ?? null, reference };
 }
 
 const LARGEST = largestReads();
-const readOf = (name: string, reference?: string): Call => ({ name: "read_skill", args: reference ? { name, reference } : { name } });
+const readOf = (name: string, reference?: string, section?: string): Call => ({
+  name: "read_skill",
+  args: { name, ...(reference ? { reference } : {}), ...(section ? { section } : {}) },
+});
 const SKILL_WITH_PAGE = LARGEST.reference.skill;
 const OTHER_SKILL = LARGEST.skills.find((s) => s !== SKILL_WITH_PAGE)!;
-const SKILL_READS: Call[] = [readOf(OTHER_SKILL), readOf(SKILL_WITH_PAGE), readOf(SKILL_WITH_PAGE, LARGEST.reference.name)];
+const SKILL_READS: Call[] = [
+  readOf(OTHER_SKILL),
+  readOf(SKILL_WITH_PAGE),
+  readOf(SKILL_WITH_PAGE, LARGEST.reference.name),
+  readOf(SKILL_WITH_PAGE, LARGEST.reference.name, LARGEST.reference.section),
+];
 
 // The orders the reply may read them in, one call a round.
 const ORDERS: Record<"skillsFirst" | "method" | "skillsLast", Call[]> = {
   skillsFirst: [...SKILL_READS, ...CHECKS, FEATURES],
-  // Each skill before the checks of its topic: the other skill first, the one
-  // whose page is read right before the ΔPDF's features.
-  method: [SKILL_READS[0], ...CHECKS, SKILL_READS[1], SKILL_READS[2], FEATURES],
+  // Each skill before the checks of its topic: the other skill first, then the
+  // one whose page is read, with its page, right before the ΔPDF's features.
+  method: [SKILL_READS[0], ...CHECKS, ...SKILL_READS.slice(1), FEATURES],
   skillsLast: [...CHECKS, FEATURES, ...SKILL_READS],
 };
 
@@ -363,7 +401,7 @@ const resultsOf = (s: Sent, pick: (c: Call) => boolean): string[] => {
     return c && pick(c) && typeof m.content === "string" ? [m.content] : [];
   });
 };
-const isSkillBody = (c: Call): boolean => c.name === "read_skill" && c.args.reference === undefined;
+const isSkillBody = (c: Call): boolean => c.name === "read_skill" && readsCore(c.args);
 type Breakdown = Record<(typeof ROWS)[number], number> & { prompt: number; offered: number; numCtx?: number };
 
 /**
@@ -425,8 +463,10 @@ afterAll(() => {
   console.log(
     [
       "NEBULA Pilot's worst turn, in the context guard's estimated tokens (provider/tokens.ts, uncalibrated)",
-      `Skills read whole: ${LARGEST.skills.join(", ")}; reference page: ${LARGEST.reference.skill} › ${LARGEST.reference.name} ` +
-        `(${n(LARGEST.reference.chars)} characters, cut at ${n(REFERENCE_MAX_CHARS)})`,
+      `Skills read (their cores): ${LARGEST.skills.join(", ")}; ` +
+        `reference page: ${LARGEST.reference.skill} › ${LARGEST.reference.name}, its index (${n(LARGEST.reference.chars)} characters) ` +
+        `and its section "${LARGEST.reference.section}" (${n(LARGEST.reference.sectionChars)} characters; a read is at most ${n(REFERENCE_MAX_CHARS)} and a header)` +
+        `${LARGEST.details ? `; the larger details, not read here, are ${n(LARGEST.details.chars)} characters (${LARGEST.details.skill}, first part)` : ""}`,
       `Results: ${[...CHECKS, FEATURES].map((c) => c.name).join(", ")}`,
       "",
       ...table,
@@ -591,12 +631,13 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     // Before R3 it shortened both skills read to their stubs here.
     const { after } = await localTurn();
     expect(run.prompts).toEqual(after.method.prompts);
-    // So on the last request the skill read before the checks arrives as its
-    // stub, and the one read last, with its page, whole.
+    // So on the last request both skills' cores arrive as stubs: the one read
+    // before the checks, and the one read before its page's index and section
+    // (THY-63 R4), which with dpdf_peaks are the newest KEEP_FULL and whole.
     const last = run.sent[run.sent.length - 1];
     const bodies = resultsOf(last, isSkillBody);
     expect(bodies).toHaveLength(2);
-    expect(bodies.map(isCompacted)).toEqual([true, false]);
+    expect(bodies.map(isCompacted)).toEqual([true, true]);
     const page = resultsOf(last, (c) => c.name === "read_skill" && c.args.reference !== undefined);
     const b = breakdown(run.sent[run.peak], run.key);
     // A skill with a `## Gates` section is shortened to its head and the
@@ -615,7 +656,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     notes.push(
       `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): every request fits with MIN_REPLY free after the loop's own compaction, so the guard shortens nothing more. ` +
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
-        `On the last request the skill read first arrives as a ${n(Math.min(...bodies.map((t) => t.length)))}-character stub, the one read last whole; ` +
+        `On the last request both skills read arrive as stubs of at most ${n(Math.max(...bodies.map((t) => t.length)))} characters; ` +
         `the reference page ${page.every(isCompacted) ? "shortened" : "whole"}. ` +
         `One skill gated at the cap (${n(SKILL_STUB_MAX)}-character stub) leaves ${n(WINDOW - oneGated)} to spare past MIN_REPLY.`,
     );
@@ -624,7 +665,8 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
 
 // Tracked, not enforced (the header): each `it.fails` passes while its target
 // is missed, and fails once the turn meets it. Then turn it into a plain `it`,
-// in the change that met it, so the target holds from that change on.
+// in the change that met it, so the target holds from that change on. The
+// stretch goal is met (THY-63 R3 and R4): a plain `it`.
 describe("the headroom target (docs/pilot-context-design.md §5.8), tracked until R1-R5 land", () => {
   it.fails(
     `target: the worst local turn after compaction, with the reply reserve, fits ${n(HEADROOM_TARGET)} (20 % under ${n(WINDOW)}), in the method and skills-last orders`,
@@ -640,7 +682,8 @@ describe("the headroom target (docs/pilot-context-design.md §5.8), tracked unti
     TURN_TIMEOUT,
   );
 
-  it.fails(
+  // Met since THY-63 R3 and R4 together (31,534 of 32,768): enforced from then on.
+  it(
     `stretch: the worst local turn without compaction, with the reply reserve, fits ${n(WINDOW)}`,
     async () => {
       const { before } = await localTurn();

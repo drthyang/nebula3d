@@ -27,6 +27,7 @@ import {
 } from "../answerChecks";
 import type { ChatMessage, StreamDelta } from "../provider/client";
 import { DEFAULT_SETTINGS } from "../settings";
+import { readSkill } from "../skills";
 import { offLatticeBunching } from "../metrics/bunching";
 import { shownGrains, type GrainFacts } from "../metrics/grains";
 import type { AgentTool } from "../tools";
@@ -939,6 +940,23 @@ describe("results no tool returned are sent back, whatever the hedge (THY-63 R3,
     const failed = [step("dpdf_peaks", {}, "Error: no ΔPDF yet", "error")];
     expect(uncalledSources("The strongest is 2.7 Å away (dpdf_peaks).", failed).tools).toEqual(["dpdf_peaks"]);
     expect(uncalledSources("The strongest is 2.7 Å away (dpdf_peaks).", [step("dpdf_peaks")]).tools).toEqual([]);
+  });
+
+  it("holds a skill's gate quoted in an answer as any claim, and traces a skill's numbers only from the part read (THY-63 R4)", () => {
+    // read_skill's results as the executor hands them over: the core by default, a part of Details on request.
+    const read = (args: Record<string, unknown>, text: string): AgentStep => ({ id: `read ${JSON.stringify(args)}`, name: "read_skill", args, status: "done", result: text });
+    const core = read({ name: "reduction-qc" }, readSkill("reduction-qc"));
+    const details = read({ name: "reduction-qc", section: "The flatten floor" }, readSkill("reduction-qc", undefined, "The flatten floor"));
+    // A gate quoted with its tool credits that tool: it must have run; reading the skill runs nothing.
+    const gate = "ub_check calls the UB turned at 0.05° or more.";
+    expect(uncalledSources(gate, [core, details]).tools).toEqual(["ub_check"]);
+    expect(uncalledSources(gate, [core, step("ub_check")]).tools).toEqual([]);
+    // The gate's number is in the core: a source once the core is read.
+    expect(untracedNumbers("A UB turned at 0.05° or more counts as turned.", sourcesOf([core]))).toEqual([]);
+    // A number only Details holds is a source only once that part was read.
+    const evidence = "On the clean controls the Q² term raised the pedestal span to 0.107.";
+    expect(untracedNumbers(evidence, sourcesOf([core]))).toEqual(["0.107"]);
+    expect(untracedNumbers(evidence, sourcesOf([core, details]))).toEqual([]);
   });
 
   it("reads a feature as the ΔPDF's beside a real-space distance or the ΔPDF's name, not reciprocal space's", () => {

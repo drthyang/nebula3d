@@ -10,6 +10,27 @@ does not read this page. Where the model needs a piece of it, it belongs in a
 tool's result (a verdict, a criterion), in a skill, or in an algorithm page a
 skill cites (docs/algorithms/), which R4 (the skills' restructure) decides.
 
+**Where R4 put it** (a skill's `## Details` is read on request with
+`read_skill` and `section`; an algorithm page with `reference`):
+
+- **qmax_coverage**, how the reach is judged without the ΔPDF's record (the
+  band, the box faces, the coverage edge, the box corners) and that it comes
+  from the Configure page's settings: reduction-qc, Details, "The coverage and
+  the |Q| band".
+- **symmetry_check**, the operations it tests (those that move c included; an
+  operation and its product with the inversion one entry; none declared: the
+  cell's in-plane ones, not judged): delta-pdf-interpretation, Details, "The
+  trust checks"; reduction-qc, Details, "Symmetry kept".
+- **grain_check**, that symmetrising a volume whose UB is slightly off makes
+  the displaced copies: bragg-node-audit, Details, "Peaks off the lattice".
+  The rest of its method was already in that skill's step 5 and its contract.
+- **compare_laue_classes**, the R_int formula (Σ|I − ⟨I⟩| / Σ|I| over orbits
+  measured twice or more): docs/algorithms/laue_compare.md, "R_int, read
+  twice", now a reference of reduction-qc.
+
+The other tools' method text stays here: their contracts and results carry
+what the model needs.
+
 The descriptions as the model reads them now:
 `web/src/llm/__tests__/__snapshots__/model-visible/2-tools.md`.
 
