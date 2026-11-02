@@ -21,12 +21,12 @@ export interface WindowPlan {
 
 const n = (x: number): string => x.toLocaleString("en-US");
 
-// The context length the refusal below suggests loading a model with: 56k at
+// The context length the refusal below suggests loading a model with: 32k at
 // least (TOOLS_CONTEXT: it holds a full assessment that reads two skills, with
 // room for the reply, as tokenBudget.test.ts checks), then a power of two. Text only: nothing here sizes or refuses a request by it.
 const suggestion = (prompt: number, max: number | null): number => {
   let size = TOOLS_CONTEXT;
-  for (let next = 65536; size < prompt + REPLY_RESERVE; next *= 2) size = next;
+  while (size < prompt + REPLY_RESERVE) size *= 2;
   return max != null ? Math.min(size, max) : size;
 };
 

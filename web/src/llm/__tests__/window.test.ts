@@ -158,20 +158,21 @@ describe("planWindow", () => {
     const plan = await planWindow({ baseUrl: "http://localhost:1234/v1", model: "qwen", messages: asking(35_000) });
     expect(plan.window).toBe(8_192);
     expect(plan.refusal).toMatch(/loaded with a 8,192-token context/);
-    // The suggestion is 56k at least (TOOLS_CONTEXT: it holds a full assessment, as tokenBudget.test.ts checks).
-    expect(plan.refusal).toMatch(/Context Length of 57,344/);
+    // The suggestion is 32k at least (TOOLS_CONTEXT: it holds a full assessment, as tokenBudget.test.ts checks).
+    expect(plan.refusal).toMatch(/Context Length of 32,768/);
     // The same request fits a 32k window: the guard itself goes by the window, not the suggestion.
     vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ id: "qwen", state: "loaded", loaded_context_length: 32_768 }] })));
     expect((await planWindow({ baseUrl: "http://localhost:1234/v1", model: "qwen", messages: asking(35_000) })).refusal).toBeUndefined();
   });
 
-  it("suggests 56k, then the power of two that holds the request, within what the model supports", async () => {
+  it("suggests 32k, then the power of two that holds the request, within what the model supports", async () => {
     const loaded = (max?: number) =>
-      vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ id: "qwen", state: "loaded", loaded_context_length: 32_768, max_context_length: max }] })));
+      vi.stubGlobal("fetch", vi.fn(async () => json({ data: [{ id: "qwen", state: "loaded", loaded_context_length: 16_384, max_context_length: max }] })));
     const refusal = async (chars: number) =>
       (await planWindow({ baseUrl: "http://localhost:1234/v1", model: "qwen", messages: asking(chars) })).refusal;
     loaded(262_144);
-    expect(await refusal(160_000)).toMatch(/needs about 45,720 tokens .* Context Length of 57,344 and ask again/);
+    expect(await refusal(70_000)).toMatch(/Context Length of 32,768 and ask again/);
+    expect(await refusal(160_000)).toMatch(/needs about 45,720 tokens .* Context Length of 65,536 and ask again/);
     expect(await refusal(190_000)).toMatch(/Context Length of 65,536 and ask again/);
     expect(await refusal(220_000)).toMatch(/Context Length of 131,072 and ask again/);
     loaded(98_304);

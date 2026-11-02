@@ -14,10 +14,11 @@
 //   compaction) and the 20 % target (26,214, 4 to spare) are both met, and
 //   held.
 // - A model LM Studio loaded with 32k gets the whole turn, nothing shortened.
-// A local live run needs a context of 56k (57,344) or more, the run policy's
-// minimum (RUN_POLICY): it holds the whole turn before compaction, with room
-// to reply, and leaves free the 3k a model-visible addition must leave (31.1k
-// now). The estimate is conservative: tool results count at the data rate,
+// A local live run needs a context of 32k (32,768) or more, the run policy's
+// minimum (RUN_POLICY, 56k until 2026-11-02): it holds the whole turn with no
+// compaction and the reply reserve, both skills' cores at their cap included,
+// and leaves free the POLICY_SPARE (3k) a model-visible addition must leave
+// (6.4k now; 4.4k with every ceiling filled). The estimate is conservative: tool results count at the data rate,
 // 1.4 characters a token, and read_skill's Markdown at 3.0 (C6), both under
 // what local tokenizers measured.
 //
@@ -502,9 +503,13 @@ afterAll(() => {
 // default 5 s on a slow CI runner. A runner's speed is not what this test pins.
 const TURN_TIMEOUT = 30_000;
 
-// What a model-visible addition must leave free under the run policy's minimum
-// context for a local live run: 3k.
-const POLICY_HEADROOM = 3 * 1024;
+// The run policy's minimum context for a local live run (RUN_POLICY) is the
+// 32k window this budget is held to.
+const POLICY_MIN = RUN_POLICY.minLocalContextTokens;
+// What the worst local turn, with the reply reserve and no compaction, must
+// leave free in that window, both skills' cores at their cap included: 3k.
+// A model-visible addition that would take it lower needs the user's yes.
+const POLICY_SPARE = 3 * 1024;
 
 /** Arm B's turn on a local model, driven once for the tests that read it: before the loop's compaction, and after it in each order. */
 let localTurnRuns: Promise<{ before: Awaited<ReturnType<typeof drive>>; after: Record<keyof typeof ORDERS, Awaited<ReturnType<typeof drive>>> }> | undefined;
@@ -572,19 +577,28 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     // loop's compaction does not trigger on it: a safety net for longer
     // replies (readings.test.ts and agent.test.ts exercise it). Noted, not
     // held: the ceilings hold the size.
-    // The worst local turn, with the reply reserve, fits the run policy's
-    // minimum context for a local live run, and leaves the headroom there.
+    // The worst local turn, with the reply reserve and no compaction, fits the
+    // run policy's minimum context for a local live run, the 32k window, and
+    // leaves POLICY_SPARE free there.
+    expect(POLICY_MIN, "the run policy's minimum is the window this budget is held to").toBe(WINDOW);
     const worst = b.prompt + REPLY_RESERVE;
-    const min = RUN_POLICY.minLocalContextTokens;
+    const min = POLICY_MIN;
     expect(worst, `the worst local turn, ${n(worst)} tokens, does not fit the run policy's minimum of ${n(min)}`).toBeLessThanOrEqual(min);
-    expect(min - worst, `the worst local turn leaves ${n(min - worst)} of the ${n(POLICY_HEADROOM)} tokens of headroom under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_HEADROOM);
+    expect(min - worst, `the worst local turn leaves ${n(min - worst)} of the ${n(POLICY_SPARE)} tokens to spare under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_SPARE);
     // The live-run rule holds everything, both skills' cores grown to their
     // cap (SKILL_CORE_MAX, readings/compact.ts; skillLint.test.ts holds every
-    // core under it) included: the turn still leaves the headroom under the
+    // core under it) included: the turn still leaves the spare under the
     // minimum.
     const coreGrowth = LARGEST.skills.reduce((sum, name) => sum + Math.max(0, SKILL_CORE_MAX - allSkills().find((s) => s.name === name)!.core.length), 0);
-    const gated = worst + estimateTokens(coreGrowth / MARKDOWN_CHARS_PER_TOKEN, before.key);
-    expect(min - gated, `with both cores at the cap the worst local turn, ${n(gated)} tokens, leaves ${n(min - gated)} under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_HEADROOM);
+    const growthTokens = estimateTokens(coreGrowth / MARKDOWN_CHARS_PER_TOKEN, before.key);
+    const gated = worst + growthTokens;
+    expect(min - gated, `with both cores at the cap the worst local turn, ${n(gated)} tokens, leaves ${n(min - gated)} under ${n(min)}`).toBeGreaterThanOrEqual(POLICY_SPARE);
+    // And with every ceiling filled (the room reserved for the queued features
+    // spent): a feature that keeps under its ceiling keeps the spare too.
+    const ceiled = CEILING_PROMPT.localBefore + REPLY_RESERVE + growthTokens;
+    expect(min - ceiled, `at its ceiling, with both cores at the cap, the worst local turn, ${n(ceiled)} tokens, leaves ${n(min - ceiled)} under ${n(min)}`).toBeGreaterThanOrEqual(
+      POLICY_SPARE,
+    );
 
     // After: the loop as it runs, the skills read in each order. The largest
     // request of the reply is what the window must hold.
@@ -617,9 +631,9 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
         `${b.prompt > SOFT_BUDGET ? "the loop compacts" : "no compaction"}.`,
       `Reply reserve: Claude ${n(CLAUDE_REPLY)} (anthropic.ts); a local run ${n(REPLY_RESERVE)} (REPLY_RESERVE: no cap is sent, the window plan keeps it free; ` +
         `a request is refused below MIN_REPLY ${n(MIN_REPLY)}).`,
-      `The run policy's minimum for a local live run (RUN_POLICY): ${n(min)}; the worst local turn ${n(worst)} leaves ${n(min - worst)} ` +
-        `(at least ${n(POLICY_HEADROOM)} must stay free); with both skills' cores at the cap (${n(SKILL_CORE_MAX)} characters each) it is ` +
-        `${n(gated)}, leaving ${n(min - gated)}.`,
+      `The run policy's minimum for a local live run (RUN_POLICY): ${n(min)}; the worst local turn with the reply reserve, no compaction, ${n(worst)}, leaves ${n(min - worst)} ` +
+        `(at least ${n(POLICY_SPARE)} must stay free); with both skills' cores at the cap (${n(SKILL_CORE_MAX)} characters each) it is ` +
+        `${n(gated)}, leaving ${n(min - gated)}; at its ceiling as well, ${n(ceiled)}, leaving ${n(min - ceiled)}.`,
     );
   }, TURN_TIMEOUT);
 

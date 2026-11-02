@@ -15,9 +15,9 @@
 // NEBULA_EVAL_PROVIDER  a label for the results (default: from the base URL)
 // ANTHROPIC_API_KEY / OPENAI_API_KEY  read for an Anthropic / other cloud base URL; never written out
 //
-// A model on a local server is held to the run policy's minimum context, 56k
+// A model on a local server is held to the run policy's minimum context, 32k
 // (RUN_POLICY, runContext in validationModels.ts), as the validation's runner
-// holds it: LM Studio must have it loaded with a Context Length of 57344 or
+// holds it: LM Studio must have it loaded with a Context Length of 32768 or
 // more, and Ollama must say it supports that much. A window under it, or one
 // that cannot be read, is refused before the first run and before each run.
 
@@ -51,8 +51,7 @@ describe.skipIf(!live)("NEBULA Pilot evals, live", () => {
 
     // The run policy's minimum context for a local live run (RUN_POLICY), as the
     // validation's runner holds it: a local model whose window is under it would
-    // have the skills it read cut to stubs and be graded for it, so no scenario
-    // runs. A cloud model is not asked.
+    // have what it read shortened and be graded for it, so no scenario runs. A cloud model is not asked.
     const policyModel = modelAt(baseUrl, model);
     const context = await runContext(policyModel, baseUrl);
     if (context.refusal) throw new Error(context.refusal);

@@ -39,18 +39,14 @@ function HelpConnect() {
             Base URL: <code>http://localhost:11434/v1</code>.
           </li>
           <li>
-            With <b>Tools</b> on, give the model room: add <code>OLLAMA_CONTEXT_LENGTH=57344</code> to that
-            command (on a small GPU Ollama picks as little as 4k; the first request alone is about 7k
-            tokens, and a full assessment that reads two skills about 26k with room for the reply).
+            With <b>Tools</b> on, add <code>OLLAMA_CONTEXT_LENGTH=32768</code> to that command: a full assessment needs about 26k tokens.
           </li>
         </ol>
 
         <p className="ai-help-h">LM Studio — local &amp; private</p>
         <ol>
           <li>
-            Load a model with a <b>Context Length</b> of 56k (57344): with <b>Tools</b> on, the first request
-            alone is about 7k tokens, and a full assessment that reads two skills about 26k with room for the
-            reply. In a smaller window, a long conversation has its older results shortened.
+            Load a model with a <b>Context Length</b> of 32k (32768): a full assessment with <b>Tools</b> on needs about 26k tokens.
           </li>
           <li>Open the <b>Developer</b> (Local Server) tab, turn on <b>Enable CORS</b>, then Start Server.</li>
           <li>

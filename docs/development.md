@@ -292,7 +292,10 @@ with the context guard's estimator. It holds the turn to ceilings, not pins
 - each configuration's largest prompt (the console; a local model before the
   loop's compaction and after it, in three orders) has a ceiling of today's
   size plus every reserve;
-- the 32k window-fit checks and the run policy's 56k checks hold as before.
+- the 32k window-fit checks hold as before, and the run policy's minimum
+  (32k since 2026-11-02, 56k before) holds the worst local turn, with the
+  reply reserve and no compaction, with `POLICY_SPARE` (3k) free: both
+  skills' cores at their cap, and every ceiling filled, included.
 
 A saving passes without an edit; a growth past a ceiling fails, naming the
 component. The 20 % headroom target (the worst local turn after compaction,
