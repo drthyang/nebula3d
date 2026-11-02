@@ -83,7 +83,7 @@ export interface HttpError extends Error {
 const CONTEXT_OVERFLOW = /context (length|window|size)|n_ctx|maximum context|too many tokens|exceeds? the (model's )?context|prompt is too long|tokens to keep/i;
 export const withContextHint = (message: string): string =>
   CONTEXT_OVERFLOW.test(message)
-    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings to 56k (57344) and reload it; start Ollama with OLLAMA_CONTEXT_LENGTH=57344. ${TOOLS_NEED}; Tools off, or Clear, also helps.`
+    ? `${message} — the model's context window is full. In LM Studio, raise the model's Context Length in its load settings to 32k (32768) and reload it; start Ollama with OLLAMA_CONTEXT_LENGTH=32768. ${TOOLS_NEED}; Tools off, or Clear, also helps.`
     : message;
 
 // A local model that writes a reply its own server cannot parse — most often a
@@ -189,17 +189,16 @@ export const loadedContext = async (
 export const TOOLS_NEED =
   "With Tools on, the first request alone is about 7k tokens, and a full assessment that reads two skills about 26k with room for the reply, before earlier turns add theirs";
 
-// Tools are on: 56k. It holds a full assessment that reads two skills, with
-// room for the reply and the 3k of headroom a model-visible addition must
-// leave (measured through the agent loop and checked by
-// __tests__/tokenBudget.test.ts; scripts/measure_pilot_context.sh prints the
-// sizes). A smaller
-// window still works, but the window guard then shortens the skills just read
-// to stubs, or refuses the request. The same number is the run policy's
+// Tools are on: 32k (56k until THY-63 R5). It holds a full assessment that
+// reads two skills, with no compaction, room for the reply and the 3k a
+// model-visible addition must leave (measured through the agent loop and
+// checked by __tests__/tokenBudget.test.ts; scripts/measure_pilot_context.sh
+// prints the sizes). A smaller window still works, but the window guard then
+// shortens older results, or refuses the request. The same number is the run policy's
 // minimum for a local live run of the validation (evals/validationModels.ts).
 // It is guidance only: what contextWarning and the window's refusal suggest.
 // The guard's budgets and the window plan do not read it.
-export const TOOLS_CONTEXT = 57344;
+export const TOOLS_CONTEXT = 32768;
 
 /** What to do about a model loaded with less context than Tools need, or null. */
 // LM Studio unloads an idle model and loads it again on the next request with

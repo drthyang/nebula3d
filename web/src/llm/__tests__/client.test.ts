@@ -168,17 +168,17 @@ describe("streamChat", () => {
     expect(small).toEqual({ loaded: 8192, max: 131072 });
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:1234/api/v0/models", expect.anything());
     expect(contextWarning(small, "small")).toMatch(
-      /^small is loaded with a 8,192-token context\. .* replies will be cut off\. In LM Studio, set this model's default Context Length to 57,344 \(it supports up to 131,072\)/,
+      /^small is loaded with a 8,192-token context\. .* replies will be cut off\. In LM Studio, set this model's default Context Length to 32,768 \(it supports up to 131,072\)/,
     );
     expect(contextWarning(await loadedContext("http://localhost:1234/v1", "roomy"), "roomy")).toBeNull();
-    // 32k: a full assessment that reads two skills needs about 26k with the reply (tokenBudget.test.ts), earlier turns more, so 56k is suggested.
-    expect(contextWarning({ loaded: 32_768, max: 131_072 }, "mid")).toMatch(
-      /^mid is loaded with a 32,768-token context\. .* about 26k with room for the reply, before earlier turns add theirs, so in a long conversation older results are shortened, or a request is not sent\. In LM Studio, set this model's default Context Length to 57,344/,
+    // 24k: a full assessment that reads two skills needs about 26k with the reply (tokenBudget.test.ts), so 32k is suggested.
+    expect(contextWarning({ loaded: 24_576, max: 131_072 }, "mid")).toMatch(
+      /^mid is loaded with a 24,576-token context\. .* about 26k with room for the reply, before earlier turns add theirs, so in a long conversation older results are shortened, or a request is not sent\. In LM Studio, set this model's default Context Length to 32,768/,
     );
-    expect(contextWarning({ loaded: 57_344, max: 131_072 }, "enough")).toBeNull();
-    // 48k, enough until a full assessment carried a full list of the ΔPDF's features, is not now.
-    expect(contextWarning({ loaded: 49_152, max: 131_072 }, "was enough")).toMatch(/Context Length to 57,344/);
-    expect(contextWarning({ loaded: 32_768, max: 40_960 }, "capped")).toMatch(/Context Length to 40,960 \(it supports up to 40,960\)/);
+    // 32k holds it since THY-63 R5 (56k was suggested until then).
+    expect(contextWarning({ loaded: 32_768, max: 131_072 }, "enough")).toBeNull();
+    expect(contextWarning({ loaded: 32_767, max: 131_072 }, "just short")).toMatch(/Context Length to 32,768/);
+    expect(contextWarning({ loaded: 16_384, max: 24_576 }, "capped")).toMatch(/Context Length to 24,576 \(it supports up to 24,576\)/);
     // Not loaded: LM Studio will load it with its defaults, which is what to change.
     const idle = await loadedContext("http://localhost:1234/v1", "idle");
     expect(idle).toEqual({ loaded: null, max: 262144 });

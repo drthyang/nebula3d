@@ -86,8 +86,8 @@ describe.skipIf(!live)("validation, live", () => {
     useBackend();
     installEventSource();
     // The run policy's minimum context for a local live run (RUN_POLICY): a model
-    // whose window is under it would have the skills it read cut to stubs and be
-    // graded for it, so the plan does not start.
+    // whose window is under it would have what it read shortened and be graded
+    // for it, so the plan does not start.
     const context = await runContext(model, baseUrl);
     if (context.refusal) throw new Error(context.refusal);
     const datasets = validationDatasets(await fetchDatasets());
