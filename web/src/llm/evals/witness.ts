@@ -45,10 +45,10 @@ const ANSWER_WORD = /^(yes|no)\s*[,:.!—–-]\s*/i;
 /** Whether the words negate, a curly apostrophe read as a straight one. */
 const negates = (words: string): boolean => NEGATION.test(words.replace(/’/g, "'"));
 
-/** The answer's sentences (lines and sentence ends split it). */
+/** The answer's sentences (lines and sentence ends split it); emphasis and the app's ⚠ mark on a kept answer's line are no words. */
 function sentences(text: string): string[] {
   return text
-    .replace(/\*\*|__|`/g, "")
+    .replace(/\*\*|__|`|⚠\uFE0F?\s?/g, "")
     .split(/(?<=[.!?])\s+|\n+/)
     .map((s) => s.trim())
     .filter(Boolean);

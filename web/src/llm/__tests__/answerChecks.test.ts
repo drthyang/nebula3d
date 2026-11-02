@@ -10,6 +10,7 @@ import type { AgentStep } from "../agent";
 import { ANSWER_REVISIONS, runAgent } from "../agent";
 import {
   answerIssues,
+  clauses,
   assumedModulation,
   citedMarks,
   contradictions,
@@ -338,7 +339,8 @@ describe("runAgent holds the final answer to its evidence", () => {
   it("notes what still fails after the one revision, and keeps a draft the revision left empty", async () => {
     script([[{ content: "Yes, the ring removal is clean." }], [{ content: "" }]]);
     const r = await runAgent({ messages: question, tools: [assess], ctx, settings, signal: new AbortController().signal });
-    expect(r.content).toBe(`${UNSUPPORTED_MARK} Yes, the ring removal is clean.`);
+    expect(r.content).toBe("Yes, the ring removal is clean.");
+    expect(r.shown).toBe(`${UNSUPPORTED_MARK} Yes, the ring removal is clean.`);
     expect(r.note).toBe(
       "This answer failed its checks, and its revision did not replace it. The lines marked ⚠ hold what no tool result in this reply supports: “the ring removal is clean.”. Not measured in this reply: the ring removal (assess_stage with stage rings).",
     );
@@ -1007,7 +1009,8 @@ describe("results no tool returned are sent back, whatever the hedge (THY-63 R3,
     ]);
     const r = await runAgent({ messages: question, tools: [assess], ctx, settings, signal: new AbortController().signal, maxRounds: 2 });
     // Kept, its unsupported claim marked in place and quoted in the note (the THY-63 eval's dev-control run).
-    expect(r.content).toBe(`${UNSUPPORTED_MARK} The ring removal needs attention, and the flatten left no pedestal.`);
+    expect(r.content).toBe("The ring removal needs attention, and the flatten left no pedestal.");
+    expect(r.shown).toBe(`${UNSUPPORTED_MARK} The ring removal needs attention, and the flatten left no pedestal.`);
     expect(r.note).toMatch(
       /^This answer failed its checks, and its revision did not replace it\. The lines marked ⚠ hold what no tool result in this reply supports: “The ring removal needs attention, and the flatten left no pedestal\.”\. Not measured in this reply: the flatten \(assess_stage with stage flatten\)\. The reply was cut off: /,
     );
@@ -1020,7 +1023,8 @@ describe("results no tool returned are sent back, whatever the hedge (THY-63 R3,
       [{ toolCalls: [{ ...call, id: "c2" }] }], // a server that ignores tool_choice "none"
     ]);
     const r = await runAgent({ messages: question, tools: [assess], ctx, settings, signal: new AbortController().signal, maxRounds: 2 });
-    expect(r.content).toBe(`${UNSUPPORTED_MARK} The ring removal needs attention, and the flatten left no pedestal.`);
+    expect(r.content).toBe("The ring removal needs attention, and the flatten left no pedestal.");
+    expect(r.shown).toBe(`${UNSUPPORTED_MARK} The ring removal needs attention, and the flatten left no pedestal.`);
     expect(r.note).toBe(
       "This answer failed its checks, and its revision did not replace it. The lines marked ⚠ hold what no tool result in this reply supports: “The ring removal needs attention, and the flatten left no pedestal.”. Not measured in this reply: the flatten (assess_stage with stage flatten). Stopped after 2 rounds of tool calls; the answer uses what was gathered so far.",
     );
@@ -1096,9 +1100,29 @@ describe("ΔPDF features written in LaTeX or under a heading are claims (the THY
     const pdf: AgentTool = { ...assess, run: async () => ({ result: { pdf: { verdict: "meets its goal", headline: "SNR 1380" } }, summary: "pdf" }) };
     script([[{ toolCalls: [peaksCall] }], [{ content: LATEX_FEATURES }], [{ content: "**Strongest Pair" }, { truncated: true, stopReason: "length" }]]);
     const r = await runAgent({ messages: question, tools: [pdf], ctx, settings, signal: new AbortController().signal, maxRounds: 2 });
-    expect(r.content.split("\n").filter((l) => l.startsWith(`- ${UNSUPPORTED_MARK} **Feature`))).toHaveLength(2);
-    expect(r.content.split(`${UNSUPPORTED_MARK} `).join("")).toBe(LATEX_FEATURES);
+    // The marks are in what the user reads; the model's own words, which the graders and checks read, are unmarked.
+    expect(r.content).toBe(LATEX_FEATURES);
+    expect(r.shown!.split("\n").filter((l) => l.startsWith(`- ${UNSUPPORTED_MARK} **Feature`))).toHaveLength(2);
+    expect(r.shown!.split(`${UNSUPPORTED_MARK} `).join("")).toBe(LATEX_FEATURES);
     expect(r.note).toMatch(/The lines marked ⚠ hold what no tool result in this reply supports: “Feature 1: .*The reply was cut off: /s);
+  });
+});
+
+describe("a mark never hides a claim", () => {
+  // The app's ⚠ before a line of a kept answer is no word: the reader the
+  // graders and the answer checks share, and the graders' witness, read a
+  // marked line as the unmarked one (its leading answer word included).
+  const answers = [
+    "No, the UB is misoriented by about 0.5°; refine it before the punch.",
+    "Yes, the ring removal is clean.",
+    "- **Feature 1:** $\\Delta r \\approx 2.55$ Å (Positive)",
+  ];
+  it("in the shared reader", () => {
+    for (const a of answers) {
+      const marked = a.startsWith("- ") ? a.replace("- ", `- ${UNSUPPORTED_MARK} `) : `${UNSUPPORTED_MARK} ${a}`;
+      expect(clauses(marked), marked).toEqual(clauses(a));
+      expect([...verdictsIn(marked)], marked).toEqual([...verdictsIn(a)]);
+    }
   });
 });
 

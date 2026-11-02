@@ -193,3 +193,36 @@ describe("the witness's reading", () => {
     expect(angles("Turned about (1, 1, 0).")).toEqual([]);
   });
 });
+
+// The app sets ⚠ before each line of an answer it kept although the answer
+// failed its checks (answerChecks.ts, UNSUPPORTED_MARK), in the text the user
+// reads only (agent.ts, `shown`). Should a marked text ever be graded, the
+// mark is no word to either reading: a leading ⚠ once hid "No," and with it
+// the claim of a turned UB.
+describe("a kept answer's ⚠ mark hides no claim from the graders", () => {
+  const answers = [
+    "No, the UB is turned by 0.6°; refine it before the punch.",
+    "Yes, the UB is right.",
+    "Powder rings are left at 2.2 and 4.05 Å⁻¹.",
+    "- The counts end at 4.5 Å⁻¹, inside the box.",
+  ];
+  const mark = (a: string): string => (a.startsWith("- ") ? `- ⚠ ${a.slice(2)}` : `⚠ ${a}`);
+  // What a grade decides: each check's pass, the detection, the false alarms, the disputes (a detail may count the characters).
+  const decided = (g: ReturnType<typeof gradeRun>) => ({
+    detection: g.detection.map((x) => [x.check, x.pass]),
+    falseAlarms: g.falseAlarms.map((x) => [x.check, x.pass]),
+    detected: g.detected,
+    noFalseAlarm: g.noFalseAlarm,
+    disputes: (g.disputes ?? []).length,
+  });
+
+  it("reads a marked answer as the unmarked one, in the witness and in every dev case's grades", () => {
+    for (const a of answers) {
+      expect(witness(mark(a)), a).toEqual(witness(a));
+      for (const c of casesIn("dev")) {
+        const run = { scenario: c.id, steps: [], content: a, latencyMs: 0, usage: null };
+        expect(decided(gradeRun(c, { ...run, content: mark(a) })), `${c.id}: ${a}`).toEqual(decided(gradeRun(c, run)));
+      }
+    }
+  });
+});

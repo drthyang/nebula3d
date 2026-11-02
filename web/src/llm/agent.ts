@@ -83,6 +83,11 @@ export interface AgentProgress {
 }
 
 export interface AgentResult extends AgentProgress {
+  // The answer as the user reads it, where it differs from `content`: an answer
+  // kept although it failed its checks, with UNSUPPORTED_MARK before each line
+  // that holds an unsupported claim (answerChecks.ts). `content` is the model's
+  // own words, which the graders, the answer checks and the records read.
+  shown?: string;
   note?: string;
   // Set when the model server failed the reply after its retries; the note
   // explains it, and the steps and text before it stay.
@@ -235,6 +240,7 @@ export async function runAgent({
   let revisions = 0;
   let rejected = ""; // the last answer sent back, kept if the revision writes nothing
   let rejectedIssues: ReturnType<typeof answerIssues> = null; // what it failed, noted if it is kept
+  let unsupported: string[] = []; // the claims of an answer kept although it failed, marked in `shown`
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";
@@ -435,16 +441,17 @@ export async function runAgent({
     // The kept answer's unsupported claims are marked in place, its words
     // unchanged, and its note quotes them (keptAnswerNote): a model had a
     // fabricated list of ΔPDF features reach the user with only a note when its
-    // revision was cut off (THY-63 eval, 2026-11-01).
+    // revision was cut off (THY-63 eval, 2026-11-01). The marks go only into
+    // the text the user reads (`shown`): `content` stays the model's own words,
+    // which the graders, the answer checks and the records judge, so a mark can
+    // never hide a claim (a leading ⚠ once kept "No, the UB is off" from
+    // reading as a claim).
     const keep = (answer: string, issues: AnswerIssues | null): string => {
-      if (!issues) {
-        content = joinText(before, answer);
-        return "";
-      }
+      content = joinText(before, answer);
+      if (!issues) return "";
       const claims = unsupportedClaims(answer, issues);
-      const { text, marked } = markUnsupported(answer, claims);
-      content = joinText(before, text);
-      return keptAnswerNote(issues, claims, marked);
+      unsupported = claims;
+      return keptAnswerNote(issues, claims, markUnsupported(answer, claims).marked);
     };
     const keepRejected = ({ cut = false } = {}): string => {
       if (!rejected || (roundText.trim() && !cut)) return "";
@@ -538,8 +545,10 @@ export async function runAgent({
   // the words.
   content = fillReferences(content, steps).text;
   const verdict = useTools ? verdicts({ reply: steps }).achieved : null;
+  const marked = unsupported.length ? markUnsupported(content, unsupported) : null;
   return {
     content,
+    ...(marked?.marked.length ? { shown: marked.text } : {}),
     reasoning,
     steps,
     note,

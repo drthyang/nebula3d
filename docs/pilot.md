@@ -75,9 +75,10 @@ glossary, tersely, comes with `measure_reciprocal_cut`'s and
   call unmeasured, what no tool supports. What still fails is noted under the
   reply (`answerChecks.ts`, `evidence.ts`). When the revision writes nothing in
   the answer's place (cut off at the output limit, or calls where none were
-  left), the answer it revised stands, its words unchanged: each line that holds
-  a claim the checks found unsupported is marked ⚠, and the note quotes those
-  claims ("The lines marked ⚠ hold what no tool result in this reply supports:
+  left), the answer it revised stands, its words unchanged: in what you read,
+  each line that holds a claim the checks found unsupported is marked ⚠ (the
+  graders, the checks and the records judge the model's own words, unmarked,
+  and their reader takes a ⚠ for no word), and the note quotes those claims ("The lines marked ⚠ hold what no tool result in this reply supports:
   “Feature 1: …”"). The features check reads LaTeX too: `\Delta\text{PDF}`,
   a distance or a vector in `\text{Å}` or `\AA`, and a vector in Å written with
   a sign or a size in σ, as under a heading that names the correlations.
