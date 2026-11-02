@@ -3,15 +3,15 @@
 // component (docs/pilot-context-design.md §5.8).
 //
 // VERDICT (measured 2026-11-01 with THY-63 R3's core prompt, R4's skill
-// cores and THY-59's skill text, and R5's count of read_skill's Markdown at
-// 3.0 characters a token, with scripts/measure_pilot_context.sh, which counts
-// the same way): UNDER 32k on a local model, with no compaction.
+// cores, THY-59's and THY-60's skill text, and R5's count of read_skill's
+// Markdown at 3.0 characters a token, with scripts/measure_pilot_context.sh,
+// which counts the same way): UNDER 32k on a local model, with no compaction.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 20.6k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 20.0k + 6,144
-//   = 26,175, in every order the skills are read: under the soft budget, so
+//   about 20.7k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 20.1k + 6,144
+//   = 26,210, in every order the skills are read: under the soft budget, so
 //   the loop compacts nothing. The stretch goal (inside 32k without
-//   compaction) and the 20 % target (26,214, 39 to spare) are both met, and
+//   compaction) and the 20 % target (26,214, 4 to spare) are both met, and
 //   held.
 // - A model LM Studio loaded with 32k gets the whole turn, nothing shortened.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
@@ -164,18 +164,25 @@ type Component = (typeof ROWS)[number];
 // (the description), skills +131 (the core). R5 counts read_skill's Markdown
 // at 3.0 characters a token, not the data rate's 1.4 (C6), and the core read
 // names its references without their descriptions: skills 10,060 -> 4,703,
-// and every prompt.
+// and every prompt. THY-60 spent its reserve line (results 270, tools 30) on
+// what it uses: skills +33 (bragg-node-audit's gate line and its details'
+// new part named in the core), and results +230 held for `ub_turn` in
+// assess_stage's punch result (321 characters: a significant turn's verdict
+// with its rule and remedy, its numbers and the sweep's before → after),
+// which only a turned volume carries, not the synthetic crystal, so the
+// measured results and prompts are 230 under these; tools +0. The rest of the
+// line (37) is released.
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 4_703, results: 8_091 };
+const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 4_736, results: 8_321 };
 // Every tool's definition, as the console sends them (Claude).
 const MEASURED_ALL_TOOLS = 6_173;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 20_617,
-  localBefore: 20_031,
-  localSkillsFirst: 20_031,
-  localMethod: 20_031,
-  localSkillsLast: 20_031,
+  console: 20_881,
+  localBefore: 20_296,
+  localSkillsFirst: 20_296,
+  localMethod: 20_296,
+  localSkillsLast: 20_296,
 };
 
 // The room held for the queued model-visible features, by component, in
@@ -185,10 +192,6 @@ const MEASURED_PROMPT = {
 // scripts/measure_pilot_context.sh. Results and skills count at the data
 // rate (1.4 characters a token), definitions at the prose rate (3.5).
 const RESERVED: Record<string, { what: string; room: Partial<Record<Component, number>> }> = {
-  "THY-60": {
-    what: "UB-aware punch, estimated: the turned-UB diagnosis and the tail sweep in the punch record, at most 400 characters of result and 100 of description",
-    room: { results: 270, tools: 30 },
-  },
   "THY-61": {
     what: "ring doublets, measured on its branch: the ring stage's record on assess_stage's rings (stage_shells), +35 on the synthetic crystal; a real record's line runs to about 140 characters",
     room: { results: 150 },

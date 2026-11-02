@@ -39,6 +39,16 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from nebula3d.analysis.misorientation import Misorientation, capsule_inside, diagnose
+from nebula3d.analysis.tail_sweep import (
+    SETTINGS as TAIL_SWEEP_SETTINGS,
+)
+from nebula3d.analysis.tail_sweep import (
+    NodeHole,
+    TailSweep,
+    not_run,
+    sweep_tails,
+)
 from nebula3d.core import HKLVolume, q_bin_indices, q_magnitude_from_axes
 from nebula3d.modulation import Modulation, h_planes, protected_mask
 from nebula3d.symmetry import GridSymmetry
@@ -79,6 +89,14 @@ class _PeakPunch:
     # the search keeps "search" and takes that node as ``source_node_hkl``
     # (``BraggRemover._claim_left_nodes``).
     found_by: str = "integer"
+    # Whether ``center_hkl`` is the fitted centroid of the peak's core (the
+    # integer pass's position fit), not a voxel's centre: the centres the
+    # misorientation is fitted from (``BraggRemover._diagnose_rotation``).
+    centre_fitted: bool = False
+    # Round 1 made rotation-aware (``BraggRemover.rotation_aware``): the punch
+    # is this peak's footprint swept along ±stretch_hkl (HKL), the shift a
+    # turned UB predicts at its node (ω × q); None punches the footprint.
+    stretch_hkl: tuple[float, float, float] | None = None
 
     def as_tuple(self) -> tuple[int, int, int, float]:
         return self.ih, self.ik, self.il, self.intensity
@@ -574,6 +592,27 @@ class BraggRemover:
         ``None`` (default) punches every candidate.
     subtract_profile:
         Reserved (profile-subtraction path not implemented in this pass).
+    rotation_aware:
+        Make round 1 follow a UB turned in the reduction (THY-60).  The
+        rotation ω is always fitted to the strong integer peaks' centres and
+        recorded (:mod:`nebula3d.analysis.misorientation`); when it is
+        significant, explains the offsets and is resolved on the grid
+        (``Misorientation.active``), each integer peak whose predicted shift
+        |ω × q| reaches half a voxel is punched as its footprint swept along
+        ±(ω × q), and one whose centre could not be fitted is centred where
+        the rotation puts it.  A fitted centre is kept: it measures the
+        peak's actual position, whatever else moved it (a cell error, strain),
+        where the rotation only predicts it.  Otherwise round 1 is unchanged.
+    tail_sweep:
+        Round 2 (:mod:`nebula3d.analysis.tail_sweep`): ``"off"`` (default
+        here), ``"auto"`` (only when the rotation is active, as above) or
+        ``"on"`` (whenever a rotation was fitted).  On the punched volume, at
+        each Bragg node, the tail a turned UB leaves beside the round-1 hole
+        along ±ω × q̂ is added to the holes: voxels ``min_significance`` (5σ
+        by default) above the diffuse at their distance from the hole, in the
+        volume's σ, connected to the hole and confined to the search region,
+        within per-node and per-|Q|-shell caps.  The declared modulation and
+        the integer-H guard are respected.
     symmetry_ops:
         The Laue operations (integer HKL matrices, see
         :func:`nebula3d.symmetry.parse_symmetry_ops`) the volume was
@@ -682,6 +721,10 @@ class BraggRemover:
     search_exclude_h_fractions: tuple[float, ...] | None = None
     search_max_width_ratio: float | None = None
     subtract_profile: bool = False
+    # A UB turned in the reduction (THY-60): round 1 follows the fitted
+    # rotation when it is active, and round 2 sweeps the tails it leaves.
+    rotation_aware: bool = False
+    tail_sweep: str = "off"
     # Laue operations the data were symmetrised with: punch decisions are
     # shared across each symmetry orbit (see the class docstring).
     symmetry_ops: tuple[NDArray[np.int64], ...] | None = None
@@ -698,6 +741,11 @@ class BraggRemover:
     # could not judge, for the run log and the punch's record (see
     # ``_detect_integer``); empty with the floors test or no integer pass.
     _node_report: dict[str, Any] = dataclasses.field(
+        default_factory=dict, init=False, repr=False, compare=False)
+    # The last detection's misorientation diagnosis and what round 1 did with
+    # it ("misorientation", "stretched", "centred"), and the last tail sweep
+    # ("sweep"), for the run log and the punch's record.
+    _rotation_report: dict[str, Any] = dataclasses.field(
         default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -727,6 +775,9 @@ class BraggRemover:
             raise ValueError(
                 f"search_floor_unit={self.search_floor_unit!r}: choose 'data' or "
                 f"'scatter'")
+        if self.tail_sweep not in TAIL_SWEEP_SETTINGS:
+            raise ValueError(
+                f"tail_sweep={self.tail_sweep!r}: choose one of {TAIL_SWEEP_SETTINGS}")
         cell = tuple(self.supercell)
         if len(cell) != 3 or any(int(n) != n or n < 1 for n in cell):
             raise ValueError(
@@ -1555,13 +1606,17 @@ class BraggRemover:
         # cannot measure, so it learns the profile too.
         learn = self.punch_footprint in {"profile", "own"}
         profile: _BraggProfile | None = None
+        self._rotation_report.clear()
         if self.mode == "integer":
             peaks = self._detect_integer(vol, rejected)
+            turn = self._diagnose_rotation(vol, peaks)
             if learn:
                 profile = self._learn_profile(vol, peaks)
                 peaks = self._footprints(vol, peaks, profile, self._bragg_width(vol, peaks))
+            peaks = self._stretch(vol, peaks, turn)
         elif self.mode in {"auto", "search"}:
             peaks = self._detect_search(vol, rejected)
+            self._diagnose_rotation(vol, [])
             if learn:
                 profile = self._learn_profile(vol, peaks)
                 peaks = self._footprints(vol, peaks, profile)
@@ -1574,10 +1629,15 @@ class BraggRemover:
             # The nodes the node test could not judge, left to the search.
             left: list[tuple[int, int, int]] = list(self._node_report.get("nodes", []))
             reference = self._bragg_width(vol, found) if learn else None
+            # A turned UB, read off the node test's peaks: with rotation_aware
+            # and the rotation active, the integer punches follow it before
+            # the search reads their residual.
+            turn = self._diagnose_rotation(vol, found)
             integer = found
             if learn:
                 profile = self._learn_profile(vol, found)
                 integer = self._footprints(vol, found, profile, reference)
+            integer = self._stretch(vol, integer, turn)
             keep = self._punch_centers(
                 vol, np.ones(vol.shape, dtype=bool), integer,
                 reference=self._scaling_reference(integer, rejected))
@@ -1590,13 +1650,140 @@ class BraggRemover:
                 # The search's Bragg peaks at the left nodes are Bragg peaks
                 # like the node test's: the profile is learned from both.
                 profile = self._learn_profile(vol, found + claimed)
-                integer = self._footprints(vol, found, profile, reference)
+                integer = self._stretch(vol, self._footprints(vol, found, profile, reference),
+                                        turn)
             if learn:
                 search = self._footprints(vol, search, profile, reference)
             peaks = integer + search
         else:
             raise ValueError(f"Unknown mode: {self.mode!r}")
         return peaks, self._scaling_reference(peaks, rejected), profile
+
+    def _diagnose_rotation(self, vol: HKLVolume, peaks: list[_PeakPunch]) -> Misorientation:
+        """The rotation a turned UB gives the integer peaks' centres
+        (:func:`nebula3d.analysis.misorientation.diagnose`), kept in the
+        rotation report.  Fitted from the node test's peaks whose centre was
+        fitted and whose significance reaches
+        :data:`~nebula3d.analysis.misorientation.FIT_MIN_SIGNIFICANCE`; on
+        symmetrised data (``symmetry_ops``) not fitted at all."""
+        from nebula3d.analysis.misorientation import FIT_MIN_SIGNIFICANCE
+
+        at_nodes = [p for p in peaks if p.source_node_hkl is not None]
+        strong = [p for p in at_nodes
+                  if p.found_by == "integer" and p.centre_fitted
+                  and np.isfinite(p.significance) and p.significance >= FIT_MIN_SIGNIFICANCE]
+        turn = diagnose(
+            vol.ub_matrix,
+            np.array([p.source_node_hkl for p in strong], dtype=np.float64).reshape(-1, 3),
+            np.array([p.center_hkl for p in strong], dtype=np.float64).reshape(-1, 3),
+            np.array([p.significance for p in strong], dtype=np.float64),
+            np.array([p.source_node_hkl for p in at_nodes], dtype=np.float64).reshape(-1, 3),
+            self.voxel_edge_q(vol), symmetrised=self.symmetry_ops is not None)
+        self._rotation_report.update(misorientation=turn, stretched=0, centred=0)
+        return turn
+
+    def _stretch(
+        self, vol: HKLVolume, peaks: list[_PeakPunch], turn: Misorientation,
+    ) -> list[_PeakPunch]:
+        """*peaks* with round 1 made rotation-aware (``rotation_aware``), or
+        unchanged.  Only with the rotation active, and only the integer pass's
+        peaks whose predicted shift |ω × q| reaches half a voxel: each is
+        punched as its footprint stretched by |ω × q| along ω × q̂, swept
+        ±½(ω × q) about its centre (``stretch_hkl``,
+        :data:`~nebula3d.analysis.misorientation.ROUND1_STRETCH`), and
+        one whose centre was not fitted is moved to where the rotation puts
+        its node (a fitted centre is the peak's measured position, and stays)."""
+        from nebula3d.analysis.misorientation import ROUND1_STRETCH
+        from nebula3d.analysis.tail_sweep import MIN_SHIFT_VOXELS
+
+        if not (self.rotation_aware and turn.active):
+            return peaks
+        ub = np.asarray(vol.ub_matrix, dtype=np.float64)
+        ub_inv = np.linalg.inv(ub)
+        floor = MIN_SHIFT_VOXELS * self.voxel_edge_q(vol)
+        out: list[_PeakPunch] = []
+        stretched = centred = 0
+        for p in peaks:
+            if p.found_by != "integer" or p.source_node_hkl is None:
+                out.append(p)
+                continue
+            node = np.asarray(p.source_node_hkl, dtype=np.float64)
+            shift = turn.shift(ub @ node)
+            if float(np.linalg.norm(shift)) < floor:
+                out.append(p)
+                continue
+            move = ub_inv @ shift
+            seg = ROUND1_STRETCH * move
+            stretch = (float(seg[0]), float(seg[1]), float(seg[2]))
+            if p.centre_fitted:
+                out.append(dataclasses.replace(p, stretch_hkl=stretch))
+            else:
+                c = node + move
+                centre = (float(c[0]), float(c[1]), float(c[2]))
+                out.append(dataclasses.replace(
+                    p, center_hkl=centre, stretch_hkl=stretch,
+                    ih=int(np.argmin(np.abs(vol.h_axis - centre[0]))),
+                    ik=int(np.argmin(np.abs(vol.k_axis - centre[1]))),
+                    il=int(np.argmin(np.abs(vol.l_axis - centre[2])))))
+                centred += 1
+            stretched += 1
+        self._rotation_report.update(stretched=stretched, centred=centred)
+        return out
+
+    def _node_holes(
+        self, vol: HKLVolume, peaks: list[_PeakPunch], reference: float | None,
+    ) -> list[NodeHole]:
+        """The Bragg nodes' round-1 punches, for the tail sweep."""
+        r_base = self._fit_base_radii(vol)
+        ref = (reference if reference is not None else self._scaling_reference(peaks)
+               ) if self.intensity_scale else None
+        out = []
+        for p in peaks:
+            if p.source_node_hkl is None:
+                continue
+            a, _, _ = self._final_punch(vol, p, ref, r_base)
+            if a is None:
+                continue
+            h, k, l = p.source_node_hkl
+            out.append(NodeHole(
+                node=(int(h), int(k), int(l)), centre_hkl=p.center_hkl, index=(p.ih, p.ik, p.il),
+                shape=a, stretch=None if p.stretch_hkl is None else np.asarray(p.stretch_hkl),
+                h_guard=self._h_guard_for(p)))
+        return out
+
+    def _sweep_tails(
+        self,
+        vol: HKLVolume,
+        keep: NDArray[np.bool_],
+        peaks: list[_PeakPunch],
+        reference: float | None,
+    ) -> tuple[NDArray[np.bool_], TailSweep]:
+        """Round 2 (``tail_sweep``) on the round-1 *keep*: the keep-mask with
+        the tails added to the holes, and the sweep's record (also in the
+        rotation report).  Runs with ``"on"`` whenever a rotation was fitted,
+        with ``"auto"`` only when it is active; *keep* comes back unchanged
+        otherwise.  On symmetrised data no rotation is fitted, so it never
+        runs there."""
+        turn: Misorientation | None = self._rotation_report.get("misorientation")
+        setting = self.tail_sweep
+        if setting == "off":
+            sweep = not_run(setting, "off")
+        elif turn is None or not turn.fitted:
+            sweep = not_run(setting, "no_rotation" if turn is None else turn.status)
+        elif setting == "auto" and not turn.active:
+            sweep = not_run(setting, turn.status)
+        else:
+            sweep = sweep_tails(
+                vol, keep, self._node_holes(vol, peaks, reference), turn.vector(),
+                z_gate=float(self.min_significance) if self.min_significance is not None else 5.0,
+                setting=setting, protect=self._search_protected(vol),
+                h_forms=self._h_forms(vol))
+        self._rotation_report["sweep"] = sweep
+        if not sweep.added.size:
+            return keep, sweep
+        out = keep.copy()
+        out.reshape(-1)[sweep.added] = False
+        return out, sweep
 
     def _claim_left_nodes(
         self, vol: HKLVolume, search: list[_PeakPunch],
@@ -2101,8 +2288,12 @@ class BraggRemover:
             float(vol.l_axis[pl]),
         )
         shape_hkl = None
+        fitted = False
         if self.integer_optimize_position or self.integer_optimize_shape:
+            voxel = center_hkl
             center_hkl, shape_hkl = self._fit_integer_peak(vol, idx, local_bg)
+            # The fit returns the voxel's own centre when it cannot measure the peak.
+            fitted = center_hkl != voxel
             ph = int(np.argmin(np.abs(vol.h_axis - center_hkl[0])))
             pk = int(np.argmin(np.abs(vol.k_axis - center_hkl[1])))
             pl = int(np.argmin(np.abs(vol.l_axis - center_hkl[2])))
@@ -2110,7 +2301,7 @@ class BraggRemover:
             ih=ph, ik=pk, il=pl, intensity=peak,
             center_hkl=center_hkl, shape_hkl=shape_hkl,
             source_node_hkl=node, local_background=local_bg,
-            significance=z,
+            significance=z, centre_fitted=fitted,
         )
 
     def _fit_integer_peak(
@@ -2412,7 +2603,10 @@ class BraggRemover:
         keep = self._punch_centers(
             vol, np.ones(vol.shape, dtype=bool), peaks, reference=reference,
             protect=self._search_protected(vol))
-        return self._symmetric_keep(vol, self._punch_incident_beam(vol, keep))
+        keep = self._symmetric_keep(vol, self._punch_incident_beam(vol, keep))
+        # Round 2: the tails a turned UB leaves (tail_sweep); never on
+        # symmetrised data, so the orbit sharing above is not undone.
+        return self._sweep_tails(vol, keep, peaks, reference)[0]
 
     def _punch_centers(
         self,
@@ -2439,58 +2633,63 @@ class BraggRemover:
                ) if self.intensity_scale else None
 
         for peak_rec in peaks:
-            s = self._scale_factor(peak_rec.intensity, ref if ref is not None else 1.0)
-            center = (peak_rec.ih, peak_rec.ik, peak_rec.il)
-            spare = protect if peak_rec.found_by == "search" else None
-
-            # (1) Profile-matched footprint (final as recorded), or the
-            #     covariance fit (either frame): tilted ellipsoid with the
-            #     φ-tail and margin folded into the matrix.
-            if peak_rec.shape_hkl is not None:
-                a = peak_rec.shape_hkl if peak_rec.profile_shape else self._inflate_for_frame(
-                    vol,
-                    self._fold_phi_tail(
-                        vol, peak_rec.shape_hkl / (s * s), peak_rec.center_hkl,
-                        max(0.0, float(self.phi_tail_hkl)) * s),
-                    self.margin)
-                self._punch_one(
-                    vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
-                    center_hkl=peak_rec.center_hkl,
-                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a, protect=spare)
-                continue
-
-            # (2) No per-peak fit (search peaks, shape fit off, peaks too weak
-            #     to measure): the base ellipsoid + Q-space margin + folded
-            #     φ-tail.  ``_active_shape_matrix`` is per-peak in the spherical
-            #     frame.
-            _a = self._active_shape_matrix(
-                vol, peak_rec.center_hkl, scale=s, margin_q=self.margin)
-            if _a is not None:  # None only when the frame is undefined (origin)
-                a = self._fold_phi_tail(
-                    vol, _a, peak_rec.center_hkl,
-                    max(0.0, float(self.phi_tail_hkl)) * s)
-                self._punch_one(
-                    vol, keep, center, self._ellipsoid_bounding_radii(a), 0.0,
-                    center_hkl=peak_rec.center_hkl,
-                    h_guard=self._h_guard_for(peak_rec), shape_matrix=a, protect=spare)
-                continue
-
-            # (3) Frame undefined (origin): the base's HKL bounding box,
-            #     axis-aligned, with the union φ-tail.
-            rh_base, rk_base, rl_base = r_base
-            mh, mk, ml = self._axis_hkl_margins_from_q_margin(vol, self.margin)
-            radii = (
-                rh_base * s + mh,
-                rk_base * s + mk,
-                rl_base * s + ml,
-            )
+            a, radii, phi_tail = self._final_punch(vol, peak_rec, ref, r_base)
             self._punch_one(
-                vol, keep, center, radii,
-                max(0.0, float(self.phi_tail_hkl)) * s,
+                vol, keep, (peak_rec.ih, peak_rec.ik, peak_rec.il), radii, phi_tail,
                 center_hkl=peak_rec.center_hkl,
-                h_guard=self._h_guard_for(peak_rec), protect=spare,
-            )
+                h_guard=self._h_guard_for(peak_rec), shape_matrix=a,
+                protect=protect if peak_rec.found_by == "search" else None,
+                stretch_hkl=peak_rec.stretch_hkl)
         return keep
+
+    def _final_punch(
+        self,
+        vol: HKLVolume,
+        peak_rec: _PeakPunch,
+        ref: float | None,
+        r_base: tuple[float, float, float],
+    ) -> tuple[NDArray[np.float64] | None, tuple[float, float, float], float]:
+        """A peak's punch as :meth:`_punch_centers` makes it: its shape matrix
+        (``None`` for the axis-aligned fallback), the HKL half-extents of its
+        window, and the φ-tail of the fallback.  *ref* is the intensity
+        scaling's reference (``None`` without scaling), *r_base* the base
+        ellipsoid's HKL bounding box (:meth:`_fit_base_radii`)."""
+        s = self._scale_factor(peak_rec.intensity, ref if ref is not None else 1.0)
+
+        # (1) Profile-matched footprint (final as recorded), or the
+        #     covariance fit (either frame): tilted ellipsoid with the
+        #     φ-tail and margin folded into the matrix.
+        if peak_rec.shape_hkl is not None:
+            a = peak_rec.shape_hkl if peak_rec.profile_shape else self._inflate_for_frame(
+                vol,
+                self._fold_phi_tail(
+                    vol, peak_rec.shape_hkl / (s * s), peak_rec.center_hkl,
+                    max(0.0, float(self.phi_tail_hkl)) * s),
+                self.margin)
+            return a, self._ellipsoid_bounding_radii(a), 0.0
+
+        # (2) No per-peak fit (search peaks, shape fit off, peaks too weak
+        #     to measure): the base ellipsoid + Q-space margin + folded
+        #     φ-tail.  ``_active_shape_matrix`` is per-peak in the spherical
+        #     frame.
+        _a = self._active_shape_matrix(
+            vol, peak_rec.center_hkl, scale=s, margin_q=self.margin)
+        if _a is not None:  # None only when the frame is undefined (origin)
+            a = self._fold_phi_tail(
+                vol, _a, peak_rec.center_hkl,
+                max(0.0, float(self.phi_tail_hkl)) * s)
+            return a, self._ellipsoid_bounding_radii(a), 0.0
+
+        # (3) Frame undefined (origin): the base's HKL bounding box,
+        #     axis-aligned, with the union φ-tail.
+        rh_base, rk_base, rl_base = r_base
+        mh, mk, ml = self._axis_hkl_margins_from_q_margin(vol, self.margin)
+        radii = (
+            rh_base * s + mh,
+            rk_base * s + mk,
+            rl_base * s + ml,
+        )
+        return None, radii, max(0.0, float(self.phi_tail_hkl)) * s
 
     def _incident_beam_base_shape(
         self, vol: HKLVolume
@@ -2665,6 +2864,7 @@ class BraggRemover:
         h_guard: tuple[tuple[float, float, float], float] | None = None,
         shape_matrix: NDArray[np.float64] | None = None,
         protect: NDArray[np.bool_] | None = None,
+        stretch_hkl: tuple[float, float, float] | None = None,
     ) -> NDArray[np.bool_]:
         """Punch one ellipsoid, optionally stretched along the local K-L tangent.
 
@@ -2672,12 +2872,19 @@ class BraggRemover:
         ellipsoid with the general quadratic form ``δhklᵀ A δhkl ≤ 1``; ``radii``
         is then only the HKL bounding box used to size the local window, and the
         φ-tail is not added.  ``protect`` (the volume's shape) holds the voxels
-        the punch leaves alone.
+        the punch leaves alone.  ``stretch_hkl`` (with ``shape_matrix``) sweeps
+        the ellipsoid along ±that HKL vector
+        (:func:`~nebula3d.analysis.misorientation.capsule_inside`): the
+        rotation-aware round 1.
         """
         dh, dk, dl = self._steps(vol)
         nh, nk, nl = vol.shape
         ih, ik, il = center
         rh, rk, rl = radii
+        stretch = (None if stretch_hkl is None or shape_matrix is None
+                   else np.asarray(stretch_hkl, dtype=np.float64))
+        if stretch is not None:
+            rh, rk, rl = rh + abs(stretch[0]), rk + abs(stretch[1]), rl + abs(stretch[2])
         if center_hkl is None:
             ch, ck, cl = float(vol.h_axis[ih]), float(vol.k_axis[ik]), float(vol.l_axis[il])
         else:
@@ -2700,7 +2907,9 @@ class BraggRemover:
         HH, KK, LL = np.meshgrid(vol.h_axis[hs:he], vol.k_axis[ks:ke],
                                  vol.l_axis[ls:le], indexing="ij")
         dH, dK, dL = HH - ch, KK - ck, LL - cl
-        if shape_matrix is not None:
+        if stretch is not None and shape_matrix is not None:
+            punch = capsule_inside(dH, dK, dL, shape_matrix, stretch)
+        elif shape_matrix is not None:
             punch = _ellipsoid_inside(dH, dK, dL, shape_matrix=shape_matrix)
         else:
             punch = _ellipsoid_inside(dH, dK, dL, radii=(rh, rk, rl))

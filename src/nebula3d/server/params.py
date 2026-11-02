@@ -159,6 +159,14 @@ def build_params(req: PipelineRunRequest) -> PipelineParams:
         if ratio != 0 and ratio < 1:
             raise ValueError("punch_search_max_width_ratio must be 0 (off) or at least 1")
         p.punch = dataclasses.replace(p.punch, search_max_width_ratio=ratio or None)
+    if sp.punch_rotation_aware is not None:
+        p.punch = dataclasses.replace(p.punch, rotation_aware=bool(sp.punch_rotation_aware))
+    if sp.punch_tail_sweep is not None:
+        from nebula3d.analysis.tail_sweep import SETTINGS as TAIL_SWEEP
+
+        if sp.punch_tail_sweep not in TAIL_SWEEP:
+            raise ValueError(f"punch_tail_sweep must be one of {', '.join(TAIL_SWEEP)}")
+        p.punch = dataclasses.replace(p.punch, tail_sweep=sp.punch_tail_sweep)
     if sp.punch_mode is not None:
         p.punch = dataclasses.replace(p.punch, mode=sp.punch_mode)
     if any(v is not None for v in

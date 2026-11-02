@@ -20,6 +20,11 @@ integer-node Bragg peaks are handled with lattice-aware punches, and the
 hkl-agnostic search stage is constrained so it does not remove known
 fractional-H diffuse planes.
 
+A UB slightly turned in the reduction displaces and smears the peaks across Q,
+more at high |Q|: the punch reads the turn off its own peaks and sweeps the
+tails it leaves in round 2, before the one backfill (`tail_sweep`, auto; round
+1 following the turn is an option, `rotation_aware`; [turned_ub](turned_ub.md)).
+
 ## Detection Modes
 
 `BraggRemover(mode=...)` supports three modes:

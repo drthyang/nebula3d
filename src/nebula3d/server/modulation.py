@@ -29,7 +29,7 @@ from numpy.typing import NDArray
 
 from nebula3d.modulation import Modulation, Position, h_planes, protected_labels
 from nebula3d.pipeline import default_modulation
-from nebula3d.server.bragg import node_test_out
+from nebula3d.server.bragg import misorientation_out, node_test_out, tail_sweep_out
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import artifact_path, find_dataset
 from nebula3d.symmetry import parse_symmetry_ops, point_group
@@ -195,9 +195,11 @@ def labels_envelope(cfg: ServerConfig, dataset_id: str, plane: str, value: float
 
 def bragg_profile_payload(cfg: ServerConfig, dataset_id: str) -> dict[str, Any] | None:
     """The punch's record of a dataset (``GET /api/bragg/{id}/profile``):
-    per-peak widths, ``node_test`` (the nodes its node test could not judge)
-    and ``modulation`` (what its search left alone, and the bunching it
-    measured). ``has_profile`` false when the punch wrote none. None for an
+    per-peak widths, ``node_test`` (the nodes its node test could not judge),
+    ``modulation`` (what its search left alone, and the bunching it
+    measured), ``misorientation`` (the UB turn it read off its peaks) and
+    ``tail_sweep`` (its round 2, every voxel added; both THY-60).
+    ``has_profile`` false when the punch wrote none. None for an
     unknown dataset; raises ``ValueError`` for a record that is not JSON."""
     ds = find_dataset(cfg, dataset_id)
     if ds is None:
@@ -210,6 +212,7 @@ def bragg_profile_payload(cfg: ServerConfig, dataset_id: str) -> dict[str, Any] 
             "width_labels": [], "hkl_width_labels": [], "width_units": {},
             "n_peaks": 0, "fit_covariance": False, "punch_frame": None,
             "peaks": [], "node_test": None, "modulation": None,
+            "misorientation": None, "tail_sweep": None,
         }
     data = json.loads(path.read_text(encoding="utf-8"))
     return {
@@ -226,4 +229,6 @@ def bragg_profile_payload(cfg: ServerConfig, dataset_id: str) -> dict[str, Any] 
         "peaks": list(data.get("peaks", [])),
         "node_test": node_test_out(data.get("node_test")),
         "modulation": record_out(data.get("modulation")),
+        "misorientation": misorientation_out(data.get("misorientation")),
+        "tail_sweep": tail_sweep_out(data.get("tail_sweep")),
     }
