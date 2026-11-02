@@ -626,7 +626,7 @@ describe("7. a reply's requests, as they grow", () => {
     expect(sent.length).toBeGreaterThan(1);
 
     // The largest prompts tokenBudget.test.ts holds to its ceilings, and its
-    // tracked headroom target (docs/development.md, "The Pilot's token budget").
+    // headroom target (docs/development.md, "The Pilot's token budget").
     const method = ORDERS["budget worst (method order)"];
     const reads = method.filter((c) => c.name === "read_skill");
     const checks = method.filter((c) => c.name !== "read_skill");
@@ -656,7 +656,7 @@ describe("7. a reply's requests, as they grow", () => {
     const worstAfter = Math.max(measures[3][1][0], measures[4][1][0]) + REPLY_RESERVE;
     const whole = measures[1][1][0] + REPLY_RESERVE;
     say(
-      `Headroom target (tracked): the worst local turn after compaction, ${headroom(worstAfter)}.`,
+      `Headroom target (20 %, enforced since R5): the worst local turn after compaction, ${headroom(worstAfter)}.`,
       "",
       `Stretch goal (the worst local turn without compaction fits ${n(WINDOW)}): ${n(whole)} with the reply reserve ` +
         `(${whole > WINDOW ? `over by ${n(whole - WINDOW)}` : `fits, ${n(WINDOW - whole)} left`}).`,

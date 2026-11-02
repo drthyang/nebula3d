@@ -297,9 +297,9 @@ with the context guard's estimator. It holds the turn to ceilings, not pins
 A saving passes without an edit; a growth past a ceiling fails, naming the
 component. The 20 % headroom target (the worst local turn after compaction,
 with the reply reserve, within 26,214 tokens) and the stretch goal (the same
-turn within 32,768 without compaction) are tracked with `it.fails`: they pass
-while the target is missed and print the gap, and fail on the change that
-meets it, which turns them into plain tests so the target holds from then on.
+turn within 32,768 without compaction) were tracked with `it.fails` until met,
+and are plain tests now (THY-63 R3 to R5): a change that takes the worst turn
+past either fails, and the test prints the room left.
 
 `scripts/measure_pilot_context.sh` counts the same turn by the same estimator,
 by component and in more detail (every prompt section, tool definition, skill

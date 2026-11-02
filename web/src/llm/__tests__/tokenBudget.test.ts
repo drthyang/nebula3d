@@ -7,11 +7,12 @@
 // 3.0 characters a token, with scripts/measure_pilot_context.sh, which counts
 // the same way): UNDER 32k on a local model, with no compaction.
 // - The console (Claude, every tool, nothing shortened): the prompt alone is
-//   about 20.7k tokens, before the 64,000 Claude reserves for its reply.
-// - Arm B on a local model (the validation TASK's offer): about 20.1k + 6,144
-//   = 26.3k, in every order the skills are read: under the soft budget, so
+//   about 20.6k tokens, before the 64,000 Claude reserves for its reply.
+// - Arm B on a local model (the validation TASK's offer): about 20.0k + 6,144
+//   = 26,175, in every order the skills are read: under the soft budget, so
 //   the loop compacts nothing. The stretch goal (inside 32k without
-//   compaction) is met; the 20 % target (26,214) is missed by 69.
+//   compaction) and the 20 % target (26,214, 39 to spare) are both met, and
+//   held.
 // - A model LM Studio loaded with 32k gets the whole turn, nothing shortened.
 // A local live run needs a context of 56k (57,344) or more, the run policy's
 // minimum (RUN_POLICY): it holds the whole turn before compaction, with room
@@ -70,13 +71,10 @@
 // it hides a passing test's output: add --reporter=default).
 //
 // The headroom target, 20 % under 32k for the worst local turn after
-// compaction with the reply reserve (§5.8), cannot hold until the leaner design
-// (R1-R5) lands: it is tracked, not enforced. Its test is marked `it.fails`:
-// it passes while the target is missed (printing the gap), and fails the day
-// the turn meets it, to be turned into a plain `it` then, so the target is
-// enforced from that change on. The stretch goal (the same turn fits 32k
-// without compaction) was tracked the same way, and is met since THY-63 R3
-// and R4 together: it is enforced.
+// compaction with the reply reserve (§5.8), and the stretch goal (the same
+// turn fits 32k without compaction) were tracked with `it.fails` until the
+// leaner design (R1-R5) met them; both are enforced now (the stretch goal
+// since THY-63 R3 and R4, the target since R5).
 //
 // Hermetic and synthetic: no model is loaded, no backend or API is called, and
 // no measured data is used (the dev control is a synthetic case, its list
@@ -164,19 +162,20 @@ type Component = (typeof ROWS)[number];
 // (reduction-qc's Laue class: its description, two gates and a step's words
 // in the core, its section in the details) spent its reserve line: system +6
 // (the description), skills +131 (the core). R5 counts read_skill's Markdown
-// at 3.0 characters a token, not the data rate's 1.4 (C6): skills 10,060 ->
-// 4,810, and every prompt.
+// at 3.0 characters a token, not the data rate's 1.4 (C6), and the core read
+// names its references without their descriptions: skills 10,060 -> 4,703,
+// and every prompt.
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 4_810, results: 8_091 };
+const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 4_703, results: 8_091 };
 // Every tool's definition, as the console sends them (Claude).
 const MEASURED_ALL_TOOLS = 6_173;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 20_724,
-  localBefore: 20_139,
-  localSkillsFirst: 20_139,
-  localMethod: 20_139,
-  localSkillsLast: 20_139,
+  console: 20_617,
+  localBefore: 20_031,
+  localSkillsFirst: 20_031,
+  localMethod: 20_031,
+  localSkillsLast: 20_031,
 };
 
 // The room held for the queued model-visible features, by component, in
@@ -657,18 +656,17 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
   }, TURN_TIMEOUT);
 });
 
-// Tracked, not enforced (the header): each `it.fails` passes while its target
-// is missed, and fails once the turn meets it. Then turn it into a plain `it`,
-// in the change that met it, so the target holds from that change on. The
-// stretch goal is met (THY-63 R3 and R4): a plain `it`.
-describe("the headroom target (docs/pilot-context-design.md §5.8), tracked until R1-R5 land", () => {
-  it.fails(
+// Both targets were tracked with `it.fails` until met, then turned into plain
+// tests so they hold from then on: the stretch goal since THY-63 R3 and R4,
+// the 20 % target since R5 (the core read names its references only).
+describe("the headroom target (docs/pilot-context-design.md §5.8), enforced since R5", () => {
+  it(
     `target: the worst local turn after compaction, with the reply reserve, fits ${n(HEADROOM_TARGET)} (20 % under ${n(WINDOW)}), in the method and skills-last orders`,
     async () => {
       const { after } = await localTurn();
       const worst = Math.max(after.method.prompts[after.method.peak], after.skillsLast.prompts[after.skillsLast.peak]) + REPLY_RESERVE;
       target.push(
-        `Headroom target (tracked, §5.8): the worst local turn after compaction, ${n(worst)} with the reply reserve, against ${n(HEADROOM_TARGET)} ` +
+        `Headroom target (enforced since R5, §5.8): the worst local turn after compaction, ${n(worst)} with the reply reserve, against ${n(HEADROOM_TARGET)} ` +
           `(20 % under ${n(WINDOW)}): ${worst > HEADROOM_TARGET ? `over by ${n(worst - HEADROOM_TARGET)}` : "met"}.`,
       );
       expect(worst).toBeLessThanOrEqual(HEADROOM_TARGET);

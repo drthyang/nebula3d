@@ -6,7 +6,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-3912 characters sent.
+3844 characters sent.
 
 ```text
 Skill bragg-node-audit
@@ -74,8 +74,7 @@ all three.
 
 ---
 Details of this skill (read with read_skill and `section` "Details", or one part by its heading): Settle the nodes; Forbidden nodes; Peaks off the lattice; The backfill; Firm rules (enforced in code); Acceptance checklist; Failure modes.
-References of this skill (read one with read_skill and `reference`):
-- bragg_cleanup: the punch: node detection, the off-lattice search, footprints, the significance gate and the backfill
+References of this skill (read one with read_skill and `reference`; a long one opens with its sections): bragg_cleanup.
 ```
 
 ## read_skill {"name":"bragg-node-audit","section":"Details"}
