@@ -8,7 +8,7 @@ import type { AgentStep } from "../agent";
 import { withoutInference } from "../inference";
 import { shownGrains, type GrainFacts } from "../metrics/grains";
 import { judge, UNROUNDED, verdicts, WORDS, type CheckId, type Kind, type Outcome, type Reason } from "../verdicts";
-import { RING_NOTICE_REMEDY, RING_NOTICE_REMEDY_ONE } from "../verdicts/rules";
+import { RING_NOTICE_REMEDY, RING_NOTICE_REMEDY_ONE, STAGES, TERSE_CRITERION, TERSE_CRITERION_MAX } from "../verdicts/rules";
 
 type Obj = Record<string, unknown>;
 
@@ -135,6 +135,18 @@ describe("judge: a stage's evaluation", () => {
       });
     }
   }
+
+  it("states each stage's criterion tersely too: its limits, at most 160 characters, no number its whole criterion lacks (THY-63 R1)", () => {
+    const numbers = (t: string) => t.match(/\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? [];
+    for (const stage of STAGES) {
+      const terse = TERSE_CRITERION[stage];
+      // The criterion assess_stage sends whole: the stage's own (the backfill's judges less than the report's).
+      const whole = judge(stage, {}).criterion!;
+      expect(terse.length, stage).toBeLessThanOrEqual(TERSE_CRITERION_MAX);
+      expect(terse.length, stage).toBeLessThan(whole.length);
+      for (const x of numbers(terse)) expect(numbers(whole), `${stage}: ${x}`).toContain(x);
+    }
+  });
 
   it("compares the ΔPDF's raw window weight, kept beside the one its evaluation shows (D6)", () => {
     // A weight shown rounded (two figures before 2.4.6b, three since), the raw one kept where JSON never reads it.
@@ -519,9 +531,24 @@ describe("judge: the checks on the result", () => {
     ["turned, and the origin shifted", { fit: "both", orientation_change_deg: 0.2, origin_shift_rlu: [0.03, 0, 0] }, "attention", ["UB turned"], ["the UB is turned by 0.2°", "the HKL origin is shifted by (0.03, 0, 0) r.l.u."]],
     ["no angle, not symmetrised: not judged (D16)", {}, "info", ["nothing to judge"], []],
   ];
+  // The verdict ub_check writes (THY-63 R1): the outcome, the angle and the rule's limit.
+  const RIGHT = (a: number) => `the UB is right: turned ${a}°, under the 0.05° that counts as turned`;
+  const TURNED = (a: number) => `the UB is turned by ${a}°: 0.05° or more counts as turned`;
+  const SYMMETRISED = "the UB is not judged: the volume is symmetrised, so only the changes that commute with its operations were fitted";
+  const UB_WORDS: Record<string, string | null> = {
+    "turned under 0.05°": RIGHT(0.049),
+    "turned 0.05°": TURNED(0.05),
+    "symmetrised: not judged, so not right (D4)": SYMMETRISED,
+    "symmetrised: a symmetric fit's turn is no data problem (D4)": SYMMETRISED,
+    "a symmetric fit, whatever the flag says, is not judged (D4)": SYMMETRISED,
+    "a recording's angle_deg is the turn, to every reader (D4)": TURNED(0.4),
+    "the origin shifted": `${RIGHT(0.001)}; the HKL origin is shifted by (0.0305, 0.0195, 0) r.l.u., which no UB explains`,
+    "turned, and the origin shifted": `${TURNED(0.2)}; the HKL origin is shifted by (0.03, 0, 0) r.l.u., which no UB explains`,
+    "no angle, not symmetrised: not judged (D16)": null,
+  };
   for (const [why, m, kind, reasons, dataProblems] of UB) {
     it(`ub: ${why}`, () => {
-      expect(judge("ub", m)).toEqual({ check: "ub", kind, reasons, dataProblems, words: null });
+      expect(judge("ub", m)).toEqual({ check: "ub", kind, reasons, dataProblems, words: UB_WORDS[why] });
     });
     it(`ub: ${why}, the same verdicts as a sidecar and as words`, () => roundTrip("ub_check", m, [judge("ub", m)]));
   }

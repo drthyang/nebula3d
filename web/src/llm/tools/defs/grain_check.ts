@@ -4,7 +4,6 @@
 import { fetchBraggProfile } from "../../../api/client";
 import { usePipelineStore } from "../../../state/pipelineStore";
 import { declaringMeta, safe } from "../../context/loadContext";
-import { evidence } from "../../inference";
 import { grainCheck, shownGrains } from "../../metrics/grains";
 import { skillsOn } from "../../skills";
 import { judge } from "../../verdicts/rules";
@@ -23,7 +22,7 @@ export const grain_check: ChatTool = {
     reportable: true,
   },
   ...described(
-    description("grain_check")`Is there a second grain, and what are the sharp off-lattice peaks the punch's search found? It takes the punch's peak record, groups the off-lattice peaks into symmetry orbits (the declared point group), and tests the strongest two ways. Against the Bragg nodes: an orbit within a quarter of the node spacing of one is that peak displaced, and its offset over |Q| is a rotation angle (${evidence("symmetrising data whose UB is slightly off makes such copies; ")}the angle is a lower bound). As a rotated copy of the Bragg lattice: a second grain is one rotation that indexes most strong orbits, judged against the same search at random directions; a rotation under 2° is the UB, not a grain. Run the punch first. Quote its verdict and numbers.`,
+    description("grain_check")`Is there a second grain, and what are the punch's sharp off-lattice peaks? Groups them into orbits of the declared point group and tests the strongest. An orbit within a quarter of the node spacing of a Bragg node is that peak displaced, its offset over |Q| a rotation angle (a lower bound). A second grain is one rotation of the Bragg lattice that indexes most orbits, against random directions; under 2° it is the UB, not a grain. Returns verdict and its numbers. Run the punch first.`,
   ),
   parameters: {
     type: "object",

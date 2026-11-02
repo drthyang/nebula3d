@@ -1,8 +1,9 @@
 // Fetches what a PipelineContext is built from — one reciprocal cut through
 // every cleanup stage, one ΔPDF section, and the run's saved records — and folds
 // it in.  Every fetch is independent and failure-tolerant: a missing stage just
-// omits its metrics.  The opening context uses the default cuts; the assistant's
-// tools ask for any other.  What the punch's search left alone comes from the
+// omits its metrics.  The opening context uses the default cuts (a model
+// without tools reads its metrics; one with tools, only the dataset's summary
+// beside them: THY-63 C1); the assistant's tools ask for any other.  What the punch's search left alone comes from the
 // run itself, its punch record read as labels on the cut, never from the form:
 // the leftovers' marks are the run's.
 
@@ -164,6 +165,7 @@ export async function loadPipelineContext(
     protectedLabels,
     ...(allLeftovers ? { leftoverTopK: Infinity } : {}),
     flattenSettings: flatten.settings,
+    stages: dataset.stages,
   });
 
   return { context, slices, lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null };

@@ -6,22 +6,32 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-7206 characters sent.
+3844 characters sent.
 
 ```text
 Skill bragg-node-audit
 
 # Bragg-node audit
 
-**Status:** Draft: awaiting the user's interview (questions in
-`docs/SKILL_INTERVIEWS.md`). Ported from the scattering-agent-tools plugin
-skill of the same name, from its NeXus Viewer and NEXPLAN tools to the
-console's own.
-
 The punch removes what sits at the Bragg nodes, so the 3D-ΔPDF sees only the
 diffuse scattering. An audit checks the nodes the cell allows, the nodes it
 forbids and the peaks off every node, and keeps the broad diffuse maxima out of
 all three.
+
+## Gates
+
+- A real leftover at an allowed node is sharp and stands above its own
+  neighbourhood: widen or deepen the punch only for those.
+- A forbidden node's signal is intensity clearly above the local background;
+  name its cause only with the evidence for it.
+- `grain_check`: a rotation under 2° is the UB, not a grain: check it with
+  `ub_check` (reduction-qc). The leftover counts are only what the punch missed
+  on one cut, never what its search found.
+- A maximum several Bragg widths broad along any axis is diffuse scattering,
+  the signal: never a missed peak.
+- `texture_check`: no fills sitting systematically outside the range their
+  rims allow, a bias counting only at a fifth of the local diffuse level or
+  more; on the cuts, an azimuthal ratio near 1.
 
 ## Steps
 
@@ -30,82 +40,89 @@ all three.
    Bragg nodes every n along H, K and L, for a volume indexed on a supercell)
    and the sample's modulation (`modulation`: its satellites, or the planes
    through them, which the punch's search leaves alone). These are facts about
-   the sample, set only when the user asks. None is declared by default: the
-   search then leaves no position alone, and when the sharp peaks it found off
-   the lattice bunch at one commensurate fraction, the punch's assessment and
-   the run carry a question for the user: whether the sample has that
-   modulation. `describe_dataset` and `configure_settings` do not
-   give the declared symmetry: `grain_check` does (`declared_symmetry`). Which
-   cell is the parent, and whether the supercell's other nodes hold Bragg peaks
-   or diffuse scattering (to confirm with the user).
+   the sample, set only when the user asks. Neither tool gives the declared
+   symmetry: `grain_check` does (`declared_symmetry`).
 2. **The punch on three planes.** `assess_stage` for the punch: the peaks left
    at nodes, the sharp peaks off the lattice, the broad maxima kept, and how
    much was punched to get there. It reads the planes through the origin:
    check an off-zero cut too, with `measure_reciprocal_cut`.
 3. **Leftovers at allowed nodes.** Look at each (`show_in_viewer`,
-   `line_profile`). A real leftover is sharp and stands above its own
-   neighbourhood; widen or deepen the punch only for those.
-4. **Forbidden nodes.** Intensity clearly above the local background at a node
-   the space group forbids has several causes. Say which evidence points where,
-   and do not pick one without it:
+   `line_profile`).
+4. **Forbidden nodes.** Say which evidence points where, and do not pick a
+   cause without it:
    - λ/2 contamination: is the 2h 2k 2l reflection strong?
    - multiple scattering: sharp, and often only some members of an orbit;
    - a lower true symmetry, or a superlattice.
-
-   What counts as clearly above the background (to confirm with the user).
 5. **Peaks off the lattice.** `grain_check`: the off-lattice peaks the punch's
    search found, grouped into symmetry orbits, tested against the nodes (a
    Bragg peak displaced by a UB that is slightly off) and as a rotated copy of
    the lattice (a second grain), judged against the same search at random
-   directions; the test against the nodes has no such control. A rotation
-   under 2° is the UB, not a grain: check it with `ub_check` (reduction-qc).
-   The leftover counts are only what the punch missed on one cut, never what
-   its search found.
-6. **Broad maxima stay.** A maximum several Bragg widths broad along any axis
-   is diffuse scattering, the signal. Never report it as a missed peak. The
-   search's width limit (`punchSearchMaxWidth`) leaves such maxima unpunched,
-   but it is off by default: then the search punches every candidate, broad
-   or sharp.
-7. **The backfill.** `texture_check`: over every punch hole of the volume, no
-   fills sitting systematically outside the range their rims allow; on the
-   cuts, an azimuthal ratio near 1. The diffuse often peaks at the nodes
-   (thermal diffuse scattering), so a sound fill sits above its rim's median;
-   the range runs from the diffuse at the hole's edge to its rise continued to
-   the node, and a bias counts only when it is also a fifth of the local
-   diffuse level or more. A lattice-periodic fill pattern is texture that the
-   3D-ΔPDF will show.
-8. **Report** (below).
+   directions; the test against the nodes has no such control.
+6. **Broad maxima stay.** The search's width limit (`punchSearchMaxWidth`)
+   leaves such maxima unpunched, but it is off by default: then the search
+   punches every candidate, broad or sharp.
+7. **The backfill.** `texture_check`, over every punch hole of the volume and
+   on the cuts. A lattice-periodic fill pattern is texture that the 3D-ΔPDF
+   will show.
+8. **Report** the audit in the order above. For each signal, the evidence and
+   its likely cause, or that it was not tested; what to change and why; and
+   what only the user can decide (the cell, the satellites, the sample's
+   modulation). Mark a signal the user should look at (satellites, a leftover
+   peak, intensity at a forbidden node) with `mark_region` on the stage that
+   shows it, its positions as points, resting on the call that measured it;
+   name the mark by its id beside the signal.
 
-## A UB turned in the reduction
+---
+Details of this skill (read with read_skill and `section` "Details", or one part by its heading): Settle the nodes; Forbidden nodes; Peaks off the lattice; The backfill; Firm rules (enforced in code); Acceptance checklist; Failure modes.
+References of this skill (read one with read_skill and `reference`; a long one opens with its sections): bragg_cleanup.
+```
 
-A UB slightly turned upstream moves each peak across Q, more the higher |Q|,
-and smears it the same way: far out the punch leaves a tail beside the hole,
-and the backfill makes it a bright spot.
+## read_skill {"name":"bragg-node-audit","section":"Details"}
 
-- **Recognise:** bright spots beside punched holes at high |Q|, across Q,
-  growing with |Q|. The punch's assessment then gives `ub_turn`: the
-  turn and its standard error, the share of the peaks' offsets it explains,
-  and the peaks fitted. Far beyond its error and explaining most offsets, it
-  is one turn; explaining little, it is not, and nothing acts on it.
-- **Remedy:** refine the UB in the data reduction; say so with those numbers.
-  The volume may not be fixable here: never propose a regrid for it.
-- **In the punch:** the tail sweep (`punchTailSweep`) and the rotation-aware
-  punch (`punchRotationAware`) act only on a turn the punch trusts; its sweep
-  line says what they took and the nodes left alone. Suggest them, citing the
-  turn; the settings stay the user's.
-- **Verify** with `assess_stage` on the punch and the backfill: peaks left at
-  nodes and bright fills, before and after.
-- The sweep takes Bragg tails, never diffuse signal; nodes it left alone keep
-  their diffuse.
+2409 characters sent.
 
-## Firm rules (enforced in code)
+```text
+Skill bragg-node-audit, section "Details"
+
+## Details
+
+**Status:** Draft: awaiting the user's interview (questions in
+`docs/SKILL_INTERVIEWS.md`). Ported from the scattering-agent-tools plugin
+skill of the same name, from its NeXus Viewer and NEXPLAN tools to the
+console's own.
+
+### Settle the nodes
+
+- No modulation is declared by default: the search then leaves no position
+  alone, and when the sharp peaks it found off the lattice bunch at one
+  commensurate fraction, the punch's assessment and the run carry a question
+  for the user: whether the sample has that modulation.
+- Which cell is the parent, and whether the supercell's other nodes hold Bragg
+  peaks or diffuse scattering (to confirm with the user).
+
+### Forbidden nodes
+
+What counts as clearly above the background (to confirm with the user).
+
+### Peaks off the lattice
+
+Symmetrising data whose UB is slightly off makes the displaced copies the test
+against the nodes finds.
+
+### The backfill
+
+The diffuse often peaks at the nodes (thermal diffuse scattering), so a sound
+fill sits above its rim's median; the range a fill is judged against runs from
+the diffuse at the hole's edge to its rise continued to the node.
+
+### Firm rules (enforced in code)
 
 - Changing a punch or backfill setting, or tuning those stages, is refused
   until this skill has been read in the conversation.
 - The sample's modulation and the punch cell are facts about the sample:
   they change only when the user asks, never to improve a number.
 
-## Acceptance checklist
+### Acceptance checklist
 
 - [ ] the cell and nodes used, and who set them;
 - [ ] the leftovers at allowed nodes, on three planes and an off-zero cut;
@@ -117,7 +134,7 @@ and the backfill makes it a bright spot.
 - [ ] the backfill's texture verdict;
 - [ ] every number with what produced it (settings, planes).
 
-## Failure modes
+### Failure modes
 
 - Reading the leftover count as "no off-lattice peaks", or as everything the
   search found.
@@ -127,26 +144,106 @@ and the backfill makes it a bright spot.
 - Changing the sample's modulation or the punch cell to make a number look
   better.
 - Judging from the opening cut at L = 0 alone.
+```
 
-## What to report
+## read_skill {"name":"delta-pdf-interpretation","reference":"delta_pdf"}
 
-The audit in the order above. For each signal, the evidence and its likely
-cause, or that it was not tested; what to change and why; and what only the
-user can decide (the cell, the satellites, the sample's modulation). Mark a
-signal the user should look at (satellites, a leftover peak, intensity at a
-forbidden node) with `mark_region` on the stage that shows it, its positions
-as points, resting on the call that measured it; name the mark by its id
-beside the signal.
+928 characters sent.
 
-## References
+```text
+Reference "delta_pdf" of skill delta-pdf-interpretation (docs/algorithms/delta_pdf.md)
 
-- [bragg_cleanup](../../../docs/algorithms/bragg_cleanup.md) — the punch: node
-  detection, the off-lattice search, footprints, the significance gate and the
-  backfill
+# 3D-ΔPDF Transform
 
----
-References of this skill (read one with read_skill and `reference`):
-- bragg_cleanup: the punch: node detection, the off-lattice search, footprints, the significance gate and the backfill
+Sections (read one with read_skill, `reference` and `section`, by its heading):
+- Purpose
+- Correct transform recipe
+  - Non-orthogonal cells (hexagonal, monoclinic, triclinic)
+- The strongest features, grouped by the declared symmetry (2026-10-19)
+- Inverse transform & consistency check (`invert_delta_pdf`)
+- The centring bug (fixed 2026-06-05)
+- Near-origin spike (expected, not the bug)
+- The dashed axis streaks were the DC subtraction (fixed 2026-10-07)
+- The window respects the lattice symmetry (2026-10-07)
+  - The window and the measured coverage (`support`)
+- The axis cross is the residual diffuse background (diagnosed 2026-06-05)
+  - Methods compared (smooth-bg wins)
+  - Background removal in the pipeline: the radial flatten (step 4)
+    - A background that rises with |Q|, and what the literature does
+```
+
+## read_skill {"name":"delta-pdf-interpretation","reference":"delta_pdf","section":"The window and the measured coverage (`support`)"}
+
+4125 characters sent.
+
+```text
+Reference "delta_pdf" of skill delta-pdf-interpretation (docs/algorithms/delta_pdf.md), section "The window and the measured coverage (`support`) (part 1 of 2)"
+
+### The window and the measured coverage (`support`)
+
+A backfill that leaves unmeasured space masked, rather than inventing
+intensity there, hands the transform a volume whose data end inside the box.
+Read as `I = 0`, that region does two things: it pulls the weighted mean `c`
+down, and the box-sized window still weights it. On the hexagonal data the
+separable window puts a few percent of its weight on unmeasured space, so the
+coverage edge becomes a step with a truncation ripple (period ≈ 2π/Q_edge,
+with Q_edge the `|Q|` where the coverage ends).
+
+`compute_delta_pdf(support=mask)` (pipeline `DeltaPdfParams.window_support`,
+default on, passes the input volume's `mask`; server `pdf_window_support`;
+*Taper to the measured coverage* in the web app):
+
+- **ΔI = 0 off the data.** The mean is weighted over the support only, and
+  voxels outside it are zeroed after it is subtracted. They then add no
+  step of `−c`, and the input still sums to zero.
+- **The window fits the coverage.** Unsupported space that reaches the box
+  faces is where the coverage ends. It is found by `binary_fill_holes`
+  (26-connected; bool arrays only), so holes enclosed by data do not count.
+  The ellipsoid is shrunk until at most `support_tol` (default 10⁻³) of its
+  weight lies there. With `"auto"`, an orthogonal box switches to the
+  ellipsoid when the separable window puts more than that on it. A shrunk
+  ellipsoid is the same ellipsoid scaled, so it stays invariant. The scale
+  is logged as `window_scale`.
+- **The weight left there is recorded.** The share of the window's weight on
+  that open space is `DeltaPDF.window_open_weight`, logged as
+  `window_open_weight` beside `window_scale` and served with the ΔPDF's
+  metadata (`/api/deltapdf/{id}/meta`, `dpdf_meta_json`). The web app's
+  coverage check reports it: the measure of a transform reaching past the
+  data, whatever the window's shape. On a measured volume the auto window, an
+  ellipsoid at scale 1.0, kept a negligible share there and nothing on a box
+  face.
+- `invert_delta_pdf` leaves unsupported voxels out of the reliable `mask`.
+- An all-True support (a backfill that fills the whole box, e.g.
+  `unmeasured="all"`) changes nothing, bit for bit.
+
+The tolerance is not cosmetic. Coverage edges are ragged, and thin channels
+of unmeasured voxels reach far in. On the raw hexagonal data the nearest open
+voxel sits well inside the ellipsoid, although only a tiny fraction of the
+window's weight (below the default tolerance) is open. Even on orthorhombic
+data with full coverage, a thin channel of open voxels reaches inside the
+ellipsoid, with a negligible share of the weight. Shrinking to the
+nearest open voxel (`support_tol=0`) would shrink the hexagonal window
+substantially (real-space peaks markedly broader) and cut its main peak
+sharply; the weight criterion ignores such channels.
+
+Measured on the hexagonal data (the pipeline's flattened input with the
+unmeasured space that reaches the box edge masked, as the unmeasured-aware
+backfill leaves it; Gaussian σ = 0.4; differences at 2–15 Å relative to the
+strongest 1.5–15 Å correlation):
+
+| window | `c` | effect of the support | scale |
+|---|---|---|---|
+| separable | rises | a few % max, well below 1 % RMS (the mean's share of the ripple) | — (cannot shrink) |
+| ellipsoid (`auto`) | essentially unchanged | negligible (≪ 1 %) | 1.0 (already inside the coverage) |
+| ellipsoid, `support_tol=0` | much lower | main peak sharply reduced | shrunk substantially |
+
+So for this hexagonal cell the ellipsoid already keeps clear of the coverage
+edge, and the support only fixes the mean's handling of the empty region. It
+matters most for an orthogonal cell whose coverage ends inside the box, where
+`"auto"` now moves to a fitted ellipsoid. `_open_space` takes 2–3 s on 401³
+natively and runs only when the support has unsupported voxels.
+
+[The section continues: read section "The window and the measured coverage (`support`) (part 2)".]
 ```
 
 ## describe_dataset {}
@@ -214,7 +311,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## measure_reciprocal_cut {"plane":"h0l","value":1}
 
-1487 characters sent.
+2605 characters sent.
 
 ```json
 {
@@ -304,13 +401,14 @@ References of this skill (read one with read_skill and `reference`):
     "floor_span_fraction": 0.125,
     "floor_judged_q": [2.17, 4.22]
   },
-  "notes": []
+  "notes": [],
+  "fields": "ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per raw ring: residual_fraction against the diffuse beside it (negative a dent, positive a ring left), significant beyond 3 × noise_fraction. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels: diffuse maxima, signal. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random, near 1 an artefact. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged."
 }
 ```
 
 ## measure_dpdf_cut {"plane":"xz","value":0}
 
-322 characters sent.
+712 characters sent.
 
 ```json
 {
@@ -325,7 +423,8 @@ References of this skill (read one with read_skill and `reference`):
     "anisotropy_angle_deg": 0,
     "radial_trend": [8.68, 0.781, 0.302]
   },
-  "sigma_of": "this section outside the origin's disk, robust"
+  "sigma_of": "this section outside the origin's disk, robust",
+  "fields": "All in this section's robust σ outside the origin's disk. feature_snr: the strongest feature over background σ (≳ 5 is clear signal); strong_feature_fraction: voxels beyond 5σ; positive_fraction: 0.5 is balanced ±; anisotropy_ratio: 1 isotropic, above ~1.5 rods or sheets, along anisotropy_angle_deg in the plane; radial_trend: mean |ΔPDF| in the inner, middle and outer shells."
 }
 ```
 
@@ -422,6 +521,118 @@ References of this skill (read one with read_skill and `reference`):
   "pdf": {
     "verdict": "meets its goal",
     "criterion": "The back-FFT reproduces what the transform keeps, the data's even part under Q → −Q, to an r of 0.999 or more (a check recorded without that comparison: r against the data, judged only on data the file declares symmetrised, where the two are the same); at most 1e-3 of the window's weight on unmeasured space; and the declared symmetry kept.",
+    "headline": "r 0.99714 (even part 1) · RMS 0.07132 · SNR 252 · unmeasured 2.4e-4 · symmetry off ≤ 0",
+    "back_fft_pearson_r": 0.99714,
+    "back_fft_normalized_rms": 0.07132,
+    "back_fft_pearson_r_even": 1,
+    "back_fft_odd_share": 0.00421,
+    "back_fft_per_plane_r": {
+      "+0.000": 0.99691
+    },
+    "mean_feature_snr": 252,
+    "window_weight_on_unmeasured": 0.00024,
+    "window_shape": "ellipsoid",
+    "max_symmetry_break": 0,
+    "worst_symmetry_op": "two-fold ∥ a / mirror ⊥ a",
+    "symmetry_declared": true
+  },
+  "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
+}
+```
+
+## assess_stage {} (later in a reply whose first assess_stage sent every stage's whole criterion: the terse ones)
+
+2752 characters sent.
+
+```json
+{
+  "rings": {
+    "verdict": "needs attention",
+    "criterion": "No powder ring left above, or dented below, three times its plane's noise; a powder ring rises at least 0.15 of its median height in 90 % of directions.",
+    "headline": "ring ratio 0.23 · over-sub ≤ 0 · ring dent ≤ 0 · left ≤ 0.125 (0kl, 3.2 Å⁻¹)",
+    "mean_ring_energy_ratio": 0.23,
+    "max_over_subtraction_fraction": 0,
+    "max_ring_dent": 0,
+    "max_ring_left": 0.125,
+    "worst_ring_dent": null,
+    "worst_ring_left": {
+      "plane": "0kl",
+      "at": 3.2,
+      "residual_fraction": 0.125
+    },
+    "ring_rule": {
+      "direction_share": 0.9,
+      "height_share": 0.15
+    },
+    "shells_judged": [
+      {
+        "at": 0.911,
+        "ring": false,
+        "isotropy": 0.04
+      },
+      {
+        "at": 1.43,
+        "ring": false,
+        "isotropy": 0.04
+      },
+      {
+        "at": 3.2,
+        "ring": true,
+        "isotropy": 0.86
+      },
+      {
+        "at": 3.93,
+        "ring": false,
+        "isotropy": 0.04
+      }
+    ]
+  },
+  "punch": {
+    "verdict": "needs attention",
+    "criterion": "No Bragg peak missed at a lattice node; no sharp peak left off the lattice outside the protected planes.",
+    "headline": "1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
+    "total_leftover_peaks": 1,
+    "leftover_at_nodes": 1,
+    "leftover_off_lattice": 0,
+    "leftover_on_protected_planes": 0,
+    "leftover_on_protected_planes_sharp": 0,
+    "leftover_off_lattice_broad": 0,
+    "leftover_off_lattice_sharp": 0,
+    "strongest_leftover": {
+      "plane": "hk0",
+      "xy": [2, 1],
+      "intensity": 452,
+      "local_background": 21.3,
+      "contrast": 21.2,
+      "sigma": 374,
+      "fwhm_voxels": [1, 1],
+      "broad": false,
+      "hkl": [2, 1, 0],
+      "at_node": true
+    },
+    "noisy_spikes_skipped": 0,
+    "mean_punched_fraction": 0.03,
+    "fitted_peaks": 14
+  },
+  "backfill": {
+    "verdict": "meets its goal",
+    "criterion": "A median seam of 1σ or less; fill bias is texture_check's.",
+    "headline": "seam 0.218σ · bright ≤ 0",
+    "mean_median_seam_sigma": 0.218,
+    "max_bright_fill_fraction": 0
+  },
+  "flatten": {
+    "verdict": "meets its goal",
+    "criterion": "No pedestal: the volume's floor trend and span both 0.8 or more over the outer half of the |Q| shells the counts reach. Floor in σ: reported, not judged.",
+    "headline": "floor ≤ 2.78σ · trend 0.00268 · span 0.207 · no pedestal",
+    "max_after_floor_sigma": 2.78,
+    "floor_trend": 0.00268,
+    "floor_span_fraction": 0.207,
+    "pedestal_left": false
+  },
+  "pdf": {
+    "verdict": "meets its goal",
+    "criterion": "Back-FFT r of 0.999 or more against the data's even part under Q → −Q; at most 1e-3 of the window's weight on unmeasured space; the declared symmetry kept.",
     "headline": "r 0.99714 (even part 1) · RMS 0.07132 · SNR 252 · unmeasured 2.4e-4 · symmetry off ≤ 0",
     "back_fft_pearson_r": 0.99714,
     "back_fft_normalized_rms": 0.07132,
@@ -577,7 +788,7 @@ References of this skill (read one with read_skill and `reference`):
 
 ## texture_check {}
 
-370 characters sent.
+527 characters sent.
 
 ```json
 {
@@ -590,6 +801,7 @@ References of this skill (read one with read_skill and `reference`):
   "above_floor_fraction": 0,
   "below_floor_fraction": 0,
   "systematic_fill_bias": false,
+  "criterion": "systematic_fill_bias: 5 judged holes or more, 75 % of them past their range one way, with a median of 0.5σ and 0.2 of the local level or more.",
   "per_cut": [
     {
       "cut": "H–K plane at L = 0",
@@ -720,19 +932,16 @@ References of this skill (read one with read_skill and `reference`):
 
 ## dpdf_peaks {}
 
-1450 characters sent.
+791 characters sent.
 
 ```json
 {
   "grouped_by": "declared symmetry (mmm: 8 operations, r ≡ −r)",
   "features": [
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [1, 0, 0]
       ],
@@ -741,12 +950,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [0, 1, 0]
       ],
@@ -755,12 +961,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "−",
       "length_A": 4,
-      "size_sigma": 35.2,
-      "mean_size_sigma": 35.2,
+      "size_sigma": -35.2,
       "n_vectors": 1,
-      "multiplicity": 1,
       "vectors_rlu": [
         [0, 0, 1]
       ],
@@ -769,12 +972,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [1, 1, 0],
         [1, -1, 0]
@@ -785,12 +985,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [1, 0, 1],
         [1, 0, -1]
@@ -801,12 +998,9 @@ References of this skill (read one with read_skill and `reference`):
       ]
     },
     {
-      "sign": "+",
       "length_A": 5.657,
       "size_sigma": 21.1,
-      "mean_size_sigma": 21.1,
       "n_vectors": 2,
-      "multiplicity": 2,
       "vectors_rlu": [
         [0, 1, 1],
         [0, 1, -1]
@@ -820,8 +1014,7 @@ References of this skill (read one with read_skill and `reference`):
   "robust_sigma": 0.71,
   "threshold_sigma": 5,
   "origin_disk_A": 1.8,
-  "extrema_above_threshold": 26,
-  "reading": "Each entry: the sign, |r|, the largest size in σ, how many vectors (one per ± pair) share them, and up to 4 of those vectors in lattice units (x/a, y/b, z/c) and in Å along a, b, c. The size is against the volume's robust σ outside the origin's disk; features nearer the origin than the shortest interatomic distance are not pair correlations."
+  "extrema_above_threshold": 26
 }
 ```
 
@@ -886,10 +1079,11 @@ References of this skill (read one with read_skill and `reference`):
 
 ## ub_check {}
 
-956 characters sent.
+1038 characters sent.
 
 ```json
 {
+  "verdict": "the UB is right: turned 0.003°, under the 0.05° that counts as turned",
   "fit": "both",
   "bragg_nodes_every": [1, 1, 1],
   "symmetry_from": "synthetic_a.nxs",
@@ -944,17 +1138,18 @@ References of this skill (read one with read_skill and `reference`):
 
 ## compare_laue_classes {} (the demo crystal's comparison (cubic; its rods along L make it 4/mmm))
 
-2467 characters sent.
+2445 characters sent.
 
 ```json
 {
-  "columns": "r_int and x_noise are [every measured voxel, diffuse]; x_noise is R_int over its noise floor (1.00: agreement to the counting noise)",
+  "columns": "r_int, x_noise, chi2: [all voxels, diffuse]; x_noise = R_int / noise floor, chi2 = χ²/dof (1: within counting noise)",
   "classes": [
     {
       "class": "-1",
       "ops": 2,
       "r_int": [0.042, 0.049],
       "x_noise": [1, 1],
+      "chi2": [1, 1],
       "orbits": 34460,
       "verdict": "supported"
     },
@@ -964,6 +1159,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["-1"],
       "r_int": [0.051, 0.06],
       "x_noise": [1, 1],
+      "chi2": [1, 1],
       "orbits": 17660,
       "verdict": "supported"
     },
@@ -973,6 +1169,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["-1"],
       "r_int": [0.051, 0.06],
       "x_noise": [1, 1],
+      "chi2": [0.99, 0.99],
       "orbits": 17660,
       "verdict": "supported"
     },
@@ -982,6 +1179,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["2/m (b unique)", "2/m (c unique)"],
       "r_int": [0.055, 0.065],
       "x_noise": [1, 1],
+      "chi2": [1, 0.99],
       "orbits": 9260,
       "verdict": "supported"
     },
@@ -991,6 +1189,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["2/m (c unique)"],
       "r_int": [0.055, 0.065],
       "x_noise": [1, 1],
+      "chi2": [1, 0.99],
       "orbits": 8840,
       "verdict": "supported"
     },
@@ -1000,6 +1199,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["mmm", "4/m"],
       "r_int": [0.057, 0.067],
       "x_noise": [1, 1],
+      "chi2": [1, 1],
       "orbits": 4850,
       "verdict": "supported"
     },
@@ -1009,6 +1209,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["mmm"],
       "r_int": [0.087, 0.105],
       "x_noise": [1.51, 1.53],
+      "chi2": [2.23, 2.26],
       "orbits": 3100,
       "verdict": "rose 1.51× against 2/m (b unique) (all); rose 1.54× against 2/m (c unique) (diffuse)"
     },
@@ -1018,6 +1219,7 @@ References of this skill (read one with read_skill and `reference`):
       "contains": ["4/mmm", "m-3"],
       "r_int": [0.087, 0.105],
       "x_noise": [1.5, 1.52],
+      "chi2": [2.21, 2.24],
       "orbits": 1770,
       "verdict": "rose 1.5× against 2/m (b unique) (all); rose 1.53× against 2/m (c unique) (diffuse)"
     }
@@ -1026,7 +1228,7 @@ References of this skill (read one with read_skill and `reference`):
     "r_int": [0.537, 0.342],
     "x_noise": [9.12, 4.9]
   },
-  "refused": ["-3: metric changes 100%", "-3m1: metric changes 100%", "-31m: metric changes 100%", "6/m: metric changes 100%", "6/mmm: metric changes 100%"],
+  "refused": ["-3, -3m1, -31m, 6/m, 6/mmm: metric changes 100%"],
   "suggestion": "4/mmm",
   "suggested_by": {
     "all": "4/mmm",
@@ -1034,192 +1236,49 @@ References of this skill (read one with read_skill and `reference`):
   },
   "why": "4/mmm is the class with the most operations the rule supports in both readings: its R_int, in units of the noise floor, is 1.00× that of 2/m (b unique), the subgroup that agrees best; m-3m rose 1.50× against 2/m (b unique).",
   "flag": null,
-  "rule": "A class rises against a subgroup when its x_noise exceeds the subgroup's by more than 10% and 2 standard errors; it is supported when it rises against none of its subgroups and all of them are supported. suggestion: the supported class with the most operations in every reading that can tell the classes apart (no_symmetry must rise too).",
-  "diffuse_mask": "Bragg nodes of the 1×1×1 cell within 0.25 Å⁻¹ (2.7% of the measured voxels)",
+  "rule": "Rises: x_noise above a subgroup's by >10% and 2 SE of the difference (block bootstrap, 69 effective blocks). Supported: rises against no subgroup, all subgroups supported. suggestion: the supported class with most operations in every reading that tells classes apart (no_symmetry must rise).",
+  "diffuse_mask": "1×1×1 cell's Bragg nodes within 0.25 Å⁻¹ (2.7% of voxels)",
   "edge_trim": 1,
-  "limits": "Twinning, or domains related by an operation the sample lacks, make a lower symmetry look higher: R_int alone cannot tell. Only the presets' settings are compared."
+  "notes": ["The bootstrap's blocks were cut to 3 voxels (the correlation asks for 4) to keep 64 of them."],
+  "limits": "Twinning or domains can make a lower symmetry look higher; R_int cannot tell."
 }
 ```
 
 ## radial_profile {}
 
-2096 characters sent.
+836 characters sent.
 
 ```json
 {
   "cut": "H–K plane at L = 0",
   "q_unit": "|Q| in Å⁻¹",
   "stat": "median per shell",
-  "rows": [
-    {
-      "q": 0.345,
-      "raw": 16.7,
-      "ringremoved": 16.7,
-      "braggpunched": 16.7,
-      "backfilled": 16.7,
-      "flattened": 0.646
-    },
-    {
-      "q": 0.531,
-      "raw": 17.5,
-      "ringremoved": 17.4,
-      "braggpunched": 17.4,
-      "backfilled": 17.4,
-      "flattened": 1.34
-    },
-    {
-      "q": 0.73,
-      "raw": 20,
-      "ringremoved": 19.9,
-      "braggpunched": 19.9,
-      "backfilled": 19.9,
-      "flattened": 3.75
-    },
-    {
-      "q": 0.933,
-      "raw": 20.8,
-      "ringremoved": 20.7,
-      "braggpunched": 20.7,
-      "backfilled": 20.7,
-      "flattened": 4.46
-    },
-    {
-      "q": 1.14,
-      "raw": 18.4,
-      "ringremoved": 18.4,
-      "braggpunched": 18.4,
-      "backfilled": 18.4,
-      "flattened": 2
-    },
-    {
-      "q": 1.35,
-      "raw": 18.2,
-      "ringremoved": 18.1,
-      "braggpunched": 18.1,
-      "backfilled": 18.1,
-      "flattened": 1.65
-    },
-    {
-      "q": 1.55,
-      "raw": 18.8,
-      "ringremoved": 18.7,
-      "braggpunched": 18.5,
-      "backfilled": 18.3,
-      "flattened": 1.68
-    },
-    {
-      "q": 1.76,
-      "raw": 18.5,
-      "ringremoved": 18.3,
-      "braggpunched": 18.2,
-      "backfilled": 18.1,
-      "flattened": 1.32
-    },
-    {
-      "q": 1.98,
-      "raw": 18.6,
-      "ringremoved": 18.4,
-      "braggpunched": 18.4,
-      "backfilled": 18.4,
-      "flattened": 1.39
-    },
-    {
-      "q": 2.19,
-      "raw": 19.8,
-      "ringremoved": 19.5,
-      "braggpunched": 19.3,
-      "backfilled": 19.2,
-      "flattened": 2
-    },
-    {
-      "q": 2.39,
-      "raw": 22.5,
-      "ringremoved": 21.9,
-      "braggpunched": 21.7,
-      "backfilled": 21.4,
-      "flattened": 3.94
-    },
-    {
-      "q": 2.6,
-      "raw": 21.4,
-      "ringremoved": 20.5,
-      "braggpunched": 20.5,
-      "backfilled": 20.5,
-      "flattened": 2.81
-    },
-    {
-      "q": 2.81,
-      "raw": 23.4,
-      "ringremoved": 20.9,
-      "braggpunched": 20.9,
-      "backfilled": 20.9,
-      "flattened": 2.88
-    },
-    {
-      "q": 3.02,
-      "raw": 30.3,
-      "ringremoved": 21.9,
-      "braggpunched": 21.8,
-      "backfilled": 21.8,
-      "flattened": 3.47
-    },
-    {
-      "q": 3.22,
-      "raw": 46.7,
-      "ringremoved": 23.8,
-      "braggpunched": 23.7,
-      "backfilled": 23.6,
-      "flattened": 5.04
-    },
-    {
-      "q": 3.43,
-      "raw": 28.5,
-      "ringremoved": 21.5,
-      "braggpunched": 21.3,
-      "backfilled": 21.2,
-      "flattened": 2.27
-    },
-    {
-      "q": 3.64,
-      "raw": 23.3,
-      "ringremoved": 21.5,
-      "braggpunched": 21.3,
-      "backfilled": 21.2,
-      "flattened": 1.86
-    },
-    {
-      "q": 3.85,
-      "raw": 23.3,
-      "ringremoved": 22.4,
-      "braggpunched": 22.4,
-      "backfilled": 22.4,
-      "flattened": 2.73
-    },
-    {
-      "q": 4.06,
-      "raw": 23.8,
-      "ringremoved": 23.3,
-      "braggpunched": 23.3,
-      "backfilled": 23.3,
-      "flattened": 3.17
-    },
-    {
-      "q": 4.26,
-      "raw": 23.8,
-      "ringremoved": 23.5,
-      "braggpunched": 23.5,
-      "backfilled": 23.5,
-      "flattened": 2.81
-    },
-    {
-      "q": 4.38,
-      "raw": 25.3,
-      "ringremoved": 25.1,
-      "braggpunched": 24.9,
-      "backfilled": 24.7,
-      "flattened": 3.92
-    }
-  ]
+  "shells": {
+    "cols": ["q", "raw", "ringremoved", "braggpunched", "backfilled", "flattened"],
+    "rows": [
+      [0.345, 16.7, 16.7, 16.7, 16.7, 0.646],
+      [0.531, 17.5, 17.4, 17.4, 17.4, 1.34],
+      [0.73, 20, 19.9, 19.9, 19.9, 3.75],
+      [0.933, 20.8, 20.7, 20.7, 20.7, 4.46],
+      [1.14, 18.4, 18.4, 18.4, 18.4, 2],
+      [1.35, 18.2, 18.1, 18.1, 18.1, 1.65],
+      [1.55, 18.8, 18.7, 18.5, 18.3, 1.68],
+      [1.76, 18.5, 18.3, 18.2, 18.1, 1.32],
+      [1.98, 18.6, 18.4, 18.4, 18.4, 1.39],
+      [2.19, 19.8, 19.5, 19.3, 19.2, 2],
+      [2.39, 22.5, 21.9, 21.7, 21.4, 3.94],
+      [2.6, 21.4, 20.5, 20.5, 20.5, 2.81],
+      [2.81, 23.4, 20.9, 20.9, 20.9, 2.88],
+      [3.02, 30.3, 21.9, 21.8, 21.8, 3.47],
+      [3.22, 46.7, 23.8, 23.7, 23.6, 5.04],
+      [3.43, 28.5, 21.5, 21.3, 21.2, 2.27],
+      [3.64, 23.3, 21.5, 21.3, 21.2, 1.86],
+      [3.85, 23.3, 22.4, 22.4, 22.4, 2.73],
+      [4.06, 23.8, 23.3, 23.3, 23.3, 3.17],
+      [4.26, 23.8, 23.5, 23.5, 23.5, 2.81],
+      [4.38, 25.3, 25.1, 24.9, 24.7, 3.92]
+    ]
+  }
 }
 ```
 
@@ -1302,125 +1361,128 @@ References of this skill (read one with read_skill and `reference`):
 
 ## bragg_peaks {}
 
-2071 characters sent.
+1054 characters sent.
 
 ```json
 {
   "n_peaks": 14,
   "punch_frame": "spherical",
   "sorted_by": "significance",
-  "peaks": [
-    {
-      "hkl": [1, 0, 0],
-      "q": 1.571,
-      "intensity": 1250,
-      "local_background": 16,
-      "significance": 310,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [0, 1, 0],
-      "q": 1.571,
-      "intensity": 1240,
-      "local_background": 16,
-      "significance": 305,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [1, 1, 0],
-      "q": 2.221,
-      "intensity": 1060,
-      "local_background": 16,
-      "significance": 262,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [1, 1, 1],
-      "q": 2.721,
-      "intensity": 900,
-      "local_background": 16,
-      "significance": 221,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [2, 0, 0],
-      "q": 3.142,
-      "intensity": 760,
-      "local_background": 16,
-      "significance": 188,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [2, 1, 0],
-      "q": 3.512,
-      "intensity": 640,
-      "local_background": 16,
-      "significance": 160,
-      "measured_width_q": [0.094, 0.094, 0.11],
-      "resolution_limited": [true, true, false],
-      "anisotropy": 1.17,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [1.5, 0.5, 0],
-      "q": 2.483,
-      "intensity": 96,
-      "local_background": 16,
-      "significance": 22,
-      "measured_width_q": [0.157, 0.141, 0.188],
-      "resolution_limited": [false, false, false],
-      "anisotropy": 1.33,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [0.5, 1.5, 0],
-      "q": 2.483,
-      "intensity": 94,
-      "local_background": 16,
-      "significance": 21,
-      "measured_width_q": [0.157, 0.141, 0.188],
-      "resolution_limited": [false, false, false],
-      "anisotropy": 1.33,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [1.5, -0.5, 0],
-      "q": 2.483,
-      "intensity": 90,
-      "local_background": 16,
-      "significance": 20,
-      "measured_width_q": [0.157, 0.141, 0.188],
-      "resolution_limited": [false, false, false],
-      "anisotropy": 1.33,
-      "fit": "covariance"
-    },
-    {
-      "hkl": [2.5, 0.5, 0],
-      "q": 4.005,
-      "intensity": 61,
-      "local_background": 16,
-      "significance": 14,
-      "measured_width_q": [0.157, 0.141, 0.188],
-      "resolution_limited": [false, false, false],
-      "anisotropy": 1.33,
-      "fit": "covariance"
-    }
-  ]
+  "peaks": {
+    "cols": ["hkl", "q", "intensity", "local_background", "significance", "measured_width_q", "resolution_limited", "anisotropy", "fit"],
+    "rows": [
+      [
+        [1, 0, 0],
+        1.571,
+        1250,
+        16,
+        310,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [0, 1, 0],
+        1.571,
+        1240,
+        16,
+        305,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [1, 1, 0],
+        2.221,
+        1060,
+        16,
+        262,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [1, 1, 1],
+        2.721,
+        900,
+        16,
+        221,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [2, 0, 0],
+        3.142,
+        760,
+        16,
+        188,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [2, 1, 0],
+        3.512,
+        640,
+        16,
+        160,
+        [0.094, 0.094, 0.11],
+        [true, true, false],
+        1.17,
+        "covariance"
+      ],
+      [
+        [1.5, 0.5, 0],
+        2.483,
+        96,
+        16,
+        22,
+        [0.157, 0.141, 0.188],
+        [false, false, false],
+        1.33,
+        "covariance"
+      ],
+      [
+        [0.5, 1.5, 0],
+        2.483,
+        94,
+        16,
+        21,
+        [0.157, 0.141, 0.188],
+        [false, false, false],
+        1.33,
+        "covariance"
+      ],
+      [
+        [1.5, -0.5, 0],
+        2.483,
+        90,
+        16,
+        20,
+        [0.157, 0.141, 0.188],
+        [false, false, false],
+        1.33,
+        "covariance"
+      ],
+      [
+        [2.5, 0.5, 0],
+        4.005,
+        61,
+        16,
+        14,
+        [0.157, 0.141, 0.188],
+        [false, false, false],
+        1.33,
+        "covariance"
+      ]
+    ]
+  }
 }
 ```
 
@@ -1449,48 +1511,23 @@ References of this skill (read one with read_skill and `reference`):
 
 ## run_log {}
 
-522 characters sent.
+378 characters sent.
 
 ```json
 {
   "ended": "done",
-  "lines": [
-    {
-      "stage": "rings",
-      "status": "skip",
-      "message": "ring-removed output exists"
-    },
-    {
-      "stage": "punch",
-      "status": "start",
-      "message": "Bragg punch"
-    },
-    {
-      "stage": "punch",
-      "status": "done",
-      "message": "13 peaks punched, 1 below the significance gate"
-    },
-    {
-      "stage": "backfill",
-      "status": "done",
-      "message": "13 holes filled"
-    },
-    {
-      "stage": "flatten",
-      "status": "done",
-      "message": "floor fitted on 32 shells"
-    },
-    {
-      "stage": "pdf",
-      "status": "done",
-      "message": "3D-ΔPDF written"
-    },
-    {
-      "stage": "pdf_check",
-      "status": "done",
-      "message": "back-FFT r = 0.99714"
-    }
-  ]
+  "lines": {
+    "cols": ["stage", "status", "message"],
+    "rows": [
+      ["rings", "skip", "ring-removed output exists"],
+      ["punch", "start", "Bragg punch"],
+      ["punch", "done", "13 peaks punched, 1 below the significance gate"],
+      ["backfill", "done", "13 holes filled"],
+      ["flatten", "done", "floor fitted on 32 shells"],
+      ["pdf", "done", "3D-ΔPDF written"],
+      ["pdf_check", "done", "back-FFT r = 0.99714"]
+    ]
+  }
 }
 ```
 
@@ -1542,73 +1579,12 @@ References of this skill (read one with read_skill and `reference`):
 
 ## configure_settings {}
 
-1625 characters sent.
+31 characters sent.
 
 ```json
 {
-  "settings": {
-    "symmetryAverageEnabled": false,
-    "ringsEnabled": true,
-    "punchEnabled": true,
-    "backfillEnabled": true,
-    "flatten": true,
-    "pdfEnabled": true,
-    "force": false,
-    "symmetryLaue": "(none chosen: the user's to set)",
-    "symmetryReaverage": false,
-    "symmetryAllowMetricChange": false,
-    "edgeTrim": "1 (default)",
-    "ringModel": "pooled",
-    "ringRadialMode": "rolling",
-    "ringNPatches": "(default)",
-    "ringNFourier": "8",
-    "ringSliceAxis": "H",
-    "ringWidth": "(default)",
-    "ringGlobalMaterial": "auto",
-    "ringGlobalSubtraction": "conservative",
-    "ringGlobalConfidence": "1",
-    "ringGlobalLmax": "4",
-    "ringGlobalMinSnr": "5",
-    "ringPooledSectors": "(default)",
-    "ringPooledWindow": "(default)",
-    "punchMinSig": "(default)",
-    "punchFootprint": "(default)",
-    "punchProfileNSigma": "(default)",
-    "punchMode": "(default)",
-    "punchSupercellH": "(default)",
-    "punchSupercellK": "(default)",
-    "punchSupercellL": "(default)",
-    "punchHGuard": "(default)",
-    "punchSearchFloor": "(default)",
-    "modulation": "(default)",
-    "punchSearchMaxWidth": "(default)",
-    "punchFrame": "spherical",
-    "punchRho": "(default)",
-    "punchTheta": "(default)",
-    "punchPhi": "(default)",
-    "punchQA": "(default)",
-    "punchQB": "(default)",
-    "punchQC": "(default)",
-    "punchFitUnconstrained": false,
-    "punchRotationAware": true,
-    "punchTailSweep": "(default)",
-    "punchMargin": "(default)",
-    "incidentBeamQA": "(default)",
-    "incidentBeamQB": "(default)",
-    "incidentBeamQC": "(default)",
-    "incidentBeamMargin": "(default)",
-    "incidentBeamFitCovariance": false,
-    "backfillMethod": "(default)",
-    "flattenEstimator": "(default)",
-    "flattenIon": "(default)",
-    "flattenQ2": false,
-    "flattenFitQMax": "(default)",
-    "pdfApod": "(default)",
-    "pdfWindowShape": "(default)",
-    "pdfWindowSupport": true,
-    "pdfQMin": "(default)",
-    "pdfQMax": "(default)"
-  }
+  "settings": {},
+  "at_default": 59
 }
 ```
 

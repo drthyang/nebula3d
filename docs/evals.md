@@ -328,8 +328,9 @@ it, so nothing is cut out of a text after it is built. With it off:
   problems, as `{{achieved}}` reads them), as what exists and in no order, and
   leaves out the checklist, the readings each is settled with and the routing of a
   question to a tool; the tool descriptions, the tools' readings, the stages' goals
-  and criteria, the verdicts' words, the context's prose and the tuning prompts'
-  settings lose theirs. Each span is tagged once, where the text is written, and
+  and criteria, the verdicts' words, the tools-off context's prose and the tuning
+  prompts' settings lose theirs (with tools, the context is the dataset's
+  summary, which holds none, the same in both arms). Each span is tagged once, where the text is written, and
   `web/src/llm/__tests__/__snapshots__/model-visible/6-inference.md` lists every
   one, by class, in the text it sits in;
 - no send-back or refusal names a skill, a stage or a tool to run next: the answer
@@ -714,15 +715,21 @@ the run policy (`RUN_POLICY.minLocalContextTokens` in
 `web/src/llm/evals/validationModels.ts`); the scenario evals and the local
 tier hold a local model to it too (`modelAt`; see "Running it" under the
 scenarios, above). The sibling app RMC keeps its own rule, 48k. Arm B's worst
-turn on a local model, the validation task with two skills read whole and the
+turn on a local model, the validation task with two skills' cores and a
+section of a page read and the
 3D-ΔPDF's strongest features a full list (the dev control's, at
-`dpdf_peaks`' default), is about 47.6k tokens with the reply reserve before
-the loop's compaction and 37.7k to 42k after it
-(`web/src/llm/__tests__/tokenBudget.test.ts`). The minimum holds it with the
-3k of headroom a model-visible addition must leave; it was 48k (49,152) until
-the worst turn carried a full list. A 32k window holds the turn only by
-shortening the skills just read to stubs, so a
-run at 32k would grade arm B on stubs of its method. Before the plan starts,
+`dpdf_peaks`' default), with the reply reserve and before the loop's
+compaction, fits the minimum with the 3k of headroom a model-visible addition
+must leave: `web/src/llm/__tests__/tokenBudget.test.ts` checks it, and
+`scripts/measure_pilot_context.sh` prints today's size before and after
+compaction. The minimum was 48k (49,152) until
+the worst turn carried a full list. Until THY-63 R3 a 32k window held the
+turn only by shortening the skills just read to stubs, so a run at 32k would
+have graded arm B on stubs of its method. Since R3 to R5 (the core prompt,
+the skill cores, a skill's Markdown counted at 3.0 characters a token) it
+holds the whole turn, about 20.1k tokens, with nothing shortened and about
+12.6k left for the reply; a shortened skill keeps its gates and steps.
+Before the plan starts,
 and again before each run, the runner reads the window the run will get
 (`runContext`), without loading anything, and refuses one under the minimum or
 one it cannot read, saying the model, the window found, the minimum and how

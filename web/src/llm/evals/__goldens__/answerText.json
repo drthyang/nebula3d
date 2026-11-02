@@ -1228,7 +1228,7 @@
  "claude-sonnet-5-5 run 27 (ub-misoriented) | dev-rings-shell": "D 1001 F 01111",
  "claude-sonnet-5-5 run 27 (ub-misoriented) | scenario ub-misoriented": "1111",
  "lmstudio-qwen3.8-27b run 03 (rings-left) | answer": "252313dc67971ff4",
- "lmstudio-qwen3.8-27b run 03 (rings-left) | gate": "35f55acef1eab258",
+ "lmstudio-qwen3.8-27b run 03 (rings-left) | gate": "ab51db95b99e01e7",
  "lmstudio-qwen3.8-27b run 03 (rings-left) | dev-control": "D 1 F 11111",
  "lmstudio-qwen3.8-27b run 03 (rings-left) | dev-ub": "D 101 F 1111",
  "lmstudio-qwen3.8-27b run 03 (rings-left) | dev-origin": "D 10 F 1111",

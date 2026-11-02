@@ -93,9 +93,7 @@ export const mark_region: ChatTool = {
     highlights: (args) => keysOf([WHERE_ALIASES[String(args.where)] ?? args.where]),
   },
   ...described(
-    description("mark_region")`Mark a region in the console's slice views and move them to it, so the user sees what you found${remedy(
-      ": use it for a finding they should look at, such as satellites at h ± q, a ring left over, or a ΔPDF feature",
-    )}. where: the stage whose output shows it: raw, rings, punch, backfill or flatten (reciprocal space; h, k, l in r.l.u.), or pdf (the 3D-ΔPDF; x, y, z in Å along a, b, c). shape: box or ellipsoid, with center and half_size (half-widths along the three axes), or points, with up to ${MAX_POINTS} positions. evidence: the calls in this conversation whose results show it, as tool or tool.field (dpdf_peaks.features.0). A region without evidence, empty, or outside the volume is not marked. The result says which views and cuts it was drawn on, cut to the volume. Cite the mark by its id (M1, …) in your answer.`,
+    description("mark_region")`Mark a region in the slice views and move them to it, so the user sees a finding${remedy(" (satellites at h ± q, a ring left over, a ΔPDF feature)")}. where: raw, rings, punch, backfill, flatten (h, k, l in r.l.u.) or pdf (x, y, z in Å along a, b, c). shape: box or ellipsoid (center, half_size), or points (up to ${MAX_POINTS}). evidence: the calls showing it, as tool or tool.field (dpdf_peaks.features.0); none, or a region empty or outside the volume, marks nothing. Returns where it is drawn. Cite it by its id (M1, …).`,
   ),
   parameters: {
     type: "object",

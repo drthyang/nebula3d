@@ -106,11 +106,12 @@ export interface ArmSetup {
  * run next. The guardrails stay: the answer checks still check and send the same
  * answers back (issuesPrompt words them), and C may change what B may. With no
  * skill to read there is no skill gate: a stage's settings change, and it is
- * tuned, without one (runToolCall).
+ * tuned, without one (runToolCall). `rounds`: the run's limit on rounds of
+ * calls, which the system prompt states (MAX_TOOL_ROUNDS unless given).
  */
-export function armSetup(arm: Arm, context: PipelineContext): ArmSetup {
+export function armSetup(arm: Arm, context: PipelineContext, rounds?: number): ArmSetup {
   const skills = arm === "B";
-  return { skills, messages: buildChatMessages(context, [], TASK, null, { tools: true, skills }), skillsRead: new Set() };
+  return { skills, messages: buildChatMessages(context, [], TASK, null, { tools: true, skills, rounds }), skillsRead: new Set() };
 }
 
 // ---------------------------------------------------------------- grading

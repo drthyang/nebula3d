@@ -65,6 +65,31 @@ const userSets = (key: string): boolean => (SYMMETRY_AVERAGE_SETTINGS as readonl
 // The stage of each setting, for the skill gate (skills.ts).
 const SETTING_STAGE = new Map(SETTABLE.map((p) => [p.key, p.stage]));
 
+// What update_settings does and when (THY-63 R2: a contract of at most 500
+// characters, the lint's cap), and the catalogue of what it changes, the
+// model's one source of the settings' names, values and ranges, beside it.
+const CONTRACT =
+  "Change settings on the Configure page for the next run_pipeline: only those the user named or agreed to, when they " +
+  "ask for a change or to improve or tune the result; when unsure which they mean, ask. A fact about the sample changes " +
+  "only when the user's latest message names it, never to improve a result. The magnetic ion, the |Q| band and the " +
+  "symmetry average (the symmetry* settings) stay with the user: suggest a Laue class with your evidence. " +
+  "Returns each change and the stage to rerun from.";
+
+// A fact about the sample in a few words: its catalog help is the Configure page's.
+const BRIEF: Record<string, string> = {
+  modulation: 'satellites G ± m·k left alone (form points) or the planes through them (planes); order m 1–6; several k by ";"',
+  punchSupercellH: "the punch's indexing cell along H: 2 on a doubled cell, the nodes between not punched",
+  punchSupercellK: "along K",
+  punchSupercellL: "along L",
+  edgeTrim: "voxel layers off the raw coverage edge at load, default 1",
+};
+const brief = (p: { key: string; allowed: string; help: string }): string => `${p.key} (${p.allowed}; ${BRIEF[p.key] ?? p.help})`;
+
+/** The settings update_settings changes: the method choices and thresholds, then the facts about the sample. */
+const CATALOGUE =
+  `Method choices and thresholds: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
+  `Facts about the sample: ${[...SAMPLE_PARAMS, ...USER_CHOICE_PARAMS].map(brief).join(", ")}.`;
+
 export const update_settings: ChatTool = {
   name: "update_settings",
   facts: {
@@ -87,17 +112,7 @@ export const update_settings: ChatTool = {
       },
     },
   },
-  description:
-    "Change settings on the Configure page; the next run_pipeline uses them and the user sees the fields change. " +
-    `These method choices and thresholds can be changed: ${TUNE_PARAMS.map((p) => `${p.key} (${allowedValues(p)})`).join(", ")}. ` +
-    `These facts about the sample only when the user asks for that change, never to improve a result: ${SAMPLE_PARAMS.map((p) => `${p.key} (${p.allowed}; ${p.help})`).join(" ")} ` +
-    `So too ${USER_CHOICE_PARAMS.map((p) => `${p.key} (${p.allowed}; ${p.help})`).join(" ")} ` +
-    "A change to one of them is refused unless the user's latest message names it. " +
-    `The magnetic ion and |Q| band stay with the user, and so does the symmetry average (${SYMMETRY_AVERAGE_SETTINGS.join(", ")}): ` +
-    "suggest a Laue class with your evidence instead, for the user to set. " +
-    "Change them when the user asks for a change, or asks you to improve or tune the result, and only the settings " +
-    "the user named or agreed to; when unsure which setting the user means, ask instead of guessing. Settings " +
-    "already at the value are left as they are. Returns each change and the stage to rerun from.",
+  description: `${CONTRACT}\n${CATALOGUE}`,
   parameters: {
     type: "object",
     properties: {

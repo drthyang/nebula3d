@@ -1,7 +1,9 @@
 // The Laue-class comparison's table (state/laueCompare.ts), on comparisons the
 // backend made (nebula3d.analysis.laue_compare, on the known-answer volumes of
 // tests/test_laue_compare.py): a 6/m crystal, strong m-3m Bragg peaks over a
-// 4/mmm diffuse (the flag), and counting noise alone (no preference).
+// 4/mmm diffuse (the flag), counting noise alone (no preference), and the 6/m
+// crystal with an error only its poorly covered region carries (the
+// common-subset flag).
 
 import { describe, expect, it } from "vitest";
 
@@ -10,11 +12,26 @@ import { DEFAULT_EDGE_TRIM, edgeTrimLayers, formToParams, usePipelineStore } fro
 import braggOverDiffuse from "./__fixtures__/laue-compare-bragg-over-diffuse.json";
 import hex6m from "./__fixtures__/laue-compare-hex-6m.json";
 import noise from "./__fixtures__/laue-compare-noise.json";
-import { diffuseLine, formatRint, labelOf, laueCompareParams, laueRows, refusalText, specOf, verdictLine } from "../laueCompare";
+import poorlyCovered from "./__fixtures__/laue-compare-poorly-covered.json";
+import {
+  bootstrapLine,
+  commonLine,
+  commonRows,
+  diffuseLine,
+  formatChi2,
+  formatRint,
+  labelOf,
+  laueCompareParams,
+  laueRows,
+  refusalText,
+  specOf,
+  verdictLine,
+} from "../laueCompare";
 
 const HEX = hex6m as unknown as LaueComparison;
 const FLAG = braggOverDiffuse as unknown as LaueComparison;
 const NOISE = noise as unknown as LaueComparison;
+const REGION = poorlyCovered as unknown as LaueComparison;
 
 describe("the comparison's rows", () => {
   it("keeps the backend's order, indents by the chain of subgroups, and marks the suggestion", () => {
@@ -72,6 +89,44 @@ describe("the comparison's rows", () => {
     expect(formatRint(0.0654)).toBe("0.065");
     expect(formatRint(0.00123)).toBe("0.0012");
     expect(formatRint(null)).toBe("–");
+  });
+});
+
+describe("χ²/dof, the bootstrap and the common subset", () => {
+  it("gives each class's χ²/dof for both readings, near 1 for the classes the crystal has", () => {
+    const rows = laueRows(HEX, "");
+    const sixM = rows.find((r) => r.laue === "6/m")!;
+    expect(Number(sixM.chi2.all)).toBeCloseTo(1, 1);
+    expect(Number(sixM.chi2.diffuse)).toBeCloseTo(1, 1);
+    expect(sixM.chi2.title).toMatch(/^χ²\/dof \d\.\d\d on every measured voxel, \d\.\d\d on the diffuse \([\d,]+ and [\d,]+ degrees of freedom\): 1 is/);
+    expect(Number(rows.find((r) => r.laue === "6/mmm")!.chi2.all)).toBeGreaterThan(2);
+    expect(sixM.all.title).toMatch(/block bootstrap\); χ²\/dof /);
+    expect([formatChi2(0.998), formatChi2(12.34), formatChi2(1500.4), formatChi2(null)]).toEqual(["1.00", "12.3", "1500", "–"]);
+  });
+
+  it("says the bootstrap behind the errors in one line", () => {
+    expect(bootstrapLine(HEX)).toMatch(/^Errors: \d+ blocks of \d³ voxels \(≈ \d+ effective\), resampled 200 times\.$/);
+    expect(bootstrapLine({ ...HEX, bootstrap: undefined })).toBeNull();
+  });
+
+  it("reads the common subset as the table on full coverage", () => {
+    expect(HEX.common?.share).toBe(1);
+    expect(commonLine(HEX)).toBe("Common subset: -1 judges every measured voxel, so it reads the same as the table.");
+    expect(HEX.common?.flag).toBeNull();
+  });
+
+  it("flags a suggestion the common subset changes, and gives each class on it", () => {
+    expect(REGION.suggestion).toBe("2/m (c unique)");
+    expect(REGION.common?.flag).toMatch(/^On the voxels -1 can judge \(56% of the measured voxels\) the rule supports 6\/m, where every measured voxel supports only 2\/m \(c unique\)/);
+    expect(commonLine(REGION)).toBe("Common subset, the voxels -1 can judge (56% of the measured): suggests 6/m.");
+    const rows = commonRows(REGION);
+    const sixM = rows.find((r) => r.laue === "6/m")!;
+    expect(sixM.suggested).toBe(true);
+    expect(sixM.all.state).toBe("ok");
+    expect(sixM.all.value).toMatch(/^(0\.9\d|1\.0\d)×$/);
+    expect(rows.find((r) => r.laue === "6/mmm")!.all.state).toBe("rose");
+    // On every measured voxel 6/m is rejected: the table's own row.
+    expect(laueRows(REGION, "").find((r) => r.laue === "6/m")!.all.state).toBe("rose");
   });
 });
 

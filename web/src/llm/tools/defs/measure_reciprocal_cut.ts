@@ -1,11 +1,15 @@
-// measure_reciprocal_cut: the stage-quality metrics of the opening context, on
-// any reciprocal-space cut.
+// measure_reciprocal_cut: the stage-quality metrics of one reciprocal-space
+// cut. Its result says what each field means, once in a reply (`fields`): the
+// system prompt's glossary for a model without tools (prompts/system.ts,
+// SYSTEM), tersely, for a model with tools, whose context holds no cut (THY-63
+// R3). In the result rather than the contract, it costs nothing until called.
 
 import { reading } from "../../inference";
 import { RECIP } from "../facts";
 import { num, oneOf } from "../shared/args";
-import { cleanupView, measureRecip, RECIP_PLANES } from "../shared/cuts";
+import { cleanupView, fieldsSent, measureRecip, RECIP_PLANES } from "../shared/cuts";
 import { described, description } from "../shared/describe";
+import { RECIP_FIELDS } from "../shared/fields";
 import type { ChatTool } from "../types";
 
 const recipSummary = (m: Awaited<ReturnType<typeof measureRecip>>): string =>
@@ -25,20 +29,22 @@ export const measure_reciprocal_cut: ChatTool = {
   name: "measure_reciprocal_cut",
   facts: { label: "Measured a reciprocal cut", acts: null, highlights: RECIP },
   ...described(
-    description("measure_reciprocal_cut")`Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut — the same metrics as the opening context, which used only the L=0 H–K plane.${reading(" Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).")}`,
+    description("measure_reciprocal_cut")`Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut: one cut, not the volume. A reply's first call also returns fields, what each one means.${reading(" Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).")}`,
   ),
   parameters: {
     type: "object",
     properties: {
-      plane: { type: "string", enum: RECIP_PLANES, description: "hk0 = H–K plane (cut along L), h0l = H–L plane (cut along K), 0kl = K–L plane (cut along H)" },
+      plane: { type: "string", enum: RECIP_PLANES, description: "hk0: H–K plane (fixed L), h0l: H–L (fixed K), 0kl: K–L (fixed H)" },
       value: { type: "number", description: "Cut position along the fixed axis, in r.l.u." },
     },
     required: ["plane", "value"],
   },
-  run: async (args, { dataset }) => {
+  run: async (args, ctx) => {
     const plane = oneOf(args, "plane", RECIP_PLANES);
     const value = num(args, "value");
-    const result = await measureRecip(dataset, plane, value);
-    return { result, summary: `${result.cut}: ${recipSummary(result)}`, view: cleanupView(plane, value) };
+    const measured = await measureRecip(ctx.dataset, plane, value);
+    // What the fields mean, once in a reply (arm C reads its definitions: call.ts).
+    const result = fieldsSent(ctx.replySteps, "measure_reciprocal_cut") ? measured : { ...measured, fields: RECIP_FIELDS.whole };
+    return { result, summary: `${measured.cut}: ${recipSummary(measured)}`, view: cleanupView(plane, value) };
   },
 };

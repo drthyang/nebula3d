@@ -44,13 +44,7 @@ export const run_pipeline: ChatTool = {
     highlights: (args) => (args.from_stage === undefined ? ALL_STAGES : keysOf([args.from_stage])),
   },
   description:
-    "Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does: " +
-    "it writes the dataset's stage outputs, and the console shows the run on its Execution page while it goes. " +
-    "Without from_stage, outputs that still follow from the current settings and inputs are reused (unless the " +
-    "user switched Force on), and the rest are recomputed. With from_stage, that stage and every enabled stage " +
-    "after it are recomputed: use it after " +
-    "update_settings. A run takes seconds to minutes. Returns how it ended, which stages were computed or reused, " +
-    "and the outputs that now exist; measure them afterwards.",
+    "Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does; the console shows it on its Execution page. Without from_stage, outputs that still follow from the settings and inputs are reused (unless Force is on) and the rest recomputed; with from_stage, that stage and every enabled one after it are recomputed: use it after update_settings. Seconds to minutes. Returns how it ended, the stages computed or reused, and the outputs, to measure next.",
   parameters: {
     type: "object",
     properties: {

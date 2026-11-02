@@ -760,7 +760,12 @@ class OrbitTerms:
     the ``twice`` orbits, ``dev`` sums |I − ⟨I⟩| and ``mag`` sums |I|: R_int's
     terms; ``noise`` sums the expected |I − ⟨I⟩| from σ alone,
     √(2/π)·sd(I − ⟨I⟩) with sd² = σᵢ²(1 − 2/n) + Σσ²/n² for n measured
-    members of independent errors.  ``None`` where not asked for.
+    members of independent errors.  With *chi2*, ``wsum`` sums 1/σ² and
+    ``wtotal`` I/σ² over the members whose σ² is finite and above 0
+    (``wcount`` of them), and on the ``twice`` orbits ``chi2`` sums
+    (I − ⟨I⟩_w)²/σ² about their inverse-variance mean ⟨I⟩_w = wtotal / wsum:
+    a χ² of ``wcount / stab − 1`` degrees of freedom under counting noise.
+    ``None`` where not asked for.
     """
 
     total: NDArray[np.float64]
@@ -773,6 +778,10 @@ class OrbitTerms:
     dev: NDArray[np.float64] | None = None
     mag: NDArray[np.float64] | None = None
     noise: NDArray[np.float64] | None = None
+    wsum: NDArray[np.float64] | None = None
+    wtotal: NDArray[np.float64] | None = None
+    wcount: NDArray[np.int32] | None = None
+    chi2: NDArray[np.float64] | None = None
 
     def r_int_sums(self, stab: NDArray[np.int32]) -> tuple[float, float]:
         """R_int's numerator and denominator over this slab: Σ|I − ⟨I⟩| and
@@ -789,7 +798,7 @@ def orbit_terms(
     data: NDArray[np.floating], masks: Sequence[NDArray[np.bool_]], sym: GridSymmetry,
     ri: NDArray[np.intp], rj: NDArray[np.intp], rl: NDArray[np.intp], *,
     sigma: NDArray[np.floating] | None = None, sigma_unknown_abs: bool = False,
-    deviations: bool = True, noise: bool = False,
+    deviations: bool = True, noise: bool = False, chi2: bool = False,
 ) -> tuple[NDArray[np.int32], list[OrbitTerms]]:
     """Sums over the measured members of the orbits ``(ri, rj, rl)`` represent
     (:func:`slab_orbits`), for each of *masks*: one :class:`OrbitTerms` per
@@ -803,16 +812,22 @@ def orbit_terms(
     counts them); *sigma_unknown_abs* takes |I| for a σ that is not (√|I|,
     the loader's estimate), so every measured member has one.  *deviations*
     adds a second pass over the orbits measured at least twice for R_int's
-    terms, and *noise* (with *sigma*) their counting-noise expectation.  The
-    work holds a few arrays of the representatives' length, never one of the
+    terms, and *noise* (with *sigma*) their counting-noise expectation;
+    *chi2* (with *sigma* and *deviations*) the members' χ² about their
+    inverse-variance mean, a member whose σ² is 0 left out of it.  The work
+    holds a few arrays of the representatives' length, never one of the
     volume's.
     """
     n = ri.size
+    chi2 = chi2 and sigma is not None
     stab = np.zeros(n, dtype=np.int32)
     total = [np.zeros(n, dtype=np.float64) for _ in masks]
     count = [np.zeros(n, dtype=np.int32) for _ in masks]
     var2 = [np.zeros(n, dtype=np.float64) for _ in masks] if sigma is not None else None
     known = [np.zeros(n, dtype=np.int32) for _ in masks] if sigma is not None else None
+    wsum = [np.zeros(n, dtype=np.float64) for _ in masks] if chi2 else None
+    wtotal = [np.zeros(n, dtype=np.float64) for _ in masks] if chi2 else None
+    wcount = [np.zeros(n, dtype=np.int32) for _ in masks] if chi2 else None
     # 1. Sum each orbit's measured values over its images, in the group's order.
     for pos, si, sj, sl in _orbit_images(sym, ri, rj, rl):
         v = data[si, sj, sl].astype(np.float64)
@@ -823,6 +838,11 @@ def orbit_terms(
             var = np.square(sigma[si, sj, sl].astype(np.float64))
             if sigma_unknown_abs:
                 var = np.where(np.isfinite(var), var, np.abs(v))
+        if chi2 and var is not None:
+            # The inverse-variance weights, once for every mask.
+            haw = finite & np.isfinite(var) & (var > 0)
+            wv = np.where(haw, 1.0 / np.where(haw, var, 1.0), 0.0)
+            wvv = wv * np.where(haw, v, 0.0)
         for m, mask in enumerate(masks):
             ok = mask[si, sj, sl] & finite
             total[m][pos] += np.where(ok, v, 0.0)
@@ -831,6 +851,10 @@ def orbit_terms(
                 kn = ok & np.isfinite(var)
                 var2[m][pos] += np.where(kn, var, 0.0)
                 known[m][pos] += kn
+                if wsum is not None and wtotal is not None and wcount is not None:
+                    wsum[m][pos] += np.where(ok, wv, 0.0)
+                    wtotal[m][pos] += np.where(ok, wvv, 0.0)
+                    wcount[m][pos] += ok & haw
     terms = []
     for m in range(len(masks)):
         has = count[m] > 0
@@ -840,7 +864,10 @@ def orbit_terms(
             total=total[m], count=count[m], mean=mean, has=has,
             twice=has & (count[m] >= 2 * stab),
             var2=None if var2 is None else var2[m],
-            known=None if known is None else known[m]))
+            known=None if known is None else known[m],
+            wsum=None if wsum is None else wsum[m],
+            wtotal=None if wtotal is None else wtotal[m],
+            wcount=None if wcount is None else wcount[m]))
     if not deviations:
         return stab, terms
     # 2. How far the measured members were from their mean (R_int), on the
@@ -855,12 +882,16 @@ def orbit_terms(
         t.mag = np.zeros(n, dtype=np.float64)
         if noise and sigma is not None:
             t.noise = np.zeros(n, dtype=np.float64)
+        if chi2:
+            t.chi2 = np.zeros(n, dtype=np.float64)
     members = {id(t): (t.count / np.maximum(stab, 1)) for t in terms} if noise else {}
+    wmean = {id(t): np.divide(t.wtotal, t.wsum, out=np.zeros(n), where=t.wsum > 0)
+             for t in terms if t.wtotal is not None and t.wsum is not None}
     for pos, si, sj, sl in _orbit_images(sym, ri, rj, rl, want):
         v = data[si, sj, sl].astype(np.float64)
         finite = np.isfinite(v)
         var = None
-        if noise and sigma is not None:
+        if (noise or chi2) and sigma is not None:
             var = np.square(sigma[si, sj, sl].astype(np.float64))
             if sigma_unknown_abs:
                 var = np.where(np.isfinite(var), var, np.abs(v))
@@ -876,6 +907,10 @@ def orbit_terms(
                 use = ok & np.isfinite(var)
                 t.noise[pos] += np.where(use, _MEAN_ABS_NORMAL * np.sqrt(np.maximum(
                     np.where(use, sd2, 0.0), 0.0)), 0.0)
+            if var is not None and t.chi2 is not None and id(t) in wmean:
+                kw = ok & np.isfinite(var) & (var > 0)
+                r = np.where(kw, v - wmean[id(t)][pos], 0.0)
+                t.chi2[pos] += r * r / np.where(kw, var, 1.0)
     return stab, terms
 
 

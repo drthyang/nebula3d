@@ -111,7 +111,7 @@ The grid is 97 × 97 × 97 voxels and the cell edge is 7.3 Å. The flatten left 
 
 ```text
 Before this answer goes to the user, fix it:
-- “The flatten left no pedestal.”: this verdict needs its evidence from a check run in this reply. Answer from that check's result.
+- “The flatten left no pedestal.”: this verdict needs its evidence from a check run in this reply. No check can run any more in this reply: leave it out, or say it was not measured.
 - These numbers appear in no tool result or the context: 7.3. Quote the tools' numbers, or leave them out.
 Then write the whole answer again.
 ```

@@ -8,10 +8,9 @@ import { fetchSlice, fetchVolumeTexture } from "../../../api/client";
 import type { VolumeTexture } from "../../../api/types";
 import { safe, stageVolumeId } from "../../context/loadContext";
 import { qRadius } from "../../context/pipelineContext";
-import { evidence } from "../../inference";
 import { isTooCoarse } from "../../metrics/coarse";
 import { roundSig } from "../../metrics/sliceStats";
-import { azimuthalTexture, FILL_BIAS_LIMITS, volumeFillBias } from "../../metrics/texture";
+import { azimuthalTexture, FILL_BIAS_FLOOR, FILL_BIAS_LIMITS, FILL_BIAS_MIN_HOLES, FILL_BIAS_MIN_SIGMA, FILL_BIAS_ONE_WAY, volumeFillBias } from "../../metrics/texture";
 import { judge } from "../../verdicts/rules";
 import { num, oneOf } from "../shared/args";
 import { checkInRange, cleanupView, HKL, planeLabel, RECIP_FIXED, RECIP_PLANES, recipMeta, recipRange } from "../shared/cuts";
@@ -25,6 +24,11 @@ const otherLimits = (t: VolumeTexture): string | null => {
   return keys.some((k) => used[k] !== FILL_BIAS_LIMITS[k]) ? JSON.stringify(used) : null;
 };
 
+/** The fill-bias rule's limits (metrics/texture.ts), as texture_check's result states them. */
+const FILL_BIAS_CRITERION =
+  `systematic_fill_bias: ${FILL_BIAS_MIN_HOLES} judged holes or more, ${FILL_BIAS_ONE_WAY * 100} % of them past their range one way, ` +
+  `with a median of ${FILL_BIAS_MIN_SIGMA}σ and ${FILL_BIAS_FLOOR} of the local level or more.`;
+
 export const texture_check: ChatTool = {
   name: "texture_check",
   facts: {
@@ -37,7 +41,7 @@ export const texture_check: ChatTool = {
     highlights: ["punch", "backfill"],
   },
   ...described(
-    description("texture_check")`Check whether the punch and backfill printed a pattern of their own into reciprocal space. Fill bias, over every punch hole in 3-D: each filled hole against the range its measured rim allows, from the diffuse at the hole's edge carried in to its rise toward the node continued linearly${evidence(" (the diffuse often peaks at the nodes, so a sound fill sits above its rim's median)")}; the part outside that range, signed, in the rim's σ and in units of the local diffuse level, and the shares of holes above and below it, and beyond it by a fifth of the level or more (above_floor_fraction, below_floor_fraction). Holes filled systematically outside it (systematic_fill_bias: 75 % of them one way, a median of 0.5σ and a fifth of the level or more) add a lattice-periodic texture${evidence(" that the ΔPDF turns into features at lattice vectors")}. Azimuthal texture, on a cut (default: the three principal planes through the origin): per |Q| shell, how much the sector means vary around the shell after the backfill against before the punch (unpunched voxels)${evidence("; a ratio near 1 adds none")}.`,
+    description("texture_check")`Did the punch and backfill print a pattern of their own into reciprocal space? Each punch hole's fill, in 3-D, against the range its rim allows. Returns median_fill_bias_sigma and median_fill_bias_level, above/below_fraction, above/below_floor_fraction (beyond a fifth of the local level), systematic_fill_bias and its criterion; per cut (default: the three principal planes), azimuthal_ratio: the sector means' spread around |Q| shells after the backfill over before the punch (1: none added).`,
   ),
   parameters: {
     type: "object",
@@ -75,7 +79,9 @@ export const texture_check: ChatTool = {
     const other = otherLimits(volume);
     if (other) throw new Error(`the backend judged the fills by other limits (${other}) than the rule's (${JSON.stringify(FILL_BIAS_LIMITS)})`);
     const fills = volumeFillBias(volume);
-    const result = { ...fills, per_cut: rows };
+    // The rule's limits, where the model reads the result (THY-63 R2: out of
+    // the description, which keeps the contract).
+    const result = { ...fills, criterion: FILL_BIAS_CRITERION, per_cut: rows };
     const ratios = rows.map((r) => r.azimuthal_ratio).filter((x): x is number => x != null);
     const said =
       fills.systematic_fill_bias === true
