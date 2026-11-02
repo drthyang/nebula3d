@@ -13,7 +13,12 @@
 // NEBULA_VALIDATION_ONLY    case ids, comma-separated (default all of the split)
 // NEBULA_VALIDATION_RUNS    runs per case and arm (default 3)
 // NEBULA_VALIDATION_ROUNDS  rounds of tool calls per run (default the Pilot's own, 12)
-// NEBULA_VALIDATION_TIMEOUT minutes per run (default 40)
+// NEBULA_VALIDATION_TIMEOUT minutes per run (default 10)
+// NEBULA_VALIDATION_WALL    minutes for the whole plan (default 30): a plan expected to take
+//                           longer is refused before it starts, and a plan that reaches it stops,
+//                           keeping the runs that finished (validationLimits.ts)
+// NEBULA_VALIDATION_PRESET  quick: gemma4:26b, arm B, 1 run per dev case, 5 min a run (about 12 min);
+//                           the variables above still override it
 // NEBULA_VALIDATION_OUT     where the record and the transcripts go (default ../docs/evals/validation)
 // NEBULA_VALIDATION_BASE_URL  the model server, where it is not the model's usual one
 // NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it (12: $12 for NEBULA, within the $40 total)
@@ -39,6 +44,7 @@ import { backendUrl, env, exists, makeDir, readText, useBackend, writeText } fro
 import { installEventSource } from "./eventSource";
 import { candidateFindings, renderTranscript, type Finding } from "./findings";
 import { ARMS, caseNamed, PRE_68_RULE, regradeRecord, validationDatasets, type Arm, type RunRecord, type Split } from "./validation";
+import { DEFAULT_RUN_MINUTES, DEFAULT_WALL_MINUTES, expectedMinutes, nextRun, planRefusal, presetNamed } from "./validationLimits";
 import { modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
 import { runCase } from "./validationRun";
 
@@ -55,16 +61,24 @@ const transcriptName = (r: Pick<RunRecord, "case" | "arm" | "run">) => `${r.case
 
 describe.skipIf(!live)("validation, live", () => {
   it("runs the plan on one model", async () => {
-    const model = modelNamed(env("NEBULA_VALIDATION_MODEL") ?? "");
+    const preset = presetNamed(env("NEBULA_VALIDATION_PRESET"));
+    const model = modelNamed(env("NEBULA_VALIDATION_MODEL") ?? preset?.model ?? "");
     const gate = paidRunGate(model, env("NEBULA_VALIDATION_ALLOW_SPEND"));
     if (gate) throw new Error(gate);
     const split = (env("NEBULA_VALIDATION_SPLIT") ?? "dev") as Split;
-    const arms = (list("NEBULA_VALIDATION_ARMS").length ? list("NEBULA_VALIDATION_ARMS") : ["B", "C"]) as Arm[];
+    const arms = (list("NEBULA_VALIDATION_ARMS").length ? list("NEBULA_VALIDATION_ARMS") : (preset?.arms ?? ["B", "C"])) as Arm[];
     for (const a of arms) if (!ARMS.includes(a)) throw new Error(`arm ${a} is not one of ${ARMS.join(", ")}`);
-    const runs = Number(env("NEBULA_VALIDATION_RUNS") ?? model.runsPerCase);
+    const runs = Number(env("NEBULA_VALIDATION_RUNS") ?? preset?.runs ?? model.runsPerCase);
     const rounds = Number(env("NEBULA_VALIDATION_ROUNDS") ?? MAX_TOOL_ROUNDS);
-    const minutes = Number(env("NEBULA_VALIDATION_TIMEOUT") ?? 40);
+    const minutes = Number(env("NEBULA_VALIDATION_TIMEOUT") ?? preset?.runMinutes ?? DEFAULT_RUN_MINUTES);
+    const wall = Number(env("NEBULA_VALIDATION_WALL") ?? preset?.wallMinutes ?? DEFAULT_WALL_MINUTES);
+    const planStarted = Date.now();
     const jobs = plan(model, split, { report: env("NEBULA_VALIDATION_REPORT") === "1", arms, only: list("NEBULA_VALIDATION_ONLY"), runs });
+    // Fail at once, not after hours: a plan expected to pass the wall-clock cap does not start.
+    const tooLong = planRefusal(model.key, jobs.length, wall);
+    if (tooLong) throw new Error(tooLong);
+    const expected = expectedMinutes(model.key, jobs.length);
+    console.log(`${jobs.length} runs, expected ${expected == null ? "(no measured time for this model)" : `about ${Math.round(expected)} min`}; cap ${wall} min, ${minutes} min a run`);
     const baseUrl = env("NEBULA_VALIDATION_BASE_URL") ?? model.baseUrl;
     const apiKey = model.apiKeyEnv ? (env(model.apiKeyEnv) ?? "") : "";
     if (model.apiKeyEnv && !apiKey) throw new Error(`set ${model.apiKeyEnv}`);
@@ -113,6 +127,7 @@ describe.skipIf(!live)("validation, live", () => {
         runs_per_case: runs,
         max_rounds: rounds,
         timeout_minutes: minutes,
+        wall_minutes: wall,
         started,
         complete,
         backend: backendUrl(),
@@ -123,6 +138,12 @@ describe.skipIf(!live)("validation, live", () => {
     };
 
     for (const job of jobs) {
+      // The wall-clock cap: no run starts once it is reached, and a run gets at most what it leaves.
+      const limit = nextRun({ startedMs: planStarted, nowMs: Date.now(), wallMinutes: wall, runMinutes: minutes, done: records.length, total: jobs.length });
+      if (limit.stop) {
+        await save(false);
+        throw new Error(limit.stop);
+      }
       const refusal = tracker?.refusal();
       if (refusal) {
         console.log(`stopped before ${job.stem}: ${refusal}`);
@@ -150,7 +171,7 @@ describe.skipIf(!live)("validation, live", () => {
           // and the record's run_policy says so (validationPolicy).
           settings: { baseUrl, model: model.model, apiKey, temperature: model.temperature },
           rounds,
-          minutes,
+          minutes: limit.minutes,
           price: model.price,
           context: { tokens: runWindow.tokens, min_tokens: runWindow.min_tokens, read_from: runWindow.read_from },
           // A paid run's reserve covers its loop and one tuning; another tuning
@@ -183,7 +204,8 @@ describe.skipIf(!live)("validation, live", () => {
     }
     await save(true);
     console.log(`${records.length} of ${jobs.length} runs. Score them: python -m nebula3d.validation score --root <data root> --record ${out}/${model.key}-${split}.json${split === "test" ? " --report" : ""}`);
-  }, 8 * 3600_000);
+    // The test's own limit follows the cap: a run cut at the cap may take a few minutes to let go (startFresh).
+  }, (Number(env("NEBULA_VALIDATION_WALL") ?? presetNamed(env("NEBULA_VALIDATION_PRESET"))?.wallMinutes ?? DEFAULT_WALL_MINUTES) + 10) * 60_000);
 });
 
 // Writes the transcripts and the candidate findings of a scored record again
