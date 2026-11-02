@@ -87,6 +87,7 @@ from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter1d
 
 from nebula3d.core import HKLVolume, low_memory
+from nebula3d.preprocessing import powder_phases
 from nebula3d.preprocessing.global_rings import (
     GlobalRingConfig,
     _match_aluminum,
@@ -95,6 +96,8 @@ from nebula3d.preprocessing.global_rings import (
 from nebula3d.preprocessing.radial_background import (
     _azimuthal_angle,
     _confirm_shells_from_plane_profiles,
+    _fill_nan_1d,
+    _measured_noise,
     _robust_radial_profile,
     _snip_baseline,
     _stack_plane_q_magnitude,
@@ -179,6 +182,11 @@ class PooledRingConfig:
     sampling_min_count_frac: float = 0.25
     confirm_rings: bool = True
     isotropy: IsotropyConfig = field(default_factory=IsotropyConfig)
+    # Name the phase of the rings the Al lines leave (powder_phases): a record
+    # in the diagnostics only, nothing subtracted; radiation "neutron" models
+    # the lines' intensities, "xray" matches their positions alone.
+    match_phases: bool = True
+    phase_radiation: str = "neutron"
 
     def __post_init__(self) -> None:
         if self.plane not in _PLANES:
@@ -199,6 +207,8 @@ class PooledRingConfig:
             raise ValueError("amp_cap must be non-negative (0 disables the cap)")
         if self.pool_target_count <= 0 or self.min_pooled_count < 0:
             raise ValueError("pool_target_count must be positive, min_pooled_count ≥ 0")
+        if self.phase_radiation not in ("neutron", "xray"):
+            raise ValueError("phase_radiation must be 'neutron' or 'xray'")
 
 
 @dataclass
@@ -216,6 +226,7 @@ def fit_pooled_rings(
     *,
     progress: ProgressFn | None = None,
     return_ring: bool = False,
+    sample: str | None = None,
 ) -> PooledRingResult:
     """Fit and subtract the powder rings of ``vol`` (see the module docstring).
 
@@ -224,7 +235,9 @@ def fit_pooled_rings(
     too few valid voxels are left as they are.  ``return_ring=True`` also
     returns the subtracted ring intensity (one more volume of memory).  In
     low-memory mode (:func:`nebula3d.core.low_memory`) the cleaned data is
-    written over ``vol.data``.
+    written over ``vol.data``.  ``sample``, the input's file name, gives the
+    phase match the sample's composition and temperature where it names them
+    (:func:`_phase_match`).
     """
     cfg = config or PooledRingConfig()
     t_start = time.perf_counter()
@@ -282,6 +295,9 @@ def fit_pooled_rings(
                            al_test if cfg.confirm_rings else None)
     centers, fwhm, amps, al_a, rejected = (found.centers, found.fwhm, found.amps, found.al_a,
                                            found.rejected)
+    phases = (_phase_match(q_grid, shell_prof, shell_cnt, q_step, cfg, found,
+                           confirm if cfg.confirm_rings else None, sample)
+              if cfg.match_phases else None)
     del shell_prof, shell_cnt
     t_detect = time.perf_counter() - t_start
 
@@ -295,7 +311,7 @@ def fit_pooled_rings(
     def match(q: float, w: float) -> dict[str, object]:
         j = _on_al_line(q, w, al_q, tol)
         if j is None:
-            return {}
+            return _phase_line(phases, q, q_step)
         return {"match": {"phase": "Al", "hkl": al_lines[j].family.split("/")[0],
                           "q": round(float(al_q[j]), 4)}}
 
@@ -330,6 +346,10 @@ def fit_pooled_rings(
         # Detected, not confirmed, not subtracted: the crystal's own scattering.
         "rejected_shells": rejected,
     }
+    if phases is not None:
+        # Which phase the rings the Al lines leave may be (powder_phases):
+        # a record only, nothing is subtracted for it.
+        diagnostics["powder_phases"] = phases
     # Pass 2 reads each plane's raw data only while correcting that plane (the
     # neighbours enter through the pass-1 profiles), so in low-memory mode (the
     # browser) the output overwrites the disposable input, as the flatten does.
@@ -938,6 +958,163 @@ def _shell_ceiling(
         inside = np.abs(q_grid - float(c)) <= 2.0 * max(float(w), q_step)
         out[inside] = np.minimum(out[inside], float(cap))
     return out
+
+
+def _phase_line(record: dict[str, object] | None, q: float, q_step: float) -> dict[str, object]:
+    """The line of the phase the record names first that explains the ring
+    at ``q``, as a shell's ``match`` (with that phase's status), or nothing."""
+    cands = (record or {}).get("candidates") or []
+    if not cands or not isinstance(cands[0], dict):  # type: ignore[index]
+        return {}
+    best = cands[0]  # type: ignore[index]
+    for ln in best.get("lines") or []:
+        if isinstance(ln, dict) and abs(float(ln.get("ring") or -1.0) - q) <= q_step + 1e-6:
+            return {"match": {"phase": best.get("phase"), "hkl": ln.get("hkl"),
+                              "q": ln.get("q"), "status": best.get("status")}}
+    return {}
+
+
+def _across_stack(shell_prof: NDArray[np.float64], shell_cnt: NDArray[np.float64]
+                  ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """The across-stack profile the shells are detected in (the median over
+    the planes that sample a bin of their profiles), and how many sample each."""
+    sampled = shell_cnt >= _MIN_VOXELS_PER_BIN
+    n = sampled.sum(axis=0).astype(np.float64)
+    pooled = np.full(shell_prof.shape[1], np.nan)
+    for b in np.nonzero(n > 0)[0]:
+        pooled[b] = np.nanmedian(shell_prof[sampled[:, b], b])
+    return pooled, n
+
+
+def _peak_centre(q_grid: NDArray[np.float64], exc: NDArray[np.float64], q0: float) -> float:
+    """A shell's centre refined within its bin by a parabola through the
+    excess at its bin and the two beside it."""
+    b = int(np.argmin(np.abs(q_grid - q0)))
+    if b <= 0 or b >= q_grid.size - 1:
+        return float(q0)
+    y0, y1, y2 = exc[b - 1], exc[b], exc[b + 1]
+    den = y0 - 2.0 * y1 + y2
+    if not den < 0:
+        return float(q0)
+    step = float(q_grid[1] - q_grid[0])
+    return float(q_grid[b] + 0.5 * step * float(np.clip((y0 - y2) / den, -1.0, 1.0)))
+
+
+def _phase_match(q_grid: NDArray[np.float64], shell_prof: NDArray[np.float64],
+                 shell_cnt: NDArray[np.float64], q_step: float, cfg: PooledRingConfig,
+                 found: _Shells, confirm: ConfirmFn | None,
+                 sample: str | None) -> dict[str, object]:
+    """Which phase the rings the Al lines leave may be (powder_phases.match_phases).
+
+    The rings: every shell found above the keep-out cut (half the detection's
+    noise cut: the shells kept out of the flanks), not on a fitted Al line,
+    and not shown by the ring test to be the crystal's own (it fails on height
+    or isotropy where it stands clear of the noise in the typical direction).
+    The shells below the detection cut, never judged, are judged here. The
+    Al lines and the crystal's own shells cover the |Q| no line is judged at.
+    The confirmed Al rings are the intensity reference; the confirmed rings'
+    widths, a line through them over |Q|, the lines' width. ``sample``, the
+    input's file name, gives the composition and temperature it names.
+    """
+    pooled, n_sampled = _across_stack(shell_prof, shell_cnt)
+    g = _fill_nan_1d(pooled)
+    measured = np.isfinite(pooled)
+    if np.any(n_sampled > 0):
+        measured &= ~(n_sampled < 0.1 * np.median(n_sampled[n_sampled > 0]))
+    exc = g - _snip_baseline(g, max(3, int(round(cfg.max_fwhm / q_step))))
+    noise = _measured_noise(exc, measured)
+    cut = _KEEP_OUT_SNR_SHARE * cfg.min_snr
+    kc, kf, ka = _confirm_shells_from_plane_profiles(
+        q_grid, shell_prof, shell_cnt, q_step, cfg.max_fwhm, _MIN_VOXELS_PER_BIN,
+        min_snr=cut, rel_prominence=0.0)
+    al_lines = (aluminum_fcc_lines(found.al_a, cfg.q_max + 0.1, max(0.0, cfg.q_min - 0.1))
+                if found.al_a is not None else [])
+    al_q = np.array([ln.q for ln in al_lines])
+    tol = max(2.0 * q_step, 0.02)
+
+    def al_label(q: float, w: float) -> str | None:
+        j = _on_al_line(q, w, al_q, tol)
+        return None if j is None else "Al" + al_lines[j].family.split("/")[0]
+
+    kept = list(zip(found.centers.tolist(), found.fwhm.tolist(), found.amps.tolist()))
+    covers: list[powder_phases.Cover] = []
+    for c, f, _a in kept:
+        if (lab := al_label(c, f)) is not None:
+            covers.append(powder_phases.Cover(c, f, lab))
+    for s_ in found.rejected:
+        c, f = float(s_["q_center"]), float(s_["fwhm"])  # type: ignore[arg-type]
+        if (lab := al_label(c, f)) is not None:
+            covers.append(powder_phases.Cover(c, f, lab))
+    rings: list[powder_phases.Ring] = []
+    weak: list[tuple[float, float, float]] = []
+    for c, f, a in zip(kc.tolist(), kf.tolist(), ka.tolist()):
+        if al_label(c, f) is not None:
+            continue
+        if any(abs(c - kq) <= q_step + 1e-9 for kq, _f, _a in kept):
+            rings.append(powder_phases.Ring(_peak_centre(q_grid, exc, c), f, a, "ring"))
+            continue
+        left = [s_ for s_ in found.rejected if abs(float(s_["q_center"]) - c) <= q_step + 1e-9]  # type: ignore[arg-type]
+        if left:
+            verdict = left[0].get("isotropy")
+            if _crystals_own(verdict):
+                covers.append(powder_phases.Cover(c, f, "a crystal shell"))
+            else:
+                rings.append(powder_phases.Ring(_peak_centre(q_grid, exc, c), f, a, "left",
+                                                _left_code(verdict)))
+            continue
+        weak.append((c, f, a))
+    if weak:
+        verdicts: list[object] = [None] * len(weak)
+        if confirm is not None:
+            judged = confirm(np.array([w[0] for w in weak]), np.array([w[1] for w in weak]),
+                             [(c, f) for c, f, _a in kept],
+                             list(zip(kc.tolist(), kf.tolist())))
+            verdicts = [v.as_dict() for v in judged]
+        for (c, f, a), verdict in zip(weak, verdicts):
+            if _crystals_own(verdict):
+                covers.append(powder_phases.Cover(c, f, "a crystal shell"))
+            else:
+                code = ("ring" if isinstance(verdict, dict) and verdict.get("is_ring")
+                        else _left_code(verdict) if verdict else "")
+                rings.append(powder_phases.Ring(_peak_centre(q_grid, exc, c), f, a, "weak", code))
+    al = (powder_phases.al_reference(
+        [(c, f, a) for c, f, a in kept if al_label(c, f) is not None], found.al_a)
+        if found.al_a is not None and cfg.phase_radiation == "neutron" else None)
+    if found.centers.size >= 2:
+        trend = np.polyfit(found.centers, found.fwhm, 1)
+        pts = np.linspace(float(found.centers.min()), float(found.centers.max()), 16)
+        width: tuple[NDArray[np.float64], NDArray[np.float64]] | float = (
+            pts, np.clip(np.polyval(trend, pts), float(found.fwhm.min()), float(found.fwhm.max())))
+    elif found.centers.size == 1:
+        width = float(found.fwhm[0])
+    else:
+        width = float(np.median(kf)) if kf.size else 3.0 * q_step
+    name = sample or ""
+    record = powder_phases.match_phases(
+        q_grid, exc, measured, noise, rings, width=width, covers=covers, al=al,
+        floor=cut * noise, radiation=cfg.phase_radiation,
+        composition=powder_phases.elements_in_name(name),
+        temperature=powder_phases.temperature_in_name(name),
+        exclude=["Al"] if found.al_a is not None else [])
+    if cfg.phase_radiation == "xray":
+        # Polymer halos (Kapton, varnish): broad, so read off the profile
+        # itself, not its excess over the SNIP baseline, which takes them in.
+        record["broad"] = powder_phases.match_broad(
+            q_grid, g, measured,
+            rings=[*rings, *(powder_phases.Ring(c.q, c.fwhm, 0.0) for c in covers)])
+    return record
+
+
+def _crystals_own(verdict: object) -> bool:
+    """Whether a verdict shows the crystal's own shell: judged, it failed on
+    height or isotropy where it stood clear of the noise in the typical
+    direction (a faint ring fails the isotropy for its noise)."""
+    if not isinstance(verdict, dict) or verdict.get("not_judged"):
+        return False
+    fails = verdict.get("fails")
+    if not isinstance(fails, list):
+        return False
+    return bool({"height", "isotropy"} & set(fails)) and "snr" not in fails
 
 
 #: How many of the shells it left :func:`shell_summary` names; the rest it counts.

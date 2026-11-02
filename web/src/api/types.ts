@@ -158,6 +158,43 @@ export interface RingDiagnostics {
   // removed (of them on Al lines), each shell left with its Al line and why
   // (nebula3d.preprocessing.pooled_rings.shell_summary); null for another model.
   summary: string | null;
+  // Which phase the rings the Al lines leave may be (nebula3d.preprocessing.
+  // powder_phases): the match's record, null where the stage made none; and
+  // its one line for the Pilot, null where no phase was named.
+  phases: PowderPhases | null;
+  phase_summary: string | null;
+}
+
+/** One candidate phase of the powder-phase match (powder_phases.match_phases). */
+export interface PowderPhaseCandidate {
+  phase: string; // the library id ("Bi", "steel", "ice-Ih", ...)
+  name: string;
+  group: string; // "flux" | "sample environment" | "other"
+  status: "likely" | "possible";
+  or?: string; // a candidate of the same status the data do not tell apart
+  scale: number; // the isotropic lattice scale: a = a_RT (1 + scale)
+  matched: number; // the rings it explains within their FWHM
+  of: number; // of the rings the Al lines leave
+  significance: number;
+  score: number;
+  in_composition?: boolean; // a flux phase whose element the sample's name holds
+  amount_vs_al?: number; // its volume per unit volume of the fitted Al (neutrons)
+  at_limit?: boolean; // its scale at the edge of those tried
+  lines: { hkl: string; q: number; ring: number }[]; // each line matched, at the ring's |Q|
+  hidden: { hkl: string; q: number; under: string }[]; // under another ring: not judged
+  missing: { hkl: string; q: number }[]; // strong, measured, and not there
+  unmatched: number[]; // the rings it leaves (Å⁻¹)
+}
+
+/** The powder-phase match's record, as the ring stage wrote it. */
+export interface PowderPhases {
+  version: number;
+  library: string;
+  radiation: "neutron" | "xray";
+  rings: { q: number; fwhm: number; snr: number | null; source: "ring" | "left" | "weak"; code?: string }[];
+  candidates: PowderPhaseCandidate[];
+  unmatched: number[];
+  broad?: { id: string; name: string; halos: { q: number; fwhm: number; significance: number }[] }[];
 }
 
 export interface UbCheck {

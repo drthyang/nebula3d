@@ -281,6 +281,8 @@ const ringsEvaluation = obj({
   notice: optional(str),
   // The ring stage's own record: removed (on Al lines) and left, each with why.
   stage_shells: optional(str),
+  // The phase the rings the Al lines leave may be, with its evidence: only where one was named.
+  stage_phases: optional(str),
   mean_ring_energy_ratio: maybeNum,
   max_over_subtraction_fraction: maybeNum,
   max_ring_dent: maybeNum,

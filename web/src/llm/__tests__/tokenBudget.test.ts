@@ -172,18 +172,29 @@ type Component = (typeof ROWS)[number];
 // with its rule and remedy, its numbers and the sweep's before → after),
 // which only a turned volume carries, not the synthetic crystal, so the
 // measured results and prompts are 230 under these; tools +0. The rest of the
-// line (37) is released.
+// line (37) is released. THY-62 spent its reserve line (tools 150, results
+// 1,400, skills 50) on what it uses, measured on its branch: no tool (the
+// phase match rides on assess_stage's rings, as `stage_phases`) and no skill
+// text on this turn (reduction-qc's part on it sits in its details); results
+// +300 held for `stage_phases` (its line names at most four of each list:
+// 420 characters at most, a measured volume's about 175), which only a ring
+// record that names a phase carries, not the synthetic crystal, so the
+// measured results and prompts are 300 more under these. The rest of the
+// line (1,300) is released, after the tools take up the 2 (offered) and 2
+// (every definition) est. tokens the 32k run policy's wording added (main
+// 2bef34f7), and the skills the fraction of a token past 4,736 they had
+// reached, which sat in this line's room.
 // Arm B's worst local request, before the loop's compaction, by component:
-const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_588, context: 288, skills: 4_736, results: 8_321 };
+const MEASURED: Record<Component, number> = { system: 1_363, tools: 5_590, context: 288, skills: 4_737, results: 8_621 };
 // Every tool's definition, as the console sends them (Claude).
-const MEASURED_ALL_TOOLS = 6_173;
+const MEASURED_ALL_TOOLS = 6_175;
 // Each configuration's largest prompt.
 const MEASURED_PROMPT = {
-  console: 20_881,
-  localBefore: 20_296,
-  localSkillsFirst: 20_296,
-  localMethod: 20_296,
-  localSkillsLast: 20_296,
+  console: 21_181,
+  localBefore: 20_596,
+  localSkillsFirst: 20_596,
+  localMethod: 20_596,
+  localSkillsLast: 20_596,
 };
 
 // The room held for the queued model-visible features, by component, in
@@ -196,10 +207,6 @@ const RESERVED: Record<string, { what: string; room: Partial<Record<Component, n
   "THY-61": {
     what: "ring doublets, measured on its branch: the ring stage's record on assess_stage's rings (stage_shells), +36, paid for by dropping ring_rule's two shares, which repeat the criterion's numbers, −40; net −4 on the synthetic crystal (a real record's line runs to about 140 characters); reduction-qc's codes line sits in its details, not read on this turn",
     room: { results: 150 },
-  },
-  "THY-62": {
-    what: "powder phases, estimated: a tool offered for the rings (a contract of at most 500 characters), its default result of at most 2,000 characters, and a gate line in a skill",
-    room: { tools: 150, results: 1_400, skills: 50 },
   },
 };
 

@@ -6583,6 +6583,44 @@ h6.md-h {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+/* The phase the extra powder rings may be (THY-62): one line under the views,
+   as the Bragg page's UB turn, its evidence behind ? in a bubble above it, as
+   wide as the line allows. */
+.qr-phase-line {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 9px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.qr-phase-key {
+  font: 600 9px/1 system-ui;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.qr-phase-line .helptip { position: static; }
+.qr-phase-line .helptip-bubble {
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  width: min(460px, 100%);
+  max-width: none;
+  transform: none;
+}
+.qr-phase-line .helptip-bubble::after { display: none; }
+.qr-phase-row { display: block; }
+.qr-phase-row + .qr-phase-row { margin-top: 3px; }
+.qr-phase-row b { color: var(--text); font-weight: 600; }
+
 .ws-readout {
   display: flex;
   flex-wrap: wrap;

@@ -60,6 +60,8 @@ version = { attr = "nebula3d._version.__version__" }
 
 [tool.setuptools.package-data]
 "nebula3d.server" = ["static/**/*"]
+# The powder-phase library (preprocessing.powder_phases), versioned data.
+"nebula3d.preprocessing" = ["powder_phases.json"]
 
 [tool.setuptools.exclude-package-data]
 # Never ship experimental data or a (stale, self-nesting) copy of the Pyodide

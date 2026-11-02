@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "library_version": "2026.11-1",
+  "about": "Extra powder phases a single-crystal volume can carry: flux metals, sample-environment metals and a few other common phases (nebula3d.preprocessing.powder_phases). Each entry gives its space group, a room-temperature cell with its source, and the atoms of the cell, from which the allowed reflections and their neutron intensities are computed. Cells and atoms are those of the Crystallography Open Database entry named (COD, https://www.crystallography.net/), whose original paper is cited. A site lists its coordinates; 'ops' (coordinate triplets) and 'centering' expand it to the whole cell. Add a phase with the same fields in a file of your own (load_library(extra=...), or the NEBULA3D_POWDER_PHASES environment variable).",
+  "about_broad": "Broad-feature entries (polymer halos, for X-rays) go in 'broad': each {id, name, halos: [{q, fwhm} in Å⁻¹], source}, matched against the profile's broad excess and reported apart from the sharp rings. Kapton and GE varnish are not shipped yet: no halo centre and width could be taken from a source read for this library, and an entry must cite one. Add them in your own file once a source is chosen.",
+  "broad": [],
+  "scattering_lengths": {
+    "source": "Bound coherent neutron scattering lengths (real part), V. F. Sears, Neutron News 3(3), 26-37 (1992), as tabulated by the NIST Center for Neutron Research",
+    "unit": "fm",
+    "b_coh": {
+      "H": -3.739, "D": 6.671, "C": 6.646, "N": 9.36, "O": 5.803, "Al": 3.449, "Si": 4.1491,
+      "Ti": -3.438, "V": -0.3824, "Cr": 3.635, "Mn": -3.73, "Fe": 9.45, "Ni": 10.3, "Cu": 7.718,
+      "Zn": 5.68, "Ga": 7.288, "Nb": 7.054, "Mo": 6.715, "In": 4.065, "Sn": 6.225, "Sb": 5.57,
+      "Te": 5.8, "W": 4.86, "Pb": 9.405, "Bi": 8.532
+    }
+  },
+  "phases": [
+    {
+      "id": "Bi", "name": "bismuth", "group": "flux", "elements": ["Bi"],
+      "space_group": "R-3m", "setting": "hexagonal axes",
+      "cell": {"a": 4.546, "c": 11.862},
+      "source": "COD 9009658: Schiferl & Barrett, J. Appl. Cryst. 2, 30 (1969), 298 K",
+      "centering": "R", "ops": ["x,y,z", "-x,-y,-z"],
+      "sites": [{"el": "Bi", "xyz": [0, 0, 0.23389]}]
+    },
+    {
+      "id": "Sn", "name": "tin (white, beta)", "group": "flux", "elements": ["Sn"],
+      "space_group": "I4_1/amd", "setting": "origin choice 1",
+      "cell": {"a": 5.83146, "c": 3.18129},
+      "source": "COD 9012005: Straumanis, J. Appl. Phys. 20, 726 (1949), 298 K",
+      "centering": "I",
+      "sites": [{"el": "Sn", "xyz": [0, 0, 0]}, {"el": "Sn", "xyz": [0, "1/2", "1/4"]}]
+    },
+    {
+      "id": "Ga", "name": "gallium (alpha)", "group": "flux", "elements": ["Ga"],
+      "space_group": "Cmce",
+      "cell": {"a": 4.523, "b": 7.661, "c": 4.524},
+      "source": "COD 9008085: Sharma & Donohue, Z. Kristallogr. 117, 293 (1962)",
+      "ops": ["x,y,z", "1/2+x,1/2+y,z", "x,1/2-y,1/2+z", "1/2+x,-y,1/2+z", "-x,1/2+y,1/2-z",
+              "1/2-x,y,1/2-z", "-x,y,z", "1/2-x,1/2+y,z", "x,-y,-z", "1/2+x,1/2-y,-z",
+              "x,1/2+y,1/2-z", "1/2+x,y,1/2-z", "-x,1/2-y,1/2+z", "1/2-x,-y,1/2+z", "-x,-y,-z",
+              "1/2-x,1/2-y,-z"],
+      "sites": [{"el": "Ga", "xyz": [0, 0.1549, 0.081]}]
+    },
+    {
+      "id": "In", "name": "indium", "group": "flux", "elements": ["In"],
+      "space_group": "I4/mmm",
+      "cell": {"a": 3.25094, "c": 4.9474},
+      "source": "COD 2100456: Moshopoulou, Ibberson et al., Acta Cryst. B 62, 173 (2006), room temperature",
+      "centering": "I",
+      "sites": [{"el": "In", "xyz": [0, 0, 0]}]
+    },
+    {
+      "id": "Pb", "name": "lead", "group": "flux", "elements": ["Pb"],
+      "space_group": "Fm-3m",
+      "cell": {"a": 4.95004},
+      "source": "COD 9012004: Straumanis, J. Appl. Phys. 20, 726 (1949), 298 K",
+      "centering": "F",
+      "sites": [{"el": "Pb", "xyz": [0, 0, 0]}]
+    },
+    {
+      "id": "Sb", "name": "antimony", "group": "flux", "elements": ["Sb"],
+      "space_group": "R-3m", "setting": "hexagonal axes",
+      "cell": {"a": 4.3084, "c": 11.274},
+      "source": "COD 9009655: Schiferl & Barrett, J. Appl. Cryst. 2, 30 (1969), 299 K",
+      "centering": "R", "ops": ["x,y,z", "-x,-y,-z"],
+      "sites": [{"el": "Sb", "xyz": [0, 0, 0.23349]}]
+    },
+    {
+      "id": "Te", "name": "tellurium", "group": "flux", "elements": ["Te"],
+      "space_group": "P3_121",
+      "cell": {"a": 4.4572, "c": 5.929},
+      "source": "COD 2310839: Cherin & Unger, Acta Cryst. 23, 670 (1967)",
+      "ops": ["x,y,z", "-y,x-y,z+1/3", "-x+y,-x,z+2/3", "y,x,-z", "-x,-x+y,-z+1/3", "x-y,-y,-z+2/3"],
+      "sites": [{"el": "Te", "xyz": [0.2633, 0, "1/3"]}]
+    },
+    {
+      "id": "Zn", "name": "zinc", "group": "flux", "elements": ["Zn"],
+      "space_group": "P6_3/mmc",
+      "cell": {"a": 2.6648, "c": 4.9467},
+      "source": "COD 9008522: Wyckoff, Crystal Structures, vol. 1 (1963)",
+      "sites": [{"el": "Zn", "xyz": ["1/3", "2/3", "1/4"]}, {"el": "Zn", "xyz": ["2/3", "1/3", "3/4"]}]
+    },
+    {
+      "id": "Al", "name": "aluminium", "group": "sample environment", "elements": ["Al"],
+      "space_group": "Fm-3m",
+      "cell": {"a": 4.04961},
+      "source": "COD 9012002: Straumanis, J. Appl. Phys. 20, 726 (1949), 298 K",
+      "centering": "F",
+      "sites": [{"el": "Al", "xyz": [0, 0, 0]}]
+    },
+    {
+      "id": "Cu", "name": "copper", "group": "sample environment", "elements": ["Cu"],
+      "space_group": "Fm-3m",
+      "cell": {"a": 3.615},
+      "source": "COD 5000216: Swanson & Tatge, NBS Circular 539, vol. 1 (1953)",
+      "centering": "F",
+      "sites": [{"el": "Cu", "xyz": [0, 0, 0]}]
+    },
+    {
+      "id": "V", "name": "vanadium", "group": "sample environment", "elements": ["V"],
+      "space_group": "Im-3m",
+      "cell": {"a": 3.02589},
+      "source": "COD 4302557: Evans et al., Inorg. Chem. 48, 5602 (2009), 300 K",
+      "centering": "I",
+      "sites": [{"el": "V", "xyz": [0, 0, 0]}]
+    },
+    {
+      "id": "Ti", "name": "titanium (alpha)", "group": "sample environment", "elements": ["Ti"],
+      "space_group": "P6_3/mmc",
+      "cell": {"a": 2.95, "c": 4.686},
+      "source": "COD 9008517: Wyckoff, Crystal Structures, vol. 1 (1963)",
+      "sites": [{"el": "Ti", "xyz": ["1/3", "2/3", "1/4"]}, {"el": "Ti", "xyz": ["2/3", "1/3", "3/4"]}]
+    },
+    {
+      "id": "Nb", "name": "niobium", "group": "sample environment", "elements": ["Nb"],
+      "space_group": "Im-3m",
+      "cell": {"a": 3.3004},
+      "source": "COD 9008546: Wyckoff, Crystal Structures, vol. 1 (1963)",
+      "centering": "I",
+      "sites": [{"el": "Nb", "xyz": [0, 0, 0]}]
+    },
+    {
+      "id": "Fe", "name": "iron (alpha, ferritic steel)", "group": "sample environment", "elements": ["Fe"],
+      "space_group": "Im-3m",
+      "cell": {"a": 2.866},
+      "source": "COD 9000657: Wilburn & Bassett, Am. Mineral. 63, 591 (1978), 1 atm",
+      "centering": "I",
+      "sites": [{"el": "Fe", "xyz": [0, 0, 0]}]
+    },
+    {
+      "id": "steel", "name": "austenitic stainless steel (AISI 304/316)", "group": "sample environment",
+      "elements": ["Fe", "Cr", "Ni"],
+      "space_group": "Fm-3m",
+      "cell": {"a": 3.59},
+      "source": "typical room-temperature value; 3.58 to 3.60 Å with composition (the lattice scale's ±1.5 % covers it). Atoms: a random Fe-Cr-Ni alloy at about the nominal 18/8 composition, so each site scatters with the average length",
+      "centering": "F",
+      "sites": [{"el": "Fe", "xyz": [0, 0, 0], "occ": 0.72}, {"el": "Cr", "xyz": [0, 0, 0], "occ": 0.19},
+                {"el": "Ni", "xyz": [0, 0, 0], "occ": 0.09}]
+    },
+    {
+      "id": "W", "name": "tungsten", "group": "sample environment", "elements": ["W"],
+      "space_group": "Im-3m",
+      "cell": {"a": 3.1648},
+      "source": "COD 9006486: Dubrovinsky & Saxena, Phys. Chem. Miner. 24, 547 (1997), 298 K",
+      "centering": "I",
+      "sites": [{"el": "W", "xyz": [0, 0, 0]}]
+    },
+    {
+      "id": "ice-Ih", "name": "ice Ih (H2O)", "group": "other", "elements": ["H", "O"],
+      "space_group": "P6_3/mmc",
+      "cell": {"a": 4.506, "c": 7.346},
+      "source": "COD 1538173: Goto, Hondoh & Mae, J. Chem. Phys. 93, 1412 (1990); hydrogen disordered, each site half occupied. Ice has no room-temperature cell: this one is measured below 0 °C",
+      "ops": ["x,y,z", "x-y,x,z+1/2", "-y,x-y,z", "-x,-y,z+1/2", "-x+y,-x,z", "y,-x+y,z+1/2",
+              "-y,-x,-z+1/2", "x-y,-y,-z", "x,x-y,-z+1/2", "y,x,-z", "-x+y,y,-z+1/2", "-x,-x+y,-z",
+              "-x,-y,-z", "-x+y,-x,-z-1/2", "y,-x+y,-z", "x,y,-z-1/2", "x-y,x,-z", "-y,x-y,-z-1/2",
+              "y,x,z-1/2", "-x+y,y,z", "-x,-x+y,z-1/2", "-y,-x,z", "x-y,-y,z-1/2", "x,x-y,z"],
+      "sites": [{"el": "O", "xyz": ["1/3", "2/3", 0.0618]},
+                {"el": "H", "xyz": [0.437, 0.874, 0.028], "occ": 0.5},
+                {"el": "H", "xyz": ["1/3", "2/3", 0.198], "occ": 0.5}]
+    },
+    {
+      "id": "ice-Ic", "name": "ice Ic (H2O)", "group": "other", "elements": ["H", "O"],
+      "space_group": "Fd-3m", "setting": "origin choice 1",
+      "cell": {"a": 6.37},
+      "source": "COD 1541579: Shallcross & Carpenter, J. Chem. Phys. 26, 782 (1957), oxygen only. Hydrogen added on each O-O bond at 1.00 Å from its O (the O-H distance of the ice-Ih entry), each site half occupied (Bernal-Fowler disorder)",
+      "centering": "F",
+      "sites": [{"el": "O", "xyz": [0, 0, 0]}, {"el": "O", "xyz": ["1/4", "1/4", "1/4"]},
+                {"el": "H", "xyz": [0.0906, 0.0906, 0.0906], "occ": 0.5},
+                {"el": "H", "xyz": [0.0906, -0.0906, -0.0906], "occ": 0.5},
+                {"el": "H", "xyz": [-0.0906, 0.0906, -0.0906], "occ": 0.5},
+                {"el": "H", "xyz": [-0.0906, -0.0906, 0.0906], "occ": 0.5},
+                {"el": "H", "xyz": [0.1594, 0.1594, 0.1594], "occ": 0.5},
+                {"el": "H", "xyz": [0.1594, 0.3406, 0.3406], "occ": 0.5},
+                {"el": "H", "xyz": [0.3406, 0.1594, 0.3406], "occ": 0.5},
+                {"el": "H", "xyz": [0.3406, 0.3406, 0.1594], "occ": 0.5}]
+    },
+    {
+      "id": "graphite", "name": "graphite (2H)", "group": "other", "elements": ["C"],
+      "space_group": "P6_3/mmc",
+      "cell": {"a": 2.464, "c": 6.711},
+      "source": "COD 9011577: Trucano & Chen, Nature 258, 136 (1975)",
+      "sites": [{"el": "C", "xyz": [0, 0, "1/4"]}, {"el": "C", "xyz": [0, 0, "3/4"]},
+                {"el": "C", "xyz": ["1/3", "2/3", "1/4"]}, {"el": "C", "xyz": ["2/3", "1/3", "3/4"]}]
+    },
+    {
+      "id": "Si", "name": "silicon", "group": "other", "elements": ["Si"],
+      "space_group": "Fd-3m", "setting": "origin choice 1",
+      "cell": {"a": 5.430941},
+      "source": "COD 9011998: Hom, Kiszenick & Post, J. Appl. Cryst. 8, 457 (1975), 298 K",
+      "centering": "F",
+      "sites": [{"el": "Si", "xyz": [0, 0, 0]}, {"el": "Si", "xyz": ["1/4", "1/4", "1/4"]}]
+    },
+    {
+      "id": "quartz", "name": "quartz (alpha, SiO2)", "group": "other", "elements": ["Si", "O"],
+      "space_group": "P3_221",
+      "cell": {"a": 4.916, "c": 5.4054},
+      "source": "COD 9000775: Levien, Prewitt & Weidner, Am. Mineral. 65, 920 (1980), 1 atm",
+      "ops": ["x,y,z", "y,x,2/3-z", "-y,x-y,2/3+z", "-x,-x+y,1/3-z", "-x+y,-x,1/3+z", "x-y,-y,-z"],
+      "sites": [{"el": "Si", "xyz": [0.4697, 0, 0]}, {"el": "O", "xyz": [0.4135, 0.2669, 0.1191]}]
+    },
+    {
+      "id": "Al2O3", "name": "corundum (alpha-Al2O3, sapphire)", "group": "other", "elements": ["Al", "O"],
+      "space_group": "R-3c", "setting": "hexagonal axes",
+      "cell": {"a": 4.758152, "c": 12.9897},
+      "source": "COD 2300448: Schreyer et al., J. Appl. Cryst. 47, 659 (2014), 298 K",
+      "centering": "R",
+      "ops": ["x,y,z", "-y,x-y,z", "-x+y,-x,z", "y,x,-z+1/2", "x-y,-y,-z+1/2", "-x,-x+y,-z+1/2",
+              "-x,-y,-z", "y,-x+y,-z", "x-y,x,-z", "-y,-x,z+1/2", "-x+y,y,z+1/2", "x,x-y,z+1/2"],
+      "sites": [{"el": "Al", "xyz": [0, 0, 0.35229]}, {"el": "O", "xyz": [0.30621, 0, 0.25]}]
+    }
+  ]
+}

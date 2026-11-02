@@ -157,6 +157,19 @@ Evidence for the user's choice of the class for the symmetry average.
 - The ring rule's numbers (Gates): to confirm with the user.
 - Not every instrument's data have rings (TOPAZ has no aluminium ring
   background): rings there are not routine cleanup.
+- Extra rings: rings the Al lines leave unexplained. `stage_phases`, where
+  present, names the library phase whose lines fit them best: a flux metal
+  the crystal grew from, a part of the sample environment, ice. It gives the
+  rings it matches, its lattice scale (thermal contraction), its lines hidden
+  under another ring, any strong line missing, and the rings left unmatched.
+- Report them as a possibility with that evidence, never as the phase: "the
+  extra rings might be Bi flux: its lines match four of six rings, its
+  lattice slightly smaller than at room temperature; two rings stay
+  unmatched". "likely" there is the match's confidence, not an
+  identification; two phases named together ("Te or Bi") are both open.
+- Whatever their phase, confirmed rings are subtracted as powder rings and
+  fainter ones stay: the name changes nothing in the removal. Ask the user
+  about the growth and the mount, which the match does not know.
 
 ### The flatten floor
 

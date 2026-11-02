@@ -106,6 +106,7 @@ const SOURCES = repoKeyed(
       "../metrics/rings.ts",
       "../../api/types.ts",
       "../tools/defs/compare_laue_classes.ts",
+      "../tune/evaluate.ts",
     ],
     { query: "?raw", import: "default", eager: true },
   ),
@@ -264,6 +265,9 @@ const NOT_GATES: { skill: SkillName; phrase: string; why: string }[] = [
   { skill: "reduction-qc", phrase: "near 1, the equivalents agree within the noise", why: "the ratio's value at agreement (its definition), not a limit: the rule compares classes with each other (DELTA, Z)" },
   { skill: "reduction-qc", phrase: "from 0.025 to 0.066 to 0.107", why: "evidence, not a line: what the Q² term did to the scored pedestal span on the validation's clean controls (batch 1, finding 5)" },
   { skill: "delta-pdf-interpretation", phrase: "Taking a back-FFT r near 1 as proof", why: "a failure mode quoting trust check 4, whose gate is in GATES" },
+  { skill: "reduction-qc", phrase: "its lines match four of six rings", why: "an example of the evidence stage_phases gives (THY-62)" },
+  { skill: "reduction-qc", phrase: "two rings stay", why: "an example of the evidence stage_phases gives (THY-62)" },
+  { skill: "reduction-qc", phrase: "two phases named together", why: "a candidate the data do not tell from the next (THY-62)" },
 ];
 
 /**
@@ -378,6 +382,11 @@ const OTHER_NAMES: { name: string; what: string; holds: () => boolean }[] = [
     name: "common_flag",
     what: "compare_laue_classes' common-subset flag, in a result only when raised (not on the synthetic crystal)",
     holds: () => source("web/src/llm/tools/defs/compare_laue_classes.ts").includes("{ common_flag: out.common.flag }"),
+  },
+  {
+    name: "stage_phases",
+    what: "assess_stage's rings: the phase the rings the Al lines leave may be, only where the ring record names one (THY-62), which the synthetic crystal's does not",
+    holds: () => source("web/src/llm/tune/evaluate.ts").includes("{ stage_phases: record.phase_summary }"),
   },
   { name: "+ b·Q²", what: "the flatten's Q² term, as a formula (flattenQ2)", holds: () => true },
   { name: "b·Q²", what: "the flatten's Q² term, as a formula (flattenQ2)", holds: () => true },

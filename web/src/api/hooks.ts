@@ -11,6 +11,7 @@ import {
   fetchDpdfSlice,
   fetchHealth,
   fetchMeta,
+  fetchRingDiagnostics,
 } from "./client";
 import { getBootStatus, subscribeBoot, type BootStatus } from "./pyodideEngine";
 
@@ -64,6 +65,17 @@ export function useDpdfSlice(
     queryFn: () => fetchDpdfSlice(volumeId as string, plane, value),
     enabled: Boolean(volumeId),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** The ring removal's record of a dataset (its diagnostics), keyed by when the
+ *  ring-removed output was written, so a new run reads it again. */
+export function useRingDiagnostics(datasetId: string | null | undefined, written: number | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["ringDiagnostics", datasetId, written ?? null],
+    queryFn: () => fetchRingDiagnostics(datasetId as string),
+    enabled: Boolean(datasetId) && enabled,
+    retry: false,
   });
 }
 

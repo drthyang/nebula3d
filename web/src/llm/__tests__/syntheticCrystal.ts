@@ -520,6 +520,8 @@ const ringDiagnostics = (id: string): RingDiagnostics => ({
   status: "fitted",
   unconfirmed_at_grid: null,
   summary: "removed 1; left 1: 3.93 isotropy",
+  phases: null,
+  phase_summary: null,
 });
 
 // The whole volume's shell floors of a dataset's flattened stage, on the

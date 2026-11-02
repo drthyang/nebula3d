@@ -203,6 +203,10 @@ class RingDiagnosticsOut(BaseModel):
     unconfirmed_at_grid: UnconfirmedRingsOut | None = None
     # The shells removed and left, in one line (preprocessing.pooled_rings.shell_summary).
     summary: str | None = None
+    # The phase the rings the Al lines leave may be (preprocessing.powder_phases):
+    # the match's record, and its one line (None where no phase was named).
+    phases: dict[str, Any] | None = None
+    phase_summary: str | None = None
 
 
 class ShellFloorsOut(BaseModel):

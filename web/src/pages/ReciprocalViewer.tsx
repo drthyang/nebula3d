@@ -8,18 +8,20 @@ import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQueries } from "@tanstack/react-query";
 
 import { fetchSlice } from "../api/client";
-import { useDatasets, useMeta } from "../api/hooks";
+import { useDatasets, useMeta, useRingDiagnostics } from "../api/hooks";
 import type { Slice } from "../api/types";
 import { COLORMAPS, SEQUENTIAL_NAMES } from "../colormaps/luts";
 import { autoLevels, fmtLevel, type AutoLevels, type ScaleKind } from "../components/colorScale";
 import { SliceCanvas } from "../components/SliceCanvas";
 import {
   EmptyState,
+  HelpTip,
   IconAlert,
   MetaStrip,
   Segmented,
   Slider,
 } from "../components/ui";
+import { powderPhaseText } from "../components/powderPhase";
 import { RegionMarks, type MarkItem } from "../components/RegionMarks";
 import { sectionOf, type Section } from "../components/regionMark";
 import { HklGrid } from "../components/UnitCellGrid";
@@ -103,6 +105,12 @@ export function ReciprocalViewer() {
     primary: "flattened",
     lastMulti: "grid",
   });
+
+  // Which phase the extra powder rings may be: the ring removal's phase match,
+  // where it named one (components/powderPhase.ts).
+  const ringStage = stages.find((s) => s.name === "ringremoved");
+  const ringRecord = useRingDiagnostics(datasetId, ringStage?.mtime, Boolean(ringStage));
+  const phaseText = powderPhaseText(ringRecord.data?.phases);
 
   const metaVolId = stages[0]?.volume_id;
   const meta = useMeta(metaVolId).data;
@@ -424,6 +432,21 @@ export function ReciprocalViewer() {
             <span className="muted">{readVerb(touch)} a slice to read the same ({xAxis}, {yAxis}) in every stage.</span>
           )}
         </div>
+      )}
+
+      {/* The phase the ring removal's match names for the extra powder rings: one line, the evidence behind ?. */}
+      {phaseText && (
+        <p className="qr-phase-line">
+          <span className="qr-phase-key">Extra powder rings</span>
+          {phaseText.line}
+          <HelpTip className="helptip--phases">
+            {phaseText.detail.map((d) => (
+              <span key={d.label} className="qr-phase-row">
+                <b>{d.label}</b> {d.text}
+              </span>
+            ))}
+          </HelpTip>
+        </p>
       )}
 
       {meta && (

@@ -272,6 +272,16 @@ curve, member) and a cluster's lines. A rejected shell's first verdict is kept
 as `strict`. The top level records the frame (`al_frame`: rings, cells,
 95th-percentile |s|, reliability) and the Al rule (`confirmation.al_rule`).
 
+**Which phase the other rings are** (2026-11, THY-62). After the shells are
+judged, the stage names the library phase whose lines best explain the rings
+the Al lines leave (flux inclusions, another part of the sample environment,
+ice), as a possibility with its evidence: the rings matched, a lattice scale,
+the lines hidden under an Al ring or a crystal's own shell, any strong line
+missing, and the rings left unmatched ([powder_phases.md](powder_phases.md)).
+It is a record only (`powder_phases` in the diagnostics, and each matched
+shell's `match`): nothing is subtracted for it, and the cleaned volume is
+bit for bit the same without it.
+
 **Bragg peaks.** A Bragg peak covers one sector over a few planes, a minority of
 the pooling neighbourhood, so the median rejects it. Pooling over the stack
 alone is not enough at integer H, where the peak spans most of the plane window:

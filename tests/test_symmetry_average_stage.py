@@ -134,7 +134,7 @@ def test_the_stages_after_it_read_the_symmetry_and_keep_declaring_it(tmp_path, g
         seen["backfill"] = symmetry
         return v
 
-    monkeypatch.setattr(pipeline, "remove_rings", lambda v, params=None, *, progress=None: v)
+    monkeypatch.setattr(pipeline, "remove_rings", lambda v, params=None, *, progress=None, **_: v)
     monkeypatch.setattr(pipeline, "punch_bragg", punch)
     monkeypatch.setattr(pipeline, "backfill", backfill)
     monkeypatch.setattr(pipeline, "flatten", lambda v, params=None, *, progress=None: v)
@@ -156,7 +156,7 @@ def test_the_stages_after_it_read_the_symmetry_and_keep_declaring_it(tmp_path, g
 def test_the_ring_stage_reads_the_symmetrized_volume(tmp_path, gap_input, monkeypatch):
     got: dict[str, object] = {}
 
-    def rings(v, params=None, *, progress=None):
+    def rings(v, params=None, *, progress=None, **_facts):
         got["mask"] = v.mask.copy()
         return v
 
@@ -172,7 +172,7 @@ def test_the_ring_stage_reads_the_symmetrized_volume(tmp_path, gap_input, monkey
 # Off by default; refusals
 # ---------------------------------------------------------------------------
 def test_off_by_default_it_writes_nothing_and_says_nothing(tmp_path, gap_input, monkeypatch):
-    monkeypatch.setattr(pipeline, "remove_rings", lambda v, params=None, *, progress=None: v)
+    monkeypatch.setattr(pipeline, "remove_rings", lambda v, params=None, *, progress=None, **_: v)
     events: list[tuple] = []
     paths = pipeline.run_pipeline(gap_input, proc_dir=tmp_path, stages=("symmetry_average",
                                                                         "rings"),
