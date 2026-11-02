@@ -13,6 +13,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "../../state/volumeReset";
 import { fetchDataset, promoteTrial, startTuningRun } from "../../api/client";
 import { queryClient } from "../../api/queryClient";
 import type { Dataset, TuningRun } from "../../api/types";
@@ -452,3 +453,5 @@ export function stopTuning(): void {
   controller?.abort();
   if (pipeline().running) void pipeline().cancel();
 }
+
+resetsWithVolume(useTuneStore);

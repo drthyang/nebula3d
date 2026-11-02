@@ -12,6 +12,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "./volumeReset";
 import { regionProblem, type Frame, type MarkRegion, type Vec3 } from "../components/regionMark";
 import type { Bounds, Viewport } from "../components/viewport";
 import type { FixedAxis } from "./viewerStore";
@@ -209,10 +210,13 @@ interface MarkState {
 
 const MARKS_KEY = "nebula3d.marks.v1";
 
+// No marks: the state without any saved, and after Close.
+const NO_MARKS = { marks: [] as Mark[], next: 1, showAll: true };
+
 function load(): { marks: Mark[]; next: number; showAll: boolean } {
   try {
     const saved: unknown = JSON.parse(sessionStorage.getItem(MARKS_KEY) ?? "null");
-    if (!isObj(saved)) return { marks: [], next: 1, showAll: true };
+    if (!isObj(saved)) return { ...NO_MARKS };
     const marks = readMarks(saved.marks);
     const top = marks.reduce((n, m) => Math.max(n, numberOf(m.id)), 0);
     return {
@@ -221,7 +225,7 @@ function load(): { marks: Mark[]; next: number; showAll: boolean } {
       showAll: saved.showAll !== false,
     };
   } catch {
-    return { marks: [], next: 1, showAll: true }; // no storage (private mode, tests)
+    return { ...NO_MARKS }; // no storage (private mode, tests)
   }
 }
 
@@ -275,3 +279,7 @@ useMarkStore.subscribe((s, prev) => {
     // Full or blocked: the marks just do not survive a reload.
   }
 });
+
+// Closing the volume clears the regions marked on it (overlays), here and in
+// storage.
+resetsWithVolume(useMarkStore, { fresh: () => ({ ...NO_MARKS }) });

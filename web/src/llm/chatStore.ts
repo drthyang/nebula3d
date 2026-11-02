@@ -11,6 +11,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "../state/volumeReset";
 import type { AgentProgress, AgentStep } from "./agent";
 import type { Usage } from "./usage";
 import type { ComputedVerdict } from "./verdicts";
@@ -201,3 +202,7 @@ useChatStore.subscribe((s, prev) => {
     // Full or blocked: the transcript just does not survive a reload.
   }
 });
+
+// Closing the volume starts the conversation afresh (it was about that
+// volume), here and in storage: no turns, no draft, no token total.
+resetsWithVolume(useChatStore, { fresh: () => ({ turns: [], draft: "", usage: null }) });

@@ -16,6 +16,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "./volumeReset";
 import type { Viewport } from "../components/viewport";
 import type { PunchPlane } from "./pipelineStore";
 import type { ManualLevels } from "./viewerStore";
@@ -132,3 +133,7 @@ export const useConfigViewStore = create<ConfigViewState>((set) => ({
   focusStage: null,
   setFocusStage: (focusStage) => set({ focusStage }),
 }));
+
+// Closing the volume: the preview's views and limits go; the tab and the
+// Advanced folds the user opened are preferences, and stay.
+resetsWithVolume(useConfigViewStore, { keep: ["previewTab", "advancedOpen"] });

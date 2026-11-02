@@ -30,6 +30,7 @@ import {
   verdictLine,
   type CellView,
 } from "../state/laueCompare";
+import { clearsWithVolume } from "../state/volumeReset";
 import { HelpTip } from "./ui";
 
 /** The settings the comparison reads (laueCompareParams), and the volume: what makes an earlier result another's. */
@@ -41,6 +42,7 @@ function settingsKey(volumeId: string, params: StageParamsIn, extra: readonly st
 // The last comparison of each volume in this session, so leaving the page and
 // coming back keeps the table (the backend keeps the numbers too).
 const lastByVolume = new Map<string, { key: string; result: LaueComparison }>();
+clearsWithVolume(() => lastByVolume.clear());
 
 function Cell({ c }: { c: CellView }) {
   return (

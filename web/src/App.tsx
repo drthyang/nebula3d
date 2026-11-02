@@ -199,7 +199,8 @@ export function App() {
               disabled={!datasets.length}
               aria-label="Dataset"
             >
-              {!datasets.length && <option value="">—</option>}
+              {/* none picked: none loaded yet, or the volume was closed */}
+              {(!datasets.length || !datasetId) && <option value="" disabled={datasets.length > 0}>—</option>}
               {datasets.map((d) => (
                 <option key={d.id} value={d.id} title={d.raw_name}>
                   {datasetName(d, datasets)}

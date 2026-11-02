@@ -5,6 +5,7 @@
 
 import { create } from "zustand";
 
+import { holdsNoVolume } from "./volumeReset";
 import { clampSheet, loadDockWidth, loadSheet, saveDockWidth, saveSheet, SHEET_DEFAULT } from "./dockLayout";
 
 export type Tab = "config" | "execution" | "reciprocal" | "bragg" | "dpdf" | "consistency";
@@ -55,3 +56,5 @@ export const useNavStore = create<NavState>((set) => ({
     set({ dockOpen });
   },
 }));
+
+holdsNoVolume(useNavStore, "the page shown and where the NEBULA Pilot panel sits");

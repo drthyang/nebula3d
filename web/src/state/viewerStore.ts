@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "./volumeReset";
 import type { ScaleKind } from "../components/colorScale";
 import type { Viewport } from "../components/viewport";
 
@@ -110,3 +111,7 @@ export const useViewerStore = create<ViewerState>((set) => ({
   setBraggScale: (braggScale) => set({ braggScale }),
   setBraggLevels: (braggLevels) => set({ braggLevels }),
 }));
+
+// Closing the volume: the cuts, views and colour limits go; the colour maps
+// and scale kinds are preferences, and stay.
+resetsWithVolume(useViewerStore, { keep: ["colormap", "divColormap", "scale", "braggScale"] });

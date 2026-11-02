@@ -5,6 +5,7 @@
 // cache is bounded: the oldest texts go first, past MAX_TEXTS texts or
 // MAX_CHARS characters, the newest staying whatever its size.
 
+import { clearsWithVolume } from "../../state/volumeReset";
 import type { Found } from "./index";
 
 export const MAX_TEXTS = 256;
@@ -12,6 +13,11 @@ export const MAX_CHARS = 4_000_000;
 
 const cache = new Map<string, Found | null>();
 let chars = 0;
+// The results read about a closed volume are not kept.
+clearsWithVolume(() => {
+  cache.clear();
+  chars = 0;
+});
 
 /** A JSON value with every object and list in it frozen. */
 function deepFreeze<T>(value: T): T {

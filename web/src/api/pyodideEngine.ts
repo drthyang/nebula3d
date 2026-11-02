@@ -286,7 +286,7 @@ export function ensureBooted(): Promise<void> {
 
 // Terminate the Worker (stops an in-progress pipeline run) and reset state.
 // A new Worker will be created on the next ensureBooted() call.
-export function cancelPipeline(): void {
+export function cancelPipeline(why = "Pipeline cancelled"): void {
   if (workerInstance) {
     workerInstance.terminate();
     workerInstance = null;
@@ -294,8 +294,16 @@ export function cancelPipeline(): void {
   disposeRingPool();
   clearMainHeap();
   bootPromise = null;
-  rejectAllPending("Pipeline cancelled");
+  rejectAllPending(why);
   setBoot({ phase: "idle", message: "not started", ready: false });
+}
+
+// Close the volume: the worker goes with everything loaded into it (its WASM
+// heap never shrinks, so only a new worker gives the memory back), and the
+// next call boots a fresh one with an empty workspace. Nothing is reloaded.
+export function restartEngine(): void {
+  inputSources.clear();
+  cancelPipeline("The volume was closed");
 }
 
 // ---------------------------------------------------------------------------

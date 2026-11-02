@@ -18,6 +18,7 @@
 //    cache_creation_input_tokens.
 // Input counts the cached part too (read or written), as the servers bill it.
 
+import { clearsWithVolume } from "../state/volumeReset";
 import { useChatStore } from "./chatStore";
 import type { TokenUsage } from "./provider/client";
 import { classifyFailure } from "./recovery";
@@ -118,6 +119,10 @@ export function usageText(u: Usage | undefined | null): string | null {
 
 // The reply being written, which a tuning run inside it counts into too.
 let reply: Usage | null = null;
+// A reply cut off by Close counts no more.
+clearsWithVolume(() => {
+  reply = null;
+});
 
 /** Count one request: into the reply under way, if any, and the conversation. */
 export function recordUsage(u: Usage): void {

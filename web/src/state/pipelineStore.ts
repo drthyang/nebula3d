@@ -8,6 +8,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "./volumeReset";
 import { cancelJob, fetchJob, runPipeline } from "../api/client";
 import { cancelPipeline, engine, PYODIDE_MODE } from "../api/pyodideEngine";
 import { queryClient } from "../api/queryClient";
@@ -187,7 +188,8 @@ interface PipelineState extends PipelineConfig {
 // lifecycle.  Closed on terminal events / errors and replaced on each run.
 let es: EventSource | null = null;
 
-function closeStream() {
+/** Stop following the native run's progress stream (a run's end, and Close). */
+export function closeStream(): void {
   es?.close();
   es = null;
 }
@@ -639,3 +641,7 @@ async function runInBrowser(
     set({ terminal: "error", running: false });
   }
 }
+
+// Closing the volume: the form back to its defaults and no run (a run in
+// progress is cancelled first, state/closeVolume.ts).
+resetsWithVolume(usePipelineStore);
