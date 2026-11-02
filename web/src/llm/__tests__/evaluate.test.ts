@@ -341,6 +341,20 @@ describe("evaluateStage", () => {
     expect(await evaluateStage("rings", dataset)).not.toHaveProperty("stage_shells");
   });
 
+  it("gives the phase the rings the Al lines leave may be, after the stage's shells, only where one was named", async () => {
+    ringAndBump();
+    judgeIn3d();
+    const summary = "Al a=4.041 Å; removed 11 (Al 10); left 1: 10.33 Al622 member";
+    const phases = "possibly Sn flux: 2 of 2 rings matched, scale -0.2 %; lines 200 2.22, 420 4.84; hidden 211 under Al200, 312 under Al311; unmatched none";
+    const record = { dataset_id: "demo", diagnostics_path: "p", has_diagnostics: true, status: "fitted", unconfirmed_at_grid: null, summary, phases: null, phase_summary: phases };
+    api.fetchRingDiagnostics.mockResolvedValue(record);
+    const e = await evaluateStage("rings", dataset);
+    expect(e.stage_phases).toBe(phases);
+    expect(Object.keys(e).slice(0, 2)).toEqual(["stage_shells", "stage_phases"]);
+    api.fetchRingDiagnostics.mockResolvedValue({ ...record, phase_summary: null });
+    expect(await evaluateStage("rings", dataset)).not.toHaveProperty("stage_phases");
+  });
+
   it("asks for the grid's limit with no bump on the planes, and passes an empty shell list as before where the grid is fine", async () => {
     api.fetchSlice.mockImplementation(async () => makeSlice(161, 161, () => 1, { half: 20 }));
     judgeIn3d();

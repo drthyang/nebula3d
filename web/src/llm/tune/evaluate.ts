@@ -252,6 +252,9 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // The ring stage's own record of its shells: removed (on Al lines) and
       // left, each with why (the skill reads the codes).
       ...(record?.summary ? { stage_shells: record.summary } : {}),
+      // The phase the rings the Al lines leave may be, a possibility with its
+      // evidence (powder_phases.summary): only where a phase was named.
+      ...(record?.phase_summary ? { stage_phases: record.phase_summary } : {}),
       mean_ring_energy_ratio: mean(r.map((x) => x?.ring_energy_ratio)),
       max_over_subtraction_fraction: max(r.map((x) => x?.over_subtraction_fraction)),
       // The deepest dent and largest leftover at the confirmed rings, over the

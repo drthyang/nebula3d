@@ -21,7 +21,8 @@ viewers, and reproducible command recipes in more detail.
    viewers.
 7. [Powder ring removal](algorithms/powder_rings.md) - how powder-ring intensity
    is estimated and subtracted, and how a ring is told from the crystal's own
-   diffuse.
+   diffuse; [powder phases](algorithms/powder_phases.md) - which phase the
+   rings the Al lines leave may be.
 8. [Bragg cleanup](algorithms/bragg_cleanup.md) - integer-node Bragg punching,
    search-mode satellite punching, direct-beam handling, and backfill.
 9. [3D-ΔPDF transform](algorithms/delta_pdf.md) - centred FFT recipe, the
@@ -52,6 +53,7 @@ viewers, and reproducible command recipes in more detail.
 | [modulation.md](modulation.md) | Declare a sample's modulation, see what the punch's search leaves alone, and read when its sharp peaks off the lattice bunch at a fraction. |
 | [commands.md](commands.md) | Run batch workflows and viewers from the CLI. |
 | [algorithms/powder_rings.md](algorithms/powder_rings.md) | Understand or tune powder-ring subtraction. |
+| [algorithms/powder_phases.md](algorithms/powder_phases.md) | Read which phase the extra powder rings may be: the phase library, its sources, the matcher and its limits, or add a phase of your own. |
 | [algorithms/bragg_cleanup.md](algorithms/bragg_cleanup.md) | Tune Bragg punching, satellite search, or q-shell backfill. |
 | [algorithms/delta_pdf.md](algorithms/delta_pdf.md) | Understand the FFT, centring, apodization, background subtraction, and round-trip consistency check. |
 | [algorithms/inpainting.md](algorithms/inpainting.md) | Compare general inpainting fallbacks such as symmetry and TV. |

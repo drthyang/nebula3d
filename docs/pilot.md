@@ -408,7 +408,12 @@ miss is a note.
     nearly every direction over the sphere, each judged in 3D on the raw
     volume (`GET /api/volumes/{id}/rings`, `preprocessing/ring_isotropy.py`):
     the crystal's own scattering makes bumps too, on every plane that symmetry
-    makes equivalent. It names the plane and |Q| of the worst.
+    makes equivalent. It names the plane and |Q| of the worst. With it come
+    the ring stage's own record of its shells (`stage_shells`) and, where the
+    stage's phase match named one, the phase the rings the Al lines leave may
+    be (`stage_phases`: the rings matched, the lattice scale, the lines hidden
+    and missing, the rings unmatched; [algorithms/powder_phases.md](algorithms/powder_phases.md)),
+    which reduction-qc's details tell the model to report as a possibility.
   - `punch.ts` — scans the *punched* slice for peaks the punch missed: each
     must stand 8 local σ above its own neighbourhood and span more than one
     voxel. Spikes in noisy or sparse-count regions (the coverage edge: a

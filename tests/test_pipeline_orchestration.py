@@ -277,7 +277,7 @@ def test_run_pipeline_trims_the_coverage_edge_of_the_raw_input(
     nebula3d.save(raw, inp)
     seen = []
 
-    def rings_stub(v, params=None, *, progress=None):
+    def rings_stub(v, params=None, *, progress=None, **_facts):
         seen.append(v.mask.copy())
         return stubbed.vol
 

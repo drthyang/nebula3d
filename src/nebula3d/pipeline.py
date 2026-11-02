@@ -1659,6 +1659,7 @@ async def remove_rings_async(
     vol: HKLVolume, params: RingParams | None = None, *,
     progress: ProgressFn | None = None,
     plane_executor: PlaneExecutor | None = None,
+    sample: str | None = None,
 ) -> HKLVolume:
     """Async twin of :func:`remove_rings` for detached plane executors.
 
@@ -1677,7 +1678,7 @@ async def remove_rings_async(
     k = plane_executor.workers() if plane_executor is not None else 0
     if (plane_executor is None or not per_plane or k < 1
             or n_planes < _MIN_PARALLEL_PLANES):
-        return remove_rings(vol, p, progress=progress)
+        return remove_rings(vol, p, progress=progress, sample=sample)
 
     plan = _prepare_ring_stage(vol, p, progress)
     cfg = plan.cfg
@@ -1766,8 +1767,9 @@ def unconfirmed_rings_notice(count: int, needs: str) -> str:
 
 
 def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
-                         progress: ProgressFn | None) -> HKLVolume:
-    """The ``ring_model="pooled"`` stage: whole-volume, two passes over the stack."""
+                         progress: ProgressFn | None, sample: str | None = None) -> HKLVolume:
+    """The ``ring_model="pooled"`` stage: whole-volume, two passes over the stack.
+    ``sample``, the input's file name, is for the phase match's hints only."""
     cfg = _SLICE_CONFIGS[p.slice_axis.strip().upper()]
     _emit(progress, "rings", "start", 0.0,
           f"ring removal [pooled]: {vol.data.shape[cfg.axis_dim]} {cfg.axis_name} "
@@ -1793,7 +1795,7 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
         amp_cap=p.pooled_amp_cap,
         confirm_rings=p.pooled_confirm_rings,
         isotropy=isotropy,
-    ), progress=_progress)
+    ), progress=_progress, sample=sample)
     out = result.cleaned
     # Attached transiently (as global_v2 does) so run_pipeline writes the sidecar.
     setattr(out, "_ring_diagnostics", result.diagnostics)
@@ -1831,7 +1833,8 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
 
 def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
                  progress: ProgressFn | None = None,
-                 max_workers: int | None = None) -> HKLVolume:
+                 max_workers: int | None = None,
+                 sample: str | None = None) -> HKLVolume:
     """Subtract powder rings from every plane along the stack axis independently.
 
     ``ring_model="pooled"`` runs the whole-volume stack-pooled sector model
@@ -1853,7 +1856,7 @@ def remove_rings(vol: HKLVolume, params: RingParams | None = None, *,
     """
     p = params or RingParams()
     if p.ring_model.strip().lower() == "pooled":
-        return _remove_rings_pooled(vol, p, progress)
+        return _remove_rings_pooled(vol, p, progress, sample)
     if p.ring_model.strip().lower() in {"global", "global_v2", "sample_only"}:
         _emit(progress, "rings", "start", 0.0,
               f"sample-only global 3D ring inference (material={p.global_material}, "
@@ -3500,7 +3503,7 @@ def run_pipeline(
             stale_notice("rings", paths.ringremoved)
             src = stage_source("rings")
             vol = stage_load(src, "rings")
-            out = remove_rings(vol, p.rings, progress=progress)
+            out = remove_rings(vol, p.rings, progress=progress, sample=paths.input.name)
             finish_ring_stage(out, vol.mask, p, src, paths, progress=progress)
             carry, carry_path = out, paths.ringremoved
             del vol, out  # free the input; `carry` hands the output onward

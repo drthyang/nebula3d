@@ -803,7 +803,7 @@ async def run_async(
         vol = (_load_run_input(paths.input, effective, progress=cb) if src == paths.input
                else nebula3d.load(src, dtype=effective.np_dtype()))
         out = await remove_rings_async(vol, effective.rings, progress=cb,
-                                       plane_executor=executor)
+                                       plane_executor=executor, sample=paths.input.name)
         finish_ring_stage(out, vol.mask, effective, src, paths, progress=cb)
         del vol
         run_pipeline(

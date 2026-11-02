@@ -608,6 +608,8 @@ def test_ring_diagnostics_missing_returns_empty_state(env):
         "status": None,
         "unconfirmed_at_grid": None,
         "summary": None,
+        "phases": None,
+        "phase_summary": None,
     }
     assert r.json()["diagnostics_path"].endswith("_ringremoved_diagnostics.json")
     assert client.get("/api/rings/nope/diagnostics").status_code == 404
@@ -662,6 +664,39 @@ def test_ring_diagnostics_give_the_rings_left_unconfirmed_on_the_grid(tmp_path):
     paths.ring_diagnostics_json.write_text("{not json", encoding="utf-8")
     os.utime(paths.ring_diagnostics_json, (written + 30, written + 30))
     assert client.get(f"/api/rings/{SLUG}/diagnostics").status_code == 500
+
+
+def test_ring_diagnostics_give_the_phase_match(tmp_path):
+    """The phase the rings the Al lines leave may be (THY-62): the match's
+    record as the ring stage wrote it, and its line for the Pilot; none
+    where no phase was named."""
+    import os
+
+    (tmp_path / "raw").mkdir()
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
+    nebula3d.save(_vol(), paths.ringremoved)
+    record = {"version": 1, "rings": [{"q": 2.22, "fwhm": 0.08, "snr": 7.2, "source": "ring"}],
+              "candidates": [{"phase": "Sn", "group": "flux", "status": "possible",
+                              "scale": -0.0017, "matched": 2, "of": 3,
+                              "lines": [{"hkl": "200", "q": 2.2203, "ring": 2.2224}],
+                              "hidden": [], "missing": [], "unmatched": [3.6]}],
+              "unmatched": [3.6]}
+    paths.ring_diagnostics_json.write_text(json.dumps(
+        {"algorithm": "pooled", "status": "fitted", "powder_phases": record}), encoding="utf-8")
+    later = paths.ringremoved.stat().st_mtime + 5
+    os.utime(paths.ring_diagnostics_json, (later, later))
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    body = client.get(f"/api/rings/{SLUG}/diagnostics").json()
+    assert body["phases"] == record
+    assert body["phase_summary"].startswith("possibly Sn flux: 2 of 3 rings matched, scale -0.2 %")
+    record["candidates"] = []
+    paths.ring_diagnostics_json.write_text(json.dumps(
+        {"algorithm": "pooled", "status": "fitted", "powder_phases": record}), encoding="utf-8")
+    os.utime(paths.ring_diagnostics_json, (later + 5, later + 5))
+    body = client.get(f"/api/rings/{SLUG}/diagnostics").json()
+    assert body["phases"]["candidates"] == [] and body["phase_summary"] is None
 
 
 @pytest.mark.parametrize("plane,value", [("hk", 0.0), ("0kl", 0.0), ("h0l", 1.0)])

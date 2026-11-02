@@ -339,6 +339,14 @@ describe("the paths the samples do not reach, on the synthetic crystal", () => {
     expect(ran.off_lattice_bunching).toEqual(punch.off_lattice_bunching);
   });
 
+  it("assess_stage: a ring record that names the phase of the rings the Al lines leave (THY-62)", async () => {
+    const real = api.fetchRingDiagnostics.getMockImplementation()!;
+    const line = "likely Bi flux: 5 of 6 rings matched, scale -0.3 %; lines 012 1.92, 202 3.37, 024 3.85, 116 4.22, +1 more; hidden 104 under Al111, 110 under Al111, 122 under Al220; unmatched 3.60";
+    api.fetchRingDiagnostics.mockImplementation(async (id: string) => ({ ...(await real(id)), phase_summary: line }));
+    const rings = (await run("assess_stage", { stage: "rings" })).rings as Record<string, unknown>;
+    expect(rings.stage_phases).toBe(line);
+  });
+
   it("configure_settings and update_settings: the sample's modulation, declared, as one setting", async () => {
     usePipelineStore.setState({ modulationK: "1/3, 0, 0", modulationForm: "planes" });
     const settings = (await run("configure_settings")).settings as Record<string, unknown>;
