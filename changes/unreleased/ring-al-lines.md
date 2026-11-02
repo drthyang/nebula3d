@@ -11,6 +11,12 @@
   directions) and the same width and curvature checks, with a lower noise
   floor, so the crystal's own diffuse at an Al |Q| stays. On a measured volume
   the 331/420, 440, 531/600 and 620 lines are now removed, and the removed
-  share rose from 13.2 % to 15.6 %. A ring's envelope no longer reaches into a
+  share rose from 13.2 % to 15.6 %. The weak 533/622 doublet at the coverage
+  edge stays in, a known limitation. A ring's envelope no longer reaches into a
   shell the test rejected. The diagnostics record each shell's Al match, the
   rule that judged it and the criteria it failed.
+- **NEBULA Pilot's ring check gives the ring stage's own record** of the
+  shells it left and why (`stage_shells`: the Al lattice, the shells removed,
+  each one left with its Al line and a one-word reason). It no longer repeats
+  the ring rule's two shares (`ring_rule`) when the test ran: the criterion
+  states them.

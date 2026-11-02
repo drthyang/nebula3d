@@ -260,7 +260,10 @@ the pair stays. Five rings of another phase come out as before, to the digit
 of the profile: the strict rule removes the strongest of them, and the Al
 rule touches none.
 
-Limits: an Al line the detection misses is not judged, and its neighbour may
+Limits: **the 533/622 doublet stays in, a known limitation** (decided
+2026-11-02): removing it would take a lower direction share, which lets the
+crystal's own anisotropic diffuse at an Al |Q| through (above). An Al line
+the detection misses is not judged, and its neighbour may
 then fail on a filled flank. Rings of any other phase are judged by the
 strict rule alone. The diagnostics (schema 3) record, for each shell, its Al
 match (`match`: phase, hkl, |Q|) and, in its verdict, the rule that judged it
