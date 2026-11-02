@@ -33,6 +33,7 @@ import {
 } from "../../tune/catalog";
 import { keysOf } from "../facts";
 import { checkIdle, unique } from "../shared/pipeline";
+import { namesRingSetting, RING_SETTINGS, ringEvidenceRefusal, ringVerdictAllowsChange } from "../shared/ringGate";
 import { ToolArgError, type ChatTool } from "../types";
 
 /** A setting update_settings changes: a method choice or threshold of the catalog, or a fact about the sample. */
@@ -134,10 +135,14 @@ export const update_settings: ChatTool = {
     // the other changes go ahead. A call whose every change is refused fails,
     // so the model reads the refusal as one.
     const message = ctx.userMessage ?? "";
+    // A change to the ring removal waits for the 3D ring verdict to find a ring
+    // left or dented, unless the user names it (shared/ringGate.ts).
+    const ringHeld = (key: string): boolean => RING_SETTINGS.includes(key) && !namesRingSetting(message) && !ringVerdictAllowsChange(ctx);
     const refused = Object.keys(changes).filter(
-      (key) => userSets(key) || (isSampleFact(key) && !namesSampleFact(message, key)) || (isUserChoice(key) && !namesUserChoice(message, key)),
+      (key) => userSets(key) || (isSampleFact(key) && !namesSampleFact(message, key)) || (isUserChoice(key) && !namesUserChoice(message, key)) || ringHeld(key),
     );
-    const why = (key: string): string => (userSets(key) ? symmetryAverageRefusal(key) : isUserChoice(key) ? userChoiceRefusal(key) : sampleFactRefusal(key));
+    const why = (key: string): string =>
+      userSets(key) ? symmetryAverageRefusal(key) : isUserChoice(key) ? userChoiceRefusal(key) : RING_SETTINGS.includes(key) ? ringEvidenceRefusal(key) : sampleFactRefusal(key);
     const asked = Object.entries(changes).filter(([key]) => !refused.includes(key));
     if (!asked.length) throw new Error(refused.map(why).join(" "));
     // Each setting's fields as the change asks for them, checked.
@@ -188,6 +193,7 @@ export const update_settings: ChatTool = {
             ...(refused.some((k) => isSampleFact(k)) ? [`refused, a fact about the sample: ${refused.filter((k) => isSampleFact(k)).join(", ")}`] : []),
             ...(refused.some((k) => isUserChoice(k)) ? [`refused, the user's to choose: ${refused.filter((k) => isUserChoice(k)).join(", ")}`] : []),
             ...(refused.some(userSets) ? [`refused, the user's to set: ${refused.filter(userSets).join(", ")}`] : []),
+            ...(refused.some((k) => RING_SETTINGS.includes(k)) ? [`refused, no 3D verdict of a powder ring left: ${refused.filter((k) => RING_SETTINGS.includes(k)).join(", ")}`] : []),
           ].join("; ")
         : done,
     };

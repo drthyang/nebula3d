@@ -10,6 +10,7 @@ import { startTuning, stopTuning, useTuneStore, type StageRun } from "../../tune
 import { ALL_STAGES, keysOf } from "../facts";
 import { num, oneOf } from "../shared/args";
 import { checkIdle, unique } from "../shared/pipeline";
+import { namesRingTuning, ringEvidenceRefusal, ringVerdictAllowsChange } from "../shared/ringGate";
 import { ToolArgError, type ChatTool } from "../types";
 
 // Two evaluations with the same numbers: the change had no measurable effect.
@@ -71,6 +72,12 @@ export const tune_pipeline: ChatTool = {
       if (!Array.isArray(args.stages) || !args.stages.length) throw new ToolArgError("stages must be a non-empty list");
       stages = args.stages.map((st) => oneOf({ stage: st }, "stage", TUNE_STAGES));
     }
+    // The ring removal is tuned only once the 3D ring verdict finds a ring left
+    // or dented, or the user asks for it (shared/ringGate.ts); the other stages go ahead.
+    const ringsHeld = stages.includes("rings") && !namesRingTuning(ctx.userMessage) && !ringVerdictAllowsChange(ctx);
+    const heldOut = ringsHeld ? [{ stage: "rings", why: ringEvidenceRefusal("A tuning of the powder-ring subtraction") }] : [];
+    if (ringsHeld) stages = stages.filter((st) => st !== "rings");
+    if (!stages.length) throw new Error(heldOut[0].why);
     const trials = Math.round(num(args, "trials_per_stage", 3));
     if (trials < 2 || trials > 5) throw new ToolArgError("trials_per_stage must be within [2, 5]");
 
@@ -133,6 +140,7 @@ export const tune_pipeline: ChatTool = {
         };
       }),
       note: tune.finishedNote,
+      ...(heldOut.length ? { held_out: heldOut } : {}),
     };
     const changed = result.stages.filter((r) => r.changes && Object.keys(r.changes).length).length;
     // Writing the dataset's outputs is worth it only when a stage's settings changed.
