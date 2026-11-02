@@ -279,14 +279,16 @@ const worstRing = nullable(obj({ plane: str, at: num, residual_fraction: num }))
 
 const ringsEvaluation = obj({
   notice: optional(str),
+  // The ring stage's own record: removed (on Al lines) and left, each with why.
+  stage_shells: optional(str),
   mean_ring_energy_ratio: maybeNum,
   max_over_subtraction_fraction: maybeNum,
   max_ring_dent: maybeNum,
   max_ring_left: maybeNum,
   worst_ring_dent: worstRing,
   worst_ring_left: worstRing,
-  // The rule the 3D test judged by; "not judged: …" where it could not run (findings: two types on two paths).
-  ring_rule: union(obj({ direction_share: maybeNum, height_share: maybeNum }), str),
+  // "not judged: …" where the 3D test could not run; judged, its shares are the criterion's numbers.
+  ring_rule: optional(str),
   shells_judged: optional(arr(obj({ at: num, ring: bool, isotropy: optional(num), not_judged: optional(str) }))),
   per_plane: optional(
     byRecipPlane(

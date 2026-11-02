@@ -42,7 +42,11 @@ a single plane lacks:
    shells are subtracted, and the Al lattice is fitted from confirmed rings
    alone, so a crystal with no rings keeps all of its diffuse.  Each shell is
    judged with every shell above half the noise cut kept out of its flanks,
-   which only protects the flanks and subtracts nothing.
+   which only protects the flanks and subtracts nothing.  **Al lines:** once
+   the lattice is confirmed on three Al lines, the candidates left on a
+   fitted Al line are judged again by the Al lines' rule, close doublets as
+   one, in each direction cell's Al frame
+   (:func:`~nebula3d.preprocessing.ring_isotropy.judge_al_lines`).
 3. **Pooling (pass 2):** each plane's sector profile is replaced by the weighted
    median of the sector profiles in a small solid angle of the ring sphere
    around it: the planes whose direction at that |Q| lies within ±``pool_deg``
@@ -58,6 +62,8 @@ a single plane lacks:
    excess is kept only inside the confirmed shells, through a flat-topped
    envelope ``envelope_scale`` × FWHM wide (room for the direction-dependent
    position), and capped at ``amp_cap`` × the shell's across-stack amplitude.
+   The cores of the shells judged not to be rings are taken out of the
+   envelope (:func:`_spare_rejected`).
 5. **Subtract:** the sector excess, interpolated bilinearly over (φ, |Q|) at
    every voxel of the plane.
 
@@ -93,7 +99,17 @@ from nebula3d.preprocessing.radial_background import (
     _snip_baseline,
     _stack_plane_q_magnitude,
 )
-from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, ShellIsotropy, judge_shells
+from nebula3d.preprocessing.ring_isotropy import (
+    AL_MAX_SCALE,
+    GRID_TOO_COARSE,
+    AlCluster,
+    CellScales,
+    IsotropyConfig,
+    ShellIsotropy,
+    al_cell_scales,
+    judge_al_lines,
+    judge_shells,
+)
 from nebula3d.preprocessing.sampling import azimuthal_sampling_mask
 from nebula3d.utils.counting import bincount
 
@@ -118,6 +134,12 @@ _N_POOL_BANDS = 6
 # doublet such as 331 and 420) left in the strong one's flank lifts it and can
 # fail a real ring.
 _KEEP_OUT_SNR_SHARE = 0.5
+
+# The confirmed rings on distinct Al lines the Al lines' rule needs before it
+# trusts the lattice: one ring always sits near some Al line (the match takes
+# 0.12 Å⁻¹ either side of each), three on the lines of one lattice parameter
+# do not by chance.
+_AL_MIN_LINES = 3
 
 ProgressFn = Callable[[float, str], None]
 
@@ -250,30 +272,60 @@ def fit_pooled_rings(
         return judge_shells(vol, list(zip(c.tolist(), f.tolist())), cfg.isotropy,
                             rings=rings, others=others)
 
-    centers, fwhm, amps, origin, al_a, rejected = _detect_shells(
-        q_grid, shell_prof, shell_cnt, q_step, cfg, confirm if cfg.confirm_rings else None)
+    al_test = _AlTest(
+        scales=lambda rings: al_cell_scales(vol, rings, cfg.isotropy),
+        judge=lambda clusters, scale, others: judge_al_lines(
+            vol, clusters, cfg.isotropy, cell_scale=scale, others=others),
+        width_ratio=cfg.isotropy.al_width_ratio)
+    found = _detect_shells(q_grid, shell_prof, shell_cnt, q_step, cfg,
+                           confirm if cfg.confirm_rings else None,
+                           al_test if cfg.confirm_rings else None)
+    centers, fwhm, amps, al_a, rejected = (found.centers, found.fwhm, found.amps, found.al_a,
+                                           found.rejected)
     del shell_prof, shell_cnt
     t_detect = time.perf_counter() - t_start
 
+    # The Al line each shell sits on, kept or not: a phase match, the one
+    # phase the ring removal knows (its lattice fitted from the confirmed rings).
+    al_lines = (aluminum_fcc_lines(al_a, cfg.q_max + 0.1, max(0.0, cfg.q_min - 0.1))
+                if al_a is not None else [])
+    al_q = np.array([ln.q for ln in al_lines])
+    tol = max(2.0 * q_step, 0.02)
+
+    def match(q: float, w: float) -> dict[str, object]:
+        j = _on_al_line(q, w, al_q, tol)
+        if j is None:
+            return {}
+        return {"match": {"phase": "Al", "hkl": al_lines[j].family.split("/")[0],
+                          "q": round(float(al_q[j]), 4)}}
+
+    for s in rejected:
+        s.update(match(float(s["q_center"]), float(s["fwhm"])))  # type: ignore[arg-type]
     diagnostics: dict[str, object] = {
         "algorithm": "pooled",
-        "schema_version": 2,
+        "schema_version": 3,
         "plane": cfg.plane,
         "config": dataclasses.asdict(cfg),
         "n_planes": n_planes,
         "n_planes_fitted": int(fitted.sum()),
         "q_step": q_step,
         "al_lattice_a": al_a,
-        # The rule a shell must pass to be subtracted, if any.
+        # The rules a shell must pass to be subtracted, if any: every shell
+        # the strict one, a shell on a fitted Al line the Al lines' one after.
         "confirmation": ({"rule": "rises in nearly every direction",
                           "direction_share": cfg.isotropy.direction_share,
-                          "height_share": cfg.isotropy.height_share}
+                          "height_share": cfg.isotropy.height_share,
+                          "al_rule": {"min_snr": cfg.isotropy.al_min_snr,
+                                      "width_ratio": cfg.isotropy.al_width_ratio}}
                          if cfg.confirm_rings else None),
+        # Each direction cell's Al frame, where the Al lines' rule ran.
+        "al_frame": found.al_frame,
         "shells": [
             {"q_center": float(c), "fwhm": float(f), "amplitude": float(a),
              "envelope_halfwidth": float(cfg.envelope_scale * f), "detection": o,
-             **({"isotropy": iso.as_dict()} if iso is not None else {})}
-            for c, f, a, o, iso in zip(centers, fwhm, amps, origin[0], origin[1])
+             **({"isotropy": iso.as_dict()} if iso is not None else {}),
+             **match(float(c), float(f))}
+            for c, f, a, o, iso in zip(centers, fwhm, amps, found.origin, found.iso)
         ],
         # Detected, not confirmed, not subtracted: the crystal's own scattering.
         "rejected_shells": rejected,
@@ -299,7 +351,8 @@ def fit_pooled_rings(
                                cfg.window_scale, cfg.window_cap_frac)
     n_iter = np.maximum(3, np.round(windows / (2.0 * q_step)).astype(int))
     halfwidths = cfg.envelope_scale * fwhm
-    envelope = _shell_envelope(q_grid, centers, halfwidths, q_step)
+    envelope = _spare_rejected(q_grid, _shell_envelope(q_grid, centers, halfwidths, q_step),
+                               centers, fwhm, rejected, q_step)
     ceiling = (_shell_ceiling(q_grid, centers, halfwidths, cfg.amp_cap * amps, q_step)
                if cfg.amp_cap > 0 else np.full(n_bins, np.inf))
 
@@ -546,6 +599,32 @@ ConfirmFn = Callable[[NDArray[np.float64], NDArray[np.float64], list[tuple[float
                       list[tuple[float, float]]], list[ShellIsotropy]]
 
 
+@dataclass(frozen=True)
+class _AlTest:
+    """The Al lines' test on the volume (ring_isotropy, *Al lines*): each
+    direction cell's Al frame from the confirmed Al rings, and the verdicts of
+    clusters of Al lines in it."""
+
+    scales: Callable[[list[tuple[float, float]]], CellScales]
+    judge: Callable[[list[AlCluster], NDArray[np.float64] | None, list[tuple[float, float]]],
+                    list[ShellIsotropy]]
+    width_ratio: float
+
+
+@dataclass
+class _Shells:
+    """What :func:`_detect_shells` found: the shells to subtract, and the rest."""
+
+    centers: NDArray[np.float64]
+    fwhm: NDArray[np.float64]
+    amps: NDArray[np.float64]
+    origin: list[str]
+    iso: list[ShellIsotropy | None]
+    al_a: float | None
+    rejected: list[dict[str, object]]
+    al_frame: dict[str, object] | None = None   # CellScales.as_dict(), where the Al test ran
+
+
 def _detect_shells(
     q_grid: NDArray[np.float64],
     shell_prof: NDArray[np.float64],
@@ -553,9 +632,9 @@ def _detect_shells(
     q_step: float,
     cfg: PooledRingConfig,
     confirm: ConfirmFn | None = None,
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64],
-           tuple[list[str], list[ShellIsotropy | None]], float | None, list[dict[str, object]]]:
-    """Ring shells: ``(centers, fwhm, amplitudes, (origin, isotropy), al_a, rejected)``.
+    al_test: _AlTest | None = None,
+) -> _Shells:
+    """The ring shells, with their detection route, verdicts and the Al lattice.
 
     Every ring above both the cross-stack relative cut and ``min_snr`` × the
     profile noise (``origin="relative"``), plus weaker rings above the noise cut
@@ -566,7 +645,9 @@ def _detect_shells(
     lattice is fitted from the confirmed strong rings alone, and the others are
     returned in ``rejected`` with their verdicts.  Every shell above half the
     noise cut (:data:`_KEEP_OUT_SNR_SHARE`) is kept out of the flanks of the
-    shells judged, and is never subtracted for that.
+    shells judged, and is never subtracted for that.  With ``al_test`` too,
+    the candidates left that sit on a fitted Al line are judged again by the
+    Al lines' rule, doublets together (:func:`_judge_al_lines`).
     """
     rejected: list[dict[str, object]] = []
     # Every shell above the noise cut, the weak ones too: the Al-line route
@@ -603,11 +684,11 @@ def _detect_shells(
     origin = ["relative"] * c.size
     seen_c, seen_f = strong[0], strong[1]   # judged already, kept or not
     if not cfg.al_prior or c.size == 0:
-        return c, f, a, (origin, iso), None, rejected
+        return _Shells(c, f, a, origin, iso, None, rejected)
     gcfg = GlobalRingConfig(q_min=cfg.q_min, q_max=cfg.q_max, material="auto")
     _matches, al_a = _match_aluminum(c, a, gcfg)
     if al_a is None:
-        return c, f, a, (origin, iso), None, rejected
+        return _Shells(c, f, a, origin, iso, None, rejected)
     weak_c, weak_f, weak_a = above_noise
     lines = np.array([ln.q for ln in aluminum_fcc_lines(al_a, cfg.q_max + 0.1,
                                                          max(0.0, cfg.q_min - 0.1))])
@@ -615,18 +696,137 @@ def _detect_shells(
     keep = [k for k in range(weak_c.size)
             if not np.any(np.abs(seen_c - weak_c[k]) <= np.maximum(seen_f, q_step))
             and lines.size and np.min(np.abs(lines - weak_c[k])) <= tol]
-    if not keep:
-        return c, f, a, (origin, iso), al_a, rejected
-    wc, wf, wa, wiso = judged(weak_c[keep], weak_f[keep], weak_a[keep], "al_line",
-                              list(zip(c.tolist(), f.tolist())))
-    c = np.concatenate([c, wc])
-    f = np.concatenate([f, wf])
-    a = np.concatenate([a, wa])
-    origin = origin + ["al_line"] * wc.size
-    iso = iso + wiso
-    order = np.argsort(c)
-    return (c[order], f[order], a[order], ([origin[k] for k in order], [iso[k] for k in order]),
-            al_a, rejected)
+    if keep:
+        wc, wf, wa, wiso = judged(weak_c[keep], weak_f[keep], weak_a[keep], "al_line",
+                                  list(zip(c.tolist(), f.tolist())))
+        c = np.concatenate([c, wc])
+        f = np.concatenate([f, wf])
+        a = np.concatenate([a, wa])
+        origin = origin + ["al_line"] * wc.size
+        iso = iso + wiso
+    shells = _Shells(c, f, a, origin, iso, al_a, rejected)
+    if al_test is not None and rejected:
+        _judge_al_lines(shells, lines, tol, q_step, cfg, found, al_test)
+    order = np.argsort(shells.centers)
+    shells.centers, shells.fwhm, shells.amps = (
+        shells.centers[order], shells.fwhm[order], shells.amps[order])
+    shells.origin = [shells.origin[k] for k in order]
+    shells.iso = [shells.iso[k] for k in order]
+    return shells
+
+
+def _on_al_line(q: float, fwhm: float, lines: NDArray[np.float64], tol: float) -> int | None:
+    """The fitted Al line a shell sits on, if any: within its FWHM (half of it
+    either side of its centre), or within the Al-line route's ``tol``."""
+    if lines.size == 0:
+        return None
+    j = int(np.argmin(np.abs(lines - q)))
+    return j if abs(float(lines[j]) - q) <= max(tol, 0.5 * fwhm) else None
+
+
+def _judge_al_lines(shells: _Shells, lines: NDArray[np.float64], tol: float, q_step: float,
+                    cfg: PooledRingConfig, found: list[tuple[float, float]],
+                    al_test: _AlTest) -> None:
+    """Judge the rejected candidates on a fitted Al line again, by the Al
+    lines' rule (ring_isotropy, *Al lines*), in place.
+
+    Only where the lattice is confirmed: :data:`_AL_MIN_LINES` confirmed rings
+    or more on distinct lines. A candidate counts when it sits on a line
+    (:func:`_on_al_line`) and is no wider than ``width_ratio`` × the Al width
+    there: the confirmed Al rings'
+    FWHM, a line through them over |Q|, kept within their range. Lines closer
+    than two Al widths and two bins, so that no clean flank fits between them,
+    are judged as one cluster, the confirmed Al rings among them included, and
+    the candidates in it are confirmed or rejected together. Each direction
+    cell is judged in its Al frame, read off the confirmed Al rings clear of
+    other lines (:func:`~nebula3d.preprocessing.ring_isotropy.al_cell_scales`).
+    A confirmed candidate is subtracted with the Al width if it is wider than
+    its own; a rejected one keeps its first verdict as ``strict``.
+    """
+    c, f = shells.centers, shells.fwhm
+    on_ring = [(k, j) for k in range(c.size)
+               if (j := _on_al_line(float(c[k]), float(f[k]), lines, tol)) is not None]
+    if len({j for _, j in on_ring}) < _AL_MIN_LINES:
+        return
+    ring_q = np.array([lines[j] for _, j in on_ring])
+    ring_f = np.array([f[k] for k, _ in on_ring])
+    trend = (np.polyfit(ring_q, ring_f, 1) if np.unique(ring_q).size >= 2
+             else np.array([0.0, float(np.mean(ring_f))]))
+
+    def width(q: float) -> float:
+        return float(np.clip(np.polyval(trend, q), ring_f.min(), ring_f.max()))
+
+    # Every item on a line: the rejected candidates and the confirmed rings.
+    items: list[tuple[float, float, str, int]] = []   # (line q, Al width, kind, index)
+    for i, s in enumerate(shells.rejected):
+        q, w0 = float(s["q_center"]), float(s["fwhm"])  # type: ignore[arg-type]
+        j = _on_al_line(q, w0, lines, tol)
+        if j is not None and w0 <= al_test.width_ratio * width(float(lines[j])):
+            items.append((float(lines[j]), width(float(lines[j])), "candidate", i))
+    if not items:
+        return
+    items += [(float(lines[j]), width(float(lines[j])), "ring", k) for k, j in on_ring]
+    items.sort(key=lambda it: (it[0], it[2]))
+    groups: list[list[tuple[float, float, str, int]]] = []
+    for it in items:
+        last = groups[-1][-1] if groups else None
+        if last is not None and it[0] - last[0] < it[1] + last[1] + 2.0 * q_step:
+            groups[-1].append(it)
+        else:
+            groups.append([it])
+    groups = [g for g in groups if any(it[2] == "candidate" for it in g)]
+    if not groups:
+        return
+    # Each direction cell's Al frame, from the confirmed Al rings clear of
+    # every other line and shell the matched peak could reach.
+    others_q = [*lines.tolist(), *[q for q, _ in found]]
+    frame = []
+    for (k, j), q_line in zip(on_ring, ring_q):
+        w = min(float(f[k]), cfg.isotropy.fwhm_cap)
+        reach = AL_MAX_SCALE * q_line + 2.0 * w
+        near = [o for o in others_q if abs(o - q_line) < reach
+                and abs(o - q_line) > 1e-9 and abs(o - float(c[k])) > 1e-9]
+        if not near and cfg.q_min <= q_line <= cfg.q_max:
+            frame.append((float(q_line), float(f[k])))
+    scales = al_test.scales(frame)
+    shells.al_frame = scales.as_dict()
+    clusters = []
+    for g in groups:
+        own = [float(shells.rejected[i]["q_center"]) if kind == "candidate"  # type: ignore[arg-type]
+               else float(c[i]) for _q, _w, kind, i in g]
+        clusters.append(AlCluster(tuple(sorted({it[0] for it in g})), max(it[1] for it in g),
+                                  tuple(own)))
+    others = [*found, *zip(c.tolist(), f.tolist())]
+    frame_scale = scales.scale if scales.n_cells else None
+    verdicts = al_test.judge(clusters, frame_scale, others)
+    # A cluster those leave without a clean flank is judged again with its
+    # flanks clear of the confirmed rings only (as judge_shells retries), so a
+    # weak shell beside it cannot keep it from being judged.
+    retry = [n for n, v in enumerate(verdicts) if v.not_judged == "no clean flank on one side"]
+    if retry:
+        rings = [*zip(c.tolist(), f.tolist()),
+                 *[(q, it[1]) for g, cl, v in zip(groups, clusters, verdicts) if v.is_ring
+                   for q, it in zip(cl.own, g)]]
+        again = al_test.judge([clusters[n] for n in retry], frame_scale, rings)
+        for n, v in zip(retry, again):
+            verdicts[n] = v
+    confirmed: list[int] = []
+    for g, v in zip(groups, verdicts):
+        for q_line, w, kind, i in g:
+            if kind != "candidate":
+                continue
+            entry = shells.rejected[i]
+            if v.is_ring:
+                confirmed.append(i)
+                shells.centers = np.append(shells.centers, float(entry["q_center"]))  # type: ignore[arg-type]
+                shells.fwhm = np.append(shells.fwhm, max(float(entry["fwhm"]), w))  # type: ignore[arg-type]
+                shells.amps = np.append(shells.amps, float(entry["amplitude"]))  # type: ignore[arg-type]
+                shells.origin.append(str(entry["detection"]))
+                shells.iso.append(v)
+            else:
+                entry["strict"] = entry["isotropy"]
+                entry["isotropy"] = v.as_dict()
+    shells.rejected = [s for i, s in enumerate(shells.rejected) if i not in confirmed]
 
 
 def _stack_normal_component(vol: HKLVolume, plane: str) -> float:
@@ -703,6 +903,31 @@ def _shell_envelope(
     return env
 
 
+def _spare_rejected(
+    q_grid: NDArray[np.float64], envelope: NDArray[np.float64], centers: NDArray[np.float64],
+    fwhm: NDArray[np.float64], rejected: list[dict[str, object]], q_step: float,
+) -> NDArray[np.float64]:
+    """The envelope with the cores of the shells judged not to be rings taken
+    out: ± 0.75 × FWHM, a raised-cosine taper over the next 0.75 × FWHM. A
+    judged shell that failed is the crystal's own scattering, kept, and a
+    confirmed ring's envelope, which reaches 3 × its FWHM, must not subtract
+    it as excess. A shell left unjudged (no clean flank, a grid too coarse)
+    is not spared, nor is any bin within a confirmed ring's own core."""
+    keep = np.ones_like(envelope)
+    for s in rejected:
+        verdict = s.get("isotropy")
+        if not isinstance(verdict, dict) or verdict.get("not_judged") or verdict.get("is_ring"):
+            continue
+        core = max(0.75 * float(s["fwhm"]), q_step)  # type: ignore[arg-type]
+        d = np.abs(q_grid - float(s["q_center"]))  # type: ignore[arg-type]
+        bump = np.where(d <= core, 1.0, np.where(
+            d <= 2.0 * core, 0.5 * (1.0 + np.cos(np.pi * (d - core) / core)), 0.0))
+        keep = np.minimum(keep, 1.0 - bump)
+    for c, f in zip(centers, fwhm):
+        keep[np.abs(q_grid - float(c)) <= max(0.75 * float(f), q_step)] = 1.0
+    return envelope * keep
+
+
 def _shell_ceiling(
     q_grid: NDArray[np.float64], centers: NDArray[np.float64],
     halfwidths: NDArray[np.float64], caps: NDArray[np.float64], q_step: float,
@@ -715,4 +940,64 @@ def _shell_ceiling(
     return out
 
 
-__all__ = ["PooledRingConfig", "PooledRingResult", "fit_pooled_rings"]
+#: How many of the shells it left :func:`shell_summary` names; the rest it counts.
+SUMMARY_LEFT = 4
+
+
+def _left_code(verdict: object) -> str:
+    """Why a shell was left, in one word: the first criterion it failed
+    (height, isotropy, snr, curve, member), or why it was not judged (grid,
+    flank, cells, nodata). Diagnostics older than ``fails`` are read from
+    their numbers by the default rule."""
+    if not isinstance(verdict, dict):
+        return "unjudged"
+    why = str(verdict.get("not_judged") or "")
+    if why:
+        return ("grid" if why.startswith(GRID_TOO_COARSE) else
+                "flank" if why.startswith("no clean flank") else
+                "cells" if why.startswith("measured in") else "nodata")
+    fails = verdict.get("fails")
+    if isinstance(fails, list) and fails:
+        return str(fails[0])
+    defaults = IsotropyConfig()
+    for code, value, floor in (("height", verdict.get("median_height"), 0.0),
+                               ("isotropy", verdict.get("isotropy"), defaults.height_share),
+                               ("snr", verdict.get("snr"), defaults.min_snr),
+                               ("curve", verdict.get("beyond_curve"), defaults.curve_share)):
+        if isinstance(value, (int, float)) and not value >= floor and value == value:
+            return code
+    return "rejected"
+
+
+def shell_summary(diagnostics: object) -> str | None:
+    """The pooled ring removal's record in one line, for NEBULA Pilot: the Al
+    lattice if fitted, the shells removed (of them on Al lines), and the shells
+    left, each its |Q|, its Al line if any and why (:func:`_left_code`); the
+    Al-line shells first, then those left unjudged, then the rest, at most
+    :data:`SUMMARY_LEFT` named. None for another model's diagnostics."""
+    if not isinstance(diagnostics, dict) or diagnostics.get("algorithm") != "pooled":
+        return None
+    kept = [s for s in diagnostics.get("shells") or [] if isinstance(s, dict)]
+    left = [s for s in diagnostics.get("rejected_shells") or [] if isinstance(s, dict)]
+
+    def al(s: dict[str, object]) -> str:
+        m = s.get("match")
+        return (f"Al{m.get('hkl')}" if isinstance(m, dict) and m.get("phase") == "Al" else "")
+
+    a = diagnostics.get("al_lattice_a")
+    head = f"Al a={float(a):.3f} Å; " if isinstance(a, (int, float)) else ""
+    n_al = sum(1 for s in kept if al(s))
+    head += f"removed {len(kept)}" + (f" (Al {n_al})" if n_al else "")
+    if not left:
+        return head
+    order = sorted(left, key=lambda s: (not al(s), not (s.get("isotropy") or {}).get("not_judged"),
+                                        float(s.get("q_center") or 0.0)))  # type: ignore[arg-type]
+    named = [" ".join(x for x in (f"{float(s['q_center']):.2f}", al(s),  # type: ignore[arg-type]
+                                  _left_code(s.get("isotropy"))) if x)
+             for s in order[:SUMMARY_LEFT]]
+    more = f", +{len(left) - SUMMARY_LEFT} more" if len(left) > SUMMARY_LEFT else ""
+    return f"{head}; left {len(left)}: " + ", ".join(named) + more
+
+
+__all__ = ["SUMMARY_LEFT", "PooledRingConfig", "PooledRingResult", "fit_pooled_rings",
+           "shell_summary"]
