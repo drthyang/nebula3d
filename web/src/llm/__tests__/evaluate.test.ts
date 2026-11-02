@@ -249,7 +249,8 @@ describe("evaluateStage", () => {
     const judged = e.shells_judged as { at: number; ring: boolean }[];
     expect(judged.map((x) => x.ring)).toEqual([true, false]);
     expect(judged[1].at).toBeGreaterThan(dent.at);
-    expect(e.ring_rule).toEqual({ direction_share: 0.9, height_share: 0.15 });
+    // Judged, the rule's two shares are the criterion's numbers: not repeated.
+    expect(e).not.toHaveProperty("ring_rule");
     // The plane's own detail agrees: its bump is marked, and is not its worst ring.
     type Plane = { worst_ring_left: unknown; worst_ring_dent: { at: number } | null; ring_residuals: { at: number; ring?: boolean }[] };
     const h0l = (e.per_plane as Record<string, Plane>).h0l;

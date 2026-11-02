@@ -174,10 +174,6 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       "at": 3.2,
       "residual_fraction": 0.125
     },
-    "ring_rule": {
-      "direction_share": 0.9,
-      "height_share": 0.15
-    },
     "shells_judged": [
       {
         "at": 0.911,

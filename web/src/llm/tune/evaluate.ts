@@ -245,7 +245,6 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     });
     const planeWorst = (xs: (typeof planeResiduals)[number], sign: 1 | -1) =>
       worstOf((xs ?? []).filter((x) => x.significant && "ring" in x && x.ring), sign);
-    const rule = judged?.rule;
     return {
       // The ring candidates the removal left unsubtracted, unconfirmed on its grid, said out
       // loud (verdicts/rules.ts, RING_NOTICE_REMEDY: arm C reads it without its remedy).
@@ -265,11 +264,12 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // Each shell the planes' bumps make, judged in 3D: a ring rises by at least
       // height_share of its median height in direction_share of the directions
       // (isotropy: the height there over the median); the others are the
-      // crystal's own scattering, which the removal must leave.
+      // crystal's own scattering, which the removal must leave. The two shares
+      // are the criterion's numbers (sharedLimits.replay.test.ts holds them to
+      // the package's), so only a test that could not run is said here.
       ...(unjudged
         ? { ring_rule: `not judged: ${tooCoarse ?? "the test of each bump in 3D could not run"}` }
         : {
-            ring_rule: { direction_share: rule?.direction_share ?? null, height_share: rule?.height_share ?? null },
             // The rings, and the bumps significant on some plane (the rest are noise).
             shells_judged: shells.flatMap((sh, k) => {
               const v = judged?.shells[k];

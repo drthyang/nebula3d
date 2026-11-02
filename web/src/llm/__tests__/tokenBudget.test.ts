@@ -193,7 +193,7 @@ const MEASURED_PROMPT = {
 // rate (1.4 characters a token), definitions at the prose rate (3.5).
 const RESERVED: Record<string, { what: string; room: Partial<Record<Component, number>> }> = {
   "THY-61": {
-    what: "ring doublets, measured on its branch: the ring stage's record on assess_stage's rings (stage_shells), +35 on the synthetic crystal; a real record's line runs to about 140 characters",
+    what: "ring doublets, measured on its branch: the ring stage's record on assess_stage's rings (stage_shells), +36, paid for by dropping ring_rule's two shares, which repeat the criterion's numbers, −40; net −4 on the synthetic crystal (a real record's line runs to about 140 characters); reduction-qc's codes line sits in its details, not read on this turn",
     room: { results: 150 },
   },
   "THY-62": {

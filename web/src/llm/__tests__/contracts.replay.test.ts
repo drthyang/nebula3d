@@ -145,8 +145,8 @@ describe("the tools' live results against their contracts", () => {
       if (tool === "texture_check") shapes.push(typeof r.result.systematic_fill_bias);
     }
     expect(problems).toEqual([]);
-    // The judged shapes: the ring rule as its two shares, and the fill bias judged over every hole in 3-D.
-    expect(shapes).toEqual(["object", "object", "boolean"]);
+    // The judged shapes: no ring rule (its two shares are the criterion's), and the fill bias judged over every hole in 3-D.
+    expect(shapes).toEqual(["undefined", "undefined", "boolean"]);
   });
 });
 
