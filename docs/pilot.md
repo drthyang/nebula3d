@@ -210,23 +210,23 @@ glossary, tersely, comes with `measure_reciprocal_cut`'s and
   chat API takes the length per request; the OpenAI-style one cannot), and a
   request no window of the model can hold, or longer than the window LM Studio
   loaded the model with, is not sent: the reply says how to fix it.
-- **A local model wants a 56k window.** With Tools on, a full assessment that
-  reads two skills whole, the 3D-ΔPDF's strongest features a full list, needs
-  more than a 32k window holds; 56k holds it with room for the reply and the
-  3k a model-visible addition must leave free (measured through the agent
-  loop and checked by `web/src/llm/__tests__/tokenBudget.test.ts`;
-  `scripts/measure_pilot_context.sh` prints today's size). A 32k window still
-  runs on the shortening above: on the longest two-skill turn the skill read
-  before the checks reaches the model as its stub, and the guard refuses a
-  request that still does not fit; 56k (57,344 tokens) or more keeps both
-  skills whole. In LM Studio, set the model's default Context Length
-  to 57344 in its load settings (it reloads an idle model with its defaults),
-  or load it with `lms load <model> --context-length 57344`. Ollama at its
-  usual port gets its window from the app per request (`num_ctx`, up to the
-  longest the model supports, which `ollama show <model>` lists), so the model
-  must support 56k and the machine needs the memory for it; elsewhere, start
-  Ollama with `OLLAMA_CONTEXT_LENGTH=57344`. The validation holds its local
-  live runs to the same 56k ([evals.md](evals.md#the-models)).
+- **A local model wants a 32k window.** With Tools on, a full assessment that
+  reads two skills' cores, the 3D-ΔPDF's strongest features a full list, is
+  about 26.2k tokens with room for the reply; 32k (32,768 tokens) holds it
+  with nothing shortened and the 3k a model-visible addition must leave free,
+  both skills' cores at their cap included (measured through the agent loop
+  and checked by `web/src/llm/__tests__/tokenBudget.test.ts`;
+  `scripts/measure_pilot_context.sh` prints today's size). It was 56k until
+  THY-63 R5. A smaller window still runs on the shortening above, and the
+  guard refuses a request that still does not fit. In LM Studio, set the
+  model's default Context Length to 32768 in its load settings (it reloads an
+  idle model with its defaults), or load it with
+  `lms load <model> --context-length 32768`. Ollama at its usual port gets its
+  window from the app per request (`num_ctx`, up to the longest the model
+  supports, which `ollama show <model>` lists), so the model must support 32k
+  and the machine needs the memory for it; elsewhere, start Ollama with
+  `OLLAMA_CONTEXT_LENGTH=32768`. The validation holds its local live runs to
+  the same 32k ([evals.md](evals.md#the-models)).
 
 ## Evals
 
@@ -474,8 +474,8 @@ miss is a note.
   with room for the reply (`__tests__/tokenBudget.test.ts`;
   `scripts/measure_pilot_context.sh` prints them), so on LM Studio
   the chat reads the context length the model was loaded with
-  (`/api/v0/models`) and, below 56k (`TOOLS_CONTEXT`, 57,344), says how far to
-  raise it (`loadedContext`, `contextWarning`). The 56k is guidance: the
+  (`/api/v0/models`) and, below 32k (`TOOLS_CONTEXT`, 32,768), says how far to
+  raise it (`loadedContext`, `contextWarning`). The 32k is guidance: the
   window guard below goes by the window the model has. Before each request `provider/window.ts` estimates its
   tokens (`tokens.ts`): prose at 3.5 characters a token, data at 1.4 (tool
   results, call arguments and the fenced context JSON: a tokenizer may give

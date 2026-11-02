@@ -1079,7 +1079,8 @@ Conventions, enforced by a contract test on the snapshots:
 
    A stretch gate: the same turn **without compaction** fits 32,768, so
    compaction becomes a safety net rather than a necessity. The 56k run-policy
-   check stays as it is.
+   check stays as it is (lowered to 32k on 2026-11-02, once R5 met the
+   stretch gate).
 2. **Ceilings, not pins.** The ±5 % pins catch drift in either direction, which
    makes every saving and every addition a re-pin.
    - The hard gate becomes the total (26,214 with the reply reserve).
