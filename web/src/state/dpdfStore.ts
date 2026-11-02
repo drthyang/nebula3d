@@ -5,6 +5,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "./volumeReset";
 import type { Viewport } from "../components/viewport";
 
 /** Half-width (Å) a real-space view opens at; Reset zoom (or Shift+double-click) returns to it. */
@@ -65,3 +66,7 @@ export const useDpdfStore = create<DpdfState>((set) => ({
   setCentered: (centered) => set({ centered }),
   center: (cutX, cutY, cutZ) => set({ cutX, cutY, cutZ, centered: true }),
 }));
+
+// Closing the volume: the cuts, views and limits go; the colour map and the
+// grid lines are preferences, and stay.
+resetsWithVolume(useDpdfStore, { keep: ["colormap", "gridlines"] });

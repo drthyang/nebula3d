@@ -146,6 +146,22 @@ def test_list_datasets_identifies_the_raw_file(env, tmp_path):
     assert second["size"] == 120 and second["mtime"] == first["mtime"] + 5
 
 
+def test_release_lets_go_of_cached_volumes_and_keeps_files(env, tmp_path):
+    # Close in the console: the server keeps no volume of it in memory, and
+    # nothing on disk changes; the next view loads the volume again.
+    client, vol = env
+    vid = f"{SLUG}.ringremoved"
+    assert client.get(f"/api/volumes/{vid}/meta").status_code == 200
+    assert client.get(f"/api/volumes/{vid}/coverage").status_code == 200
+    assert vol_mod._cache and vol_mod._coverage_cache
+    files = sorted(p.name for p in (tmp_path / "processed").iterdir())
+
+    assert client.post("/api/release").json() == {"released": True}
+    assert not vol_mod._cache and not vol_mod._coverage_cache and not vol_mod._ub_cache
+    assert sorted(p.name for p in (tmp_path / "processed").iterdir()) == files
+    assert client.get(f"/api/volumes/{vid}/meta").status_code == 200
+
+
 def test_data_root_can_be_switched(tmp_path):
     (tmp_path / "raw").mkdir()
     (tmp_path / "processed").mkdir()

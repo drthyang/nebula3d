@@ -443,6 +443,14 @@ export async function fetchJob(jobId: string): Promise<JobOut | null> {
   return (await r.json()) as JobOut;
 }
 
+// Close the volume: the server lets go of the volumes and results it keeps in
+// memory for the views (files on disk stay). The in-browser engine restarts
+// instead (pyodideEngine.restartEngine).
+export async function releaseServerCaches(): Promise<void> {
+  if (PYODIDE_MODE) return;
+  await postJSON<unknown>("/api/release", {});
+}
+
 export async function cancelJob(jobId: string): Promise<JobOut> {
   const r = await fetch(`/api/pipeline/jobs/${encodeURIComponent(jobId)}/cancel`, {
     method: "POST",

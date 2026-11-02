@@ -4,6 +4,7 @@
 // (components/LocalHandoff.tsx). The engine sets them (pyodideEngine.ts):
 // a successful load clears the refusal, each run's start clears the failure.
 
+import { clearsWithVolume } from "../state/volumeReset";
 import type { BrowserLimit } from "./browserLimit";
 
 export interface RefusedLoad {
@@ -56,3 +57,9 @@ export function setFailedRun(datasetId: string, limit: BrowserLimit): void {
 export function clearFailedRun(): void {
   publish({ ...state, failedRun: null });
 }
+
+// A refusal or a failed run is about the closed volume: Close forgets both.
+clearsWithVolume(() => {
+  clearRefusedLoad();
+  clearFailedRun();
+});

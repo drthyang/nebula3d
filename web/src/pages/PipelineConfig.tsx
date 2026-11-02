@@ -45,7 +45,8 @@ import { datasetName } from "../api/datasetName";
 import { trackStale } from "../api/stale";
 import { useChatStore } from "../llm/chatStore";
 import { useMarkStore } from "../state/markStore";
-import { captureSession, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
+import { CLOSE_CONFIRM, closeNeedsConfirm, closeVolume } from "../state/closeVolume";
+import { captureSession, noteSessionSaved, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
 import { advancedFields, changedFields, foldsHolding, SECTION_SUMMARY, type SectionStage } from "./configSections";
 
 // The outputs on disk, in pipeline order. The symmetrized volume is the
@@ -619,6 +620,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     }
     const session = captureSession(now.find((d) => d.id === datasetId));
     downloadText(sessionFileName(session), "application/json", JSON.stringify(session, null, 1));
+    noteSessionSaved(session);
     const marks = session.marks.length ? `, its marked regions (${session.marks.length})` : "";
     setSessionNote({ kind: "ok", text: `Saved ${sessionFileName(session)}: the settings, the last run, the NEBULA Pilot conversation${marks} and the outputs present (${session.outputs.length}). The outputs themselves stay here; restoring recomputes any that are gone.` });
   };
@@ -665,6 +667,22 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       });
     } catch (e) {
       setSessionNote({ kind: "error", text: `${file.name}: ${(e as Error).message}` });
+    }
+  };
+  // Close: unload the volume and start fresh (state/closeVolume.ts), asking
+  // first when a run is going or the session is not saved.
+  const [closing, setClosing] = useState(false);
+  const onClose = async () => {
+    if (closeNeedsConfirm(selectedDataset) && !window.confirm(CLOSE_CONFIRM)) return;
+    setClosing(true);
+    try {
+      await closeVolume();
+      setLoadNote(null);
+      setLoadError(null);
+      setRootNote(null);
+      setRootError(null);
+    } finally {
+      setClosing(false);
     }
   };
   const onRecompute = async ({ datasetId, stages, params, flattenEnabled }: NonNullable<SessionNote["recompute"]>) => {
@@ -809,6 +827,16 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             title={s.busy || chatBusy ? "Wait for the run or the reply to finish" : "Bring back a saved session: its settings, last run and conversation"}
           >
             Restore session…
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => void onClose()}
+            disabled={!datasetId || closing || loadBusy}
+            title="Unload this volume and start fresh; files on disk stay"
+          >
+            {closing && <span className="spin" />}
+            Close volume
           </button>
         </div>
       </div>

@@ -8,6 +8,8 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "./volumeReset";
+
 export const DISMISSED_KEY = "nebula3d.localHandoff.dismissed";
 /** The most dismissals remembered; the oldest go first. */
 export const MAX_REMEMBERED = 50;
@@ -69,3 +71,6 @@ export const useHandoffStore = create<HandoffState>((set, get) => ({
   showNearLimit: (run) => set({ nearLimitRun: run ?? null }),
   hideNearLimit: () => set({ nearLimitRun: null }),
 }));
+
+// Closing the volume: the run's card goes; the dismissed cards stay dismissed.
+resetsWithVolume(useHandoffStore, { keep: ["dismissed"] });

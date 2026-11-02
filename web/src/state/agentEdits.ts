@@ -8,6 +8,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "./volumeReset";
 import type { PipelineConfig } from "./pipelineStore";
 
 export interface AgentEdit {
@@ -35,3 +36,5 @@ export function noteAgentEdit(fields: readonly (keyof PipelineConfig)[]): void {
   if (!unique.length) return;
   useAgentEdits.setState((s) => ({ last: { fields: unique, seq: (s.last?.seq ?? 0) + 1 } }));
 }
+
+resetsWithVolume(useAgentEdits);

@@ -20,6 +20,8 @@
 
 import { create } from "zustand";
 
+import { holdsNoVolume } from "./volumeReset";
+
 export type ClickMode = "none" | "box";
 
 /** Where the old click modes were remembered; read once to drop them. */
@@ -90,3 +92,5 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set({ gestureHintSeen: true });
   },
 }));
+
+holdsNoVolume(useWorkspaceStore, "the click mode and the display bar: preferences");

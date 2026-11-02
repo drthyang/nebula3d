@@ -5,6 +5,7 @@
 
 import { create } from "zustand";
 
+import { resetsWithVolume } from "./volumeReset";
 import type { Cell, Site } from "../structure/cif";
 import type { Centering } from "../structure/symops";
 
@@ -47,13 +48,16 @@ function load(): Partial<Saved> {
 
 const saved = load();
 
+// No structure: the state without one saved, and after Close.
+const EMPTY: Saved = { def: null, show: true, perm: 0, origin: null, hidden: [], depth: null };
+
 export const useStructureStore = create<StructureState>((set) => ({
-  def: saved.def ?? null,
-  show: saved.show ?? true,
-  perm: saved.perm ?? 0,
-  origin: saved.origin ?? null,
-  hidden: saved.hidden ?? [],
-  depth: saved.depth ?? null,
+  def: saved.def ?? EMPTY.def,
+  show: saved.show ?? EMPTY.show,
+  perm: saved.perm ?? EMPTY.perm,
+  origin: saved.origin ?? EMPTY.origin,
+  hidden: saved.hidden ?? EMPTY.hidden,
+  depth: saved.depth ?? EMPTY.depth,
   // A new structure starts with every pair shown, from every site.
   setDef: (def) => set({ def, origin: null, hidden: [], show: true }),
   editDef: (edit) => set((s) => (s.def ? { def: { ...s.def, ...edit(s.def) } } : {})),
@@ -73,3 +77,7 @@ useStructureStore.subscribe((s) => {
     /* storage unavailable */
   }
 });
+
+// Closing the volume clears the structure drawn over its ΔPDF (an overlay),
+// here and in storage.
+resetsWithVolume(useStructureStore, { fresh: () => EMPTY });

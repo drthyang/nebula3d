@@ -22,6 +22,7 @@
 
 import { create } from "zustand";
 
+import { clearsWithVolume, resetsWithVolume } from "./volumeReset";
 import { version as APP_VERSION } from "../../package.json";
 import type { Dataset, JobEvent, StageParamsIn } from "../api/types";
 import { useChatStore } from "../llm/chatStore";
@@ -468,7 +469,37 @@ export interface SessionNote {
   recompute?: { datasetId: string; stages: string[]; params?: StageParamsIn; flattenEnabled?: boolean };
 }
 
+// The session as last saved to a file, less the moment and the outputs (a
+// fingerprint): Close asks first only when what it would lose is not in that
+// file. Forgotten with the volume.
+let savedFingerprint: string | null = null;
+clearsWithVolume(() => {
+  savedFingerprint = null;
+});
+
+const fingerprint = (session: Session): string =>
+  JSON.stringify([session.dataset?.id ?? null, session.settings, session.run, session.chat, session.marks, session.structure]);
+
+/** The session was saved to a file. */
+export function noteSessionSaved(session: Session): void {
+  savedFingerprint = fingerprint(session);
+}
+
+/**
+ * Whether closing the volume would lose session state not saved to a file:
+ * a run's log, the conversation, marked regions or a structure, changed
+ * since the last save (or never saved). The settings alone are remembered in
+ * this browser per dataset (configMemory.ts), so they do not count.
+ */
+export function sessionUnsaved(dataset: Dataset | undefined): boolean {
+  const session = captureSession(dataset);
+  const held = Boolean(session.run || session.chat.length || useMarkStore.getState().marks.length || session.structure);
+  return held && fingerprint(session) !== savedFingerprint;
+}
+
 export const useSessionNote = create<{ note: SessionNote | null; setNote: (note: SessionNote | null) => void }>((set) => ({
   note: null,
   setNote: (note) => set({ note }),
 }));
+
+resetsWithVolume(useSessionNote);

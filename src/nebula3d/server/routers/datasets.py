@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import gc
 import math
 import platform
 import shutil
@@ -16,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from nebula3d.server import consistency as consistency_mod
 from nebula3d.server import datasets as ds_mod
 from nebula3d.server import deltapdf as dpdf_mod
+from nebula3d.server import laue as laue_mod
 from nebula3d.server import regrid as regrid_mod
 from nebula3d.server import volumes as vol_mod
 from nebula3d.server.config import ServerConfig
@@ -49,10 +51,17 @@ def _switch_data_root(root: Path, request: Request) -> DataRootOut:
 
     cfg = ServerConfig(data_root=root)
     request.app.state.config = cfg
-    vol_mod.clear_cache()
+    _release_caches()
+    return _data_root_out(cfg)
+
+
+def _release_caches() -> None:
+    """Let go of every volume and result kept in memory for the views."""
+    vol_mod.release()
     dpdf_mod.clear_cache()
     consistency_mod.clear_cache()
-    return _data_root_out(cfg)
+    laue_mod.clear_cache()
+    gc.collect()  # the arrays go back to the OS now, not at the next collection
 
 
 def _choose_directory(initial: Path) -> Path | None:
@@ -125,6 +134,14 @@ def _choose_directory(initial: Path) -> Path | None:
     finally:
         root.destroy()
     return Path(selected) if selected else None
+
+
+@router.post("/release")
+def release_caches() -> dict:
+    """The console closed its volume: the server keeps none of it in memory.
+    Nothing on disk changes; the next view loads what it needs again."""
+    _release_caches()
+    return {"released": True}
 
 
 @router.get("/data-root", response_model=DataRootOut)

@@ -8,6 +8,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 
+import { resetsWithVolume } from "../state/volumeReset";
 import { useNavStore } from "../state/navStore";
 import { usePipelineStore } from "../state/pipelineStore";
 import { useChatStore } from "./chatStore";
@@ -125,3 +126,5 @@ export function useAgentHighlights(): void {
     };
   }, []);
 }
+
+resetsWithVolume(useHighlightStore);
