@@ -24,7 +24,7 @@ import {
   type TokenUsage,
   type ToolCall,
 } from "./provider/client";
-import { answerIssues, earlierSources, issuesNote, issuesPrompt } from "./answerChecks";
+import { answerIssues, earlierSources, issuesNote, issuesPrompt, keptAnswerNote, markUnsupported, unsupportedClaims, type AnswerIssues } from "./answerChecks";
 import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError, type Failure } from "./recovery";
@@ -432,10 +432,23 @@ export async function runAgent({
     // wrote nothing in its place: none at all, only calls where none were left,
     // or one cut off at the output limit (keepRejected). Returns what the kept
     // answer fails, for the note ("" when none is kept).
+    // The kept answer's unsupported claims are marked in place, its words
+    // unchanged, and its note quotes them (keptAnswerNote): a model had a
+    // fabricated list of ΔPDF features reach the user with only a note when its
+    // revision was cut off (THY-63 eval, 2026-11-01).
+    const keep = (answer: string, issues: AnswerIssues | null): string => {
+      if (!issues) {
+        content = joinText(before, answer);
+        return "";
+      }
+      const claims = unsupportedClaims(answer, issues);
+      const { text, marked } = markUnsupported(answer, claims);
+      content = joinText(before, text);
+      return keptAnswerNote(issues, claims, marked);
+    };
     const keepRejected = ({ cut = false } = {}): string => {
       if (!rejected || (roundText.trim() && !cut)) return "";
-      content = joinText(before, rejected);
-      return rejectedIssues ? issuesNote(rejectedIssues) : "";
+      return keep(rejected, rejectedIssues);
     };
 
     // A reply that ran out of room may end mid-call: never run that round's tools.
@@ -468,7 +481,12 @@ export async function runAgent({
         emit(`_${REVISING_NOTE}_`);
         continue;
       }
-      if (!roundText.trim() && rejected) content = joinText(before, rejected);
+      if (!roundText.trim() && rejected) {
+        // The revision wrote nothing: the answer it revised stands, marked.
+        const kept = keep(rejected, issues);
+        if (kept) note = note ? `${note} ${kept}` : kept;
+        break;
+      }
       if (issues) note = note ? `${note} ${issuesNote(issues)}` : issuesNote(issues);
       break;
     }

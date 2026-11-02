@@ -54,10 +54,17 @@ import type { VerdictTopic } from "./tools/facts";
 import { verdicts, type CheckId, type ComputedVerdict } from "./verdicts";
 
 /**
- * A distance in real space, as an answer writes it: a number, then Å (across
- * a LaTeX "$"), and no exponent after it, so not Å⁻¹, Å$^{-1}$, Å^-1 or Å-1.
+ * Å as an answer writes it, in LaTeX too: Å, \AA, \text{Å}, \mathrm{\AA},
+ * after a LaTeX space (\ , \,) or a "$"; and no exponent after it, so not
+ * Å⁻¹, Å$^{-1}$, \text{Å}^{-1}, Å^-1 or Å-1.
  */
-const DISTANCE = String.raw`\d+(\.\d+)?\s*\$?\s*Å(?!\s*\$?\s*(⁻|\^|[-−]\s*1))`;
+const ANGSTROM = String.raw`(?:\\[ ,;!]\s*)?\$?\s*(?:\\(?:text|mathrm|rm)\s*\{\s*)?(?:Å|\\AA\b)(?!\s*\}?\s*\$?\s*(⁻|\^|[-−]\s*1))`;
+/** A distance in real space, as an answer writes it: a number, then Å. */
+const DISTANCE = String.raw`\d+(\.\d+)?\s*${ANGSTROM}`;
+/** A vector in real space, as an answer writes it: [x, y, z] then Å. */
+const VECTOR_IN_A = String.raw`\[\s*[-−]?\d[^\]]*\]\s*${ANGSTROM}`;
+/** The ΔPDF's name, in LaTeX too: ΔPDF, delta-PDF, \Delta\text{PDF}, \Delta PDF. */
+const DPDF_NAME = String.raw`Δ\s?PDF|delta-?pdf|\\Delta\s*(?:\\(?:text|mathrm|rm)\s*)?\{?\s*PDF`;
 
 // The tools that settle a topic declare it (their facts' `settles`, in the
 // registry); `evidence` names one of them, as the model is told.
@@ -163,8 +170,10 @@ export const TOPICS: readonly Topic[] = [
     // feature is the ΔPDF's beside the ΔPDF's name or a distance in real
     // space ("Feature 1: $\Delta r \approx 2.55$ Å"), not one of reciprocal
     // space (Å⁻¹, however written).
+    // So is a vector in Å written with a sign or a size in σ ("[0.82, 0, 0] Å
+    // (sign: +), size: 0.05σ"), under a heading that named the correlations.
     subject: new RegExp(
-      `\\b(pair[- ]correlations?|(?<!self-)correlations?|(positive|negative) (features?|peaks?|lobes?))\\b|^(?=.*\\bfeatures?\\b)(?=.*(Δ\\s?PDF|delta-?pdf|Δ\\s*r\\b|\\\\Delta\\s*r\\b|${DISTANCE}))`,
+      `\\b(pair[- ]correlations?|(?<!self-)correlations?|(positive|negative) (features?|peaks?|lobes?))\\b|^(?=.*\\bfeatures?\\b)(?=.*(${DPDF_NAME}|Δ\\s*r\\b|\\\\Delta\\s*r\\b|${DISTANCE}))|^(?=.*${VECTOR_IN_A})(?=.*(σ|\\\\sigma\\b|\\bsigma\\b|\\bsign\\b|\\b(positive|negative)\\b))`,
       "is",
     ),
     // A correlation named with a vector, a sign or a distance.
@@ -877,3 +886,55 @@ export function issuesNote(issues: AnswerIssues): string {
   if (issues.uncalled.length) parts.push(`Credits numbers to tools that did not run in this reply: ${listed(issues.uncalled)}.`);
   return parts.join(" ");
 }
+
+// ------------------------------------------------------------------ an answer kept although it failed
+
+/** The mark set before each line of a kept answer that holds a claim its checks found unsupported. */
+export const UNSUPPORTED_MARK = "⚠";
+
+/**
+ * The claims of an answer that its checks found unsupported, as written, each
+ * once: the verdicts without current evidence or against the tools', a claim
+ * of success the checks do not bear out, numbers credited to a tool that did
+ * not run, and each claim that writes a number found in no result.
+ */
+export function unsupportedClaims(text: string, issues: AnswerIssues): string[] {
+  const untraced = new Set([...issues.untraced, ...issues.staleNumbers]);
+  const withNumbers = untraced.size ? claimsOf(text).filter((c) => c.numbers.some((n) => untraced.has(n.text))).map((c) => c.text) : [];
+  return unique([...issues.said.missing, ...issues.said.stale, ...issues.said.contradicted, ...issues.said.overall, ...issues.uncalledSaid, ...withNumbers]);
+}
+
+// A line as the reader reads it: its Markdown emphasis out (answerText/split.ts).
+const plain = (line: string): string => line.replace(/\*\*|__|`/g, "");
+
+/**
+ * The answer with UNSUPPORTED_MARK before each line that holds one of
+ * `claims` (after a list's marker), its words unchanged; and the claims it
+ * marked. A claim no line holds whole is left unmarked: the note still names it.
+ */
+export function markUnsupported(text: string, claims: readonly string[]): { text: string; marked: string[] } {
+  const marked = new Set<string>();
+  const lines = text.split("\n").map((line) => {
+    const p = plain(line);
+    const holds = claims.filter((c) => c.trim().length >= 8 && p.includes(c.trim()));
+    if (!holds.length || line.includes(UNSUPPORTED_MARK)) return line;
+    holds.forEach((c) => marked.add(c));
+    const m = /^(\s*(?:[-*+]\s+|\d+[.)]\s+|>\s*)?)(.*)$/.exec(line)!;
+    return `${m[1]}${UNSUPPORTED_MARK} ${m[2]}`;
+  });
+  return { text: lines.join("\n"), marked: claims.filter((c) => marked.has(c)) };
+}
+
+/**
+ * The note under an answer kept although it failed its checks and its
+ * revision did not replace it (cut off, or none written): what it fails, and
+ * the claims it rests on no result for, quoted, so the reader cannot miss them.
+ */
+export function keptAnswerNote(issues: AnswerIssues, claims: readonly string[], marked: readonly string[]): string {
+  const bare = (c: string): string => c.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "");
+  const said = claims.length
+    ? ` ${marked.length ? `The lines marked ${UNSUPPORTED_MARK} hold` : "It holds"} what no tool result in this reply supports: ${claims.map((c) => quoted(bare(c))).join("; ")}.`
+    : "";
+  return `This answer failed its checks, and its revision did not replace it.${said} ${issuesNote(issues)}`.trim();
+}
+

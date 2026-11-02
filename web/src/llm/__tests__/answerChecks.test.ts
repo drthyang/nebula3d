@@ -16,12 +16,16 @@ import {
   earlierSources,
   issuesNote,
   issuesPrompt,
+  keptAnswerNote,
+  markUnsupported,
   marksMade,
   missingEvidence,
   questionsForUser,
   unaskedQuestions,
   unmadeMarks,
   uncalledSources,
+  unsupportedClaims,
+  UNSUPPORTED_MARK,
   untracedNumbers,
   verdictsIn,
 } from "../answerChecks";
@@ -334,8 +338,10 @@ describe("runAgent holds the final answer to its evidence", () => {
   it("notes what still fails after the one revision, and keeps a draft the revision left empty", async () => {
     script([[{ content: "Yes, the ring removal is clean." }], [{ content: "" }]]);
     const r = await runAgent({ messages: question, tools: [assess], ctx, settings, signal: new AbortController().signal });
-    expect(r.content).toBe("Yes, the ring removal is clean.");
-    expect(r.note).toBe("Not measured in this reply: the ring removal (assess_stage with stage rings).");
+    expect(r.content).toBe(`${UNSUPPORTED_MARK} Yes, the ring removal is clean.`);
+    expect(r.note).toBe(
+      "This answer failed its checks, and its revision did not replace it. The lines marked ⚠ hold what no tool result in this reply supports: “the ring removal is clean.”. Not measured in this reply: the ring removal (assess_stage with stage rings).",
+    );
   });
 
   it("checks nothing when told not to, or without tools", async () => {
@@ -1000,8 +1006,11 @@ describe("results no tool returned are sent back, whatever the hedge (THY-63 R3,
       [{ content: "The ring removal needs" }, { truncated: true, stopReason: "length" }],
     ]);
     const r = await runAgent({ messages: question, tools: [assess], ctx, settings, signal: new AbortController().signal, maxRounds: 2 });
-    expect(r.content).toBe("The ring removal needs attention, and the flatten left no pedestal.");
-    expect(r.note).toMatch(/^Not measured in this reply: the flatten \(assess_stage with stage flatten\)\. The reply was cut off: /);
+    // Kept, its unsupported claim marked in place and quoted in the note (the THY-63 eval's dev-control run).
+    expect(r.content).toBe(`${UNSUPPORTED_MARK} The ring removal needs attention, and the flatten left no pedestal.`);
+    expect(r.note).toMatch(
+      /^This answer failed its checks, and its revision did not replace it\. The lines marked ⚠ hold what no tool result in this reply supports: “The ring removal needs attention, and the flatten left no pedestal\.”\. Not measured in this reply: the flatten \(assess_stage with stage flatten\)\. The reply was cut off: /,
+    );
   });
 
   it("keeps the answer it sent back, with what it fails, when the last request calls a tool instead of answering", async () => {
@@ -1011,7 +1020,85 @@ describe("results no tool returned are sent back, whatever the hedge (THY-63 R3,
       [{ toolCalls: [{ ...call, id: "c2" }] }], // a server that ignores tool_choice "none"
     ]);
     const r = await runAgent({ messages: question, tools: [assess], ctx, settings, signal: new AbortController().signal, maxRounds: 2 });
-    expect(r.content).toBe("The ring removal needs attention, and the flatten left no pedestal.");
-    expect(r.note).toBe("Not measured in this reply: the flatten (assess_stage with stage flatten). Stopped after 2 rounds of tool calls; the answer uses what was gathered so far.");
+    expect(r.content).toBe(`${UNSUPPORTED_MARK} The ring removal needs attention, and the flatten left no pedestal.`);
+    expect(r.note).toBe(
+      "This answer failed its checks, and its revision did not replace it. The lines marked ⚠ hold what no tool result in this reply supports: “The ring removal needs attention, and the flatten left no pedestal.”. Not measured in this reply: the flatten (assess_stage with stage flatten). Stopped after 2 rounds of tool calls; the answer uses what was gathered so far.",
+    );
   });
 });
+
+// ---------------------------------------------------------------- LaTeX, and a kept answer marked (the THY-63 local eval)
+
+// Two final answers of the free local eval of 2026-11-01 (gemma4:26b, arm B,
+// the validation's dev cases: synthetic, no measured data), on main after
+// THY-63 R0 to R5. Each listed ΔPDF features that no dpdf_peaks call returned.
+// dev-control run 1 wrote them in LaTeX (\Delta\text{PDF}, ]\ \text{Å}), which
+// the features check did not read; its revision was cut off at the output
+// cap, and the answer reached the user with a note on one number.
+const LATEX_FEATURES =
+  "**Strongest Pair Correlations in the 3D-$\\Delta\\text{PDF}$:**\n(Note: Features are listed by their strongest vectors in the volume.)\n" +
+  "- **Feature 1:** $\\mathbf{r} \\approx [1.5, 0, 0]\\ \\text{Å}$, $\\Delta\\text{PDF} \\approx 1380\\sigma$ (Positive)\n" +
+  "- **Feature 2:** $\\mathbf{r} \\approx [0, 1.5, 0]\\ \\text{Å}$, $\\Delta\\text{PDF} \\approx 1360\\sigma$ (Positive)\n" +
+  "*(Values are representative of the strongest features found by `dpdf_peaks`.)*";
+// dev-rings run 3 listed vectors in Å with a sign and a size in σ under a
+// heading; their numbers traced by chance to a ring ratio and the UB limit, and
+// no check fired.
+const LISTED_UNDER_A_HEADING =
+  "**Strongest Pair Correlations in the 3D-ΔPDF:**\nThe strongest features (above 5$\\sigma$) are:\n" +
+  "1.  **$\\vec{r} \\approx$ [0.82, 0.00, 0.00] Å** (sign: +), size: 0.05 $\\sigma$\n" +
+  "2.  **$\\vec{r} \\approx$ [0.00, 0.82, 0.00] Å** (sign: +), size: 0.05 $\\sigma$";
+
+describe("ΔPDF features written in LaTeX or under a heading are claims (the THY-63 local eval)", () => {
+  const noPeaks = DEV_CONTROL_STEPS;
+
+  it("reads \\Delta\\text{PDF}, \\text{Å} and ]\\ \\text{Å} as the ΔPDF's and real space's", () => {
+    const issues = answerIssues(LATEX_FEATURES, noPeaks, sourcesOf(noPeaks))!;
+    expect(idsOf(issues.missing)).toContain("features");
+    expect(issues.said.missing.filter((c) => /Feature \d/.test(c))).toHaveLength(2);
+    expect(verdictsIn("- Feature 1: $\\Delta\\text{PDF}$ peak at $2.74\\ \\text{Å}$").has("features")).toBe(true);
+    expect(verdictsIn("A feature of the $\\Delta$PDF at $2.74\\,\\mathrm{\\AA}$").has("features")).toBe(true);
+  });
+
+  it("reads a vector in Å with a sign or a size in σ as a feature, under a heading that named the correlations", () => {
+    const issues = answerIssues(LISTED_UNDER_A_HEADING, noPeaks, sourcesOf(noPeaks))!;
+    expect(idsOf(issues.missing)).toContain("features");
+    expect(issues.said.missing.filter((c) => /\[0\.82|\[0\.00/.test(c))).toHaveLength(2);
+  });
+
+  it("still reads reciprocal space as no feature, in LaTeX too", () => {
+    expect(verdictsIn("Diffuse features near $6.444\\ \\text{Å}^{-1}$ stay after the flatten.").has("features")).toBe(false);
+    expect(verdictsIn("Diffuse features near 2.1 $\\text{\\AA}^{-1}$ stay.").has("features")).toBe(false);
+    expect(verdictsIn("The UB turned about [1, 1, 0] by 0.6°.").has("features")).toBe(false);
+  });
+
+  it("passes the same lists once dpdf_peaks ran", () => {
+    const ran = [...noPeaks, step("dpdf_peaks", {}, { features: [{ length_A: 1.5, size_sigma: 1380 }, { length_A: 0.82, size_sigma: 0.05 }] })];
+    expect(idsOf(answerIssues(LATEX_FEATURES, ran, sourcesOf(ran))?.missing ?? [])).not.toContain("features");
+    expect(idsOf(answerIssues(LISTED_UNDER_A_HEADING, ran, sourcesOf(ran))?.missing ?? [])).not.toContain("features");
+  });
+
+  it("marks a kept answer's unsupported lines in place, words unchanged, and quotes them in the note", () => {
+    const issues = answerIssues(LATEX_FEATURES, noPeaks, sourcesOf(noPeaks))!;
+    const claims = unsupportedClaims(LATEX_FEATURES, issues);
+    const { text, marked } = markUnsupported(LATEX_FEATURES, claims);
+    const lines = text.split("\n");
+    expect(lines.filter((l) => l.startsWith(`- ${UNSUPPORTED_MARK} **Feature`))).toHaveLength(2);
+    // Nothing deleted: every line is the old line, with the mark at most.
+    expect(text.split(`${UNSUPPORTED_MARK} `).join("")).toBe(LATEX_FEATURES);
+    expect(marked.length).toBeGreaterThanOrEqual(2);
+    const note = keptAnswerNote(issues, claims, marked);
+    expect(note).toMatch(/^This answer failed its checks, and its revision did not replace it\. The lines marked ⚠ hold what no tool result in this reply supports: “Feature 1: /);
+    expect(note).toMatch(/Not measured in this reply: .*the 3D-ΔPDF's pair correlations \(dpdf_peaks\)/);
+  });
+
+  it("keeps the dev-control answer marked when its revision is cut off at the output limit", async () => {
+    const peaksCall = { id: "c1", type: "function" as const, function: { name: "assess_stage", arguments: '{"stage":"pdf"}' } };
+    const pdf: AgentTool = { ...assess, run: async () => ({ result: { pdf: { verdict: "meets its goal", headline: "SNR 1380" } }, summary: "pdf" }) };
+    script([[{ toolCalls: [peaksCall] }], [{ content: LATEX_FEATURES }], [{ content: "**Strongest Pair" }, { truncated: true, stopReason: "length" }]]);
+    const r = await runAgent({ messages: question, tools: [pdf], ctx, settings, signal: new AbortController().signal, maxRounds: 2 });
+    expect(r.content.split("\n").filter((l) => l.startsWith(`- ${UNSUPPORTED_MARK} **Feature`))).toHaveLength(2);
+    expect(r.content.split(`${UNSUPPORTED_MARK} `).join("")).toBe(LATEX_FEATURES);
+    expect(r.note).toMatch(/The lines marked ⚠ hold what no tool result in this reply supports: “Feature 1: .*The reply was cut off: /s);
+  });
+});
+
