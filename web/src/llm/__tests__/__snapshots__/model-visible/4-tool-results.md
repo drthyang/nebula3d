@@ -6,7 +6,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 ## read_skill {"name":"bragg-node-audit"}
 
-3844 characters sent.
+3948 characters sent.
 
 ```text
 Skill bragg-node-audit
@@ -32,6 +32,7 @@ all three.
 - `texture_check`: no fills sitting systematically outside the range their
   rims allow, a bias counting only at a fifth of the local diffuse level or
   more; on the cuts, an azimuthal ratio near 1.
+- `ub_turn`: one turn only far beyond its error, explaining most offsets.
 
 ## Steps
 
@@ -73,13 +74,13 @@ all three.
    name the mark by its id beside the signal.
 
 ---
-Details of this skill (read with read_skill and `section` "Details", or one part by its heading): Settle the nodes; Forbidden nodes; Peaks off the lattice; The backfill; Firm rules (enforced in code); Acceptance checklist; Failure modes.
+Details of this skill (read with read_skill and `section` "Details", or one part by its heading): Settle the nodes; Forbidden nodes; Peaks off the lattice; The backfill; A UB turned in the reduction; Firm rules (enforced in code); Acceptance checklist; Failure modes.
 References of this skill (read one with read_skill and `reference`; a long one opens with its sections): bragg_cleanup.
 ```
 
 ## read_skill {"name":"bragg-node-audit","section":"Details"}
 
-2409 characters sent.
+3670 characters sent.
 
 ```text
 Skill bragg-node-audit, section "Details"
@@ -114,6 +115,28 @@ against the nodes finds.
 The diffuse often peaks at the nodes (thermal diffuse scattering), so a sound
 fill sits above its rim's median; the range a fill is judged against runs from
 the diffuse at the hole's edge to its rise continued to the node.
+
+### A UB turned in the reduction
+
+A UB slightly turned upstream moves each peak across Q, more the higher |Q|,
+and smears it the same way: far out the punch leaves a tail beside the hole,
+and the backfill makes it a bright spot.
+
+- **Recognise:** bright spots beside punched holes at high |Q|, across Q,
+  growing with |Q|. The punch's assessment then gives `ub_turn`: the
+  turn and its standard error, the share of the peaks' offsets it explains,
+  and the peaks fitted. Far beyond its error and explaining most offsets, it
+  is one turn; explaining little, it is not, and nothing acts on it.
+- **Remedy:** refine the UB in the data reduction; say so with those numbers.
+  The volume may not be fixable here: never propose a regrid for it.
+- **In the punch:** the tail sweep (`punchTailSweep`, auto) acts by default,
+  only on a turn the punch trusts; its sweep line says what it took and the
+  nodes left alone. The rotation-aware punch (`punchRotationAware`, off) is an
+  option: suggest it, citing the turn; the settings stay the user's.
+- **Verify** with `assess_stage` on the punch and the backfill: peaks left at
+  nodes and bright fills, before and after.
+- The sweep takes Bragg tails, never diffuse signal; nodes it left alone keep
+  their diffuse.
 
 ### Firm rules (enforced in code)
 
@@ -1584,7 +1607,7 @@ natively and runs only when the support has unsupported voxels.
 ```json
 {
   "settings": {},
-  "at_default": 59
+  "at_default": 61
 }
 ```
 
