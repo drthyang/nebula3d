@@ -793,11 +793,56 @@ cd web && NEBULA_VALIDATION_RENDER=../docs/evals/validation/lmstudio-qwen3.8-27b
 
 The model keys are `lmstudio-qwen3.8-27b`, `ollama-gemma4-26b`,
 `lmstudio-muse-glimmer` and `claude-sonnet-5-5`. `NEBULA_VALIDATION_ONLY`,
-`_ARMS`, `_RUNS`, `_ROUNDS` (default the Pilot's twelve), `_TIMEOUT` (40 minutes a
-run), `_OUT` and `_BASE_URL` are in the header of `validation.live.test.ts`. The
+`_ARMS`, `_RUNS`, `_ROUNDS` (default the Pilot's twelve), `_TIMEOUT` (10 minutes a
+run), `_WALL` (30 minutes for the plan), `_PRESET`, `_OUT` and `_BASE_URL` are in the
+header of `validation.live.test.ts`. The
 test split is `--split test --report` in steps 1 and 4 and `NEBULA_VALIDATION_SPLIT=test
 NEBULA_VALIDATION_REPORT=1` in step 3. The record is rewritten after every run, so a run cut short keeps what
 it measured.
+
+#### How long a plan takes, and the 30-minute cap
+
+The user's rule (2026-11-02): an eval that runs past 30 minutes means something
+is wrong. So a live plan is held to a wall-clock cap, `NEBULA_VALIDATION_WALL`,
+30 minutes by default (`web/src/llm/evals/validationLimits.ts`):
+
+- **Before it starts**, a plan whose expected time, its runs times the model's
+  measured seconds a run (`SECONDS_PER_RUN`), passes the cap is refused, with
+  the estimate and how to run fewer. A model with no measured time is not
+  estimated.
+- **While it runs**, no run starts once the cap is reached, and each run's limit
+  is cut to what the cap leaves. The plan then stops with a message naming the
+  cap and how many runs finished, and the record keeps those runs.
+- **One run** is held to `NEBULA_VALIDATION_TIMEOUT`, 10 minutes by default.
+
+Measured on this Mac (68.7 GB), 2026-11-01, on the dev split, one model loaded
+once for each set (THY-63's local eval):
+
+| Model | Runs | Median a run | Mean a run | Longest |
+| --- | ---: | ---: | ---: | ---: |
+| gemma4:26b (Ollama), arm B | 48 | 82 to 91 s | 97 to 145 s | 887 s |
+| gemma4:26b (Ollama), arm C | 48 | 61 to 72 s | 87 to 160 s | 1,004 s |
+| meta/muse-glimmer (LM Studio, 64k), arm B | 3 | 221 s | 251 s | 318 s |
+
+A run's own work is about a minute on gemma4:26b; the means carry a few
+requests that stalled for 5 to 6 minutes while the shared Mac was busy, and no
+run reached its limit. The estimate takes 90 s a run for gemma4:26b and 260 s
+for muse-glimmer. The full plan the design asked for (arm B on two models and
+arm C on one, three runs per dev case, before and after a change) is 144 runs:
+96 of gemma4:26b, about 2.4 hours at 90 s (3.3 hours as measured, with the
+stalls), and 48 of muse-glimmer, about 3.5 hours. It is no single plan. Split it by model, arm and run, each under the cap.
+
+**The quick preset** (`NEBULA_VALIDATION_PRESET=quick`): gemma4:26b, arm B, one
+run per dev case, 5 minutes a run: 8 runs, about 12 minutes expected. Run once
+on 2026-11-02 (main with THY-63 R0 to R5), it took 8.3 minutes from start to
+finish: 45 to 89 s a run, 62 s on average. The
+variables above still override it. The data root needs arm B's first run
+(`make --split dev --arms B --runs 1`, or a root made for more):
+
+```bash
+cd web && NEBULA_VALIDATION=1 NEBULA_VALIDATION_PRESET=quick NEBULA_EVAL_API=http://127.0.0.1:8000 \
+  npx vitest run src/llm/evals/validation.live.test.ts
+```
 
 **An estimate of the time on qwen3.8-27b**, from its measured runs above (a median of
 328 s on one- and two-tool scenarios, about 12 output tokens a second, most of it
