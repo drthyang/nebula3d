@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 21606 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (28 tools, 21611 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -165,7 +165,7 @@ Parameters:
 ## 8. qmax_coverage
 
 ```text
-Does the forward transform (data → 3D-ΔPDF) reach past the measured reciprocal space? Returns verdict: the window's weight on unmeasured space from the ΔPDF's record (≲ 1e-3 is clean), else the transform's reach against full_coverage_q (where |Q| shells stop holding counts in 95 % of voxels); raw_counts (where the counts begin and end in |Q|), suggested_band, band_check, counts_end_inside_box. With the window fitted to the coverage, the verdict judges the counts' end and the band instead.
+Does the forward transform (data → 3D-ΔPDF) reach past measured reciprocal space? Returns verdict: the window's weight on unmeasured space from the ΔPDF's record (≲ 1e-3 is clean), else the reach against full_coverage_q (where shells stop holding counts in 95 % of voxels); raw_counts (the counts' edges in |Q|), suggested_band, band_check; counts_end_inside_box (true: the counts stop before the box's face). With the window fitted to the coverage, the verdict judges the counts' end and the band.
 ```
 
 Parameters:

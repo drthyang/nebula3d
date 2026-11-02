@@ -24,7 +24,7 @@ import {
   type TokenUsage,
   type ToolCall,
 } from "./provider/client";
-import { answerIssues, earlierSources, issuesNote, issuesPrompt } from "./answerChecks";
+import { answerIssues, earlierSources, issuesNote, issuesPrompt, keptAnswerNote, markUnsupported, unsupportedClaims, type AnswerIssues } from "./answerChecks";
 import { fillReferences } from "./references";
 import { lastQuestion, toolsFor } from "./localTools";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError, type Failure } from "./recovery";
@@ -83,6 +83,11 @@ export interface AgentProgress {
 }
 
 export interface AgentResult extends AgentProgress {
+  // The answer as the user reads it, where it differs from `content`: an answer
+  // kept although it failed its checks, with UNSUPPORTED_MARK before each line
+  // that holds an unsupported claim (answerChecks.ts). `content` is the model's
+  // own words, which the graders, the answer checks and the records read.
+  shown?: string;
   note?: string;
   // Set when the model server failed the reply after its retries; the note
   // explains it, and the steps and text before it stay.
@@ -235,6 +240,7 @@ export async function runAgent({
   let revisions = 0;
   let rejected = ""; // the last answer sent back, kept if the revision writes nothing
   let rejectedIssues: ReturnType<typeof answerIssues> = null; // what it failed, noted if it is kept
+  let unsupported: string[] = []; // the claims of an answer kept although it failed, marked in `shown`
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
   let reasoning = "";
@@ -432,10 +438,24 @@ export async function runAgent({
     // wrote nothing in its place: none at all, only calls where none were left,
     // or one cut off at the output limit (keepRejected). Returns what the kept
     // answer fails, for the note ("" when none is kept).
+    // The kept answer's unsupported claims are marked in place, its words
+    // unchanged, and its note quotes them (keptAnswerNote): a model had a
+    // fabricated list of ΔPDF features reach the user with only a note when its
+    // revision was cut off (THY-63 eval, 2026-11-01). The marks go only into
+    // the text the user reads (`shown`): `content` stays the model's own words,
+    // which the graders, the answer checks and the records judge, so a mark can
+    // never hide a claim (a leading ⚠ once kept "No, the UB is off" from
+    // reading as a claim).
+    const keep = (answer: string, issues: AnswerIssues | null): string => {
+      content = joinText(before, answer);
+      if (!issues) return "";
+      const claims = unsupportedClaims(answer, issues);
+      unsupported = claims;
+      return keptAnswerNote(issues, claims, markUnsupported(answer, claims).marked);
+    };
     const keepRejected = ({ cut = false } = {}): string => {
       if (!rejected || (roundText.trim() && !cut)) return "";
-      content = joinText(before, rejected);
-      return rejectedIssues ? issuesNote(rejectedIssues) : "";
+      return keep(rejected, rejectedIssues);
     };
 
     // A reply that ran out of room may end mid-call: never run that round's tools.
@@ -468,7 +488,12 @@ export async function runAgent({
         emit(`_${REVISING_NOTE}_`);
         continue;
       }
-      if (!roundText.trim() && rejected) content = joinText(before, rejected);
+      if (!roundText.trim() && rejected) {
+        // The revision wrote nothing: the answer it revised stands, marked.
+        const kept = keep(rejected, issues);
+        if (kept) note = note ? `${note} ${kept}` : kept;
+        break;
+      }
       if (issues) note = note ? `${note} ${issuesNote(issues)}` : issuesNote(issues);
       break;
     }
@@ -520,8 +545,10 @@ export async function runAgent({
   // the words.
   content = fillReferences(content, steps).text;
   const verdict = useTools ? verdicts({ reply: steps }).achieved : null;
+  const marked = unsupported.length ? markUnsupported(content, unsupported) : null;
   return {
     content,
+    ...(marked?.marked.length ? { shown: marked.text } : {}),
     reasoning,
     steps,
     note,

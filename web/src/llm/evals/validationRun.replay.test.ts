@@ -13,7 +13,16 @@
 // second tuning in one run starts only if the budget left beyond the run's
 // reserve covers it; one it does not is skipped, recorded, and the run goes on.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The tunings these runs measure include the ring stage, the longest at its
+// worst. A run reaches it once the 3D ring verdict finds a ring left or dented
+// (tools/shared/ringGate.ts, its own tests in ringGate.test.ts); the dev cases
+// here leave none, so the gate is lifted for this file's budget measurements.
+vi.mock("../tools/shared/ringGate", async (original) => ({
+  ...(await original<typeof import("../tools/shared/ringGate")>()),
+  ringVerdictAllowsChange: () => true,
+}));
 
 import { useDpdfStore } from "../../state/dpdfStore";
 import { useNavStore } from "../../state/navStore";

@@ -65,7 +65,10 @@ export const qmax_coverage: ChatTool = {
     highlights: ["raw", "pdf"],
   },
   description:
-    "Does the forward transform (data → 3D-ΔPDF) reach past the measured reciprocal space? Returns verdict: the window's weight on unmeasured space from the ΔPDF's record (≲ 1e-3 is clean), else the transform's reach against full_coverage_q (where |Q| shells stop holding counts in 95 % of voxels); raw_counts (where the counts begin and end in |Q|), suggested_band, band_check, counts_end_inside_box. With the window fitted to the coverage, the verdict judges the counts' end and the band instead.",
+    // counts_end_inside_box keeps its meaning: listed bare, a free local eval
+    // (THY-63, 2026-11-01) saw gemma4:26b read false as "the counts end inside
+    // the box" in 6 of 48 runs.
+    "Does the forward transform (data → 3D-ΔPDF) reach past measured reciprocal space? Returns verdict: the window's weight on unmeasured space from the ΔPDF's record (≲ 1e-3 is clean), else the reach against full_coverage_q (where shells stop holding counts in 95 % of voxels); raw_counts (the counts' edges in |Q|), suggested_band, band_check; counts_end_inside_box (true: the counts stop before the box's face). With the window fitted to the coverage, the verdict judges the counts' end and the band.",
   parameters: { type: "object", properties: {} },
   run: async (_args, ctx) => {
     const { dataset } = ctx;

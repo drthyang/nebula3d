@@ -30,6 +30,15 @@ describe("askAssistant", () => {
     expect(useChatStore.getState().busy).toBe(false);
   });
 
+  it("shows a kept answer as marked, its note beside it (agent.ts, `shown`)", async () => {
+    agent.runAgent.mockResolvedValue({ content: "The flatten left no pedestal.", shown: "⚠ The flatten left no pedestal.", note: "This answer failed its checks.", reasoning: "", steps: [] });
+    await ask();
+    const turn = useChatStore.getState().turns[1];
+    expect(turn.content).toBe("⚠ The flatten left no pedestal.");
+    expect(turn.note).toBe("This answer failed its checks.");
+    expect("shown" in turn).toBe(false);
+  });
+
   it("keeps a reply that only thought, and says it has no answer", async () => {
     agent.runAgent.mockResolvedValue({ content: "", reasoning: "Let me see…", steps: [] });
     await ask();

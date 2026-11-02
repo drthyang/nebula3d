@@ -334,7 +334,7 @@ natively and runs only when the support has unsupported voxels.
 
 ## measure_reciprocal_cut {"plane":"h0l","value":1}
 
-2605 characters sent.
+2739 characters sent.
 
 ```json
 {
@@ -425,7 +425,7 @@ natively and runs only when the support has unsupported voxels.
     "floor_judged_q": [2.17, 4.22]
   },
   "notes": [],
-  "fields": "ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per raw ring: residual_fraction against the diffuse beside it (negative a dent, positive a ring left), significant beyond 3 × noise_fraction. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels: diffuse maxima, signal. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random, near 1 an artefact. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged."
+  "fields": "ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per bump of the raw profile: residual_fraction against the diffuse beside it (negative a dip, positive a bump left), significant beyond 3 × noise_fraction; no ring verdict: one cut's bumps include the crystal's own scattering, and only assess_stage rings judges rings, in 3D. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels: diffuse maxima, signal. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random, near 1 an artefact. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged."
 }
 ```
 

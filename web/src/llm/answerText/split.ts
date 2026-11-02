@@ -1,7 +1,11 @@
 // Where an answer's sentences and clauses begin and end.
 
-/** Markdown emphasis, which no reading keeps. */
-const EMPHASIS = /\*\*|__|`/g;
+/**
+ * Markdown emphasis, which no reading keeps, and the mark the app sets before
+ * a line of a kept answer that failed its checks (answerChecks.ts,
+ * UNSUPPORTED_MARK): neither is a word, so neither hides a claim.
+ */
+const EMPHASIS = /\*\*|__|`|⚠\uFE0F?\s?/g;
 
 /** The answer's sentences: lines and sentence ends split it, its Markdown emphasis out. */
 export function sentenceTexts(text: string): string[] {

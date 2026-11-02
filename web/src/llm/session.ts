@@ -70,9 +70,13 @@ export async function askAssistant({
     // A reply without an answer still gets a turn — its thinking, or a note that
     // it came back empty — so a question never ends in silence.
     const empty = !result.content && !result.steps.length;
+    // The user reads the answer as shown (an answer kept although it failed
+    // its checks carries its marks: agent.ts, `shown`).
+    const { shown, ...reply } = result;
     useChatStore.getState().addTurn({
       role: "assistant",
-      ...result,
+      ...reply,
+      ...(shown ? { content: shown } : {}),
       ...(tokens.requests || tokens.uncounted ? { tokens } : {}),
       note:
         result.note ??

@@ -331,7 +331,9 @@ describe("arm C's session, with the skills off", () => {
     // What arm B's system prompt shares with a skill word for word is inference, and arm C's does not hold it.
     expect(skillSentencesIn(CORE.whole, MIN_WORDS).map(label)).toEqual(SHARED_WITH_THE_SKILLS);
     expect(skillSentencesIn(CORE.definitions, MIN_WORDS)).toEqual([]);
-  });
+    // Every skill sentence is searched in every request and result: the skills grew
+    // (THY-61's reduction-qc section), and the CI runner passed 5 s (as #153 for modelVisible).
+  }, 20_000);
 
   it("holds none of the inference written anywhere: no span arm B reads that arm C leaves out", () => {
     const spans = writtenInferences()
@@ -362,7 +364,8 @@ describe("arm C's session, with the skills off", () => {
       .flatMap((t) => skillSentencesIn(t, MIN_WORDS - 2))
       .filter((s) => s.words < MIN_WORDS);
     expect([...new Set(near.map(label))].sort()).toEqual(["reduction-qc: the window's weight on unmeasured space"]);
-  });
+    // Every skill sentence searched twice over every request and result: past 5 s on the CI runner since the skills grew (THY-61).
+  }, 20_000);
 
   it("sends back nothing whose own words name a tool, a stage or a skill; what it quotes is the answer's", () => {
     expect(sentBack.length).toBe(3); // the note to answer now, and a send-back in each turn
