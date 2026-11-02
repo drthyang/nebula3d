@@ -833,7 +833,9 @@ arm C on one, three runs per dev case, before and after a change) is 144 runs:
 stalls), and 48 of muse-glimmer, about 3.5 hours. It is no single plan. Split it by model, arm and run, each under the cap.
 
 **The quick preset** (`NEBULA_VALIDATION_PRESET=quick`): gemma4:26b, arm B, one
-run per dev case, 5 minutes a run: 8 runs, about 12 minutes expected. The
+run per dev case, 5 minutes a run: 8 runs, about 12 minutes expected. Run once
+on 2026-11-02 (main with THY-63 R0 to R5), it took 8.3 minutes from start to
+finish: 45 to 89 s a run, 62 s on average. The
 variables above still override it. The data root needs arm B's first run
 (`make --split dev --arms B --runs 1`, or a root made for more):
 
