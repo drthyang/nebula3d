@@ -806,9 +806,9 @@ export interface StageParamsIn {
   punch_search_protect_h?: number[];
   punch_search_protect_half_width?: number;
   punch_search_max_width_ratio?: number;
-  // A UB turned in the reduction (THY-60): round 1 follows the rotation when
-  // it is active (default true), and round 2 sweeps the tails it leaves
-  // ("off" | "auto" | "on"; default auto).
+  // A UB turned in the reduction (THY-60): round 2 sweeps the tails it
+  // leaves ("off" | "auto" | "on"; default auto), and round 1 can follow the
+  // rotation when it is active (default false).
   punch_rotation_aware?: boolean;
   punch_tail_sweep?: string;
   punch_margin?: number;

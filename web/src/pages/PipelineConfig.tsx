@@ -1443,8 +1443,9 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     <HelpTip>
                       The punch fits one small rotation ω to its strong peaks&apos; offsets from their nodes. When it is
                       significant, explains the offsets and shifts peaks by half a voxel or more, each node&apos;s punch
-                      is stretched by |ω|·|Q| along ω × q̂ (a centre it could not fit moves to where ω puts it). Off
-                      keeps round 1 as it was; the tail sweep is set apart.
+                      is stretched by |ω|·|Q| along ω × q̂ (a centre it could not fit moves to where ω puts it). It
+                      punches more diffuse at every node; off (the default) keeps round 1 as it was, and the tail sweep
+                      takes only the tails it finds.
                     </HelpTip>
                   </div>
                   {ubTurn && (

@@ -114,10 +114,10 @@ export interface PipelineConfig {
   punchQB: string;
   punchQC: string;
   punchFitUnconstrained: boolean; // do not floor/cap Bragg covariance-fit radii
-  // A UB turned in the reduction (THY-60): round 1 follows the fitted rotation
-  // when it is significant, explains the offsets and is resolved (true, the
-  // backend default); and round 2, the tail sweep: "" = auto (the default,
-  // only then), "off", or "on" (whenever a rotation was fitted).
+  // A UB turned in the reduction (THY-60): round 2, the tail sweep: "" = auto
+  // (the default: only for a turn that is significant, explains the offsets
+  // and is resolved), "off", or "on" (whenever a rotation was fitted); and,
+  // as an option (off, the backend default), round 1 following that turn.
   punchRotationAware: boolean;
   punchTailSweep: string;
   punchMargin: string;
@@ -243,7 +243,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   punchQB: "",
   punchQC: "",
   punchFitUnconstrained: false,
-  punchRotationAware: true,
+  punchRotationAware: false,
   punchTailSweep: "",
   punchMargin: "",
   incidentBeamQA: "",
@@ -578,7 +578,7 @@ export function formToParams(s: PipelineConfig): StageParamsIn {
   if (s.incidentBeamQC) params.incident_beam_q_radius_c = Number(s.incidentBeamQC);
   if (s.incidentBeamMargin) params.incident_beam_q_margin = Number(s.incidentBeamMargin);
   if (s.punchFitUnconstrained) params.punch_fit_unconstrained = true;
-  if (!s.punchRotationAware) params.punch_rotation_aware = false;
+  if (s.punchRotationAware) params.punch_rotation_aware = true;
   if (s.punchTailSweep) params.punch_tail_sweep = s.punchTailSweep;
   if (s.incidentBeamFitCovariance) params.incident_beam_fit_covariance = true;
   if (s.backfillMethod) params.backfill_method = s.backfillMethod;

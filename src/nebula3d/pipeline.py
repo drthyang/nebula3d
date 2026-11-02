@@ -650,16 +650,18 @@ class PunchParams:
     punch_spherical_radii: tuple[float, float, float] | None = (0.097, 0.072, 0.115)
     # A UB turned in the upstream reduction (THY-60): the punch always fits
     # the rotation ω to its strong peaks' centres and records it
-    # (nebula3d.analysis.misorientation).  With rotation_aware, when ω is
-    # significant, explains the offsets and is resolved on the grid, round 1
-    # punches each node's footprint swept along ±ω × q; otherwise round 1 is
-    # unchanged.  tail_sweep ("off" | "auto" | "on") is round 2: the tails
-    # left beside the holes along ±ω × q̂ are added to them before the
-    # backfill (nebula3d.analysis.tail_sweep); "auto" only when ω is active
-    # as above, "on" whenever a rotation was fitted.  Neither touches
-    # symmetrised data, where a turned UB shows as rings, not shifts.  The
-    # remedy is refining the UB in the reduction.
-    rotation_aware: bool = True
+    # (nebula3d.analysis.misorientation).  tail_sweep ("off" | "auto" |
+    # "on") is round 2: the tails left beside the holes along ±ω × q̂ are
+    # added to them before the backfill (nebula3d.analysis.tail_sweep);
+    # "auto" (default) only when ω is significant, explains the offsets and
+    # is resolved on the grid, "on" whenever a rotation was fitted.
+    # rotation_aware (off by default, the user's decision 2026-11-01) also
+    # makes round 1 follow an active ω: each node's footprint swept along
+    # ±½ω × q; it punches more diffuse at every node, where the sweep takes
+    # only the tails it finds.  Neither touches symmetrised data, where a
+    # turned UB shows as rings, not shifts.  The remedy is refining the UB in
+    # the reduction.
+    rotation_aware: bool = False
     tail_sweep: str = "auto"
 
 

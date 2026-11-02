@@ -697,9 +697,9 @@ class StageParamsIn(BaseModel):
     punch_search_protect_h: list[float] | None = None
     punch_search_protect_half_width: float | None = None
     punch_search_max_width_ratio: float | None = None
-    # A UB turned in the reduction (THY-60): round 1 follows the fitted
-    # rotation when it is active (bool), and round 2 sweeps the tails it
-    # leaves ("off" | "auto" | "on").
+    # A UB turned in the reduction (THY-60): round 2 sweeps the tails it
+    # leaves ("off" | "auto" | "on"; auto by default), and round 1 can follow
+    # the fitted rotation when it is active (bool; off by default).
     punch_rotation_aware: bool | None = None
     punch_tail_sweep: str | None = None
     punch_mode: str | None = None

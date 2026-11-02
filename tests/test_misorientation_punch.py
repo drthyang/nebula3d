@@ -182,8 +182,10 @@ CASES = {
 }
 SETTINGS = {
     "off": {"rotation_aware": False, "tail_sweep": "off"},
-    "round2": {"rotation_aware": False},
+    # The default: the tail sweep on auto, round 1 as before.
     "default": {},
+    # The option: round 1 rotation-aware as well.
+    "both": {"rotation_aware": True},
 }
 _CRYSTALS: dict[str, object] = {}
 _PUNCHES: dict[tuple[str, str], object] = {}
@@ -229,7 +231,7 @@ def test_no_turn_leaves_both_rounds_inactive_and_the_punch_bit_identical():
     out = _punch("aligned", "default")
     m = out._bragg_profile["misorientation"]  # type: ignore[attr-defined]
     assert m["status"] == "not_significant" and not m["active"]
-    assert m["round1"] == {"rotation_aware": True, "stretched": 0, "centred": 0}
+    assert m["round1"] == {"rotation_aware": False, "stretched": 0, "centred": 0}
     assert out._bragg_profile["tail_sweep"]["ran"] is False  # type: ignore[attr-defined]
     assert out._punched_round2 is None  # type: ignore[attr-defined]
     off = _punch("aligned", "off")
@@ -304,7 +306,9 @@ def test_off_is_the_punch_before_thy60(monkeypatch):
     """With both off, every crystal is punched as main punched it, voxel for
     voxel, on whatever platform runs the test: against main's punch rebuilt
     live, the THY-60 steps taken out (no diagnosis, no stretch, no sweep) and
-    main's own ``_punch_centers``.  A hard-coded count is not portable: the
+    main's own ``_punch_centers``.  The default (the sweep on auto, round 1 as
+    before) is main's punch plus round 2's recorded voxels, and nothing else.
+    A hard-coded count is not portable: the
     synthetic crystals' borderline voxels fall differently with the platform's
     floating point (the features crystal punches 35,477 voxels on macOS arm64,
     35,396 on CI's Linux x86-64, main's code and this branch's alike)."""
@@ -313,6 +317,7 @@ def test_off_is_the_punch_before_thy60(monkeypatch):
 
     names = ("aligned", "random", "t03", "t05", "features")
     off = {name: _punch(name, "off")._punched for name in names}  # type: ignore[attr-defined]
+    defaults = {name: _punch(name, "default") for name in names}  # before the patches below
     monkeypatch.setattr(BraggRemover, "_punch_centers", _main_punch_centers)
     monkeypatch.setattr(BraggRemover, "_diagnose_rotation",
                         lambda self, vol, peaks: Misorientation(status="no_peaks"))
@@ -323,6 +328,13 @@ def test_off_is_the_punch_before_thy60(monkeypatch):
         main = punch_bragg(_crystal(name).vol, PunchParams(**SETTINGS["off"]))  # type: ignore[attr-defined]
         assert np.array_equal(off[name], main._punched), name  # type: ignore[attr-defined]
         assert main._bragg_profile["misorientation"] is None  # type: ignore[attr-defined]
+        # The default changes main's punch by round 2's recorded voxels alone:
+        # round 1 is main's, voxel for voxel, with or without a turn.
+        default = defaults[name]
+        r2 = default._punched_round2  # type: ignore[attr-defined]
+        r2 = np.zeros_like(off[name]) if r2 is None else r2
+        assert not (r2 & main._punched).any(), name  # type: ignore[attr-defined]
+        assert np.array_equal(default._punched, main._punched | r2), name  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("name, off_min, kept_max", [("t03", 50, 2), ("t05", 700, 10)])
@@ -334,10 +346,10 @@ def test_the_tails_are_removed_down_to_the_aligned_crystals_level(name, off_min,
     assert _leaks("aligned", "default") == 0
     assert _leaks(name, "off") >= off_min
     assert _leaks(name, "default") <= kept_max
-    assert _leaks(name, "round2") <= kept_max
+    assert _leaks(name, "both") <= kept_max
     # The record's own numbers, from the data alone: the voxels at the gate
     # beside the holes along ±ω × q̂, before and after round 2.
-    ts = _punch(name, "round2")._bragg_profile["tail_sweep"]  # type: ignore[attr-defined]
+    ts = _punch(name, "default")._bragg_profile["tail_sweep"]  # type: ignore[attr-defined]
     assert ts["ran"] and ts["n_voxels"] > 0
     assert ts["tail_voxels"]["after"] <= 0.02 * ts["tail_voxels"]["before"]
     # The Bragg intensity left outside the holes falls by most of it.
@@ -348,15 +360,16 @@ def test_the_tails_are_removed_down_to_the_aligned_crystals_level(name, off_min,
         keep = c.vol.mask & ~out._punched  # type: ignore[attr-defined]
         return float(c.bragg[keep].sum() / c.bragg.sum())  # type: ignore[attr-defined]
 
-    assert left("default") < 0.2 * left("off")
+    assert left("default") < left("off")
+    assert left("both") < 0.2 * left("off")
 
 
 def test_the_pinned_tail_numbers():
     """This platform's numbers for the 0.5° crystal (see the report in
     docs/algorithms/bragg_cleanup.md, "A UB turned in the reduction")."""
-    assert (_leaks("t05", "off"), _leaks("t05", "round2"), _leaks("t05", "default")) == (756, 9, 5)
-    assert (_leaks("t03", "off"), _leaks("t03", "round2"), _leaks("t03", "default")) == (55, 2, 0)
-    ts = _punch("t05", "round2")._bragg_profile["tail_sweep"]  # type: ignore[attr-defined]
+    assert (_leaks("t05", "off"), _leaks("t05", "default"), _leaks("t05", "both")) == (756, 9, 5)
+    assert (_leaks("t03", "off"), _leaks("t03", "default"), _leaks("t03", "both")) == (55, 2, 0)
+    ts = _punch("t05", "default")._bragg_profile["tail_sweep"]  # type: ignore[attr-defined]
     assert ts["n_voxels"] == 1221 and ts["tail_voxels"] == {"before": 788, "after": 0,
                                                             "left_alone": 0}
 
@@ -374,8 +387,8 @@ def test_bright_fills_fall():
 
     before = bright("off")
     assert before > 0
-    assert bright("round2") < before and bright("default") < before
-    rec = _punch("t05", "round2")._bragg_profile["tail_sweep"]["bright_fill"]  # type: ignore[attr-defined]
+    assert bright("default") < before and bright("both") < before
+    rec = _punch("t05", "default")._bragg_profile["tail_sweep"]["bright_fill"]  # type: ignore[attr-defined]
     assert rec["before"] > rec["after"] == 0.0
     del c
 
@@ -385,7 +398,7 @@ def test_diffuse_features_beside_the_nodes_survive_the_sweep():
     run: round 2 takes none of their voxels, and leaves those nodes alone."""
     c = _crystal("features")
     feature = c.features > 3 * c.vol.sigma  # type: ignore[attr-defined]
-    for setting in ("round2", "default"):
+    for setting in ("default", "both"):
         out = _punch("features", setting)
         r2 = out._punched_round2  # type: ignore[attr-defined]
         assert r2 is not None and r2.any()
@@ -397,7 +410,7 @@ def test_diffuse_features_beside_the_nodes_survive_the_sweep():
 
 
 def test_every_round2_voxel_is_recorded(tmp_path):
-    out = _punch("t05", "round2")
+    out = _punch("t05", "default")
     r2 = out._punched_round2  # type: ignore[attr-defined]
     punched = out._punched  # type: ignore[attr-defined]
     assert r2 is not None and not (r2 & ~punched).any()
@@ -422,7 +435,7 @@ def test_every_round2_voxel_is_recorded(tmp_path):
 
 
 def test_the_backfill_runs_once_on_the_union():
-    out = _punch("t05", "round2")
+    out = _punch("t05", "default")
     r2 = out._punched_round2  # type: ignore[attr-defined]
     filled = backfill(out, BackfillParams())
     assert filled.mask[r2].all()
@@ -443,12 +456,12 @@ def test_symmetrised_data_are_never_read_for_a_turn():
 def test_the_caps(monkeypatch):
     vol = _crystal("t05").vol  # type: ignore[attr-defined]
     monkeypatch.setattr(tail_sweep, "GROWTH_CAP", 0.0)
-    out = punch_bragg(vol, PunchParams(**SETTINGS["round2"]))
+    out = punch_bragg(vol, PunchParams(**SETTINGS["default"]))
     ts = out._bragg_profile["tail_sweep"]
     assert ts["n_voxels"] == 0 and ts["counts"]["capped"] > 0 and ts["counts"]["swept"] == 0
     monkeypatch.setattr(tail_sweep, "GROWTH_CAP", 1.0)
     monkeypatch.setattr(tail_sweep, "SHELL_CAP", 0.0)
-    out = punch_bragg(vol, PunchParams(**SETTINGS["round2"]))
+    out = punch_bragg(vol, PunchParams(**SETTINGS["default"]))
     ts = out._bragg_profile["tail_sweep"]
     assert ts["n_voxels"] == 0 and ts["counts"]["shell_capped"] > 0 and ts["shells_capped"]
 
@@ -461,9 +474,9 @@ def test_round2_keeps_out_of_the_declared_modulation_and_the_h_guard():
     planes = Modulation.parse({"k": "0, 1/6, 0", "form": "planes"})
     assert planes is not None
     protected = np.broadcast_to(planes.mask(vol, None, (1, 1, 1)), vol.shape)
-    free = _punch("t05", "round2")._punched_round2  # type: ignore[attr-defined]
+    free = _punch("t05", "default")._punched_round2  # type: ignore[attr-defined]
     assert (free & protected).any()  # without the declaration it would punch there
-    out = punch_bragg(vol, PunchParams(**SETTINGS["round2"]), modulation=planes)
+    out = punch_bragg(vol, PunchParams(**SETTINGS["default"]), modulation=planes)
     r2 = out._punched_round2  # type: ignore[attr-defined]
     assert r2 is not None and r2.any() and not (r2 & protected).any()
     guard = PunchParams().integer_h_guard_hkl
@@ -487,7 +500,7 @@ def test_round1_centres_an_unfitted_peak_where_the_turn_puts_its_node():
     centre could not be fitted moves to node + ω × q.  Both are stretched by
     |ω × q| along ω × q̂ (swept ±½ ω × q)."""
     vol = _crystal("t05").vol  # type: ignore[attr-defined]
-    rem = bragg_remover(PunchParams())
+    rem = bragg_remover(PunchParams(**SETTINGS["both"]))
     peaks, _, _ = rem._detect(vol)
     turn = rem._rotation_report["misorientation"]
     node = (8, 1, 0)
@@ -533,9 +546,10 @@ def test_the_run_writes_the_record_and_the_api_serves_it(tmp_path):
     def params(**kw):
         return build_params(SimpleNamespace(flatten_enabled=False, params=StageParamsIn(**kw)))
 
-    p = params(punch_rotation_aware=False, punch_tail_sweep="auto")
+    p = params()
     assert (p.punch.rotation_aware, p.punch.tail_sweep) == (False, "auto")
-    assert (params().punch.rotation_aware, params().punch.tail_sweep) == (True, "auto")
+    both = params(punch_rotation_aware=True, punch_tail_sweep="on")
+    assert (both.punch.rotation_aware, both.punch.tail_sweep) == (True, "on")
     with pytest.raises(ValueError, match="punch_tail_sweep"):
         params(punch_tail_sweep="always")
     paths = run_pipeline(raw, p, proc_dir=tmp_path / "processed", stages=("punch",))
