@@ -8,20 +8,12 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
-import { COLORMAPS } from "../../colormaps/luts";
-import type { Slice } from "../../api/types";
 import { BrandGlyph } from "../../components/ui";
 import { useNavStore } from "../../state/navStore";
 import { toolsKnownUnsupported, type AgentStep } from "../agent";
 import { useChatStore, type ChatTurn } from "../chatStore";
-import {
-  buildChatMessages,
-  buildStageReviewMessages,
-  STAGE_REVIEW_LABELS,
-  type ReviewStage,
-} from "../prompts/templates";
+import { buildChatMessages } from "../prompts/templates";
 import { seen } from "../readings";
-import { renderSliceToDataUrl } from "../render/sliceImage";
 import { askAssistant, clearConversation, replyContext, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
 import { CHAT_TOOLS, factsOf, type ToolContext } from "../tools";
@@ -33,41 +25,6 @@ import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
 import { uncountedText, usageText } from "../usage";
 import { verdictLine } from "../verdict";
-
-// One-click requests that have the model act: assess the run on the four
-// checks that decide whether it can be trusted, or tune it.
-const ACTIONS = [
-  {
-    label: "Assess the run",
-    prompt:
-      "Assess this reduction on four checks, each with its tool: (1) is the ring removal clean (assess_stage rings, radial_profile); (2) are the Bragg peaks removed cleanly (assess_stage punch); (3) did the punch and backfill add texture to reciprocal space (texture_check); (4) is Qmax inside the data coverage (qmax_coverage). Also report any other stage that misses its goal, such as the background correction's floor (the flatten stage). Run the pipeline first if outputs are missing.",
-  },
-  {
-    label: "Tune for the best result",
-    prompt: "Tune the pipeline for the best result, then process the data with the chosen settings and assess it.",
-  },
-];
-
-// Pick the slice + colour mapping to render for a given stage review.
-function stageImage(stage: ReviewStage, ac: AssistantContext): string | null {
-  const pick: Record<ReviewStage, { slice?: Slice | null; diverging: boolean; cmap: string; vmax?: number | null }> = {
-    rings: {
-      slice: ac.slices.ringremoved,
-      diverging: false,
-      cmap: "inferno",
-      vmax: ac.context.ring_removal?.suggested_display_vmax,
-    },
-    punch: { slice: ac.slices.braggpunched, diverging: false, cmap: "inferno" },
-    backfill: { slice: ac.slices.backfilled, diverging: false, cmap: "inferno" },
-    flatten: { slice: ac.slices.flattened, diverging: true, cmap: "RdBu_r" },
-    dpdf: { slice: ac.slices.dpdf, diverging: true, cmap: "RdBu_r" },
-  };
-  const p = pick[stage];
-  if (!p.slice) return null;
-  const lut = COLORMAPS[p.cmap] ?? COLORMAPS.inferno;
-  const vmax = p.vmax && p.vmax > 0 ? p.vmax : p.slice.header.robust_max || 1;
-  return renderSliceToDataUrl(p.slice, { lut, vmax, diverging: p.diverging });
-}
 
 // A token count in a few characters: 950, 12.3k, 1.2M.
 const compactTokens = (n: number): string =>
@@ -288,23 +245,6 @@ export function ChatView({
     ask(text);
   }, [draft, setDraft, ask]);
 
-  const runReview = useCallback(
-    (stage: ReviewStage) => {
-      if (!assistant || busy) return;
-      const image = settings.attachImages ? stageImage(stage, assistant) : null;
-      pinned.current = true;
-      void askAssistant({
-        label: STAGE_REVIEW_LABELS[stage] + (image ? " (with image)" : ""),
-        messages: buildStageReviewMessages(assistant.context, stage, image, { tools }),
-        tools: settings.useTools ? CHAT_TOOLS : [],
-        // A review sends no earlier turn: a skill read in one opens no gate here.
-        ctx: toolContext && replyContext(toolContext, turns),
-      });
-    },
-    [assistant, busy, turns, settings.attachImages, settings.useTools, tools, toolContext],
-  );
-
-  const stages: ReviewStage[] = ["rings", "punch", "backfill", "flatten", "dpdf"];
   const disabled = !connected || !assistant;
   const empty = turns.length === 0 && !busy;
   // The tuning store holds one run: its card goes under the reply that started
@@ -392,33 +332,6 @@ export function ChatView({
 
       <div className="ai-dock">
         {connected && contextNote && <div className="ai-conn-warn">{contextNote}</div>}
-        <div className="ai-reviews">
-          {tools &&
-            ACTIONS.map((a) => (
-              <button
-                key={a.label}
-                type="button"
-                className="ai-chip ai-chip-act"
-                disabled={disabled || busy}
-                onClick={() => ask(a.prompt)}
-                title={disabled ? "Connect a model and select a dataset first" : a.prompt}
-              >
-                {a.label}
-              </button>
-            ))}
-          {stages.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="ai-chip"
-              disabled={disabled || busy}
-              onClick={() => runReview(s)}
-              title={disabled ? "Connect a model and select a dataset first" : undefined}
-            >
-              {STAGE_REVIEW_LABELS[s]}
-            </button>
-          ))}
-        </div>
         <div className="ai-toggles">
           <button
             type="button"
