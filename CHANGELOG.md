@@ -4,6 +4,9 @@
 
 ## 0.4.0 — 2026-11-02
 
+- **Fix: on iPhone the Q–R band slider's second knob hid behind the bar.** Safari
+  ignored the rule that clears the dual slider's track; it now applies.
+
 - **NEBULA Pilot no longer passes results no tool returned.** A sentence that
   writes numbers and names a tool now needs that tool to have run in the
   reply, whatever its hedge ("illustrative", "about"), and a numbered ΔPDF
