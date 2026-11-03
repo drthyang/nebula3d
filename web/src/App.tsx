@@ -30,6 +30,7 @@ import { useDatasetStore, useInitializeDataset } from "./state/datasetStore";
 import { useNavStore, type Tab } from "./state/navStore";
 import { usePipelineStore } from "./state/pipelineStore";
 import { datasetName } from "./api/datasetName";
+import pkg from "../package.json";
 
 
 // `short` is the label used by the compact top bar (phones and iPad portrait),
@@ -82,10 +83,12 @@ const REPO_URL = "https://github.com/drthyang/nebula3d";
 /** The version badge: beside the name at the top; in the compact top bar, which
  *  hides the name, in the foot at the end of <main> instead. */
 function VersionBadge() {
+  // The number comes from package.json, so a release shows no "dev" tag.
+  const [num, pre] = pkg.version.split("-");
   return (
     <span className="ver" title="NEBULA3D version">
-      <span className="ver-num">v0.4.0</span>
-      <span className="ver-tag">dev</span>
+      <span className="ver-num">v{num}</span>
+      {pre && <span className="ver-tag">{pre.split(".")[0]}</span>}
     </span>
   );
 }
