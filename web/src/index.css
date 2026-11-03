@@ -7222,7 +7222,12 @@ html.kb-open .ai-side {
     height: 44px;
     margin: 0;
   }
-  .range-dual input[type="range"]::-webkit-slider-runnable-track,
+  /* Two rules, not one list: Safari drops a whole selector list holding a
+     ::-moz pseudo-element, and the top input's opaque track then hid the
+     other thumb on iPhone. */
+  .range-dual input[type="range"]::-webkit-slider-runnable-track {
+    background: none;
+  }
   .range-dual input[type="range"]::-moz-range-track {
     background: none;
   }
