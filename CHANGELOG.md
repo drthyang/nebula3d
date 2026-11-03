@@ -2,6 +2,741 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-11-02
+
+- **NEBULA Pilot no longer passes results no tool returned.** A sentence that
+  writes numbers and names a tool now needs that tool to have run in the
+  reply, whatever its hedge ("illustrative", "about"), and a numbered ΔPDF
+  feature with a distance ("Feature 1: Δr ≈ 2.55 Å") counts as a claim on the
+  pair correlations, which needs `dpdf_peaks` or a measured section. An answer
+  that fails its checks is sent back even when the model used every round but
+  one: the rewrite is then the reply's last request, without tools, and the
+  model is asked to leave out what no tool supports. `ub_check` now says that
+  its fit changes no data.
+
+- **Fixed: the whole app scrolled past its content.** The switches' hidden
+  checkboxes (absolutely positioned) had the page body as their containing
+  block, so on long pages they hung below the scrolling pane and stretched the
+  document: the sidebar, the page and the Pilot panel all scrolled away,
+  leaving empty space. The switch, the sidebar and the main pane now contain
+  their absolutely placed descendants; the app stays one screen tall and each
+  pane scrolls on its own.
+
+- **The flatten is called "Background correction" in the console.** The
+  stage subtracts the fitted isotropic radial background (const + c·F(Q)², and
+  b·Q² when chosen), and the console now names it so: the Configure card and
+  its output ("Background corrected"), the Execution page's stage, Reciprocal
+  cleanup's view ("Background-corrected"), the Q–R page's hints, NEBULA
+  Pilot's review chip, the tuning cards, the report and the docs. Every
+  identifier keeps the name flatten, so saved settings, sessions, outputs
+  (`*_flattened.h5`), scripts and the Pilot's tools work as before. What the
+  model reads (the Pilot's system and tuning prompts, the skills, the tools'
+  lines and errors, among them the server's "no flattened/backfilled volume",
+  the verdict under a reply and the answer checks' words) and the pipeline's
+  log lines keep "flatten" for now: the validation is frozen at
+  812e686 (docs/evals.md, "The freeze"), and their wording waits for its live
+  runs.
+
+- **Fixed: `qmax_coverage` and other counts failed in the browser.** In the
+  browser's 32-bit Python, `np.bincount` refuses int64 indices ("Cannot cast
+  array data from dtype('int64') to dtype('int32')"). Every count in the
+  package now goes through `nebula3d.utils.counting.bincount`, which casts the
+  indices first; a test keeps raw `np.bincount` calls out.
+
+- **Bragg profile opens zoomed out.** The peak tiles open at 8× the peak's
+  widest fitted width (0.25–1.2 r.l.u.) instead of 3.5× (0.08–0.6), so the
+  peak's surroundings are in view. The colour range is still taken from the
+  tighter window about the peak, so neighbouring nodes don't dim it.
+
+- **Structure overlay: a CIF whose cell differs from the ΔPDF's is still
+  drawn.** What the ΔPDF shows is pair correlations, so the CIF's pair vectors
+  are now placed at the CIF's own lengths (Å) along the ΔPDF's axes, keeping
+  every pair at its real distance, with a warning in the structure panel, the
+  legend and the Q–R page. Before, a cell outside the 3 % / 1° tolerance (a
+  sub- or supercell, another setting) drew nothing, while the note said the
+  vectors were placed on the ΔPDF's cell. A matching CIF is still placed on
+  the ΔPDF's own cell.
+
+- **New: Close volume.** A button beside Save session and Restore session
+  unloads the volume and returns the console to the state it starts in, ready
+  to load another: the run and its log, the slice views and their caches, the
+  marked regions, the structure overlay and the NEBULA Pilot conversation all
+  go. It asks first when a run is going (cancelled cleanly before the reset)
+  or the session has not been saved. The memory goes back too: the
+  in-browser engine starts a fresh worker (its heap never shrinks otherwise),
+  and the native server lets go of the volumes it caches for the views
+  (`POST /api/release`). No file is deleted. Every store says, beside its own
+  definition, how Close treats it, and a test fails on one that does not.
+
+- **The analysis report opens on what matters.** It began with every check's
+  measure table, the dataset, the agent's steps and every setting, and kept
+  the limitations at its end beside two notes every report carries. It now
+  opens on the goal, each check's verdict and headline numbers, the
+  limitations that bear on them (moved up), the model's summary and the
+  figures; the provenance (each check's criterion and measures, the dataset,
+  the tuning trials, the agent's steps, the settings and those notes) follows
+  in one *Details and provenance* section, collapsed on the page, opened by
+  *Print / PDF*, and in full in the Markdown, so nothing it held is lost. On
+  the demo run the page shows 2 709 characters instead of 8 126. A ΔPDF
+  figure's caption no longer prints its field of view to 15 digits. A tool
+  call of the agent's that failed is now listed among the limitations, not
+  only in the collapsed steps; the ΔPDF card's numbers add the odd share and
+  the back-FFT's normalised RMS; and the downloaded page prints its details
+  open from the browser's own Print as well.
+
+- **The Configure page, reorganized: the preview on top, in tabs, zoomed like
+  every other slice view.** The punch preview moves from the bottom of the
+  page to a card of its own under *Data*, and its three slices fold into one
+  view with tabs for a\*–b\*, a\*–c\* and b\*–c\* (arrow keys move between
+  them; the browser remembers the tab). It is now a slice view like those of
+  the viewer pages: Ctrl/⌘ + wheel or a pinch zooms, a Shift, middle or
+  two-finger drag pans, a double-click (or *Reset zoom*, or 0) returns to the
+  full view, *Box zoom* and the gesture card are in its header, *Unit cell*
+  draws the lines of integer h, k, l, and hovering reads (H, K, L) and the
+  intensity. Each plane keeps its own zoom, and the punch footprints, the
+  direct beam and the |Q| band stay on the data at any zoom. The *Preview
+  zoom* and *Contrast* sliders give way to the shared display bar (colormap ·
+  vmin [bar] vmax · asinh / lin / log · Auto · Brightness); the three planes
+  share one scale, with Auto from their cuts through the origin. The
+  powder-ring schematic is gone; the ring removal's **?** now gives the
+  selected model's formula and what each term is (the pooled sector median
+  and its baseline and window, the global model's shells and spherical
+  harmonics, the parametric pseudo-Voigt × Fourier texture, the patched
+  per-patch profile), with the form's values in it.
+- **One section per stage, with the same head and the advanced settings
+  folded away.** The stages run top to bottom in pipeline order (ring
+  removal, Bragg punch, backfill, background correction, 3D-ΔPDF), each
+  headed by its number, the Execution stepper's name for it, one plain line
+  saying what it does, the details behind **?**, and *Enable stage*. Each
+  stage's less-used settings sit under *Advanced*, closed at first and
+  remembered by the browser; closed, it says how many of them differ from
+  their defaults. When NEBULA Pilot changes a setting (or a tuning run keeps
+  one), the fold that holds it opens for the visit and the changed field
+  flashes twice, wherever it is; the user's own edits and a restored session
+  never open a fold. The punch's settings are four boxes: *Detection*,
+  *Sample* (the punch cell and the modulation), *Bragg footprint* and
+  *Direct beam*. The |Q| band, a 3D-ΔPDF setting, moves into the 3D-ΔPDF
+  section. No setting, default or value changes, and NEBULA Pilot reads and
+  changes the same settings as before.
+
+- **The Configure preview shows its three planes side by side when there is
+  room.** On a card at least 1100 px wide (a 1440 px window or wider, with
+  NEBULA Pilot's dock folded) a\*–b\*, a\*–c\* and b\*–c\* sit next to each
+  other, each about square (350 px or more) with its own Reset zoom and its
+  cut slider under it, and the legend once below. On a narrower card the
+  tabs stay as they were, with the cut in the header, and the browser still
+  remembers the tab. The layout follows the card's width, so opening the
+  Pilot dock or resizing the window switches it. Each plane keeps its own
+  zoom in either layout; the header, the display bar and the one colour
+  scale (Auto from the three cuts through the origin) are unchanged.
+- **"HKL grid" on the Configure preview.** The switch for the dashed lines
+  at integer h, k, l is named *HKL grid* there, with the tooltip "Dashed
+  lines at integer h, k, l". The other pages keep *Unit cell*, and it is
+  still one setting across the console.
+
+- **Configure: the run and session controls sit above the cards.** Force,
+  Run pipeline and View execution (left) and Save / Restore session (right)
+  moved out of the Data card into a toolbar under the page title, as the
+  page's top-level actions; the Data card keeps the stage track and the data
+  source. On a narrow page the two groups wrap onto their own rows.
+
+- **Fixed: the console no longer freezes, nor waits forever on a dead worker
+  or a dropped stream.** Four causes, each reproduced, three fixed here: (1) the NEBULA Pilot chat blocked the page for seconds on every
+  reply once the conversation was long (40 earlier replies: 11 s of blocking per
+  question, the longest freeze 4.8 s), because the saved transcript was written
+  out once per turn it dropped, and every streamed piece of a reply re-rendered
+  every earlier turn. Each turn's JSON is now written once, earlier turns render
+  once, and a step's result is put on the page only when it is opened; the same
+  question now blocks the page for at most about 0.1 s. (2) A native run whose
+  worker process died without a word (killed by the system for memory, or
+  crashed) stayed "running" forever, with its page and the Pilot waiting on it;
+  the job now fails within a second or two, saying how the process ended, and
+  the run's page shows why. (3) A tuning run's request to a model server that
+  goes quiet still waits until Stop: its fix (the request streamed under the
+  chat's stall limits, asked once more after a stall) changes how the
+  validation frozen at 812e686 runs its tuning, so it waits for the live runs.
+  (4) See the Execution page's fix for a run
+  whose progress stream drops.
+
+- **The touch gesture card mentions press-and-hold.** Its note now ends
+  "Press and hold a control to read what it does", the touch path to every
+  control's title.
+
+- **A gesture card for zoom, move and reset.** The **?** beside the click
+  modes opens a card (click, tap, or Enter / Space) with
+  one row per action — Zoom, Move, Reset, Box zoom — each way drawn as key
+  caps and pointer glyphs: ⌘ / Ctrl + scroll, pinch, + / −; Shift + drag,
+  middle-drag, the arrow keys; double-click, 0, *Reset zoom*; *Box zoom*
+  then a drag, Esc to cancel. ⌘ on Apple platforms and Ctrl elsewhere; on a
+  touch-only device the touch gestures (pinch, two-finger drag, double-tap).
+  Esc, a click outside or × closes it, and focus returns to the **?**, which
+  carries a small dot until the card has been opened once. The wheel hint
+  over a view draws its key as a key cap too ("Use [⌘] + scroll to zoom").
+  **New:** a double-tap resets a view on a touch screen, as a double-click
+  does, and Esc puts an armed *Box zoom* away wherever focus is (it needed
+  focus on the view before).
+
+- **The h, k, l grid follows the zoom.** On the r.l.u. views the *Unit cell*
+  lines are drawn every 1, 2, 5 or 10 r.l.u. along each axis: the smallest
+  step whose lines stay at least 40 px apart on screen. A zoomed-out view is no
+  longer crowded with a line at every integer.
+
+- **Which Laue class: the candidates compared by R_int.** The symmetry
+  average's section has **Compare Laue classes**: every Laue class the cell's
+  metric allows (the stage's own 2 % check) and whose operations map the grid
+  is compared by R_int on the raw volume as the stage reads it, on every
+  measured voxel and on the diffuse (the punch cell's Bragg nodes masked), in
+  units of its noise floor (what counting noise alone gives on the same
+  orbits). A table shows each class, its operations, both R_int and the orbits
+  compared, indented by the chain of its subgroups, with the classes refused
+  and why; the suggested class is the one with the most operations whose R_int
+  stays within 10 % (and 2 standard errors) of every subgroup's, with the rule
+  and the numbers that drove it, and none when even whole |Q| shells stay at
+  the noise. A ⚠ flags a diffuse that supports less symmetry than the Bragg
+  peaks. One click on a row sets the Laue class; the user runs it. Twinning
+  can make a lower class look higher, which R_int cannot tell
+  ([laue_compare.md](docs/algorithms/laue_compare.md)). Also in the API
+  (`POST /api/volumes/{id}/laue-compare`, with progress) and the browser.
+- **NEBULA Pilot: `compare_laue_classes`.** The same table and suggestion,
+  compact for local models; the system prompt asks for it before the model
+  suggests a class, which stays the user's to set.
+- **The raw edge trim is a visible setting**, *Edge trim* in the symmetry
+  average's section (0 to 3 voxel layers, 1 by default), and it applies to
+  the raw input whether or not averaging is on. Its rule is the NeXus Viewer's
+  "Edge erosion", voxel for voxel, pinned against the viewer's own code; a
+  voxel whose value is NaN now counts as unmeasured, as in the viewer, so its
+  neighbours are trimmed too. NEBULA Pilot changes it only when the user's
+  latest message names it.
+
+- **Compare Laue classes: honest standard errors, χ²/dof and a common-subset
+  check.** Neighbouring voxels share noise and errors through the resolution,
+  so the orbits are not independent samples and their standard errors were
+  too small (a third of the true spread on noise correlated over a voxel).
+  The errors now come from a spatial block bootstrap (200 resamples from a
+  fixed seed): every orbit sits in the block of its representative under the
+  largest class compared, so a class and its subgroups are resampled on the
+  same voxels, and the rule tests each class's excess over its subgroup
+  against two standard errors of that difference (capped at the subgroup's
+  own, provisional: a breaking's uneven reach is no noise). The block edge
+  follows how far the residuals stay correlated (4 voxels at least). A
+  **χ²/dof** column
+  (1 = agreement within the counting noise) sits beside R_int, and a
+  diagnostic reads every class again on the voxels the lowest class can
+  judge: a warning when the suggestion changes there, a sign of errors that
+  differ between regions of the coverage. Every earlier known answer holds
+  ([laue_compare.md](docs/algorithms/laue_compare.md)). NEBULA Pilot's
+  `compare_laue_classes` gives χ²/dof and the flag in the same result size.
+
+- **reduction-qc reads the Laue comparison** (THY-59, skill text awaiting
+  the user's review). Its Details gain a part on `compare_laue_classes`: what
+  R_int, `x_noise` and χ²/dof mean, which voxels count (only measured ones;
+  an empty voxel is never a zero), why classes see different voxels and why
+  that is evidence, how the relative test cancels shared errors and leans to
+  a class too low, the limits (correlated voxels, region-dependent errors and
+  the common-subset flag, twinning), how to read each flag, and that the class
+  is the user's to set. The rule's two numbers (10 % and two standard errors)
+  are among its gates; the algorithm page is among its references.
+
+- **The browser build points to the local version when it hits its limit.**
+  When a volume is too large for the in-browser engine (the size gate's
+  refusal at load, or its estimate for the selected dataset before a run), or
+  a run fails of the engine's memory or 32-bit limits (Python's MemoryError,
+  WebAssembly out of memory, numpy's 32-bit traps, the worker dying mid-run),
+  the console shows a card where it happened: why, in one line with the
+  numbers; QUICKSTART's install and launch commands with a Copy button and a
+  link; and "Your data stays on your computer either way." It can be
+  dismissed, remembered per dataset. A red memory bar during a run offers a
+  soft link to it without stopping the run. The native build never shows it.
+- **Known data errors read plainly.** A run stopped by `WindowSupportError`,
+  `FFTOriginError` or `SymmetryAverageError` shows the error's own message on
+  the Execution page, with the traceback behind "Details", instead of the
+  whole traceback.
+
+- **Slice views zoom and pan like an embedded map.** When the page can scroll,
+  a plain wheel or two-finger scroll over a view scrolls the page and the view
+  briefly says *Use Ctrl + scroll to zoom* (*⌘ + scroll* on macOS);
+  Ctrl/⌘ + wheel or a trackpad pinch zooms about the pointer (Safari's pinch
+  gestures included). When the views fill the window and the page cannot
+  scroll, a plain wheel zooms. A middle-button drag or Shift+drag pans in any
+  mode, and the view's centre now stays on the data, so a slice can no longer
+  be dragged off screen. A double-click, the header's *Reset zoom* or the 0
+  key returns to the full view. New + / − buttons in each view, and on a
+  focused view + / −, the arrow keys and 0. Wheel steps are read in pixels
+  whatever the browser reports, so one notch zooms by 2 in Chrome and in
+  Firefox alike (Ctrl+wheel zoomed 2.7× per notch in one and 3 % in the
+  other), and a pinch zooms as smoothly as it did. **Fixed:** on the 3D-ΔPDF
+  page the first zoom step jumped (±40 to ±26 Å on a small ΔPDF): the page
+  opens wider than its zoom limit allowed; the limit now includes the opening
+  view, as on the Q–R page.
+
+- **NEBULA Pilot marks what it found in the slice views (`mark_region`).**
+  When the Pilot finds something you should look at, such as satellites at
+  h ± q, a ring left over or a ΔPDF feature, it marks the region: a box, an
+  ellipsoid or a few points, on the stage it was found in (raw or a cleanup
+  stage, in r.l.u., or the 3D-ΔPDF, in Å), with a short label. A mark must
+  cite the measurements that show it (calls of measuring tools in the
+  conversation, not stale after a rerun), and a region outside the volume or
+  empty is refused with why. The console moves to it and draws it on every
+  view it crosses (Reciprocal cleanup, 3D-ΔPDF and the Q–R page), in a
+  colour the colormap lacks, with a label chip; it follows zoom and pan,
+  oblique sections included. The tool's result says which views and cuts it
+  was drawn on and the mark's id (M1, …), which the answer names; an answer
+  that names an id no call returned goes back to the model once, then is
+  noted under the reply. The Pilot panel lists the marks: click one to go
+  back to it, hide or remove one, or hide or clear them all; the chat's
+  Clear clears them with the conversation. Marks survive a reload and are
+  saved in session files.
+
+- **A memory bar in the sidebar.** Under the API status (at the end of each
+  page on a phone): memory used against a ceiling, the share in percent, amber
+  from 75 % and red from 90 %, and a tooltip saying what is measured, which
+  the **?** beside it opens as a card on a touch screen or from the keyboard
+  (Esc, a press outside or its × closes it). In the
+  in-browser build it is the pipeline worker's WASM heap against Pyodide's
+  4 GiB ceiling, a high-water mark, since the heap never shrinks; the ring
+  workers' heaps are listed in the tooltip. On a phone or tablet it is every
+  worker's heap against the 1.3 GB tab budget the size gate plans with, shown
+  as a lower bound (`≥`, "heaps only"), because the tab holds more than its
+  heaps. The workers report their heaps themselves when they grow, so nothing
+  polls them. In the native console it is the server and its running pipeline
+  processes against the machine's RAM: RSS on Linux, the physical footprint on
+  macOS, nothing elsewhere. A new endpoint, `GET /api/memory`, reports it,
+  with the standard library only (psutil is not a dependency). The bar only
+  reports: the free room inside a high-water heap can't be measured, so it
+  gives no pre-run warning beyond the size gate's refusal at load. See
+  [docs/web.md](docs/web.md#memory-bar).
+
+- **Navigate is gone from the slice viewers.** The header's *Navigate* button
+  and the mode behind it are removed: the *Box zoom* tool is now one toggle
+  (press it, drag a box, and it puts itself away; Esc or a second press
+  cancels), beside the gesture card's **?**. A plain click on a view does
+  nothing, so on 3D-ΔPDF a click no longer moves the other two cuts; set them
+  with each view's cut slider. Hovering still draws the dashed crosshair,
+  shared by linked views, and the readout under the views; zoom, pan,
+  double-click reset, the keys and touch gestures are unchanged.
+
+- **Phones and iPads.** Every control is at least 44 × 44 px to a finger
+  (buttons, switches, tabs, selects, fields, sliders, the help and gesture
+  **?**, the colour-limit handles, the views' + / − and header icons, the
+  Pilot's close button and sheet handle). A tap on a slice view reads its
+  values, which needed a hover before, and one finger scrolls the page over a
+  view (on a phone the views fill the width; two fingers still pinch and
+  move it). A title tooltip, which never shows on a touch screen, opens when
+  a control is pressed and held, or when a field takes focus. NEBULA Pilot's
+  bottom sheet keeps its composer in view: its one-click requests scroll in
+  one row, the page gives up its room before the sheet, and with the
+  on-screen keyboard up the console fits above it. A phone held landscape
+  docks the Pilot beside the page instead of a sheet under 200 px tall.
+  Fixed: on a phone or a narrow window, the Configure Data card's stage track
+  took 520 px of empty height; the Configure preview's readout names its
+  value (`I 0.269`), which read as part of the cut.
+
+- **A shortened skill keeps its method, and the estimate reads skills as
+  prose** (THY-63 R5). When a long reply runs short of room, a skill's text
+  keeps its head, its gates and its steps, where it kept only its gates; a
+  section read on request shortens to the line that names it. A stage's whole
+  criterion comes again once the result that carried it was shortened. The
+  context guard counts a skill's Markdown at 3.0 characters a token, under
+  what local tokenizers read, instead of the 1.4 of number-dense results, so
+  the worst assessment (about 26k tokens with room for the reply) fits a 32k
+  window with nothing shortened. The setup hints and the cut-off note quote
+  the measured sizes.
+
+- **NEBULA Pilot starts from a short core prompt and a summary of the
+  dataset.** With Tools on, the system prompt is a core of about 2.9k
+  characters (it was about 13.9k): the evidence rules, the checks that judge a
+  run with the tool for each, how to act, and which facts about the sample
+  stay yours. Each tool's own rule is in its description or its result, the
+  method in the skills (`docs/pilot-prompt.md` lists where each rule went and
+  keeps the old text). The first message is a few lines about the dataset (its
+  name, cell, grid and ranges, whether the raw volume is symmetrised, the
+  outputs on disk) instead of one cut's metrics, so the model measures before
+  it answers; what those metrics mean now comes with the cut tools' first
+  result in a reply.
+  The prompt no longer asks for "a few well-chosen" tool calls; it states the
+  round limit as a limit, not a target, and shows how to cite a cell of a
+  column table. Every request is about 5,100 tokens lighter by the context
+  guard's estimate, and on LM Studio at 32k the window guard no longer cuts
+  the skills just read to stubs. With Tools off nothing changes.
+
+- **NEBULA Pilot no longer changes the ring removal on one cut's bumps.** A
+  ring setting changes, and the rings are tuned, only once `assess_stage`'s 3D
+  ring verdict finds a ring left or dented on the current outputs, or when your
+  message names the change. The cut tool's glossary now says its ring residuals
+  are no ring verdict, since the crystal's own scattering makes them too. A free
+  local eval had seen a model remove a crystal's own diffuse shell this way.
+- **An answer kept although it failed its checks is marked.** When the model's
+  revision writes nothing in its place, the lines that hold unsupported claims
+  carry a ⚠ and the note under the reply quotes them. ΔPDF features written in
+  LaTeX (`\Delta\text{PDF}`, `\text{Å}`) now count as claims that need
+  `dpdf_peaks`.
+- **`qmax_coverage` says what `counts_end_inside_box` means:** true when the
+  counts stop before the box's face. A model had read `false` as the opposite.
+
+- **NEBULA Pilot's tool results are more compact.** The model reads the same
+  numbers in fewer tokens: radial_profile's shells, bragg_peaks' peaks and
+  run_log's lines come as column tables (the column names once, a row of
+  values per entry), and an answer may still name a value by its row and
+  column. A ΔPDF feature's size carries its sign (−1520σ), so an answer that
+  quotes it signed is no longer sent back. ub_check now gives its verdict
+  with the angle and the 0.05° limit it was judged by, and assess_stage
+  states a stage's whole criterion once in a reply, then only its limits.
+
+- **The Pilot reads a skill's core, and the rest on request** (THY-63 R4,
+  skill text awaiting the user's review). Each skill is written as a head,
+  `## Gates` (its thresholds, each once), `## Steps` and `## Details`.
+  `read_skill` returns the head, gates and steps; Details, or one part of it,
+  comes with `section`. A reference page longer than 4,000 characters is read
+  from an index of its headings, one section at a time (a long section part
+  by part), where a page used to be cut at 12,000. On the token budget's
+  worst turn the skills read fall from about 20.8k to 9.9k estimated tokens.
+  The skill lint holds each skill to the form.
+
+- **NEBULA Pilot's tool descriptions are short contracts.** Each tool tells
+  the model what it answers, what it takes, what it returns and when to call
+  it, in at most 500 characters (it was up to 1,300); the method is in the
+  skills and the docs (`docs/pilot-tools.md` keeps the text the descriptions
+  held). Every request is about 1,600 tokens lighter. A threshold that left a
+  description is in its tool's result: texture_check now states its
+  fill-bias rule. configure_settings lists only the settings off their
+  defaults, with how many are at them; `all: true` lists every one.
+  dpdf_peaks says how to read its entries in its description, not in every
+  result.
+
+- **NEBULA Pilot reports the extra rings' phase as a possibility.**
+  reduction-qc's details say how: the phase "might be" the one named, with
+  the rings matched, the lattice scale and the rings left unmatched, never
+  asserted; the removal subtracts confirmed rings whatever their phase.
+
+- **Extra powder rings get a name: which phase they may be.** After it
+  judges the shells, the pooled ring removal matches the rings the Al lines
+  leave against a small library of powder phases: flux metals (Bi, Sn, Ga,
+  In, Pb, Sb, Te, Zn), sample-environment metals (Al, Cu, V, Ti, Nb, iron,
+  austenitic steel, W) and ice, graphite, Si, quartz and corundum, each with
+  its space group, a room-temperature cell and its atoms from a cited
+  Crystallography Open Database entry. The lines' neutron intensities come
+  from Sears' scattering lengths, so vanadium's nearly invisible lines count
+  as such. One lattice scale per phase (thermal contraction, within ±1.5 %)
+  is fitted; the lines hidden under an Al ring are left out, strong lines
+  missing count against a phase, and one ring alone never names one. The
+  result is a possibility with its evidence, recorded in the ring
+  diagnostics: the Reciprocal cleanup page says it in one line ("Extra
+  powder rings: likely Bi (5 of 6 rings matched, scale −0.3 %)", the
+  lines and the unmatched rings behind "?"), and NEBULA Pilot's ring check
+  gives it as `stage_phases`. Nothing is subtracted for it. Your own phases
+  can be added in a file of the same format (`NEBULA3D_POWDER_PHASES`).
+  Kapton and GE varnish halos (X-rays) wait for a cited position.
+
+- **Fixed: the progress indicators say what happened.** The Execution page
+  kept "Running", its spinner and Cancel for a native run whose progress stream
+  dropped (the server restarted, or the network): it now asks the job — follows
+  it again while it runs, without logging its lines twice, takes its end when
+  it ended, or says the run was lost. A completed run no longer calls the
+  stages it was not asked for "queued", nor counts them ("6 of 6 stages
+  complete" beside "4 / 6 done"): they read "not in this run", or **stale** when
+  the run recomputed a stage before them and their old output remains, and the
+  run counts its own stages. The dataset listing now dates each output
+  (`mtime`), and Configure marks an output older than one upstream of it stale;
+  its badges also refresh when a native run ends (they kept "missing" for up to
+  five minutes). An in-browser run that was cancelled reads "Cancelled", not
+  "Failed", and no longer claims its completed stages were saved: stopping the
+  in-browser engine discards them. NEBULA Pilot steps and tuning trials still
+  running when a reply or a tuning run was stopped, or ended by an error, are
+  marked stopped (and queued trials "not run") instead of spinning on in the
+  transcript, also when a saved transcript is loaded again.
+- **Fixed: a dropped progress stream no longer fails a run that is still
+  going.** After the stream dropped, one unanswered status request ended the
+  run as "Failed at stage 1 … Lost the connection", although the job ran on
+  and finished, and the fourth drop of a long run failed it even with the server
+  answering; with the run no longer counted as running, another run could start
+  writing the same files. The page now asks the job again with a back-off,
+  following it again at every drop while its stream brings events; while the
+  server cannot be reached the run stays running ("reconnecting to the
+  server…"), and after 45 s it reads **Connection lost**: its end is not known,
+  no stage is marked failed, no other run (Run pipeline, NEBULA Pilot, a tuning
+  run) starts, and the page takes the job's real end when the server answers.
+- **Fixed: a stale ΔPDF is no longer reused as current.** The pipeline reused a
+  ΔPDF whose input name and settings matched although its input had been
+  recomputed after it (a run with the ΔPDF switched off); a ΔPDF older than its
+  input is now recomputed (also on the WebGPU path and in
+  `examples/run_pipeline.py`). On the Execution page a stage that reused a stale
+  output, or computed from one, reads **stale**, not done; staleness now runs
+  down the chain (an output rebuilt from a stale one is stale), following the
+  ΔPDF's link to the flattened volume only when the ΔPDF was made from it (the
+  listing's new `source`); a tuning trial, which writes into its own folder, no
+  longer makes the dataset's untouched outputs read stale.
+- **Fixed:** a NEBULA Pilot step that the user stopped (Stop during
+  `run_pipeline`, which cancels the run) reads "stopped", not as an error; a
+  cancelled in-browser run refreshes the dataset listing (the outputs went
+  with the engine).
+
+- **A local model with Tools needs a 32k context, down from 56k.** Since the
+  leaner Pilot context (THY-63), the worst assessment is about 26k tokens with
+  room for the reply, so a 32,768-token window holds it with nothing shortened
+  and 3k to spare. The setup hints, the overflow and cut-off notes and the
+  LM Studio warning now suggest 32k (32768), and the evals' run policy accepts
+  a local live run at 32k; a smaller window is still refused, with how to load
+  the model with more.
+
+- **Fixed: a changed edge trim or Laue class left later outputs in place.**
+  A resumed run reused every cleanup output that existed, so after changing
+  the edge trim only the symmetry average was made again, and ring removal,
+  the punch, the backfill, the flatten and the ΔPDF needed Force. Each stage
+  output now records what it was made from: its input (the raw file's size
+  and a sampled content digest, or a digest of the earlier output's own
+  record), the edge trim, the symmetry setting and the stage's settings; the
+  ΔPDF records its input's digest the same way. A run makes an output again
+  when its record no longer matches the run's settings, or when it is older
+  than its input, and every output after it with it; without Force. Unchanged
+  settings reuse everything, and a copied data folder (new dates, same files)
+  is still the same input. The Configure page's stage track asks the backend
+  which outputs the current settings would make again (`POST
+  /api/pipeline/stale`, or the in-browser engine) and marks them stale before
+  the run, with the reason in the tooltip ("it was made with edge trim 1,
+  now 2"). Outputs written before this change record nothing to compare, so
+  the first run after it makes them all again once.
+
+- **Fixed: Al rings left after ring removal.** Two kinds of Al ring failed
+  the test that confirms a powder ring and stayed in. One was the weaker line
+  of a close doublet, such as 331 beside the broad 420, which had no clean
+  flank and was never judged. The others were the high-|Q| lines, which only
+  part of the directions measure. Their |Q| moves with direction in
+  proportion to |Q| (by ±0.1 Å⁻¹ at 9 Å⁻¹), so the test read them in the
+  wrong place. Once three confirmed rings fix the Al lattice, the candidates
+  left on an Al line are now judged again. Close doublets are judged as one,
+  and every direction is read in its own Al frame, taken from the confirmed
+  Al rings. The test asks the same isotropy as before (90 % of the measured
+  directions) and the same width and curvature checks, with a lower noise
+  floor, so the crystal's own diffuse at an Al |Q| stays. On a measured volume
+  the 331/420, 440, 531/600 and 620 lines are now removed, and the removed
+  share rose from 13.2 % to 15.6 %. The weak 533/622 doublet at the coverage
+  edge stays in, a known limitation. A ring's envelope no longer reaches into a
+  shell the test rejected. The diagnostics record each shell's Al match, the
+  rule that judged it and the criteria it failed.
+- **NEBULA Pilot's ring check gives the ring stage's own record** of the
+  shells it left and why (`stage_shells`: the Al lattice, the shells removed,
+  each one left with its Al line and a one-word reason). It no longer repeats
+  the ring rule's two shares (`ring_rule`) when the test ran: the criterion
+  states them.
+
+- **Fixed: ring removal failed in the browser on large shells** with
+  "ValueError: iterator is too large". The ring model's uncertainty, b·C·b
+  per voxel, used a three-operand `einsum` that iterates rows × terms² at
+  once, past the 32-bit WASM build's 2³¹ limit. It is now computed a chunk of
+  rows at a time, with the same numbers and a bounded temporary.
+
+- **Save and restore an analysis (Configure → Data: Save session, Restore
+  session…).** A reload lost the run's record, closing the tab lost the NEBULA
+  Pilot conversation, and in the browser build a reload or Cancel lost every
+  stage output. A session file (`*.nebula-session.json`, versioned) keeps the
+  dataset and its raw file (name, size and date), the Configure form, the
+  outputs present (with when each was written), the last run (its stages, the
+  settings it ran with and its log), the conversation, the structure overlay
+  and the NEBULA3D version. Restoring asks first when it would replace a
+  conversation or a run's log, selects the dataset, applies the session's
+  settings over any the browser remembered (only the settings the form has,
+  of the type it keeps them in), brings back the conversation and the run's
+  log, and lists the saved outputs that are gone, or were written again since,
+  with **Recompute them**: it runs those stages with the settings of the run
+  that made them (its log says it computed them), not a form edited after that
+  run; when the session does not know them it uses the restored form and says
+  so. A raw file of another size under the same name is not recomputed on; a
+  raw file dated otherwise, another NEBULA3D version, or a file saved before
+  these checks (it still loads) is restored with a warning. On the demo volume
+  in the native console the recomputed outputs were bit-identical to the
+  originals; the browser build computes in float32, and was not checked. A
+  session whose dataset is not here, or that was saved with no dataset, does
+  not apply its settings; a file of another format, or of a newer version, is
+  refused. Tool results in a restored conversation are shown but never taken
+  as evidence for a later reply's numbers.
+
+- **Reciprocal cleanup shows its six stages 3 × 2.** With the Symmetrized
+  stage there are six views, which the grid had no layout for, so they stacked
+  one per row. They now read in pipeline order, Raw · Symmetrized ·
+  Ring-removed over Bragg-punched · Backfilled · Background-corrected, on one
+  shared colour scale; 2 × 3 on a narrower page (below 1050 px, e.g. with NEBULA
+  Pilot open on a laptop), one per row on a phone. Focus puts the other five
+  2 × 3 beside the large one.
+- **Fixed: the Data card's stage track overflowed with seven stages.** The
+  track had six columns built in, so "3D-ΔPDF" wrapped under "Raw" with its
+  connector outside the card. It now has one column per stage, keeps every name
+  on one row, and the buttons move below it when the card is too narrow for
+  both.
+
+- **Configure page: the stage badges are one pipeline track.** Raw → Ring
+  removed → Bragg punched → Backfilled → Background corrected → 3D-ΔPDF, a node
+  per stage joined by a line, instead of six wrapping "available" pills. An
+  available output is a filled node with no word; only *stale* (red) and
+  *missing* (dashed, grey) are labelled. On a narrow card the track runs down.
+
+- **Fixed: the structure overlay's site table took no fractions.** Typing a
+  coordinate as `1/3`, `2/3` or `-1/4` (the notation the symmetry operations
+  take) was discarded without a word: the cell went back to its old value. A
+  site's x, y, z now take a decimal or a signed fraction, and text that cannot
+  be read (`0,5`) stays in the cell, outlined, saying how to write it, until it
+  is corrected or Esc brings back the value.
+
+- **Fixed: the structure overlay lost or invented atoms for common CIFs.** A
+  CIF of an F-, I-, C- or R-centred group that lists only generators (no
+  centring translations) gave a quarter of the atoms without a word (Fm-3m rock
+  salt: 2 atoms per cell, 48 operations); the centring is now taken from the
+  space-group symbol and added, with a note when the listed operations lacked
+  it (R only on hexagonal axes). A special position written to 3 decimals
+  (hcp Mg at 0.333, 0.667) was tripled, with false vectors 0.003 Å long; images
+  of a site closer than 0.05 Å are now one atom. Screw axes written as decimals
+  (`z+0.3333`, `z+0.1667`) no longer fail as "more than 192 operations".
+  All-capitals type symbols (`NA`, `CL`, `CO`) now give Na, Cl, Co, not N, C;
+  CIF coordinates written as fractions (`1/2`) are read, not skipped; the
+  panel's own example `−x+1/2` (typeset minus) is accepted, and site cells take
+  a value with its uncertainty (`0.5(2)`).
+- **Fixed: text being typed in the site table moved to another site.** An
+  unreadable entry stayed on its row number, so removing a row above it or
+  loading another CIF showed it on a different site, and the next edit went
+  there; it now stays with its site and is cleared by a new structure.
+- **Fixed: a large or mismatched CIF froze the page.** A 1080-atom supercell
+  blocked the page for 3–5 s on loading and on every reopening, though its
+  cell did not match the ΔPDF's and nothing was drawn. The pairs are now built
+  only when they can be drawn, faster, and only up to 500 atoms per cell (and
+  0.3 atoms/Å³, past any crystal); beyond that the overlay says why nothing
+  is drawn, and the site table shows the first 100 sites until "Show all".
+  The Q–R page now says why nothing is drawn too, as the 3D-ΔPDF page does.
+
+- **Symmetry averaging in the pipeline (stage 0, optional).** A volume that is
+  not symmetrized no longer needs a round trip through the NeXus Viewer: the
+  new first stage averages it over the sample's Laue class (a preset such as
+  6/mmm, or generators) by the viewer's rules, and its gaps fill from their
+  symmetry equivalents. Each voxel takes the equal-weight mean of the measured
+  voxels among its equivalents, the result equal to the viewer's export bit for
+  bit (pinned against the viewer's own code). The stage refuses operations
+  that do not map the grid onto itself or change the cell's metric by more
+  than 2 % (*Proceed despite the metric change*, under Advanced, averages over
+  the latter anyway and records a warning), always trims the raw coverage edge
+  first, and writes
+  `<stem>_symmetrized.h5`, which declares its operations as the viewer's export
+  does; the stages after it treat equivalent voxels alike and declare the
+  symmetry in their own outputs too. Off by default; an input symmetrized
+  already passes through.
+- **Configure page:** the stage's section (stage 0) with the Laue class picker
+  and an editable generators field, the run's reading of it ("24 operations,
+  pooled with equal weight. Metric (UB) kept to 0.00%", or why it would refuse),
+  the class declared for the volume by the viewer's export beside it (**Use
+  it**), and *Average again* under Advanced. The outputs on disk and the
+  Reciprocal cleanup page show the symmetrized volume.
+- **"Symmetrize here":** when the 3D-ΔPDF stops because the coverage gaps reach
+  Q = 0 (its message now names this remedy), the Execution page offers to
+  switch the symmetry average on, with the class chosen or declared for the
+  volume, and opens it on the Configure page.
+- **NEBULA Pilot** reads the stage's settings but never sets them, the
+  metric override included: the Laue class is the user's, and the Pilot
+  suggests one instead. Its symmetry check,
+  grain check and the tuning's 3D-ΔPDF evaluation read the point group from the
+  volume the data came from.
+- **One σ for a symmetrized volume:** the regrid's optional symmetrising now
+  uses the same function as the stage, so its σ is the mean's, √(Σσ²)/n, as
+  in the NeXus Viewer's export (it was the orbit's RMS σ).
+- A Mantid SaveMD file without `errors_squared` (the NeXus Viewer's synthetic
+  examples) loads, with σ = √|I| flagged as estimated, instead of stopping
+  with a KeyError.
+
+- **NEBULA Pilot shows its token usage.** Under each reply: the tokens its
+  model requests read and wrote, and the part read from (or written to) a
+  prompt cache when the server says; in the chat's footer, the conversation's
+  total, tuning requests included (hover for the details). Every request now
+  asks its server for the counts (OpenAI-compatible servers report them only
+  when asked; OpenAI's cached prompt tokens are read too); a server that
+  refuses the first request asking for them, in whatever words, is asked again
+  without them, and from then on is not asked. A request whose
+  server reports none is counted by the console's estimate and marked ≈,
+  "estimated", never passed off as a count. A request that was sent but did not
+  complete (stopped, failed, or asked again after a stall, a crash or a reply
+  its server could not parse) has no counts, and is said apart: "+1 request
+  not counted", next to the reply's count and the conversation's total. The totals stay with the conversation (a reload, a saved session)
+  and start again on Clear.
+
+- **The punch reads a slightly turned UB off its peaks and sweeps the tails it
+  leaves (THY-60).** A UB turned in the reduction displaces each
+  Bragg peak by ω × q (across Q, growing with |Q|) and smears it the same way,
+  so far out the punch left a tail beside the hole and the backfill made it a
+  bright spot. The punch now fits one rotation to its strong peaks' centres
+  and records it (angle and its error, axis, the share of the offsets it
+  explains, an F-test against none). Only when the turn is significant
+  (p < 0.001), explains the offsets (R² ≥ 0.5) and shifts peaks by half a
+  voxel or more, round 2, the tail sweep (*Tail sweep*: Auto, the default, Off
+  or On), adds to the holes the tail beside each node along ±ω × q̂: voxels
+  5σ above the diffuse at their distance, connected to the hole and grown to
+  3σ, confined to the search region, no wider than the peak, within per-node
+  and per-shell caps, outside the declared modulation and the H guard. The
+  backfill then runs once, on the union. Round 1 is unchanged by default; as
+  an option (*Follow a turned UB*, off) it stretches each node's punch by
+  |ω|·|Q| along ω × q̂, which punches more diffuse at every node. Every swept voxel is recorded (code 2
+  in the punch record, and in the profile), with before/after numbers. Not on
+  symmetrised data, where a turn shows as rings; nothing changes on a volume
+  without a turn. The remedy stays upstream: refine the UB in the reduction;
+  the console offers no regrid for it. The Bragg profile page and Configure
+  say the turn in one line (details behind "?") and draw the swept voxels in
+  magenta; NEBULA Pilot's punch assessment carries it (`ub_turn`, a verdict
+  with its rule, only for a significant turn) and bragg-node-audit says how to
+  read it. See docs/algorithms/turned_ub.md.
+  Existing punch outputs read as stale once (two new punch settings).
+
+- **One zoom model on every slice view, the same as the NeXus Viewer's.** The
+  click modes give way to a one-shot **Box zoom**: press it, drag a box on a
+  view to zoom into it, and the tool is put away (Esc or a second press puts
+  it away unused). The *Zoom* and *Move* modes are gone (zoom and pan need no
+  mode), nothing is remembered, and a double-click returns to the full view. **Bragg profile:** the selected peak's three tiles zoom and
+  pan as one linked view about the peak (zooming or panning one moves the
+  other two through the same hkl point), with ticks, + / −, *Reset view* and
+  the shared gestures; the *Zoom* slider is gone. They open at the old default
+  window, zoom out to 10× it, and the fitted, measured and |Q|-floor ellipses
+  stay on the data at any zoom; the colours no longer change as the window
+  does. **Multi-volume:** each plane has one view shared by every file, so
+  they are always compared at the same scale; the *Window* slider is gone.
+  **Unit cell** on the r.l.u. views: the switch, one setting for every page,
+  draws dashed lines at integer h, k, l on Reciprocal cleanup, the Q–R page's
+  Q views and the Bragg tiles, following the view as it zooms and pans.
+
+- **Unit cell lines.** The switch is named *Unit cell* on every page. The
+  dashed lines are white or near-black against the image's background
+  (white on the sequential maps' dark low end, near-black on the diverging
+  maps' light centre) instead of one gray. Their gaps are shorter, and set
+  per scale: 4 px dashes with 2 px gaps on the real-space ΔPDF sections, and
+  much tighter 0.75 px gaps on the r.l.u. views (Reciprocal cleanup, Bragg,
+  Q–R's Q views).
+
+- **The version badge sits under the name at the top** of the sidebar (and
+  the phone's top bar), instead of in the sidebar's foot. On a landscape
+  phone, whose top bar hides the name, it stays in the page's foot.
+
+- **One header on every viewer page.** Reciprocal cleanup, Bragg profile,
+  3D-ΔPDF, Q–R and the multi-volume page share the workspace header, in one
+  order: the *Box zoom* tool with a **?** for the gestures, *Unit cell* and
+  *Structure*, the page's own controls, the layout switch; then the display
+  bar (colormap, vmin [bar] vmax, asinh / lin / log, Auto, Brightness). Each
+  control has one name and a one-line tooltip on every page. **Bragg
+  profile:** its own Brightness slider and colormap row give way to the
+  display bar, with one colour range for the three slices (Auto at the 99th
+  percentile of the windows about the peak, so the colours still hold while
+  zooming; Brightness carries from peak to peak). The slices are a workspace
+  like the other pages' (grid, focus with thumbnails, single) in the
+  dashboard's wide column, about 205 px across at 1512 px wide instead of
+  128. **Multi-volume:** the *Contrast ×* slider gives way to the display bar,
+  with one ± range for every cell (Auto as on 3D-ΔPDF), and the grid spans
+  the page. Q–R's ΔPDF range gets a Brightness knob; the view header's
+  *Reset zoom* tooltip no longer mentions Shift+double-click.
+  **Phones:** the display bar folds behind a button at the end of the
+  header's first row (closed at first, remembered by the browser) that shows
+  each bar's colormap swatch and scale, so the views start on the first
+  screen. The colour range fits the header card at 390 px. **Tick and axis
+  labels** sit on small dark plates, so they read on light colormaps
+  (RdBu_r's white turned "−20" into "=20") as on dark ones.
+
+- **A clear message when the coverage gaps reach Q = 0.** The 3D-ΔPDF used to
+  stop with "the support leaves no region around Q = 0 for the window". It now
+  says what happened (unmeasured voxels open to the box edge reach the origin,
+  typically an unsymmetrized volume) and what to do: symmetrize or fill the
+  volume, or turn off *Taper to the measured coverage* (3D-ΔPDF stage,
+  Advanced). The error is a `WindowSupportError`, still a `ValueError`.
+
 - **The validation's held-out test split lives in a module of its own, loaded
   with the opt-in alone.** Its crystal, faults and cases moved out of
   `nebula3d/validation/cases.py` into `nebula3d/validation/holdout/heldout_cases.py`,
