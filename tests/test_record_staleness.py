@@ -404,3 +404,80 @@ def test_the_server_and_the_browser_list_a_stale_average(tmp_path, stubbed):
     webbridge.run("", trimmed, flatten_enabled=True, force=False, force_from="rings")
     assert stubbed.calls == ALL_AFTER_RAW
     assert json.loads(webbridge.stale_outputs_json(dataset_id, trimmed, True)) == {"stale": {}}
+
+
+# ---------------------------------------------------------------------------
+# A run from a stage with the symmetry average off: the console asks for every
+# enabled stage and recomputes those from its stage on (force_from), as with
+# the average on; the resume rule decides the ring removal by its record
+# ---------------------------------------------------------------------------
+FROM_PUNCH = ALL_AFTER_RAW[1:]
+
+
+def _ring_setting_changed() -> pipeline.PipelineParams:
+    p = pipeline.PipelineParams()
+    p.rings = dataclasses.replace(p.rings, pooled_window_deg=8.0)
+    return p
+
+
+def test_a_run_from_the_punch_makes_stale_rings_again(raw, stubbed):
+    paths, _ = _run(raw)
+    stubbed.calls.clear()
+    p = _ring_setting_changed()
+    plan = _plan(raw, p, force_from="punch")
+    assert plan["rings"] == "it was made with other settings (pooled_window_deg)"
+    assert set(plan) == set(ALL_AFTER_RAW)
+    _, events = _run(raw, p, force_from="punch")
+    assert stubbed.calls == ALL_AFTER_RAW
+    assert "rings" not in _skipped(events)
+    assert (("rings", "progress", None, f"{paths.ringremoved.name} stale — recomputing")
+            in events)
+    assert pipeline.read_stage_record(paths.ringremoved)["settings"]["pooled_window_deg"] == 8.0
+    assert _plan(raw, p) == {}
+
+
+def test_a_run_from_the_punch_reuses_current_rings(raw, stubbed):
+    _run(raw)
+    stubbed.calls.clear()
+    p = pipeline.PipelineParams()
+    p.punch = dataclasses.replace(p.punch, min_significance=6.0)
+    assert set(_plan(raw, p, force_from="punch")) == set(FROM_PUNCH)
+    _, events = _run(raw, p, force_from="punch")
+    assert stubbed.calls == FROM_PUNCH
+    assert "rings" in _skipped(events)
+    assert _plan(raw, p) == {}
+
+
+def test_a_run_of_the_stages_from_the_punch_alone_reads_the_rings_on_disk(raw, stubbed):
+    """The request the console sent before with the average off: the stages
+    from the punch alone, forced. The punch reads the stale ring output as it
+    is, which the resume rule still lists as stale after the run."""
+    _run(raw)
+    stubbed.calls.clear()
+    p = _ring_setting_changed()
+    _, events = _run(raw, p, stages=FROM_PUNCH, force=True)
+    assert stubbed.calls == FROM_PUNCH
+    assert not any(e[0] == "rings" for e in events)
+    assert _plan(raw, p)["rings"] == "it was made with other settings (pooled_window_deg)"
+
+
+def test_the_browser_run_from_the_punch_makes_stale_rings_again(tmp_path, stubbed):
+    """The browser's run from the punch (force_from, every enabled stage)
+    clears the stage track's stale ring output, and reuses a current one."""
+    from nebula3d import webbridge
+
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=9)
+    webbridge.run("", "{}", flatten_enabled=True)
+    widened = json.dumps({"rings_pooled_window_deg": 8.0})
+    stale = json.loads(webbridge.stale_outputs_json(dataset_id, widened, True))["stale"]
+    assert stale["ringremoved"] == "it was made with other settings (pooled_window_deg)"
+    stubbed.calls.clear()
+    webbridge.run(",".join(ALL_AFTER_RAW), widened, flatten_enabled=True, force=False,
+                  force_from="punch")
+    assert stubbed.calls == ALL_AFTER_RAW
+    assert json.loads(webbridge.stale_outputs_json(dataset_id, widened, True)) == {"stale": {}}
+    stubbed.calls.clear()
+    webbridge.run(",".join(ALL_AFTER_RAW), widened, flatten_enabled=True, force=False,
+                  force_from="punch")
+    assert stubbed.calls == FROM_PUNCH
