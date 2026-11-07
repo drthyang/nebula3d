@@ -84,7 +84,10 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { DpdfFeatures } from "../../api/types";
-import { KEEP_FULL, runAgent, SOFT_BUDGET } from "../agent";
+import { KEEP_FULL, runAgent, SOFT_BUDGET, type AgentStep } from "../agent";
+import { finalChecks, FIX_TOOLS, REPORT_TOOLS } from "../auto/controller";
+import { AUTO_LIMITS, STAGE_CHECKS, type Call as AutoCall } from "../auto/plan";
+import { autoMessages, fixPrompt, REPORT_PROMPT } from "../auto/prompts";
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
@@ -104,7 +107,10 @@ import {
 import { isCompacted, SKILL_CORE_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, DETAILS, headingsOf, readsCore, readSkill, REFERENCE_MAX_CHARS } from "../skills";
-import { callTool, CHAT_TOOLS } from "../tools";
+import { callTool, CHAT_TOOLS, type AgentTool } from "../tools";
+import { STAGE_SKILL } from "../skills";
+import { TUNE_PARAMS, TUNE_STAGES } from "../tune/catalog";
+import { longestDigest } from "./autoSamples";
 import devControlPeaks from "./__fixtures__/dpdf-peaks-dev-control.json";
 import { budgetSince } from "./sinceSamples";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
@@ -757,4 +763,113 @@ describe("the headroom target (docs/pilot-context-design.md §5.8), enforced sin
     },
     TURN_TIMEOUT,
   );
+});
+
+// Auto mode's replies (auto/controller.ts, docs/pilot-auto-mode-design.md §4):
+// each in place of the question, with no chat history, so neither is ever
+// the worst turn above, and both are held to the 20 % target with the reply
+// reserve. Driven through the same loop on a local model (Ollama), the
+// phase's checks seeded as a round of calls (agent.ts, seed), and counted by
+// the same estimator:
+// - "auto: worst fix": the fix of each stage at its longest digest (its
+//   second try, every row before it worded at its longest, the most
+//   decisions the since line lists), its checks seeded, the model reading
+//   its stage's skill core (read_skill) and making one update_settings
+//   change, then answering; the largest of the five stages;
+// - "auto: report": every final check seeded (finalChecks), the longest
+//   digest, and the model calling dpdf_peaks (the dev control's list, the
+//   largest result a reading tool returns) before it answers.
+// Measured 2026-11-07 (THY-65 PR 6), the ceilings below: the worst fix, the
+// ΔPDF's (its three checks seeded), 10,717 + 6,144 = 16,861, 9,353 under the
+// target (the design's estimate: about 16k); the report 13,048 + 6,144 =
+// 19,192, 7,022 under it (estimated about 21.5k). Each phase prompt's growth
+// is held by its own ceiling; the target holds either reply whatever the
+// ceilings allow.
+const AUTO_FIX_CEILING = 10_717;
+const AUTO_REPORT_CEILING = 13_048;
+
+describe("auto mode's replies (THY-65 PR 6), held to the 20 % target", () => {
+  /** The app's own call, as the controller keeps it: a step with its result as the executor made it. */
+  const appStep = async (c: AutoCall, i: number): Promise<AgentStep> => {
+    const r = await callTool({ dataset: DATASET, datasets: DATASETS, userMessage: "" }, c.name, c.args);
+    return { id: `auto:${i}`, name: c.name, args: r.args, status: r.ok ? "done" : "error", summary: r.summary, result: r.text, ...(r.full ? { full: r.full } : {}), ...(r.outcomes ? { outcomes: r.outcomes } : {}) };
+  };
+
+  /** An auto reply through runAgent on Ollama: its seed, then the model's `calls`, one a round, then the answer. */
+  async function autoReply(messages: ChatMessage[], seed: AgentStep[], calls: Call[], tools: AgentTool[], rounds: number) {
+    resetTokenState();
+    const sent: Sent[] = [];
+    const script: StreamDelta[][] = [
+      ...calls.map((c, i): StreamDelta[] => [{ toolCalls: [{ id: `call_${i}`, type: "function", function: { name: c.name, arguments: JSON.stringify(c.args) } }] }]),
+      [{ content: "The answer." }],
+    ];
+    model.streamChat.mockImplementation((args: Sent) => {
+      sent.push({ messages: [...args.messages], tools: args.tools, numCtx: args.numCtx });
+      const reply = script.shift() ?? [];
+      return (async function* () {
+        for (const d of reply) yield d;
+      })();
+    });
+    const settings: LlmSettings = { ...DEFAULT_SETTINGS, baseUrl: OLLAMA, model: "scripted", followViews: false };
+    await runAgent({
+      messages,
+      tools,
+      ctx: { dataset: DATASET, datasets: DATASETS, skillsRead: new Set(), earlierSteps: [] },
+      settings,
+      signal: new AbortController().signal,
+      checkAnswers: false,
+      userMessage: "",
+      maxRounds: rounds,
+      seed: { steps: seed, form: "round" },
+    });
+    const key = `${OLLAMA}|${settings.model}`;
+    const prompts = sent.map((s) => estimateTokens(baseTokens(s.messages, s.tools), key));
+    const peak = prompts.indexOf(Math.max(...prompts));
+    return { sent, key, prompts, peak, breakdown: breakdown(sent[peak], key) };
+  }
+
+  it("auto: worst fix: the largest of the five stages' fix replies fits the target with the reply reserve", async () => {
+    freshConsole();
+    const sizes: { stage: string; b: Breakdown }[] = [];
+    for (const stage of TUNE_STAGES) {
+      freshConsole();
+      const seed = await Promise.all(STAGE_CHECKS[stage].map(appStep));
+      const messages = autoMessages(context, longestDigest(stage), fixPrompt(stage), AUTO_LIMITS.fixRounds);
+      // A change of the stage's first method setting, as the catalogue allows it.
+      const param = TUNE_PARAMS.find((p) => p.stage === stage)!;
+      const value = param.kind === "enum" ? param.options![param.options!.length - 1].name : param.kind === "boolean" ? true : (param.max ?? param.min ?? 1);
+      const calls: Call[] = [
+        { name: "read_skill", args: { name: STAGE_SKILL[stage] } },
+        { name: "update_settings", args: { changes: { [param.key]: value } } },
+      ];
+      const run = await autoReply(messages, seed, calls, FIX_TOOLS, AUTO_LIMITS.fixRounds);
+      sizes.push({ stage, b: run.breakdown });
+    }
+    const worst = sizes.reduce((a, b) => (b.b.prompt > a.b.prompt ? b : a));
+    const total = worst.b.prompt + REPLY_RESERVE;
+    columns.push({ head: ["auto: worst fix", `(${worst.stage})`], b: worst.b, reserve: REPLY_RESERVE });
+    room.push({ what: "auto: worst fix, its largest prompt", measured: worst.b.prompt, ceiling: AUTO_FIX_CEILING });
+    target.push(
+      `Auto, worst fix (${worst.stage}; ${sizes.map((s) => `${s.stage} ${n(s.b.prompt)}`).join(", ")}): ${n(worst.b.prompt)} + ${n(REPLY_RESERVE)} = ${n(total)} ` +
+        `against the 20 % target's ${n(HEADROOM_TARGET)}: ${total > HEADROOM_TARGET ? `over by ${n(total - HEADROOM_TARGET)}` : `met, ${n(HEADROOM_TARGET - total)} to spare`}.`,
+    );
+    expectWithin("auto: worst fix, its largest prompt", worst.b.prompt, AUTO_FIX_CEILING);
+    expect(total, `the worst fix, ${n(total)} with the reply reserve, against the 20 % target ${n(HEADROOM_TARGET)}`).toBeLessThanOrEqual(HEADROOM_TARGET);
+  }, TURN_TIMEOUT);
+
+  it("auto: report: every final check seeded and the ΔPDF's features read fit the target with the reply reserve", async () => {
+    freshConsole();
+    const seed = await Promise.all(finalChecks(DATASET).map(appStep));
+    const messages = autoMessages(context, longestDigest(null), REPORT_PROMPT, AUTO_LIMITS.reportRounds);
+    const run = await autoReply(messages, seed, [FEATURES], REPORT_TOOLS, AUTO_LIMITS.reportRounds);
+    const total = run.breakdown.prompt + REPLY_RESERVE;
+    columns.push({ head: ["auto: report", "checks seeded"], b: run.breakdown, reserve: REPLY_RESERVE });
+    room.push({ what: "auto: report, its largest prompt", measured: run.breakdown.prompt, ceiling: AUTO_REPORT_CEILING });
+    target.push(
+      `Auto, report (${seed.map((s) => s.name).join(", ")} seeded, dpdf_peaks called): ${n(run.breakdown.prompt)} + ${n(REPLY_RESERVE)} = ${n(total)} ` +
+        `against the 20 % target's ${n(HEADROOM_TARGET)}: ${total > HEADROOM_TARGET ? `over by ${n(total - HEADROOM_TARGET)}` : `met, ${n(HEADROOM_TARGET - total)} to spare`}.`,
+    );
+    expectWithin("auto: report, its largest prompt", run.breakdown.prompt, AUTO_REPORT_CEILING);
+    expect(total, `the report, ${n(total)} with the reply reserve, against the 20 % target ${n(HEADROOM_TARGET)}`).toBeLessThanOrEqual(HEADROOM_TARGET);
+  }, TURN_TIMEOUT);
 });

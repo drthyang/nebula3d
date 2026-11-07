@@ -121,11 +121,11 @@ const settingsNow = (): Partial<PipelineConfig> => configOf(usePipelineStore.get
 // The tools a fix reply holds: all but the run (the app runs from the change)
 // and the regrid (only the user asks for one). The report's: the reading
 // ones, and the console's view.
-const FIX_TOOLS: AgentTool[] = CHAT_TOOLS.filter((t) => !factsOf(t.name).startsRuns || t.name === "tune_pipeline").filter((t) => factsOf(t.name).acts !== "dataset");
-const REPORT_TOOLS: AgentTool[] = CHAT_TOOLS.filter((t) => !factsOf(t.name).actsOnPipeline && factsOf(t.name).acts !== "dataset");
+export const FIX_TOOLS: AgentTool[] = CHAT_TOOLS.filter((t) => !factsOf(t.name).startsRuns || t.name === "tune_pipeline").filter((t) => factsOf(t.name).acts !== "dataset");
+export const REPORT_TOOLS: AgentTool[] = CHAT_TOOLS.filter((t) => !factsOf(t.name).actsOnPipeline && factsOf(t.name).acts !== "dataset");
 
 /** The checks the report rests on (as report/collect.ts measures them), on the outputs as they are. */
-function finalChecks(dataset: Dataset): Call[] {
+export function finalChecks(dataset: Dataset): Call[] {
   return [
     { name: "assess_stage", args: { stage: "all" } },
     { name: "texture_check", args: {} },
