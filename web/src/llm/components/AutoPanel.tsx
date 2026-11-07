@@ -51,6 +51,8 @@ function useNow(clock: RunClock | undefined): number {
   const [now, setNow] = useState(() => Date.now());
   const ticking = !!clock && clock.endedAt === null;
   useEffect(() => {
+    // Read again as the clock changes (a pause, a resume): never a stale second.
+    setNow(Date.now());
     if (!ticking) return;
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
@@ -82,7 +84,7 @@ function Row({ run, row, onLink }: { run: AutoRun; row: PlanRow; onLink: (run: A
   const fact = pause ? run.facts.find((f) => f.proposal === pause.proposal) : undefined;
   const tone = pause ? "wait" : rowTone(row.status);
   const sub = pause ? "needs you" : rowSub(row, run.limits.fixesPerStage);
-  const meta = pause ? (fact?.title.toLowerCase() ?? "") : rowMeta(row);
+  const meta = pause ? (fact?.title ?? "") : rowMeta(row);
   const linked = (row.evidence ?? []).length > 0;
   return (
     <li id={`ai-auto-row-${row.id}`} className={`auto-step is-${tone}`}>
@@ -267,7 +269,8 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
   const fixes = run.plan.reduce((n, r) => n + r.tries, 0);
   const tokens = run.usage.input + run.usage.output;
   const paused = pausedText(run.clock, now);
-  const canUndo = run.state !== "running" && run.decisions.length > 0;
+  // Undo once the run is done or paused by you; not while it runs or waits for your answer.
+  const canUndo = (run.state === "done" || run.state === "stopped") && run.decisions.length > 0;
   return (
     <section className={`auto-panel auto-panel--${tone}${open ? " is-open" : ""}`} aria-label="Auto analysis">
       <div className="auto-top">
@@ -292,6 +295,8 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
           <i style={{ width: `${Math.round(progressOf(run) * 100)}%` }} />
         </div>
       </div>
+      {/* The fact it waits for, first: on a phone it must not sit below the fold. */}
+      {fact && <PinnedCard id={fact} ctx={ctx} />}
       <Log rows={act.rows.slice(-3)} run={run} className="auto-recent" />
       <button type="button" className="auto-more" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {open ? "Fewer steps ▴" : `The plan and all ${act.rows.length} steps ▾`}
@@ -340,7 +345,6 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
           {undone?.run === run.id && <span className="auto-msg">{undone.n ? `Put back ${undone.n} change${undone.n === 1 ? "" : "s"}.` : "Nothing to put back."}</span>}
         </div>
       )}
-      {fact && <PinnedCard id={fact} ctx={ctx} />}
     </section>
   );
 }
