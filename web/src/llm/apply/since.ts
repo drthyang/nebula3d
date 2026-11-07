@@ -15,7 +15,9 @@
 // The setting's name is update_settings' (the model's own word for it), the
 // values as update_settings reads them (the card's line); a run, the stage
 // run_pipeline names. Nothing of a click grant (llm/consent.ts): a change the
-// user's own click made reads as any other they made. A definition (a fact
+// user's own click made reads as any other they made. A change made on a
+// page, not a card (the Q–R page's "Use in pipeline": decisions.ts, `page`),
+// is left out, as an edit on Configure is. A definition (a fact
 // about the settings), so arm C reads it the same as arm B (inference.ts).
 
 import type { PipelineConfig } from "../../state/pipelineStore";
@@ -79,7 +81,9 @@ const WHO: Record<Decision["by"], string> = { you: "you", auto: "auto mode" };
  * the last reply" unless given (an auto run's digest: "in this auto run",
  * auto/prompts.ts).
  */
-export function sinceLine(decisions: readonly Decision[], proposals: readonly Proposal[], lead = "since the last reply"): string | null {
+export function sinceLine(all: readonly Decision[], proposals: readonly Proposal[], lead = "since the last reply"): string | null {
+  // A change made on a page (decisions.ts, `page`) is the user's own edit, as one on Configure: not listed.
+  const decisions = all.filter((d) => !d.page);
   if (!decisions.length) return null;
   const listed = decisions.slice(-SINCE_MAX);
   const earlier = decisions.length - listed.length;

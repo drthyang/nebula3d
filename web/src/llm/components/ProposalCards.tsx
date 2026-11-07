@@ -49,6 +49,7 @@ const VIA_DETAIL: Record<Proposal["source"]["via"], string> = {
   apply: "A change you applied: the outputs predate it.",
   undo: "A change you undid: the outputs predate it.",
   auto: "Auto mode made this, through the model's own update_settings or tune_pipeline call under every guard, or ran it.",
+  qr: "You set this on the Q–R page (Use in pipeline).",
 };
 
 /** The card's fields as the settings hold them, as one string a store selector can compare. */

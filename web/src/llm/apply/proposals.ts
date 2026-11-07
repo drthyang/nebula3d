@@ -46,7 +46,8 @@ import type { PipelineConfig } from "../../state/pipelineStore";
 
 export type ProposalKind = "setting" | "fact" | "run" | "trial";
 // "auto": a change or a run auto mode made (auto/controller.ts), logged as its own.
-export type ProposalVia = "refused" | "rerun" | "ask_user" | "suggestion" | "answer" | "trial" | "apply" | "undo" | "auto";
+// "qr": no reply's; the Q–R page's "Use in pipeline" (qrBand.ts).
+export type ProposalVia = "refused" | "rerun" | "ask_user" | "suggestion" | "answer" | "trial" | "apply" | "undo" | "auto" | "qr";
 export type ProposalStatus = "open" | "applied" | "dismissed" | "undone";
 
 /** Why a card needs the user's own click (a click grant) to apply: theirs to set (a fact, the edge trim, the symmetry average, the |Q| band, the ion), or held by the ring gate. */

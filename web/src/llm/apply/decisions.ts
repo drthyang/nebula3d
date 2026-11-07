@@ -7,7 +7,9 @@
 // the "since the last reply" line (since.ts): the decisions made since the
 // model last replied, each listed in one reply's context, `told` marking those
 // listed (kept with the record, so a reload or a session file does not list
-// them again). A session file's copy is read back value by value (readDecisions).
+// them again). A change made on a page (`page`: the Q–R page's "Use in
+// pipeline", qrBand.ts) is the user's own edit, as one on Configure: the line
+// leaves it out. A session file's copy is read back value by value (readDecisions).
 // A click grant (llm/consent.ts) is never kept here: a decision records only
 // that a click made it (byClick). The rings checked from a card (actions.ts,
 // checkRings) are kept in memory alone, and go with a reload.
@@ -38,6 +40,7 @@ export interface Decision {
   undoes?: string; // an undo: the decision it put back
   undoneBy?: string; // put back by this undo
   byClick?: true; // made by the user's own click, under a click grant (a sample fact, a setting only they set, Apply anyway)
+  page?: "qr"; // made on a page, not a card (the Q–R page's "Use in pipeline", qrBand.ts): an edit the model is not told of, as one on Configure
 }
 
 /** The 3D ring verdict a card's "Check rings in 3D" found: its step, on the outputs of the run that stood then. */
@@ -182,7 +185,7 @@ const oneOf = <T extends string>(v: unknown, xs: readonly T[]): v is T => isStr(
 
 const KINDS: readonly ProposalKind[] = ["setting", "fact", "run", "trial"];
 const STATUSES: readonly ProposalStatus[] = ["open", "applied", "dismissed", "undone"];
-const VIAS: readonly ProposalVia[] = ["refused", "rerun", "ask_user", "suggestion", "answer", "trial", "apply", "undo", "auto"];
+const VIAS: readonly ProposalVia[] = ["refused", "rerun", "ask_user", "suggestion", "answer", "trial", "apply", "undo", "auto", "qr"];
 const HELD: readonly Held[] = ["fact", "choice", "symmetry", "ring", "user-only"];
 const ACTIONS: readonly DecisionAction[] = ["apply", "edit-apply", "dismiss", "undo"];
 
@@ -263,6 +266,7 @@ function readDecision(v: unknown): Decision | null {
     ...(isStr(v.undoes) ? { undoes: v.undoes } : {}),
     ...(isStr(v.undoneBy) ? { undoneBy: v.undoneBy } : {}),
     ...(v.byClick === true ? { byClick: true as const } : {}),
+    ...(v.page === "qr" ? { page: "qr" as const } : {}),
   };
 }
 

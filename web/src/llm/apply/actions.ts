@@ -460,6 +460,7 @@ export function undoDecision(d: Decision, event?: ClickEvent, by: Decision["by"]
     ...(d.runFrom ? { runFrom: d.runFrom } : {}),
     undoes: d.id,
     ...(d.byClick ? { byClick: true as const } : {}),
+    ...(d.page ? { page: d.page } : {}),
   });
   updateDecision(d.id, { undoneBy: undo.id });
   updateProposal(d.proposal, { status: "undone" });
