@@ -16,7 +16,11 @@ import { toolsKnownUnsupported, type AgentStep } from "../agent";
 import { untoldDecisions, useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
 import { useChatStore, type ChatTurn } from "../chatStore";
-import { buildChatMessages } from "../prompts/templates";
+import { contextWindow, conversationCost, meterReading, openingSpecs, requestTokens } from "../contextMeter";
+import { buildChatMessages, CHAT_HISTORY_TURNS } from "../prompts/templates";
+import type { ModelContext } from "../provider/client";
+import { baseTokens } from "../provider/tokens";
+import { summarizeTurns, unsummarized, type ChatSummary } from "../summarize";
 import { seen } from "../readings";
 import { askAssistant, clearConversation, replyContext, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
@@ -34,12 +38,10 @@ import { Markdown } from "./Markdown";
 import { ProposalCards } from "./ProposalCards";
 import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
-import { uncountedText, usageText } from "../usage";
+import { ContextMeterChip, ContextMeterPanel } from "./ContextMeter";
+import { useOllamaMax } from "../useOllamaMax";
+import { usageText } from "../usage";
 import { verdictLine } from "../verdict";
-
-// A token count in a few characters: 950, 12.3k, 1.2M.
-const compactTokens = (n: number): string =>
-  n < 1000 ? String(n) : n < 1e6 ? `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}k` : `${(n / 1e6).toFixed(1)}M`;
 
 // A collapsible "thinking" panel for a reasoning-model chain-of-thought. While
 // live, the body auto-scrolls to the newest reasoning as it streams in.
@@ -295,6 +297,7 @@ export function ChatView({
   toolContext,
   contextLoading = false,
   contextNote = null,
+  modelContext = null,
 }: {
   assistant: AssistantContext | undefined;
   connected: boolean;
@@ -303,6 +306,8 @@ export function ChatView({
   contextLoading?: boolean;
   // Why replies may be cut off: the model's context is too small for Tools.
   contextNote?: string | null;
+  // The context length LM Studio loaded the model with (useAssistant), for the meter.
+  modelContext?: ModelContext | null;
 }) {
   const turns = useChatStore((s) => s.turns);
   const draft = useChatStore((s) => s.draft);
@@ -311,8 +316,13 @@ export function ChatView({
   const error = useChatStore((s) => s.error);
   const setDraft = useChatStore((s) => s.setDraft);
   const usage = useChatStore((s) => s.usage);
+  const summary = useChatStore((s) => s.summary);
   // An auto run under way owns the conversation: the composer waits (auto/controller.ts).
   const autoRunning = useAutoStore((s) => s.run?.state === "running");
+  // Running or paused: its own replies, which the meter does not measure (AutoPanel shows their tokens).
+  const autoUnderWay = useAutoStore((s) => s.run?.state === "running" || s.run?.state === "paused");
+  // The decisions' record: the next request's "since" line reads it.
+  const decisionsAt = useDecisionStore((s) => `${s.decisions.length}|${s.told}`);
   const auto = useAutoBlocks(turns);
   const scrollRef = useRef<HTMLDivElement>(null);
   // The reply whose analysis report is open (its turn id).
@@ -331,28 +341,78 @@ export function ChatView({
 
   const tools = settings.useTools && !toolsKnownUnsupported(settings);
 
-  const ask = useCallback(
+  // The request a question would open its reply with: what Send sends, and
+  // what the context meter measures. The turns a summary covers go as the
+  // summary (summarize.ts), the rest as their text.
+  const requestFor = useCallback(
     (text: string) => {
-      if (!text || !assistant || busy || autoRunning) return;
-      pinned.current = true;
-      const history = turns.map(({ role, content }) => ({ role, content }));
+      if (!assistant) return null;
+      const history = unsummarized(turns, summary).map(({ role, content }) => ({ role, content }));
       // What the user's decisions on the cards changed since the last reply
       // (apply/since.ts): in this reply's context alone, marked as told once
       // the reply has come back (session.ts).
       const untold = untoldDecisions();
       const since = sinceLine(untold.decisions, useDecisionStore.getState().proposals);
+      return {
+        messages: buildChatMessages(assistant.context, history, text, null, { tools, since, earlier: summary?.text ?? null }),
+        since,
+        through: untold.through,
+      };
+    },
+    [assistant, turns, summary, tools],
+  );
+
+  const ask = useCallback(
+    (text: string) => {
+      if (!text || !assistant || busy || autoRunning) return;
+      const request = requestFor(text);
+      if (!request) return;
+      pinned.current = true;
+      const { messages, since, through } = request;
       void askAssistant({
         label: text,
-        messages: buildChatMessages(assistant.context, history, text, null, { tools, since }),
-        ...(since ? { told: untold.through } : {}),
+        messages,
+        ...(since ? { told: through } : {}),
         tools: settings.useTools ? CHAT_TOOLS : [],
         // The earlier turns go as their text: a skill read in one is not in
         // this reply, so it opens no gate here, and the refusal asks for it again.
         ctx: toolContext && replyContext(toolContext, turns),
       });
     },
-    [assistant, busy, autoRunning, turns, tools, settings.useTools, toolContext],
+    [assistant, busy, autoRunning, turns, requestFor, settings.useTools, toolContext],
   );
+
+  // The context meter (contextMeter.ts): the request the draft would open its
+  // reply with, against the model's window, with the reply's room.
+  const ollamaMax = useOllamaMax(settings, connected);
+  const [meterOpen, setMeterOpen] = useState(false);
+  const meter = useMemo(() => {
+    void decisionsAt;
+    const request = connected ? requestFor(draft.trim()) : null;
+    if (!request) return null;
+    const specs = openingSpecs(request.messages, settings.useTools ? CHAT_TOOLS : [], toolContext, settings);
+    const window = contextWindow(settings, { loaded: modelContext, ollamaMax });
+    return { window, reading: meterReading(requestTokens(request.messages, specs, settings), window) };
+  }, [connected, requestFor, draft, settings, toolContext, modelContext, ollamaMax, decisionsAt]);
+  const summarize = useCallback(() => {
+    const chat = useChatStore.getState();
+    const next = chat.busy ? null : summarizeTurns(chat.turns, decidedLine());
+    if (next) chat.setSummary(next);
+  }, []);
+  // The turns the model reads as text, and those the newest-turns limit leaves out (said in the chat).
+  const sent = useMemo(() => unsummarized(turns, summary), [turns, summary]);
+  const dropped = Math.max(0, sent.length - CHAT_HISTORY_TURNS);
+  const firstSent = dropped ? sent[dropped].id : null;
+  // Summarize is offered where it makes the request shorter: its summary
+  // against the turns it takes off the request (and the summary before it).
+  const summaryHelps = useMemo(() => {
+    void decisionsAt;
+    if (!meter || meter.reading.level === "ok" || !sent.length) return false;
+    const next = summarizeTurns(turns, decidedLine());
+    const off = sent.slice(-CHAT_HISTORY_TURNS).map(({ role, content }) => ({ role, content }));
+    const before = baseTokens([...off, ...(summary ? [{ role: "user" as const, content: summary.text }] : [])]);
+    return next !== null && baseTokens([{ role: "user", content: next.text }]) < before;
+  }, [meter, turns, sent, summary, decisionsAt]);
 
   const sendChat = useCallback(() => {
     const text = draft.trim();
@@ -418,6 +478,7 @@ export function ChatView({
             {auto.blocks.filter((b) => b.before === t.id).map((b) => (
               <AutoSteps key={b.key} block={b} live={false} />
             ))}
+            {t.id === firstSent && <DroppedNotice dropped={dropped} summarized={Boolean(summary)} />}
             <PastTurn
               turn={t}
               tuning={t.id === tuneTurn}
@@ -425,6 +486,7 @@ export function ChatView({
               onReport={setReportFor}
               ctx={toolContext}
             />
+            {summary && t.id === summary.through && <SummaryNotice summary={summary} />}
             {auto.blocks.filter((b) => b.before === null && b.after === t.id).map((b) => (
               <AutoSteps key={b.key} block={b} live={auto.running} />
             ))}
@@ -527,11 +589,14 @@ export function ChatView({
             </svg>
             Vision
           </button>
-          {usage && (usage.requests > 0 || !!usage.uncounted) && (
-            <span className="ai-usage-total" title={`This conversation's model requests: ${usageText(usage)}`}>
-              {usage.requests > 0 && `${usage.estimated ? "≈ " : ""}${compactTokens(usage.input + usage.output)} tokens`}
-              {usage.requests > 0 ? (usage.uncounted ? ` ${uncountedText(usage)}` : "") : uncountedText(usage).slice(1)}
-            </span>
+          {meter && !autoUnderWay && (
+            <ContextMeterChip
+              reading={meter.reading}
+              window={meter.window}
+              open={meterOpen}
+              onToggle={() => setMeterOpen((o) => !o)}
+              title={usage && (usage.requests > 0 || usage.uncounted) ? `This conversation's model requests: ${usageText(usage)}` : undefined}
+            />
           )}
           {turns.length > 0 && (
             <button
@@ -545,6 +610,18 @@ export function ChatView({
             </button>
           )}
         </div>
+        {meter && !autoUnderWay && (
+          <ContextMeterPanel
+            reading={meter.reading}
+            window={meter.window}
+            cost={conversationCost(settings, usage)}
+            open={meterOpen}
+            canAct={turns.length > 0 && !busy}
+            canSummarize={summaryHelps}
+            onSummarize={summarize}
+            onStartFresh={clearConversation}
+          />
+        )}
 
         <div className={`ai-composer${disabled ? " is-disabled" : ""}`}>
           <textarea
@@ -588,6 +665,43 @@ export function ChatView({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// The decisions on the Apply cards a reply's context has listed already, as a
+// summary lists them; those not yet listed go in the next request's "since"
+// line (apply/since.ts).
+function decidedLine(): string | null {
+  const { decisions, proposals } = useDecisionStore.getState();
+  const untold = new Set(untoldDecisions().decisions.map((d) => d.id));
+  return sinceLine(decisions.filter((d) => !untold.has(d.id)), proposals, "on the Apply cards");
+}
+
+// Where the newest-turns limit (CHAT_HISTORY_TURNS, prompts/templates.ts)
+// stops sending the turns before it: said, never done silently.
+function DroppedNotice({ dropped, summarized }: { dropped: number; summarized: boolean }) {
+  return (
+    <div className="ai-context-note" role="note">
+      {`The model reads the newest ${CHAT_HISTORY_TURNS} turns as text: the ${dropped === 1 ? "turn" : `${dropped} turns`} above` +
+        `${summarized ? ", after the summary," : ""} ${dropped === 1 ? "is" : "are"} no longer sent. ` +
+        "Summarize and continue keeps their checks and verdicts."}
+    </div>
+  );
+}
+
+// Where Summarize and continue put the app's summary in place of the turns above it.
+function SummaryNotice({ summary }: { summary: ChatSummary }) {
+  return (
+    <div className="ai-context-note is-summary" role="note">
+      <span>
+        {`Summarized to save room: from here on the model reads the app's summary of the ${summary.turns === 1 ? "turn" : `${summary.turns} turns`} ` +
+          "above, not their text. The transcript keeps them."}
+      </span>
+      <details>
+        <summary>What the model reads</summary>
+        <pre>{summary.text}</pre>
+      </details>
     </div>
   );
 }
