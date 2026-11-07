@@ -39,7 +39,7 @@ Change or tune the 3D-ΔPDF so its checks above pass: one update_settings change
 ### Report
 
 ```text
-Report on this auto run from the checks above, its final ones: each stage's verdict with the numbers it rests on, what changed during the run and why, and what is left for the user to decide.
+Report from the final checks above: the problems they found in the data, with their numbers, or none; each stage's verdict; what changed and why; and what is left for the user to decide.
 ```
 
 The transcript's line before each (the user turn the chat keeps; later chat history, never the guard's user words): `Auto · fix the ring removal, first of two`, `Auto · fix the Bragg punch, first of two`, `Auto · the report`.

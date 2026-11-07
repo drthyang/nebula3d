@@ -36,9 +36,21 @@ export function fixPrompt(stage: Stage): string {
   return `Change or tune ${STAGE_NAMES[stage]} so ${checks}: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.`;
 }
 
-/** The run's report (§2.2): the final checks above, the run's changes and what is left. */
+/**
+ * The run's report (§2.2): from the final checks above, the problems they
+ * found in the data, with their numbers, or none (arm B's task: "the problems
+ * you found (or that you found none)"; the core prompt's (6) names the data's
+ * own problems: a UB that is off, a shifted origin, counts that end inside
+ * the box), each stage's verdict, the run's changes and what is left. A
+ * passing stage once hid its data's fault: the B-auto eval of 2026-11-07
+ * reported 1 of 6 planted faults when this asked for verdicts alone. The
+ * problems are the checks' (THY-18: their verdicts and numbers, by
+ * reference, never the model's own grading), and its words name no tool's
+ * topic, so a local model's offer (localTools.ts) stays the reading tools
+ * every question gets. Held to its ceiling in tokenBudget.test.ts.
+ */
 export const REPORT_PROMPT =
-  "Report on this auto run from the checks above, its final ones: each stage's verdict with the numbers it rests on, what changed during the run and why, and what is left for the user to decide.";
+  "Report from the final checks above: the problems they found in the data, with their numbers, or none; each stage's verdict; what changed and why; and what is left for the user to decide.";
 
 /** The transcript's line for a fix reply (the user turn before it): the app's words, never the user's. */
 export const fixLabel = (stage: Stage, n: number, of: number): string => `Auto · fix ${STAGE_NAMES[stage]}, ${ordinal(n)} of ${countWord(of)}`;
