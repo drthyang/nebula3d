@@ -243,7 +243,7 @@ describe("the coverage", () => {
 describe("a step", () => {
   it("keys by its content", () => {
     const s = step("qmax_coverage", {}, { a: 1 });
-    expect(stepKey(s)).toBe(stepKey({ ...s, id: "3:other" }));
+    expect(stepKey(s)).toBe(stepKey({ ...s, id: "3:other" } as AgentStep));
     expect(stepKey(s)).not.toBe(stepKey({ ...s, result: "{}" }));
   });
   it("draws nothing from an error, or a tool with none", () => {
