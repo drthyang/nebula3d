@@ -194,6 +194,13 @@ class UnconfirmedRingsOut(BaseModel):
     q_centers: list[float] = []     # their |Q| (Å⁻¹)
 
 
+class RemovedShellOut(BaseModel):
+    """A shell the pooled ring removal subtracted (pooled_rings.removed_shells)."""
+    q: float                        # its fitted centre (Å⁻¹)
+    code: str | None = None         # the line it sits on: "Al111", "Sn200"; None on none
+    al: bool = False                # that line is Al's
+
+
 class RingDiagnosticsOut(BaseModel):
     """The ring removal's record, from its diagnostics (see server.rings)."""
     dataset_id: str
@@ -203,6 +210,9 @@ class RingDiagnosticsOut(BaseModel):
     unconfirmed_at_grid: UnconfirmedRingsOut | None = None
     # The shells removed and left, in one line (preprocessing.pooled_rings.shell_summary).
     summary: str | None = None
+    # Each shell removed: its |Q|, its line's code ("Al111", or None) and whether
+    # that line is Al's (preprocessing.pooled_rings.removed_shells), for the overlays.
+    removed_shells: list[RemovedShellOut] | None = None
     # The phase the rings the Al lines leave may be (preprocessing.powder_phases):
     # the match's record, and its one line (None where no phase was named).
     phases: dict[str, Any] | None = None

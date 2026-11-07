@@ -185,6 +185,11 @@ def test_the_ring_decision_is_the_same(runs):
             b["isotropy"]["is_ring"], b["isotropy"]["not_judged"])
     assert native["removed_fraction"] == pytest.approx(browser["removed_fraction"], rel=1e-6)
     assert runs["native"]["api"]["rings"]["status"] == runs["browser"]["api"]["rings"]["status"]
+    # The shells removed, for the overlays: the same list from both engines.
+    removed = [runs[k]["api"]["rings"]["removed_shells"] for k in ("native", "browser")]
+    assert [(x["code"], x["al"]) for x in removed[0]] == [(x["code"], x["al"]) for x in removed[1]]
+    assert [x["q"] for x in removed[0]] == pytest.approx([x["q"] for x in removed[1]], abs=2e-4)
+    assert [x["q"] for x in removed[0]] == pytest.approx([2.22, 4.05], abs=0.01)
 
 
 #: The digits ShellIsotropy.as_dict keeps of each measurement.
