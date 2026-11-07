@@ -3,8 +3,11 @@
 // Apply, Edit and apply, Dismiss and Undo, with the values before and after.
 // The cards, the Changes list and the report's Decisions section read it.
 // Kept with the conversation: in sessionStorage over a reload, in session
-// files (state/session.ts), cleared with it. UI only: nothing here reaches the
-// model, and a session file's copy is read back value by value (readDecisions).
+// files (state/session.ts), cleared with it. The model reads none of it but
+// the "since the last reply" line (since.ts): the decisions made since the
+// model last replied, each listed in one reply's context, `told` marking those
+// listed (kept with the record, so a reload or a session file does not list
+// them again). A session file's copy is read back value by value (readDecisions).
 // A click grant (llm/consent.ts) is never kept here: a decision records only
 // that a click made it (byClick). The rings checked from a card (actions.ts,
 // checkRings) are kept in memory alone, and go with a reload.
@@ -56,38 +59,49 @@ interface DecisionState {
   notes: Record<string, string>;
   // Each card's last ring check, by the proposal's id: in memory only.
   ringChecks: Record<string, RingCheck>;
+  // The number of the newest decision a reply's context has listed (since.ts): those after it are new to the model.
+  told: number;
 }
+
+type Saved = Pick<DecisionState, "proposals" | "decisions"> & { told?: number };
 
 const KEY = "nebula3d.chat.decisions.v1";
 
-const restore = (): Pick<DecisionState, "proposals" | "decisions"> => {
+const numberOf = (id: string): number => Number(id.slice(1)) || 0;
+const newest = (ds: readonly Decision[]): number => ds.reduce((m, d) => Math.max(m, numberOf(d.id)), 0);
+
+// A saved record's mark; one saved without it (before the line) has told every decision it holds.
+const toldOf = (saved: Saved): number => saved.told ?? newest(saved.decisions);
+
+const restore = (): Pick<DecisionState, "proposals" | "decisions" | "told"> => {
   try {
-    return readDecisions(JSON.parse(sessionStorage.getItem(KEY) ?? "null"));
+    const saved = readDecisions(JSON.parse(sessionStorage.getItem(KEY) ?? "null"));
+    return { proposals: saved.proposals, decisions: saved.decisions, told: toldOf(saved) };
   } catch {
-    return { proposals: [], decisions: [] }; // no storage (private mode, tests)
+    return { proposals: [], decisions: [], told: 0 }; // no storage (private mode, tests)
   }
 };
 
-export const useDecisionStore = create<DecisionState>(() => ({ ...restore(), working: null, checking: null, notes: {}, ringChecks: {} }));
+const FRESH = { working: null, checking: null, notes: {}, ringChecks: {} };
+
+export const useDecisionStore = create<DecisionState>(() => ({ ...restore(), ...FRESH }));
 
 useDecisionStore.subscribe((s, prev) => {
-  if (s.proposals === prev.proposals && s.decisions === prev.decisions) return;
+  if (s.proposals === prev.proposals && s.decisions === prev.decisions && s.told === prev.told) return;
   try {
-    sessionStorage.setItem(KEY, JSON.stringify({ proposals: s.proposals, decisions: s.decisions }));
+    sessionStorage.setItem(KEY, JSON.stringify({ proposals: s.proposals, decisions: s.decisions, told: s.told }));
   } catch {
     // Full or blocked: the record just does not survive a reload.
   }
 });
 
 // Closing the volume starts the conversation afresh, and its record with it.
-resetsWithVolume(useDecisionStore, { fresh: () => ({ proposals: [], decisions: [], working: null, checking: null, notes: {}, ringChecks: {} }) });
-
-const numberOf = (id: string): number => Number(id.slice(1)) || 0;
+resetsWithVolume(useDecisionStore, { fresh: () => ({ proposals: [], decisions: [], told: 0, ...FRESH }) });
 
 /** The number the next proposal takes ("P<n>"). */
 export const nextProposalNumber = (): number => useDecisionStore.getState().proposals.reduce((m, p) => Math.max(m, numberOf(p.id)), 0) + 1;
 
-const nextDecisionId = (): string => `D${useDecisionStore.getState().decisions.reduce((m, d) => Math.max(m, numberOf(d.id)), 0) + 1}`;
+const nextDecisionId = (): string => `D${newest(useDecisionStore.getState().decisions) + 1}`;
 
 /** Add a reply's proposals. */
 export function addProposals(ps: readonly Proposal[]): void {
@@ -129,19 +143,34 @@ export function setRingCheck(id: string, check: RingCheck): void {
 
 /** Clear the record (the chat's Clear). */
 export function clearDecisions(): void {
-  useDecisionStore.setState({ proposals: [], decisions: [], working: null, checking: null, notes: {}, ringChecks: {} });
+  useDecisionStore.setState({ proposals: [], decisions: [], told: 0, ...FRESH });
 }
 
 /** Replace the record with a saved one (a session file's, already read: readDecisions). */
-export function restoreDecisions(saved: Pick<DecisionState, "proposals" | "decisions">): void {
-  useDecisionStore.setState({ proposals: saved.proposals, decisions: saved.decisions, working: null, checking: null, notes: {}, ringChecks: {} });
+export function restoreDecisions(saved: Saved): void {
+  useDecisionStore.setState({ proposals: saved.proposals, decisions: saved.decisions, told: toldOf(saved), ...FRESH });
 }
 
 /** The record as a session file keeps it. */
-export const decisionsForFile = (): Pick<DecisionState, "proposals" | "decisions"> => {
-  const { proposals, decisions } = useDecisionStore.getState();
-  return { proposals, decisions };
+export const decisionsForFile = (): Saved => {
+  const { proposals, decisions, told } = useDecisionStore.getState();
+  return { proposals, decisions, told };
 };
+
+/**
+ * The decisions no reply's context has listed yet, oldest first, and the
+ * number of the newest of them: the mark to set (markTold) once a reply that
+ * listed them has come back.
+ */
+export function untoldDecisions(): { decisions: Decision[]; through: number } {
+  const { decisions, told } = useDecisionStore.getState();
+  return { decisions: decisions.filter((d) => numberOf(d.id) > told), through: newest(decisions) };
+}
+
+/** Mark the decisions up to number `through` as listed (never back: a later mark stands). */
+export function markTold(through: number): void {
+  useDecisionStore.setState((s) => (through > s.told ? { told: through } : {}));
+}
 
 // --------------------------------------------------------------- reading back
 
@@ -237,8 +266,8 @@ function readDecision(v: unknown): Decision | null {
   };
 }
 
-/** A saved record (storage, a session file) read back: only its well-formed proposals and decisions, each id once. */
-export function readDecisions(v: unknown): Pick<DecisionState, "proposals" | "decisions"> {
+/** A saved record (storage, a session file) read back: only its well-formed proposals and decisions, each id once, and its mark of those told. */
+export function readDecisions(v: unknown): Saved {
   if (!isObj(v)) return { proposals: [], decisions: [] };
   const once = <T extends { id: string }>(xs: (T | null)[]): T[] => {
     const seen = new Set<string>();
@@ -247,5 +276,6 @@ export function readDecisions(v: unknown): Pick<DecisionState, "proposals" | "de
   return {
     proposals: once(Array.isArray(v.proposals) ? v.proposals.map(readProposal) : []),
     decisions: once(Array.isArray(v.decisions) ? v.decisions.map(readDecision) : []),
+    ...(isNum(v.told) && v.told >= 0 ? { told: Math.floor(v.told) } : {}),
   };
 }

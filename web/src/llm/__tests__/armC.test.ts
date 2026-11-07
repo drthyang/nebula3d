@@ -4,7 +4,8 @@
 // model. The session calls every tool arm C is offered, changes and reruns a
 // stage that arm B's skill gate holds, asks for a tuning run, repeats a call
 // until it is asked to answer, answers in ways the answer checks send back,
-// and does it again in a second turn. Everything the model reads in it is held
+// and does it again in a second turn, after decisions on the Apply cards
+// (the "since the last reply" line). Everything the model reads in it is held
 // to carry none of the method:
 //
 // - no request (system prompt, messages, tool definitions) and no tool result
@@ -40,6 +41,7 @@ import { describeStageParams, regridRefusal, SAMPLE_PARAMS, sampleFactRefusal, T
 import { buildJudgeMessages, buildProposeMessages, STAGE_GOALS } from "../tune/prompts";
 import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations, skillNamesIn, skillSentences, skillSentencesIn, type SkillSentence } from "./methodText";
+import { budgetSince } from "./sinceSamples";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
@@ -275,7 +277,10 @@ describe("arm C's session, with the skills off", () => {
     const before = first.result.steps.find((s) => s.name === "assess_stage" && s.args.stage === "flatten")!;
     const plane = (JSON.parse(before.result!) as { flatten: { per_plane: { h0l: { floor_span_fraction: number } } } }).flatten.per_plane.h0l;
     const secondAnswer = `${SECOND} On h0l, the floors spanned ${plane.floor_span_fraction} of their level.`;
-    const followUp = buildChatMessages(context, history, FOLLOW_UP, null, { tools: true, skills: false });
+    // After decisions on the Apply cards: the "since the last reply" line ends
+    // its context (apply/since.ts), a fact arm C reads as arm B does.
+    const followUp = buildChatMessages(context, history, FOLLOW_UP, null, { tools: true, skills: false, since: budgetSince() });
+    expect(String(followUp[1].content)).toContain(budgetSince());
     second = await reply(followUp, [[{ content: secondAnswer }], [{ content: SECOND_REVISED }]], earlier);
 
     for (const [run, opened, answer] of [
