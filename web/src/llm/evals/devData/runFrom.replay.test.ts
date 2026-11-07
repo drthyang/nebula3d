@@ -6,6 +6,9 @@
 //   stale, and run_pipeline from the ring removal (the Pilot's rerun_from)
 //   makes it again with every stage after it: the Configure page's stage
 //   track then lists nothing stale. A current average is reused.
+// - With the average off, a changed ring setting leaves the ring removal
+//   stale, and run_pipeline from the punch makes it again with every stage
+//   after it; current rings are reused.
 // - A ring verdict's mark of the ring output (state/ringOutput.ts) goes stale
 //   after a run of the Run button that recomputes the ring stage (Force on),
 //   and the listing's date of the output moves with it; a run that reuses
@@ -50,6 +53,33 @@ describe("a run from the ring removal with the symmetry average on, on the dev c
     expect(reused.ok, reused.summary).toBe(true);
     expect(reused.result.stages).not.toHaveProperty("symmetry_average");
     expect(reused.result.stages).toMatchObject({ rings: "computed" });
+  });
+});
+
+describe("a run from the punch with the symmetry average off, on the dev control", () => {
+  // A ring setting changed leaves the ring removal's output stale. The run
+  // from the punch (the Pilot's rerun_from after a punch change, a Run card)
+  // asked for the stages from the punch alone, so the punch read that output
+  // as it was. Now it makes it again, with every stage after it, and reuses
+  // a current one.
+  it("makes stale rings again after a ring setting changed, and reuses current ones", async () => {
+    const c = devCase("dev-control");
+    const { id } = await c.dataset();
+    expect(usePipelineStore.getState().symmetryAverageEnabled).toBe(false);
+    expect(await staleNow(id)).toEqual({});
+
+    usePipelineStore.getState().patch({ ringPooledWindow: "8" });
+    expect(Object.keys(await staleNow(id))).toContain("ringremoved");
+    const made = await c.tool("run_pipeline", { from_stage: "punch" });
+    expect(made.ok, made.summary).toBe(true);
+    expect(made.result.stages).toMatchObject({ rings: "computed", punch: "computed", pdf: "computed" });
+    expect(usePipelineStore.getState().lastRun).toMatchObject({ forceFrom: "punch", force: false });
+    expect(await staleNow(id)).toEqual({});
+
+    const reused = await c.tool("run_pipeline", { from_stage: "punch" });
+    expect(reused.ok, reused.summary).toBe(true);
+    expect(reused.result.stages).not.toHaveProperty("rings");
+    expect(reused.result.stages).toMatchObject({ punch: "computed", pdf: "computed" });
   });
 });
 

@@ -38,9 +38,10 @@ const stageIndex = (stage: string): number => (STAGES as readonly string[]).inde
  * Run the pipeline from `from` (null: as the Run button does), as run_pipeline
  * does, and read the result the model reads: run_pipeline's own run, and an
  * Apply card's Run from a stage the model has no name for (the symmetry
- * average). The run is runFrom's: with the symmetry average on, the stages
- * before `from` are reused while their records say they still follow, and
- * recomputed when they do not. The result names a stage the run takes only
+ * average). The run is runFrom's: the enabled stages before `from` (the
+ * symmetry average while it is on, the ring removal, ...) are reused while
+ * their records say they still follow, and recomputed when they do not, or
+ * are missing. The result names a stage the run takes only
  * for that (one before `from`) where the run computed it, so a run that
  * reused them reads as it did when they were not part of it.
  */

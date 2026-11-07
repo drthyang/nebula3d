@@ -1647,14 +1647,13 @@ natively and runs only when the support has unsupported voxels.
 
 ## run_pipeline {"from_stage":"punch"} (a stubbed run of 42.3 s)
 
-460 characters sent.
+443 characters sent.
 
 ```json
 {
   "ended": "done",
   "seconds": 42.3,
   "stages": {
-    "rings": "reused",
     "punch": "computed",
     "backfill": "computed",
     "flatten": "computed",

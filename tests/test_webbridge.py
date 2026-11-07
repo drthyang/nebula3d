@@ -745,6 +745,54 @@ def test_run_async_pool_skipped_when_rings_current(tmp_path, monkeypatch):
     assert any(status == "skip" for st, status, _f, _m in events if st == "rings")
 
 
+def test_run_async_from_the_punch_fans_out_stale_rings_and_reuses_current_ones(
+        tmp_path, monkeypatch):
+    """The console's run from the punch with the symmetry average off: every
+    enabled stage, force_from the punch. A ring setting changed since leaves
+    the ring output stale, and the pool makes it again (ring_stage_pending,
+    the shared gate, decides it by its record); a current one is reused
+    without the pool."""
+    import asyncio
+
+    from tests.test_ring_parallel import FakeExecutor
+
+    stages = ",".join(st for st in webbridge.STAGES if st != "symmetry_average")
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=25)
+    webbridge.run("", json.dumps({"rings_model": "patched"}), flatten_enabled=True, force=True)
+    changed = json.dumps({"rings_model": "patched", "rings_n_patches": 4})
+    stale = json.loads(webbridge.stale_outputs_json(dataset_id, changed, True))["stale"]
+    assert "ringremoved" in stale
+
+    built: list[object] = []
+
+    def executor(pool, progress=None):  # noqa: ANN001
+        built.append(pool)
+        return FakeExecutor(n_workers=3)
+
+    monkeypatch.setattr(webbridge, "_ring_pool_js", lambda: object())
+    monkeypatch.setattr(webbridge, "_JsPlaneExecutor", executor)
+    events: list[tuple] = []
+
+    def progress(stage, status, fraction, message):
+        events.append((stage, status, fraction, message))
+
+    asyncio.run(webbridge.run_async(
+        stages, changed, flatten_enabled=True, force=False, force_from="punch",
+        progress=progress))
+    assert len(built) == 1
+    assert any("3-way" in ev[3] for ev in events if ev[0] == "rings")
+    assert json.loads(webbridge.stale_outputs_json(dataset_id, changed, True)) == {"stale": {}}
+
+    events.clear()
+    asyncio.run(webbridge.run_async(
+        stages, changed, flatten_enabled=True, force=False, force_from="punch",
+        progress=progress))
+    assert len(built) == 1
+    assert any(status == "skip" for st, status, _f, _m in events if st == "rings")
+    assert any(status == "done" for st, status, _f, _m in events if st == "punch")
+
+
 # ---------------------------------------------------------------------------
 # the symmetry average (stage 0), switched on from params_json
 # ---------------------------------------------------------------------------

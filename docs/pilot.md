@@ -632,7 +632,10 @@ miss is a note.
     made; see [Guardrails](#guardrails)),
     `run_pipeline` (as the Run button: the console moves to the Execution page;
     without `from_stage` it computes what is missing, with it it recomputes from
-    that stage on), `tune_pipeline` (below), and `show_in_viewer` (it acts on
+    that stage on, and makes a stage before it again only where that stage's
+    output is missing or its record says it no longer follows from its input
+    and settings, as the Configure page's stage track marks it),
+    `tune_pipeline` (below), and `show_in_viewer` (it acts on
     the view, as `dpdf_contrast` does). Neither run starts while another is
     going, and *Stop* cancels the one the model started.
   - *Marking*: `mark_region` (THY-44) marks a finding in the slice views for
