@@ -46,6 +46,7 @@ import {
   type ToolContext,
   type ViewTarget,
 } from "./tools";
+import type { OverlayData } from "./examine/data";
 import { openView } from "./tools/openView";
 import { verdicts, type ComputedVerdict, type Outcome } from "./verdicts";
 
@@ -70,6 +71,9 @@ export interface AgentStep {
   // The checks' outcomes the tool judged (verdicts/), kept beside the result
   // and never in it: the model reads the result alone.
   outcomes?: Outcome[];
+  // What its overlays draw that the result leaves out (examine/data.ts): the
+  // live reply's alone, never kept in the transcript.
+  overlay?: OverlayData;
   // Brought back from a saved session file (state/session.ts): shown, but
   // never taken as evidence for a later reply's numbers (toolStepsIn), since
   // the file could say anything.

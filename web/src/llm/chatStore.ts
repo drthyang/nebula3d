@@ -140,13 +140,15 @@ const restored = restore();
 let nextId = restored.turns.reduce((m, t) => Math.max(m, t.id), 0) + 1;
 
 // A step's outcomes (verdicts/) and its whole result (`full`, readings/)
-// serve the reply's own checks and its record: the transcript keeps what the
-// model and the user read, at the size it had.
+// serve the reply's own checks and its record, and its overlay data the
+// Highlights (examine/): the transcript keeps what the model and the user
+// read, at the size it had.
 const asRead = (steps: AgentStep[]): AgentStep[] =>
   steps.map((step) => {
-    const { outcomes, full, ...kept } = step;
+    const { outcomes, full, overlay, ...kept } = step;
     void outcomes;
     void full;
+    void overlay;
     return kept;
   });
 

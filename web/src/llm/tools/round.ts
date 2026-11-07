@@ -189,6 +189,7 @@ export async function runRound(
       ...(run.full !== undefined ? { full: run.full } : {}),
       view: run.view,
       outcomes: run.outcomes,
+      ...(run.overlay ? { overlay: run.overlay } : {}),
     };
     onStep?.(step);
     ended(step);

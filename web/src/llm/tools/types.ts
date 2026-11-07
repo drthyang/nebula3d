@@ -6,6 +6,7 @@
 // modules around the agent loop can import it without a cycle.
 
 import type { Dataset } from "../../api/types";
+import type { OverlayData } from "../examine/data";
 import type { AgentStep } from "../agent";
 import type { UsageReport } from "../provider/client";
 import type { LlmSettings } from "../settings";
@@ -82,6 +83,9 @@ export interface ToolOutcome {
   // The checks' outcomes the tool judged (verdicts/): beside the result, never
   // in it, so the model reads no more than the result.
   outcomes?: Outcome[];
+  // What the step's overlays draw that the result leaves out (examine/data.ts):
+  // beside it, never in it, as the outcomes.
+  overlay?: OverlayData;
 }
 
 // What a long tool gets besides its arguments: the reply's abort signal, and a
