@@ -518,6 +518,45 @@ P3.2); the change moved no grade of the dev corpus
 (`web/src/llm/evals/answerTextGoldens.test.ts`), and the scenarios' checks do
 not read the UB's angle.
 
+#### Grader changes
+
+Each change to what the text graders credit or charge is a deliberate one,
+listed here with its reason and date. The paid re-baseline (THY-52) runs on
+the graders as they are after the latest change, and its record becomes the
+new frozen baseline. A record made before a change is compared with it only
+after a free re-grade (`NEBULA_VALIDATION_REGRADE`).
+
+**2026-11-07: two artefacts found in the free B-auto eval** (the user's
+approval: "Fix now, before THY-52"). Both are general rules, fixed narrowly in
+`web/src/llm/evals/validation.ts`. Every other grade stays as it was.
+
+- **"Within limits" is fine.** An answer that said a check's numbers were
+  "within limits" ("the floor trend and span are within limits") was charged
+  with a false alarm. The words that make a clause no claim of a fault
+  (`FINE`) had "within the error", "tolerance" and "noise", but not "limits".
+  `FINE` now also takes "within (the, its, their) limit(s)". "Out of limits"
+  and "outside the limits" are still charged, and a clause after a semicolon
+  is still read on its own.
+- **A quoted "left ≤ 0" is no ring.** The ring stage's headline ends
+  "left ≤ <worst leftover>". An answer that quoted a headline of "left ≤ 0"
+  was credited with saying that a ring is left, because "left" is one of the
+  ring words. "Left" is now no ring word where a zero bound follows it: ≤, ⩽,
+  <, <= or =, then 0, 0. or 0.000. The choice for a bound above zero
+  ("left ≤ 0.41"): it still counts, as before, since it is a leftover the
+  stage measured. Whether that leftover matters is for the outputs' score and
+  the reviewer. "A ring is left at 2.2 Å⁻¹" is still a claim. The alarm side
+  has the same rule: a control that quotes "powder ring removal: left ≤ 0"
+  raises no ring.
+
+The free re-grade of the saved dev records moved three grades, all in one
+B-auto run of gemma4:26b that is not in git. Its dev-origin false alarm went
+("within limits"), so that run now passes. Its ring claims on dev-rings and
+dev-rings-shell went ("left ≤ 0"). Those two runs still fail, since neither
+wrote both rings' |Q|. No grade moved in the frozen arm-B record of
+2026-10-24, the PR 7 B-auto record or the dropped qwen3.8 records. The
+regression tests, with near-miss controls, are in `validation.test.ts`
+("the grader change of 2026-11-07").
+
 ### Each run starts fresh
 
 No run reads what an earlier run left in the app. Besides its messages and
