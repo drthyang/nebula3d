@@ -21,6 +21,7 @@ export interface WorkspaceView {
   footer?: ReactNode;
   onResetView?: () => void;
   glow?: boolean; // the assistant is on this view: a breathing edge
+  outline?: "primary" | "reading"; // the view a Pilot check reads (Highlights): a thin outline
   children: ReactNode; // the view body
 }
 
@@ -109,7 +110,7 @@ export function Workspace({
         return (
           <section
             key={v.id}
-            className={`view${isPrimary ? " primary" : ""}${thumb ? " thumb" : ""}${v.glow ? " ai-glow" : ""}`}
+            className={`view${isPrimary ? " primary" : ""}${thumb ? " thumb" : ""}${v.glow ? " ai-glow" : ""}${v.outline ? ` hl-${v.outline}` : ""}`}
             tabIndex={thumb ? 0 : undefined}
             aria-label={thumb ? "Show this view large" : undefined}
             onClickCapture={(e) => {

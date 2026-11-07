@@ -8,6 +8,7 @@ import { skillsOn } from "../../skills";
 import { TUNE_STAGE_LABELS, TUNE_STAGES, type TuneStage } from "../../tune/catalog";
 import { evaluateStage, headline } from "../../tune/evaluate";
 import { judge, TERSE_CRITERION, WORDS, type Outcome } from "../../verdicts/rules";
+import { overlayDataOf, type OverlayData } from "../../examine/data";
 import { ALL_STAGES, stageKey } from "../facts";
 import type { ViewTarget } from "../openView";
 import { oneOf } from "../shared/args";
@@ -120,6 +121,8 @@ export const assess_stage: ChatTool = {
     let view: ViewTarget | undefined;
     let measuredOn: string[] | undefined;
     const sent = criteriaSent(ctx.replySteps);
+    // What the stages' overlays draw beside their numbers (examine/data.ts).
+    let overlay: OverlayData | undefined;
     // The ring output as it stands before it is read: the ring verdict holds
     // it, and stands while it is the one there (state/ringOutput.ts).
     const ringOutput = ringOutputMark(dataset);
@@ -130,6 +133,8 @@ export const assess_stage: ChatTool = {
         continue;
       }
       const evaluation = await evaluateStage(stage, dataset);
+      const drawn = overlayDataOf(evaluation);
+      if (drawn) overlay = { ...overlay, ...drawn };
       const planes = Object.keys((evaluation.per_plane as object | undefined) ?? {});
       if (!measuredOn && planes.length) measuredOn = planes.map((p) => planeLabel(p, 0));
       if (!view) {
@@ -159,6 +164,6 @@ export const assess_stage: ChatTool = {
       lines.push(`${TUNE_STAGE_LABELS[stage]}: ${verdict} · ${headline(stage, evaluation)}`);
     }
     if (measuredOn) result.measured_on = measuredOn;
-    return { result, summary: lines.join(" · ") || "no stage outputs yet", view, outcomes };
+    return { result, summary: lines.join(" · ") || "no stage outputs yet", view, outcomes, ...(overlay ? { overlay } : {}) };
   },
 };

@@ -16,6 +16,7 @@ import type { GridSlice } from "../metrics/sliceStats";
 import { operationSymmetry, pointGroup, sectionSymmetry, transpose } from "../metrics/symmetry";
 import { judge, pedestalOfVolume, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
 import type { TuneStage } from "./catalog";
+import { withOverlayData, type LeftoverPeak } from "../examine/data";
 
 const RECIP_CUTS: Cut[] = [
   { plane: "hk0", value: 0 },
@@ -31,6 +32,7 @@ const DPDF_CUTS: Cut[] = [
 // A stage's numbers, as the tools and the tuning show them; the ΔPDF's keeps
 // its window's raw weight beside the shown one (UNROUNDED, which JSON never
 // writes), for the ΔPDF's rule.
+// What its overlays draw rides beside it, out of every copy (examine/data.ts).
 export type StageEvaluation = Record<string, unknown> & { [UNROUNDED]?: Unrounded };
 
 // Bumps within this |Q| (Å⁻¹) on the planes are one shell, judged once.
@@ -245,7 +247,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     });
     const planeWorst = (xs: (typeof planeResiduals)[number], sign: 1 | -1) =>
       worstOf((xs ?? []).filter((x) => x.significant && "ring" in x && x.ring), sign);
-    return {
+    const atGrid = record?.unconfirmed_at_grid?.q_centers;
+    return withOverlayData({
       // The ring candidates the removal left unsubtracted, unconfirmed on its grid, said out
       // loud (verdicts/rules.ts, RING_NOTICE_REMEDY: arm C reads it without its remedy).
       ...(notice ? { notice } : {}),
@@ -297,7 +300,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
           ring_residuals: residuals,
         };
       }),
-    };
+    }, atGrid?.length ? { ringsAtGrid: [...atGrid] } : null);
   }
   if (stage === "punch") {
     const rawId = hklVolumeId(dataset);
@@ -325,7 +328,22 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       const p = leftovers[i]?.suspicious_peaks[0];
       return p && (!best || p.sigma > (best.sigma as number)) ? { plane: c.plane, ...p } : best;
     }, null);
-    return {
+    // Every leftover on each plane, and round 2's voxels, for the overlays (examine/data.ts).
+    const drawn: LeftoverPeak[] = cuts.flatMap((c, i) =>
+      (leftovers[i]?.suspicious_peaks ?? []).map((p) => ({
+        plane: c.plane,
+        cut: c.value,
+        x: p.xy[0],
+        y: p.xy[1],
+        sigma: p.sigma,
+        broad: p.broad,
+        ...(p.at_node !== undefined ? { at_node: p.at_node } : {}),
+        ...(p.on_protected_plane !== undefined ? { on_protected_plane: p.on_protected_plane } : {}),
+        ...(p.hkl ? { hkl: p.hkl } : {}),
+      })),
+    );
+    const sweep = profile?.tail_sweep?.voxels_hkl;
+    return withOverlayData({
       // The significance test counts σ: say so when σ is √|I| of normalized data.
       ...(rawMeta?.sigma_note ? { sigma_note: rawMeta.sigma_note } : {}),
       total_leftover_peaks: total("n_suspicious"),
@@ -355,7 +373,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
         strongest_leftover: leftovers[i]?.suspicious_peaks[0] ?? null,
         punched_fraction: fractions[i],
       })),
-    };
+    }, { leftovers: drawn, ...(sweep?.length ? { round2: sweep.flat() } : {}) });
   }
   if (stage === "backfill") {
     const b = contexts.map((c) => c.context.backfill);

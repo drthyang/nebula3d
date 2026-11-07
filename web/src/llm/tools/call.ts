@@ -13,6 +13,7 @@ import { withoutInference } from "../inference";
 import type { ToolCall } from "../provider/client";
 import { fit } from "../readings";
 import { skillsOn } from "../skills";
+import type { OverlayData } from "../examine/data";
 import type { Outcome } from "../verdicts/rules";
 import type { ViewTarget } from "./openView";
 import { CHAT_TOOLS, unreadSkillRefusal } from "./registry";
@@ -29,6 +30,7 @@ export interface ToolRun {
   summary: string;
   view?: ViewTarget;
   outcomes?: Outcome[]; // the tool's outcomes (ToolOutcome), carried to the step
+  overlay?: OverlayData; // what its overlays draw (ToolOutcome), carried to the step
 }
 
 /**
@@ -100,7 +102,7 @@ export async function runParsed(
     // A text result (a skill) goes as written; anything else as JSON, fitted
     // to valid JSON when it is long, with the whole result beside it (fit).
     const { text, full } = fit(result, tool.maxResultChars ?? MAX_RESULT_CHARS);
-    return { ok: true, args, text, ...(full !== undefined ? { full } : {}), summary: out.summary, view: out.view, ...(out.outcomes ? { outcomes: out.outcomes } : {}) };
+    return { ok: true, args, text, ...(full !== undefined ? { full } : {}), summary: out.summary, view: out.view, ...(out.outcomes ? { outcomes: out.outcomes } : {}), ...(out.overlay ? { overlay: out.overlay } : {}) };
   } catch (e) {
     const msg = (e as Error).message;
     const text = e instanceof ToolArgError ? `Error: invalid arguments — ${msg}` : `Error: ${msg}`;

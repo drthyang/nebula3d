@@ -22,6 +22,7 @@ import {
   Slider,
 } from "../components/ui";
 import { powderPhaseText } from "../components/powderPhase";
+import { HighlightLayer } from "../components/HighlightLayer";
 import { RegionMarks, type MarkItem } from "../components/RegionMarks";
 import { sectionOf, type Section } from "../components/regionMark";
 import { HklGrid } from "../components/UnitCellGrid";
@@ -41,6 +42,10 @@ import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
 import { isReciprocal, useMarkStore, visibleMarks, WHERE_OUTPUT, type Mark } from "../state/markStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
+import { ExamineBar } from "../llm/components/ExamineBar";
+import { legendCounts, viewDraw, type ViewDraw } from "../llm/examine/draw";
+import type { ClassId, Tone } from "../llm/examine/overlays";
+import { stands, useExamineStore, useShownSet } from "../llm/examine/store";
 import { useTouchOnly } from "../components/usePlatform";
 import { readVerb } from "../components/viewerText";
 
@@ -260,6 +265,40 @@ export function ReciprocalViewer() {
     useMarkStore.getState().setLayoutRequest(null);
   }, [layoutRequest, stageKey, layout.mode, dispatchLayout]);
 
+  // The Highlights (llm/examine/): the shown set of a Pilot check on each
+  // stage's view at this cut, while it stands for the outputs as listed; the
+  // views the running (or shown) check reads are outlined.
+  const shownSet = useShownSet();
+  const highlightsOn = useExamineStore((s) => s.enabled);
+  const hlOff = useExamineStore((s) => s.off);
+  const examiningViews = useExamineStore((s) => s.running?.views);
+  const shown = shownSet && stands(shownSet, dataset) ? shownSet : null;
+  const draws: Record<string, ViewDraw | undefined> = {};
+  if (shown && meta && axisInfo) {
+    stages.forEach((s, i) => {
+      const slice = sliceResults[i]?.data;
+      if (!slice) return;
+      // The punch's holes are told from the slice before it (no data there is no hole).
+      const before = s.name === "braggpunched" && i > 0 ? sliceResults[i - 1]?.data : undefined;
+      draws[s.name] = viewDraw(shown.set, {
+        stage: s.name,
+        plane,
+        cut: value,
+        cutStep: axisInfo.step,
+        sx: geom.sx,
+        sy: geom.sy,
+        lattice: meta.lattice,
+        ub: meta.ub_matrix,
+        slice,
+        before,
+      });
+    });
+  }
+  const hlCounts = shown ? legendCounts(shown.set, draws) : {};
+  const hlTones = Object.fromEntries((shown?.set.classes ?? []).map((c) => [c.id, c.tone])) as Partial<Record<ClassId, Tone>>;
+  const hlCodes = Object.fromEntries((shown?.set.classes ?? []).flatMap((c) => (c.code ? [[c.id, c.code]] : []))) as Partial<Record<ClassId, string>>;
+  const outlined = examiningViews ?? shown?.set.views ?? {};
+
   const valueAt = (s: Slice | undefined, p: [number, number]) => {
     if (!s) return undefined;
     const ij = sampleIndex(s.header, p[0], p[1], geom);
@@ -348,6 +387,9 @@ export function ReciprocalViewer() {
         />
       )}
 
+      {/* ── What a Pilot check is examining, and its legend (THY-66) ── */}
+      {stages.length > 0 && <ExamineBar shown={shown} counts={hlCounts} />}
+
       {/* ── Stage views — same cut, one shared scale, one linked view ── */}
       {stages.length > 0 && (
         <Workspace
@@ -361,6 +403,7 @@ export function ReciprocalViewer() {
             return {
               id: s.name,
               glow: litStage(lit, s.name),
+              outline: outlined[s.name],
               title: STAGE_LABELS[s.name] ?? s.name,
               badge: i + 1,
               badgeClass: i === stages.length - 1 ? "view-badge--out" : "",
@@ -398,6 +441,19 @@ export function ReciprocalViewer() {
                     latCut={latCut}
                   />
                   {gridlines && <HklGrid viewport={viewport} geom={geom} lut={lut} />}
+                  {highlightsOn && draws[s.name] && (
+                    <HighlightLayer
+                      draw={draws[s.name]!}
+                      tones={hlTones}
+                      codes={hlCodes}
+                      off={hlOff}
+                      viewport={viewport}
+                      sx={geom.sx}
+                      sy={geom.sy}
+                      extent={r.data.header}
+                      primary={shown?.set.views[s.name] === "primary"}
+                    />
+                  )}
                   {marked.length > 0 && (
                     <RegionMarks items={marksOn(s.name)} geom={geom} viewport={viewport} lut={lut} extent={r.data.header} />
                   )}

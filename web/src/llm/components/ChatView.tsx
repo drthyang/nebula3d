@@ -8,7 +8,9 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
+import { useDatasets } from "../../api/hooks";
 import { BrandGlyph } from "../../components/ui";
+import { useDatasetStore } from "../../state/datasetStore";
 import { useNavStore } from "../../state/navStore";
 import { toolsKnownUnsupported, type AgentStep } from "../agent";
 import { useChatStore, type ChatTurn } from "../chatStore";
@@ -18,6 +20,8 @@ import { askAssistant, clearConversation, replyContext, stopAssistant } from "..
 import { saveSettings, type LlmSettings } from "../settings";
 import { CHAT_TOOLS, factsOf, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
+import { drawsOverlays } from "../examine/overlays";
+import { showStep, useExamineStore, useHasSet } from "../examine/store";
 import type { AssistantContext } from "../useAssistant";
 import { reportable } from "../report/collect";
 import { formatDuration } from "../clock";
@@ -85,11 +89,28 @@ function StepDetail({ step: s }: { step: AgentStep }) {
   );
 }
 
+// A step whose overlays the views keep (the Highlights): a swatch on its row.
+function HighlightSwatch({ step }: { step: AgentStep }) {
+  const has = useHasSet(step);
+  return has ? <span className="hl-swatch" title="Its highlights are on the cleanup page's views" aria-label="Has highlights" /> : null;
+}
+
 // The tool calls of one reply: a compact list, each row opening to the
-// arguments and the JSON the model read.  A viewer step can be reopened; a
-// run or a tuning run opens the Execution page, live while it goes.
+// arguments and the JSON the model read.  A viewer step can be reopened (with
+// its highlights, examine/); a run or a tuning run opens the Execution page,
+// live while it goes.
 function Steps({ steps, live, turn }: { steps: AgentStep[]; live?: boolean; turn?: number }) {
+  const datasets = useDatasets().data;
+  const datasetId = useDatasetStore((s) => s.datasetId);
   if (!steps.length) return null;
+  const show = (s: AgentStep, i: number) => {
+    openView(s.view!);
+    if (turn !== undefined && drawsOverlays(s.name)) showStep(s, turn, i + 1, datasets?.find((d) => d.id === datasetId));
+    else if (live) {
+      const kept = useExamineStore.getState().sets.find((x) => x.set.stepId === s.id && x.turn === null);
+      if (kept) useExamineStore.setState({ current: kept.set.key, off: [] });
+    }
+  };
   const running = steps.find((s) => s.status === "running");
   return (
     <details className="ai-steps" open={live}>
@@ -97,11 +118,16 @@ function Steps({ steps, live, turn }: { steps: AgentStep[]; live?: boolean; turn
         {running ? `${stepLabel(running)}…` : `Used ${steps.length} tool${steps.length > 1 ? "s" : ""}`}
       </summary>
       <ol className="ai-step-list">
-        {steps.map((s) => (
-          <li key={s.id} id={turn !== undefined ? `ai-step-${turn}-${s.id}` : undefined} className={`ai-step ai-step-${s.status}`}>
+        {steps.map((s, i) => (
+          <li
+            key={s.id}
+            id={turn !== undefined ? `ai-step-${turn}-${s.id}` : live ? `ai-step-live-${s.id}` : undefined}
+            className={`ai-step ai-step-${s.status}`}
+          >
             <StepDetail step={s} />
+            <HighlightSwatch step={s} />
             {s.view && (
-              <button type="button" className="ai-step-open" onClick={() => openView(s.view!)}>
+              <button type="button" className="ai-step-open" onClick={() => show(s, i)}>
                 Show
               </button>
             )}
@@ -119,6 +145,31 @@ function Steps({ steps, live, turn }: { steps: AgentStep[]; live?: boolean; turn
         ))}
       </ol>
     </details>
+  );
+}
+
+// The Highlights switch: off hides the overlays on the views, keeps the "Now examining" bar.
+function HighlightsChip() {
+  const on = useExamineStore((s) => s.enabled);
+  const setEnabled = useExamineStore((s) => s.setEnabled);
+  return (
+    <button
+      type="button"
+      className={`ai-vision-chip${on ? " on" : ""}`}
+      onClick={() => setEnabled(!on)}
+      aria-pressed={on}
+      title={
+        on
+          ? "Highlights on: the views show what each check measured, where it measured it."
+          : "Highlights off: the views show the data alone; the bar still names each check."
+      }
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2.4 1.6" />
+        <circle cx="8" cy="8" r="2.2" fill="currentColor" />
+      </svg>
+      Highlights
+    </button>
   );
 }
 
@@ -385,6 +436,7 @@ export function ChatView({
               Follow
             </button>
           )}
+          {tools && <HighlightsChip />}
           <button
             type="button"
             className={`ai-vision-chip${settings.attachImages ? " on" : ""}`}
