@@ -8650,3 +8650,11 @@ html.kb-open .ai-side {
     min-height: 44px;
   }
 }
+
+/* Touch screens: a Compare Laue classes row is the tap that sets its class
+   (the class name's button is the keyboard's way): 44 px tall. */
+@media (pointer: coarse) {
+  .laue-row > td {
+    height: 44px;
+  }
+}
