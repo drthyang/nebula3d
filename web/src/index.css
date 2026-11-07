@@ -7141,6 +7141,10 @@ h6.md-h {
   .layout-btn {
     display: none !important;
   }
+  /* every view is one size here, under the sticky bar: no legend inside one of them */
+  .ex-view-legend {
+    display: none !important;
+  }
   .lv-track {
     width: 130px;
   }
