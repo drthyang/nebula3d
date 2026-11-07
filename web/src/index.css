@@ -7690,4 +7690,8 @@ html.kb-open .ai-side {
   .pc-actions--ring .btn-primary {
     flex-basis: 100%;
   }
+  .pc-actions--ring .btn:not(.btn-primary) {
+    flex: 1 1 auto;
+    white-space: nowrap;
+  }
 }
