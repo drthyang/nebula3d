@@ -5345,12 +5345,130 @@ body.ai-resizing iframe {
   font-size: 11px;
   color: var(--text-3);
 }
-.ai-usage-total {
+/* The context meter by the chat box (llm/contextMeter.ts, components/ContextMeter.tsx):
+   neutral below 70 %, amber to 90 %, red above. */
+.ai-meter {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   color: var(--text-3);
   white-space: nowrap;
-  cursor: help;
+}
+.ai-meter-bar {
+  position: relative;
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.ai-meter-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--text-3);
+}
+.ai-meter.is-amber { color: var(--amber); }
+.ai-meter.is-amber .ai-meter-bar > span { background: var(--amber); }
+.ai-meter.is-red { color: var(--red); }
+.ai-meter.is-red .ai-meter-bar > span { background: var(--red); }
+.ai-meter-help {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: inherit;
+  font-size: 10px;
+  line-height: 14px;
+  cursor: pointer;
+}
+.ai-meter-help:hover,
+.ai-meter.is-open .ai-meter-help {
+  border-color: currentColor;
+}
+/* the "?" line under the toggles row, with the other action where there is one */
+.ai-meter-detail {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
+  text-align: right;
+}
+.ai-meter-other {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-hi);
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* the one action from amber, beside the meter */
+.ai-meter-act {
+  background: var(--amber-soft);
+  border: 1px solid rgba(232, 180, 84, 0.45);
+  border-radius: 999px;
+  color: var(--amber);
+  font-size: 12px;
+  padding: 4px 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ai-meter-act.is-red {
+  background: var(--red-soft);
+  border-color: rgba(239, 106, 106, 0.45);
+  color: var(--red);
+}
+.ai-meter-act:hover {
+  border-color: currentColor;
+}
+.ai-meter-act-short {
+  display: none;
+}
+/* a phone: the meter stays out of the toggles row until amber; then its
+   action takes the bar's place, with its short label, so no row is added */
+@media (max-width: 599px) {
+  .ai-meter.is-ok:not(.is-open) {
+    display: none;
+  }
+  .ai-meter:not(.is-ok) .ai-meter-bar {
+    display: none;
+  }
+  .ai-meter-act-long {
+    display: none;
+  }
+  .ai-meter-act-short {
+    display: inline;
+  }
+}
+/* In the transcript: where the newest-turns limit stops sending turns, and
+   where a summary takes their place (ChatView). */
+.ai-context-note {
+  align-self: stretch;
+  margin: 2px 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--amber);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.ai-context-note details {
+  margin-top: 4px;
+}
+.ai-context-note summary {
+  cursor: pointer;
+  color: var(--text-3);
+}
+.ai-context-note pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--text-2);
 }
 .ai-step-name {
   flex: none;
@@ -5453,7 +5571,7 @@ body.ai-resizing iframe {
 }
 .ai-toggles {
   display: flex;
-  flex-wrap: wrap; /* a narrow panel: the token count and Clear go to a second line, not out of view */
+  flex-wrap: wrap; /* a narrow panel: the context meter and Clear go to a second line, not out of view */
   justify-content: flex-end; /* there, at the right, as on one line (the auto margins hold the one-line layout) */
   align-items: center;
   gap: 6px 8px;
@@ -5461,7 +5579,7 @@ body.ai-resizing iframe {
 .ai-toggles .ai-clear {
   margin-left: auto;
 }
-.ai-toggles .ai-usage-total + .ai-clear {
+.ai-toggles :is(.ai-meter, .ai-meter-act) + .ai-clear {
   margin-left: 8px;
 }
 .ai-vision-chip {
@@ -8396,5 +8514,46 @@ html.kb-open .ai-side {
   }
   .auto-btn--quiet {
     min-width: 44px;
+  }
+}
+
+/* The context meter on a touch screen: its ? and its actions are 44 px
+   targets (the ? grows, then a ::before past it, so the row keeps its height). */
+@media (pointer: coarse) {
+  .ai-meter-help {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    line-height: 22px;
+    font-size: 12px;
+  }
+  .ai-meter-help::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .ai-meter-act {
+    min-height: 44px;
+  }
+  .ai-meter-other {
+    position: relative;
+  }
+  .ai-meter-other::before {
+    content: "";
+    position: absolute;
+    left: -4px;
+    right: -4px;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+  .ai-context-note summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
   }
 }

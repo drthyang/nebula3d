@@ -105,6 +105,7 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
         toolContext={toolContext}
         contextLoading={contextQuery.isFetching}
         contextNote={settings.useTools ? contextWarning(modelContext, settings.model) : null}
+        modelContext={modelContext}
       />
     </div>
   );
