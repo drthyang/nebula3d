@@ -8380,6 +8380,19 @@ html.kb-open .ai-side {
   font: 600 9.5px/1.6 var(--font-mono);
   letter-spacing: 0.04em;
 }
+/* the problems an auto run's checks found, above its report reply (computed, not the model's) */
+.ai-problems-head {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 13px;
+}
+.ai-problems-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
 .ai-msg.is-pulsed {
   animation: pc-pulse 1.2s ease-out;
 }

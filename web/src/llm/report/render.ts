@@ -26,6 +26,9 @@ export const DETAILS_TITLE = "Details and provenance";
 export const DECISIONS_TITLE = "Decisions";
 // An auto run's plan, facts, limit and use (auto/report.ts).
 export const AUTO_TITLE = "Auto run";
+// The problems an auto run's checks found, computed (auto/problems.ts): never the model's words.
+export const PROBLEMS_HEADING = "Problems the checks found";
+const PROBLEMS_NOTE = "Computed from the checks' verdicts, not from the model's words.";
 
 /** An auto run's lines after its plan: how it ended, the limit, the facts and held changes, the use. */
 const autoLines = (a: NonNullable<Report["auto"]>): string[] => [
@@ -72,6 +75,7 @@ export function reportMarkdown(r: Report): string {
 
   if (limits.length) out.push("## Limitations", "", ...limits.map((c) => `- ${c}`), "");
 
+  if (r.auto?.problems) out.push(`## ${PROBLEMS_HEADING}`, "", `*${PROBLEMS_NOTE}*`, "", ...r.auto.problems.map((l) => `- ${l}`), "");
   if (r.auto) {
     out.push(`## ${AUTO_TITLE}`, "", mdTable(["Step", "Outcome", "Evidence"], r.auto.plan.map((p) => [p.row, p.outcome, p.evidence])), "");
     out.push(...autoLines(r.auto).map((l) => `- ${l}`), "");
@@ -274,6 +278,9 @@ export function reportHtml(r: Report): string {
   );
 
   if (limits.length) parts.push(`<h2>Limitations</h2><ul class="limits">${limits.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`);
+  if (r.auto?.problems) {
+    parts.push(`<h2>${esc(PROBLEMS_HEADING)}</h2><p class="note">${esc(PROBLEMS_NOTE)}</p><ul class="limits">${r.auto.problems.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`);
+  }
   if (r.auto) {
     parts.push(
       `<h2>${esc(AUTO_TITLE)}</h2><table><thead><tr><th>Step</th><th>Outcome</th><th>Evidence</th></tr></thead><tbody>${r.auto.plan

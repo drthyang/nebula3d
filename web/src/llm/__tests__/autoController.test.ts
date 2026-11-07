@@ -117,6 +117,8 @@ describe("a clean run", () => {
     // The next reply's "since the last reply" line says who ran it.
     expect(sinceLine(decisions(), useDecisionStore.getState().proposals)).toBe("- since the last reply, auto mode ran the pipeline from the start");
     expect(run().clock.endedAt).not.toBeNull();
+    // The problems the final checks found: the app's list, computed from their verdicts, each with its tool.
+    expect(run().problems).toEqual(["the counts end at 4.4 Å⁻¹, inside the box (qmax_coverage)"]);
   });
 });
 
@@ -184,6 +186,11 @@ describe("a run with a fixable stage", () => {
     expect(status()).toMatchObject({ punch: "attention", backfill: "passed", report: "done" });
     expect(run().plan.find((r) => r.id === "punch")).toMatchObject({ tries: 2, detail: "still needs attention after two fixes" });
     expect(run().replies).toBe(3); // two fixes and the report
+    expect(run().problems).toEqual(["the Bragg punch needs attention: missed at nodes (assess_stage punch)", "the counts end at 4.4 Å⁻¹, inside the box (qmax_coverage)"]);
+    // The model is not asked for them: its prompt leaves them to the app's list.
+    const report = model.sent.find((r) => phaseOf(r.messages).kind === "report")!;
+    expect(String(report.messages[3].content)).toBe(REPORT_PROMPT);
+    expect(REPORT_PROMPT).toContain("The app lists the problems they found: refer to that list.");
   });
 });
 
@@ -418,6 +425,8 @@ describe("Stop and Resume", () => {
     expect(status()).toMatchObject({ preflight: "done", run: "done", rings: "stopped", punch: "skipped", pdf: "skipped", report: "done" });
     expect(run().plan.find((r) => r.id === "punch")!.detail).toBe("not checked: stopped by you");
     expect(run().plan.find((r) => r.id === "report")!.detail).toBe("the app's alone: stopped by you, no model reply");
+    // The problems the run's checks found so far, the app's list, as the report's.
+    expect(run().problems).toEqual(expect.arrayContaining([expect.stringMatching(/\((qmax_coverage|ub_check|assess_stage \w+)\)$/)]));
     expect(run().clock.endedAt).not.toBeNull();
     // The activity log says so, and the record is a finished run's: Resume does nothing.
     expect(activityNow()!.rows.find((r) => r.key === "app-report")).toMatchObject({ title: "The app's report", line: "Stopped by you: written from what the run checked, with no model reply and no cost" });

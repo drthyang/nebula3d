@@ -1,9 +1,13 @@
-- **NEBULA Pilot: the auto report names the problems in the data.** The
-  report reply now starts with the problems the final checks found in the
-  data, with their numbers, or says they found none. Before, it gave each
-  stage's verdict, so a stage that passed hid its data's problem, such as a
-  turned UB or a shifted HKL origin. The problems come from the checks'
-  verdicts only.
+- **NEBULA Pilot: the auto report lists the problems its checks found.** The
+  app writes the list from the final checks' verdicts: each check that needs
+  attention, with its reasons, and each problem in the data that no setting
+  fixes, such as a turned UB or a shifted HKL origin, each with the tool that
+  found it. When there is none, it says "none found by the checks". The list
+  is shown above the report reply, in the activity log and in the report. The
+  model writes no part of it: its reply gives each stage's verdict, what
+  changed and why and what is left to decide, and refers to the list. A
+  problem no check flags (a powder ring the ring check does not find) is not
+  listed.
 - **NEBULA Pilot: auto replies have an output cap.** On a model server that
   sets none (a local model, an OpenAI-compatible cloud one), each auto reply
   may write at most 16,000 tokens, the validation's cap. A reply cut at the

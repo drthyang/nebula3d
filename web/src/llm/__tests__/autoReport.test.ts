@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { captureSession, parseSession } from "../../state/session";
 import { APP_REPORT_TURN, appReportQuestion, appReportTurn, autoReportSection, isAutoReportTurn } from "../auto/report";
+import { problemsText } from "../auto/problems";
 import { newRun, readAutoRun, restoreAutoRun, useAutoStore, type AutoRun } from "../auto/store";
 import { startClock, stopClock } from "../clock";
 import { reportHtml, reportMarkdown } from "../report/render";
@@ -79,6 +80,7 @@ describe("the app's own report of a run Stop ended", () => {
     limit: null,
     appReport: "stopped",
     ended: "Stopped by you: the app's report, from what the run checked, with no model reply.",
+    problems: ["the UB is turned by 0.601° (ub_check)"],
   });
 
   it("stands on no chat turn, with the run's steps and no words, says why in its question, and is marked stopped by you", () => {
@@ -106,14 +108,25 @@ describe("the app's own report of a run Stop ended", () => {
     const md = reportMarkdown(report);
     expect(md).toContain("> Auto analysis, stopped by you: the app's report from what the run checked, with no model reply.");
     expect(md).toContain("- Stopped by you: the app's report, from what the run checked, with no model reply.");
+    // The problems the checks found: the app's list, computed, never the model's.
+    expect(md).toContain("## Problems the checks found\n\n*Computed from the checks' verdicts, not from the model's words.*\n\n- the UB is turned by 0.601° (ub_check)\n");
+    expect(reportHtml(report)).toContain("<h2>Problems the checks found</h2>");
     // No model wrote it: no summary of the model's.
     expect(md).not.toContain("## The model's summary");
     expect(report.narrative).toBe("");
   });
 
+  it("says so when the checks found no problem, or checked nothing", () => {
+    expect(autoReportSection({ ...stopped(), problems: [] }, 0).problems).toEqual(["none found by the checks"]);
+    expect(autoReportSection({ ...stopped(), problems: null }, 0).problems).toEqual(["none: the run checked nothing"]);
+    expect(autoReportSection({ ...stopped(), problems: undefined }, 0).problems).toBeUndefined();
+    expect(problemsText([])).toBe("Problems the checks found:\n- none found by the checks");
+  });
+
   it("is kept over a reload and in a session file", () => {
     const back = readAutoRun(JSON.parse(JSON.stringify(stopped())), { fromFile: false })!;
     expect(back.appReport).toBe("stopped");
+    expect(back.problems).toEqual(["the UB is turned by 0.601° (ub_check)"]);
     expect(readAutoRun({ ...JSON.parse(JSON.stringify(stopped())), appReport: "bogus" }, { fromFile: true })!.appReport).toBeNull();
   });
 });

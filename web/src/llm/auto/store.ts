@@ -72,6 +72,9 @@ export interface AutoRun {
   turnAt: number[]; // for each of those turns, how many of the run's steps came before it: where the transcript shows the app's own steps
   reportTurn: number | null;
   appReport: AppReport | null; // the report is the app's alone: Stop ended the run, or a limit left no reply
+  // The problems the final checks found (auto/problems.ts), computed, never the
+  // model's: null when they judged nothing; absent until the report row (or Stop) computes them.
+  problems?: string[] | null;
   pendingRun: RunStage | null; // a change applied whose run has not finished: Resume runs it first
   seedForm: SeedForm | null; // the form a transport took the seeded checks in, once found
 }
@@ -305,6 +308,7 @@ export function readAutoRun(v: unknown, { fromFile }: { fromFile: boolean }): Au
     turnAt: numbers(v.turnAt),
     reportTurn: isNum(v.reportTurn) ? v.reportTurn : null,
     appReport: oneOf(v.appReport, ["stopped", "limit"] as const) ? v.appReport : null,
+    ...(Array.isArray(v.problems) ? { problems: strings(v.problems) } : v.problems === null ? { problems: null } : {}),
     pendingRun: oneOf(v.pendingRun, RUN_STAGES) ? v.pendingRun : null,
     seedForm: oneOf(v.seedForm, ["round", "message"] as const) ? v.seedForm : null,
   };

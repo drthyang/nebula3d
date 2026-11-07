@@ -17,6 +17,7 @@ import { clockLine } from "../clock";
 import type { ReportAuto } from "../report/report";
 import { usageText } from "../usage";
 import { usd } from "./cost";
+import { problemLines } from "./problems";
 import { LIMIT_WORDS } from "./plan";
 import type { AutoRun } from "./store";
 
@@ -30,6 +31,7 @@ export function autoReportSection(r: AutoRun, now: number): ReportAuto {
       outcome: row.detail ?? row.status,
       evidence: (row.evidence ?? []).map((e) => (e.text ? `${e.label}: ${e.text}` : e.label)).join(" · "),
     })),
+    ...(r.problems !== undefined ? { problems: problemLines(r.problems) } : {}),
     facts: r.facts.map((f) => ({ fact: `${f.title}: ${f.shown}`, answer: ANSWER[f.status] })),
     held: r.held.map((h) => `${h.title}: held by the ring gate (no 3D verdict of a ring left), never asked`),
     ended: r.ended ?? (r.state === "done" ? "Done." : `Not finished: ${r.state}.`),

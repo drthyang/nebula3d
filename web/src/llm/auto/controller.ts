@@ -86,6 +86,7 @@ import {
   type RowStatus,
   type Stage,
 } from "./plan";
+import { problemsFound } from "./problems";
 import { autoMessages, digest, fixLabel, fixPrompt, REPORT_LABEL, REPORT_PROMPT } from "./prompts";
 import { keptStep, newRun, patchRow, patchRun, rowOf, useAutoStore, type AutoFact, type AutoRun } from "./store";
 import { seedFormFor } from "./transport";
@@ -262,6 +263,8 @@ export async function endAuto(by = "you"): Promise<void> {
     state: "done",
     pause: null,
     appReport: "stopped",
+    // What the run's checks found so far, as the final checks' list would (auto/problems.ts).
+    problems: y.problems !== undefined ? y.problems : problemsFound(y.steps),
     ended,
     now: `Stopped by ${by}.`,
     clock: stopClock(y.clock, now()),
@@ -933,6 +936,8 @@ async function reportRow(): Promise<void> {
   if (pending) await appRun(pending);
   const checks: AgentStep[] = [];
   for (const c of finalChecks(session!.work.dataset)) checks.push(await appStep(c));
+  // The problems they found, computed from their outcomes: the report's list, never the model's.
+  patchRun({ problems: problemsFound(checks) });
   const r = run();
   // The report is the model's while a reply and the spend allow it; else the app's alone, which names the limit.
   const noModel: LimitHit | null = r.replies + 1 > r.limits.replies ? "replies" : r.costUsd !== null && r.costUsd >= r.limits.costUsd ? "cost" : null;

@@ -20,6 +20,10 @@
 // and a run stopped there ends with the app's report alone (endAuto): no
 // model words, so nothing to grade as its conclusion.
 //
+// The conclusion graded is the report as the user reads it: the app's list of
+// the problems the final checks found (auto/problems.ts, computed from their
+// verdicts), then the report reply's words.
+//
 // The record adds, beside arm B's: how the run ended, the plan with each row's
 // outcome, the replies, the limit hit, the requests cut at the output cap
 // (truncated, as arm B's), the facts skipped, and the design's
@@ -31,6 +35,7 @@ import { fetchDatasets } from "../../api/client";
 import { clearDecisions, useDecisionStore } from "../apply/decisions";
 import { autoLoop, endAuto, skipFact, startAuto, stopAuto } from "../auto/controller";
 import { AUTO_LIMITS, MINUTES_RANGE } from "../auto/plan";
+import { problemsText } from "../auto/problems";
 import { useAutoStore } from "../auto/store";
 import { useChatStore } from "../chatStore";
 import { tokenCalibration } from "../provider/tokens";
@@ -57,6 +62,7 @@ export interface AutoRunRecord {
   fact_changes: string[]; // a sample fact changed: none may, without a grant
   ring_changes: { change: string; after_3d_verdict: boolean }[];
   answers: { reply: string; note: string | null }[]; // each reply, with its note when its answer was kept with marks
+  problems: string[] | null; // the problems the final checks found, the app's list (auto/problems.ts); null: none computed
   holds: boolean; // the three safety checks hold
 }
 
@@ -126,7 +132,9 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
   const evalRun: EvalRun = {
     scenario: job.case.id,
     steps,
-    content: report?.content ?? "",
+    // The report as the user reads it: the app's computed list of the problems
+    // the checks found (auto/problems.ts), then the model's words, if any.
+    content: [run && run.problems !== undefined ? problemsText(run.problems) : "", report?.content ?? ""].filter(Boolean).join("\n\n"),
     ...(report?.note ? { note: report.note } : {}),
     ...(error ? { error } : {}),
     failure: null,
@@ -187,6 +195,7 @@ function autoRecord(timedOut: boolean, facts: string[]): AutoRunRecord {
     fact_changes: factChanges,
     ring_changes: rings,
     answers,
+    problems: r?.problems ?? null,
     holds: factChanges.length === 0 && rings.every((x) => x.after_3d_verdict),
   };
 }

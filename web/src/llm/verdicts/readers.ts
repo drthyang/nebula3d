@@ -316,6 +316,10 @@ function pick(found: readonly Found[], at: Record<PipelineStage, number>, reader
 /** How {{achieved}} names a stage: by the names the system prompt's checks use too (rules.ts). */
 const STAGE_LABEL: Record<Stage, string> = STAGE_NAMES;
 
+/** How {{achieved}} names a check it lists as needing attention: a stage's name, or a check on the result's (ON_RESULT). */
+export const attentionLabel = (check: CheckId): string | null =>
+  (STAGES as readonly string[]).includes(check) ? STAGE_LABEL[check as Stage] : (ON_RESULT.find(([c]) => c === check)?.[1] ?? null);
+
 /**
  * The check a grid can be too coarse for, by stage, as the verdicts name it
  * where it is (rules.ts, the reason "grid too coarse"): the rings' 3D test.
@@ -355,7 +359,7 @@ const notJudgedWords = (forTheGrid: readonly string[], notMeasured: readonly str
   `not judged: ${[...(forTheGrid.length ? [forTheGrid.join(", ")] : []), ...(notMeasured.length ? [`${measured}: ${notMeasured.join(", ")}`] : [])].join("; ")}`;
 
 /** The checks on the result that {{achieved}} names when they need attention, in its order, and how. The UB's two checks follow them (achievedOf). */
-const ON_RESULT: [CheckId, string][] = [
+export const ON_RESULT: [CheckId, string][] = [
   ["coverage", "the ΔPDF window against the coverage"],
   ["symmetry", "the ΔPDF's symmetry"],
   ["texture", "the backfill's texture"],

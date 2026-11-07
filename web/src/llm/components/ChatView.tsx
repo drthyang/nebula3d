@@ -29,6 +29,7 @@ import { reportable } from "../report/collect";
 import { formatDuration } from "../clock";
 import { useAutoStore } from "../auto/store";
 import { autoTranscript, isSeeded, type AutoBlock } from "../auto/transcript";
+import { problemLines, PROBLEMS_TITLE } from "../auto/problems";
 import { AutoChip, AutoPanel } from "./AutoPanel";
 import { Markdown } from "./Markdown";
 import { ProposalCards } from "./ProposalCards";
@@ -158,6 +159,32 @@ function Steps({ steps, live, turn, block }: { steps: AgentStep[]; live?: boolea
         ))}
       </ol>
     </details>
+  );
+}
+
+// The problems an auto run's final checks found, above its report reply: the
+// app's list, computed from the checks' outcomes (auto/problems.ts), never the
+// model's words, which refer to it.
+function AutoProblems({ lines }: { lines: readonly string[] | null }) {
+  return (
+    <div className="ai-msg ai-msg-assistant ai-msg-auto ai-problems" role="note" aria-label={PROBLEMS_TITLE}>
+      <span className="ai-avatar" aria-hidden="true">
+        <BrandGlyph size={22} />
+      </span>
+      <div className="ai-msg-main">
+        <div className="ai-problems-head">
+          <span className="auto-tag" title="Auto mode computed this from the checks' verdicts">
+            auto
+          </span>
+          {PROBLEMS_TITLE}
+        </div>
+        <ul className="ai-problems-list">
+          {problemLines(lines).map((l, i) => (
+            <li key={i}>{l}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 
@@ -313,6 +340,7 @@ export function ChatView({
   const usage = useChatStore((s) => s.usage);
   // An auto run under way owns the conversation: the composer waits (auto/controller.ts).
   const autoRunning = useAutoStore((s) => s.run?.state === "running");
+  const autoRun = useAutoStore((s) => s.run);
   const auto = useAutoBlocks(turns);
   const scrollRef = useRef<HTMLDivElement>(null);
   // The reply whose analysis report is open (its turn id).
@@ -418,6 +446,7 @@ export function ChatView({
             {auto.blocks.filter((b) => b.before === t.id).map((b) => (
               <AutoSteps key={b.key} block={b} live={false} />
             ))}
+            {autoRun && autoRun.reportTurn === t.id && autoRun.problems !== undefined && <AutoProblems lines={autoRun.problems} />}
             <PastTurn
               turn={t}
               tuning={t.id === tuneTurn}
