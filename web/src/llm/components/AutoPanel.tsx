@@ -272,7 +272,7 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
   // Undo once the run is done or paused by you; not while it runs or waits for your answer.
   const canUndo = (run.state === "done" || run.state === "stopped") && run.decisions.length > 0;
   return (
-    <section className={`auto-panel auto-panel--${tone}${open ? " is-open" : ""}`} aria-label="Auto analysis">
+    <section className={`auto-panel auto-panel--${tone}${open ? " is-open" : ""}`} aria-label="Auto analysis" data-run={run.id}>
       <div className="auto-top">
         <div className="auto-head">
           <span className="auto-title">Auto analysis</span>
@@ -369,6 +369,8 @@ function goToTurn(turn: number): void {
  */
 export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart: boolean }) {
   const state = useAutoStore((s) => s.run?.state);
+  // Why a start was refused (a run or a reply under way): said, not swallowed.
+  const [refused, setRefused] = useState<string | null>(null);
   if (state === "running") {
     return (
       <div className="ai-reviews">
@@ -389,7 +391,11 @@ export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart:
         type="button"
         className="ai-chip ai-chip-act"
         disabled={!canStart || !ctx}
-        onClick={() => ctx && void startAuto({ ctx }).catch(() => {})}
+        onClick={() => {
+          if (!ctx) return;
+          setRefused(null);
+          void startAuto({ ctx }).catch((e: unknown) => setRefused(`Not started: ${(e as Error)?.message ?? String(e)}.`));
+        }}
         title={`Preflight, a run, check and fix each stage, then a report. It pauses for a sample fact; ${AUTO_LIMITS.fixesPerStage} fixes a stage and ${AUTO_LIMITS.replies} model replies at most.`}
       >
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -397,6 +403,7 @@ export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart:
         </svg>
         Run auto analysis
       </button>
+      {refused && <span className="auto-refused">{refused}</span>}
     </div>
   );
 }
