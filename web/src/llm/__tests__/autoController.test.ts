@@ -16,7 +16,7 @@ import { applyFact, autoLoop, endAuto, resumeAuto, skipFact, startAuto, stopAuto
 import { useAutoStore, type AutoRun } from "../auto/store";
 import { useChatStore } from "../chatStore";
 import { CLAUDE_URL } from "./scriptedTransports";
-import { clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
+import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
 import { installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
@@ -121,7 +121,7 @@ describe("a run with a fixable stage", () => {
     expect(status()).toMatchObject({ rings: "passed", punch: "fixed", backfill: "passed", report: "done" });
     expect(run().plan.find((r) => r.id === "punch")).toMatchObject({ tries: 1, detail: "passed after its first fix" });
     // The fix's request: the punch's check as the reply's first step, the user's words none.
-    const fix = model.sent.find((r) => r.messages[3].content === "Change or tune the Bragg punch so its check above passes: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.")!;
+    const fix = model.sent.find((r) => r.messages[3].content === "Change or tune the Bragg punch so its check above passes: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.")!;
     expect(fix.messages[4].tool_calls!.map((c) => [c.id, c.function.name, c.function.arguments])).toEqual([["seed_1", "assess_stage", '{"stage":"punch"}']]);
     expect(fix.messages[1].content).toContain("the Bragg punch needs attention: this is its first fix of two");
     // No run_pipeline is offered to a fix: the app runs from the change.
@@ -422,6 +422,32 @@ describe("Undo of auto changes", () => {
     expect(usePipelineStore.getState().symmetryLaue).toBe("");
     // A Run card follows the undo.
     expect(useDecisionStore.getState().proposals.some((p) => p.kind === "run" && p.status === "open")).toBe(true);
+  });
+});
+
+describe("a tuning run in a fix", () => {
+  it("asks the run's model, and its requests count in the run's spend", async () => {
+    const tune = (await import("../tools")).CHAT_TOOLS.find((t) => t.name === "tune_pipeline")!;
+    const run0 = tune.run;
+    const seen: unknown[] = [];
+    tune.run = async (_args, ctx) => {
+      seen.push(ctx.model?.settings);
+      ctx.model?.usage({ input: 100_000, output: 1_000 });
+      return { result: { tuned: [] }, summary: "tuned nothing" };
+    };
+    try {
+      outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : e);
+      model.respond = (phase, round) =>
+        phase.kind === "fix" ? (round === 0 ? fixWith("bragg-node-audit", null)(0) : round === 1 ? call("tune_pipeline", { stages: ["punch"] }) : say("Tuned.")) : say("Done.");
+      await start({}, { ...SCRIPTED, baseUrl: CLAUDE_URL, model: "claude-sonnet-5-5", apiKey: "k" });
+    } finally {
+      tune.run = run0;
+    }
+    expect(seen[0]).toMatchObject({ baseUrl: CLAUDE_URL, model: "claude-sonnet-5-5" });
+    // Two tunings of 100k tokens in at $2/M and 1k out at $10/M, $0.42, on top of the replies' own (estimated: the script reports none).
+    expect(run().costUsd!).toBeGreaterThan(0.42);
+    expect(run().usage.input).toBeGreaterThan(200_000);
+    expect(run().usage.requests - run().usage.estimated).toBe(2);
   });
 });
 

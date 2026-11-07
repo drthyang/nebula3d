@@ -54,7 +54,7 @@ import { loadSettings, type LlmSettings } from "../settings";
 import { callTool, CHAT_TOOLS, factsOf, type AgentTool, type ToolContext } from "../tools";
 import { useTuneStore } from "../tune/tuner";
 import { RUN_STAGES, type ParamValue, type RunStage } from "../tune/catalog";
-import { addUsage, type Usage } from "../usage";
+import { addUsage, measured, notCounted, type Usage } from "../usage";
 import { costOf, priceOf, type Price } from "./cost";
 import {
   factRow,
@@ -585,6 +585,7 @@ async function stageRow(stage: Stage): Promise<void> {
     return;
   }
   const limits = run().limits;
+  let putBack = 0; // fixes put back for making it worse
   while (rowOf(run(), stage).tries < limits.fixesPerStage) {
     holdFor(stage);
     const hit = limitBeforeFix();
@@ -622,6 +623,7 @@ async function stageRow(stage: Stage): Promise<void> {
         }
         await appRun(from);
         checks = await checkStage(stage);
+        putBack += 1;
         patchRow(stage, { detail: `its ${ordinal(tries)} fix made it worse: put back` });
       } else {
         checks = after;
@@ -635,7 +637,8 @@ async function stageRow(stage: Stage): Promise<void> {
     }
   }
   const tries = rowOf(run(), stage).tries;
-  patchRow(stage, { status: "attention", detail: `still needs attention after ${countWord(tries)} fix${tries === 1 ? "" : "es"}` });
+  const back = putBack ? ` (${countWord(putBack)} put back: ${putBack === 1 ? "it" : "they"} made it worse)` : "";
+  patchRow(stage, { status: "attention", detail: `still needs attention after ${countWord(tries)} fix${tries === 1 ? "" : "es"}${back}` });
 }
 
 /** A limit ends the fixes: the stage stays as its checks found it, the stages after it are not checked, and the run goes to its report. */
@@ -735,14 +738,6 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
   // The run's earlier steps are this reply's evidence besides its own, the seeded ones its own.
   const seeded = new Set(seed.map((x) => x.id));
   const earlier = r.steps.filter((x) => !seeded.has(x.id));
-  const ctx: ToolContext = {
-    dataset: s.work.dataset,
-    datasets: s.work.datasets,
-    skillsRead: new Set(),
-    skillsReadEarlier: new Set(),
-    earlierSteps: toolStepsIn([{ steps: earlier }]),
-    marksEarlier: new Set(marksMade(earlier)),
-  };
   const reply = new AbortController();
   s.reply = reply;
   const stopReply = () => reply.abort();
@@ -761,6 +756,17 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
       }
       return { usage, costUsd: cost };
     });
+  };
+  // A tuning run in the reply asks the run's model, and its requests count in
+  // the run's spend as the reply's do (tune_pipeline reads ctx.model).
+  const ctx: ToolContext = {
+    dataset: s.work.dataset,
+    datasets: s.work.datasets,
+    skillsRead: new Set(),
+    skillsReadEarlier: new Set(),
+    earlierSteps: toolStepsIn([{ steps: earlier }]),
+    marksEarlier: new Set(marksMade(earlier)),
+    model: { settings: s.settings, usage: (u) => onUsage(u ? measured(u) : notCounted()) },
   };
   let out: ReplyOutcome | null;
   try {

@@ -780,12 +780,13 @@ describe("the headroom target (docs/pilot-context-design.md §5.8), enforced sin
 //   digest, and the model calling dpdf_peaks (the dev control's list, the
 //   largest result a reading tool returns) before it answers.
 // Measured 2026-11-07 (THY-65 PR 6), the ceilings below: the worst fix, the
-// ΔPDF's (its three checks seeded), 10,717 + 6,144 = 16,861, 9,353 under the
-// target (the design's estimate: about 16k); the report 13,048 + 6,144 =
-// 19,192, 7,022 under it (estimated about 21.5k). Each phase prompt's growth
-// is held by its own ceiling; the target holds either reply whatever the
-// ceilings allow.
-const AUTO_FIX_CEILING = 10_717;
+// ΔPDF's (its three checks seeded), 10,733 + 6,144 = 16,877, 9,337 under the
+// target (the design's estimate: about 16k; 16 of it the fix prompt's "the
+// app then runs the pipeline from it and checks again", which the local
+// smoke showed a fix needs); the report 13,048 + 6,144 = 19,192, 7,022
+// under it (estimated about 21.5k). Each phase prompt's growth is held by its
+// own ceiling; the target holds either reply whatever the ceilings allow.
+const AUTO_FIX_CEILING = 10_733;
 const AUTO_REPORT_CEILING = 13_048;
 
 describe("auto mode's replies (THY-65 PR 6), held to the 20 % target", () => {

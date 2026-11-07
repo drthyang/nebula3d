@@ -9,31 +9,31 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 ### Fix: rings
 
 ```text
-Change or tune the ring removal so its check above passes: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.
+Change or tune the ring removal so its check above passes: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.
 ```
 
 ### Fix: punch
 
 ```text
-Change or tune the Bragg punch so its check above passes: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.
+Change or tune the Bragg punch so its check above passes: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.
 ```
 
 ### Fix: backfill
 
 ```text
-Change or tune the backfill so its checks above pass: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.
+Change or tune the backfill so its checks above pass: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.
 ```
 
 ### Fix: flatten
 
 ```text
-Change or tune the flatten so its check above passes: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.
+Change or tune the flatten so its check above passes: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.
 ```
 
 ### Fix: pdf
 
 ```text
-Change or tune the 3D-ΔPDF so its checks above pass: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.
+Change or tune the 3D-ΔPDF so its checks above pass: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.
 ```
 
 ### Report
@@ -81,7 +81,7 @@ Understood. I will measure with the tools and quote the numbers I rely on.
 ### 3. user
 
 ```text
-Change or tune the Bragg punch so its check above passes: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.
+Change or tune the Bragg punch so its check above passes: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.
 ```
 
 ### 4. assistant
@@ -121,5 +121,5 @@ Checks already run for this request, as tool calls (each result as its tool retu
 [step 1] assess_stage {"stage":"punch"}
 {"punch":{"verdict":"needs attention","criterion":"No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima are diffuse scattering, and stay.","headline":"1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03","total_leftover_peaks":1,"leftover_at_nodes":1,"leftover_off_lattice":0,"leftover_on_protected_planes":0,"leftover_on_protected_planes_sharp":0,"leftover_off_lattice_broad":0,"leftover_off_lattice_sharp":0,"strongest_leftover":{"plane":"hk0","xy":[2,1],"intensity":452,"local_background":21.3,"contrast":21.2,"sigma":374,"fwhm_voxels":[1,1],"broad":false,"hkl":[2,1,0],"at_node":true},"noisy_spikes_skipped":0,"mean_punched_fraction":0.03,"fitted_peaks":14,"per_plane":{"hk0":{"leftover_peaks":1,"at_nodes":1,"off_lattice":0,"on_protected_planes":0,"off_lattice_broad":0,"strongest_leftover":{"xy":[2,1],"intensity":452,"local_background":21.3,"contrast":21.2,"sigma":374,"fwhm_voxels":[1,1],"broad":false,"hkl":[2,1,0],"at_node":true},"punched_fraction":0.0291},"h0l":{"leftover_peaks":0,"at_nodes":0,"off_lattice":0,"on_protected_planes":0,"off_lattice_broad":0,"strongest_leftover":null,"punched_fraction":0.0305},"0kl":{"leftover_peaks":0,"at_nodes":0,"off_lattice":0,"on_protected_planes":0,"off_lattice_broad":0,"strongest_leftover":null,"punched_fraction":0.0305}},"goal":"Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks."},"measured_on":["H–K plane at L = 0","H–L plane at K = 0","K–L plane at H = 0"]}
 
-Change or tune the Bragg punch so its check above passes: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.
+Change or tune the Bragg punch so its check above passes: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.
 ```

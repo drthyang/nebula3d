@@ -85,7 +85,7 @@ describe.skipIf(!SMOKE)("auto mode, live on a local model (opt-in smoke)", () =>
             .getState()
             .decisions.filter((d) => r.decisions.includes(d.id))
             .map((d) => `${d.by} ${d.action} ${d.title} ${d.shown.from} → ${d.shown.to}`),
-          replies_text: turns.filter((t) => t.role === "assistant").map((t) => ({ said: t.content.slice(0, 600), note: t.note ?? null, steps: (t.steps ?? []).map((s) => `${s.name}${s.status === "done" ? "" : `(${s.status})`}`) })),
+          replies_text: turns.filter((t) => t.role === "assistant").map((t) => ({ said: t.content.slice(0, 600), note: t.note ?? null, steps: (t.steps ?? []).map((s) => `${s.name} ${JSON.stringify(s.args)}${s.status === "done" ? "" : ` (${s.status}: ${(s.summary ?? "").slice(0, 160)})`}`) })),
         };
         record.push(entry);
         const out = env("NEBULA_AUTO_SMOKE_OUT");

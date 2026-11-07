@@ -25,10 +25,15 @@ import type { ChatMessage } from "../provider/client";
 import { STAGE_NAMES } from "../verdicts/rules";
 import { countWord, isStage, LIMIT_WORDS, ordinal, type LimitHit, type PlanRow, type Stage } from "./plan";
 
-/** A stage's fix (§2.3): one change, or a tuning of the stage, to make its checks pass. */
+/**
+ * A stage's fix (§2.3): one change, or a tuning of the stage, to make its
+ * checks pass. It says the app runs from the change: on the local smoke
+ * (gemma4:26b, 2026-11-07) a fix without it called run_pipeline, which a fix
+ * does not hold, and spent its rounds.
+ */
 export function fixPrompt(stage: Stage): string {
   const checks = stage === "backfill" || stage === "pdf" ? "its checks above pass" : "its check above passes";
-  return `Change or tune ${STAGE_NAMES[stage]} so ${checks}: one update_settings change, or tune_pipeline for this stage. Say what you changed and why, or why no change would help.`;
+  return `Change or tune ${STAGE_NAMES[stage]} so ${checks}: one update_settings change, or tune_pipeline for this stage; the app then runs the pipeline from it and checks again. Say what you changed and why, or why no change would help.`;
 }
 
 /** The run's report (§2.2): the final checks above, the run's changes and what is left. */
