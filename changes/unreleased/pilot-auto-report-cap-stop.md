@@ -4,8 +4,8 @@
   fixes, such as a turned UB or a shifted HKL origin, each with the tool that
   found it. When there is none, it says "none found by the checks". The list
   is shown above the report reply, in the activity log and in the report. The
-  model writes no part of it: its reply gives each stage's verdict, what
-  changed and why and what is left to decide, and refers to the list. A
+  model writes no part of it, and its prompt is unchanged: its reply gives
+  each stage's verdict, what changed and why and what is left to decide. A
   problem no check flags (a powder ring the ring check does not find) is not
   listed.
 - **NEBULA Pilot: auto replies have an output cap.** On a model server that

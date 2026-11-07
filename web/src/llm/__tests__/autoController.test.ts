@@ -187,10 +187,10 @@ describe("a run with a fixable stage", () => {
     expect(run().plan.find((r) => r.id === "punch")).toMatchObject({ tries: 2, detail: "still needs attention after two fixes" });
     expect(run().replies).toBe(3); // two fixes and the report
     expect(run().problems).toEqual(["the Bragg punch needs attention: missed at nodes (assess_stage punch)", "the counts end at 4.4 Å⁻¹, inside the box (qmax_coverage)"]);
-    // The model is not asked for them: its prompt leaves them to the app's list.
+    // The model is not asked for them: its prompt asks for the verdicts, the changes and what is left.
     const report = model.sent.find((r) => phaseOf(r.messages).kind === "report")!;
     expect(String(report.messages[3].content)).toBe(REPORT_PROMPT);
-    expect(REPORT_PROMPT).toContain("The app lists the problems they found: refer to that list.");
+    expect(REPORT_PROMPT).not.toMatch(/problem/i);
   });
 });
 

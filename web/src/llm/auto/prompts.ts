@@ -39,16 +39,20 @@ export function fixPrompt(stage: Stage): string {
 /**
  * The run's report (§2.2): from the final checks above, each stage's verdict,
  * the run's changes and why, and what is left for the user. The problems the
- * checks found are not the model's to write: the app lists them, computed
- * from those checks' outcomes (problems.ts), and the reply refers to that
- * list. A prompt that asked the model for the problems (2026-11-07) named
- * the turned UB and the shifted origin, and also listed as problems what its
- * checks had passed: two false alarms in eight runs. Its words name no
- * tool's topic, so a local model's offer (localTools.ts) stays the reading
- * tools every question gets. Held to its ceiling in tokenBudget.test.ts.
+ * checks found are not the model's to write: the app lists them beside the
+ * reply, computed from those checks' outcomes (problems.ts), and the prompt
+ * does not ask for them. Two wordings that did were worse (2026-11-07, the
+ * B-auto eval): asking for "the problems they found in the data" listed as
+ * problems what the checks had passed (two false alarms in eight runs); "the
+ * app lists the problems they found: refer to that list", a list the model
+ * cannot see, had it write its own "problems found" again, and three of six
+ * reports ran their revision to the output cap. This is PR 7's wording, with
+ * no false alarm in its eight runs. Its words name no tool's topic, so a
+ * local model's offer (localTools.ts) stays the reading tools every question
+ * gets. Held to its ceiling in tokenBudget.test.ts.
  */
 export const REPORT_PROMPT =
-  "Report on this auto run from its final checks above: each stage's verdict, what changed and why, what is left for the user to decide. The app lists the problems they found: refer to that list.";
+  "Report on this auto run from the checks above, its final ones: each stage's verdict with the numbers it rests on, what changed during the run and why, and what is left for the user to decide.";
 
 /** The transcript's line for a fix reply (the user turn before it): the app's words, never the user's. */
 export const fixLabel = (stage: Stage, n: number, of: number): string => `Auto · fix ${STAGE_NAMES[stage]}, ${ordinal(n)} of ${countWord(of)}`;
