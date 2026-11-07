@@ -349,14 +349,16 @@ export interface Job {
 export function plan(
   model: ValidationModel,
   split: Split,
-  { report = false, arms = ["B", "C"] as readonly Arm[], only = [] as readonly string[], runs = model.runsPerCase } = {},
+  { report = false, arms = ["B", "C"] as readonly Arm[], only = [] as readonly string[], runs = model.runsPerCase, firstRun = 1 } = {},
 ): Job[] {
+  // firstRun: the runs before it are left out, so a later plan adds repeats 2 and 3 to a plan that ran 1.
+  if (!(Number.isInteger(firstRun) && firstRun >= 1 && firstRun <= runs)) throw new Error(`the first run must be 1 to ${runs}, not ${firstRun}`);
   if (!model.splits.includes(split)) {
     throw new Error(`${model.label} runs the ${model.splits.join(" and ")} split only, not ${split}`);
   }
   const cases = casesToRun(split, { report }).filter((c) => !only.length || only.includes(c.id));
   const jobs: Job[] = [];
-  for (let run = 1; run <= runs; run++) {
+  for (let run = firstRun; run <= runs; run++) {
     for (const c of cases) for (const arm of arms) jobs.push({ case: c, arm, run, stem: datasetStem(c.id, arm, run) });
   }
   return jobs;

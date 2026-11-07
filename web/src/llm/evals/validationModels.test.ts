@@ -112,6 +112,16 @@ describe("the models", () => {
     const jobs = plan(modelNamed("lmstudio-qwen3.8-27b"), "dev", { arms: ["C"], only: ["dev-ub"], runs: 1 });
     expect(jobs.map((j) => [j.case.id, j.arm, j.run])).toEqual([["dev-ub", "C", 1]]);
   });
+
+  it("add later repeats alone, from a first run", () => {
+    const jobs = plan(modelNamed("claude-sonnet-5-5"), "dev", { arms: ["B"], only: ["dev-ub"], runs: 3, firstRun: 2 });
+    expect(jobs.map((j) => [j.case.id, j.arm, j.run, j.stem])).toEqual([
+      ["dev-ub", "B", 2, plan(modelNamed("claude-sonnet-5-5"), "dev", { arms: ["B"], only: ["dev-ub"] })[1].stem],
+      ["dev-ub", "B", 3, plan(modelNamed("claude-sonnet-5-5"), "dev", { arms: ["B"], only: ["dev-ub"] })[2].stem],
+    ]);
+    expect(() => plan(modelNamed("claude-sonnet-5-5"), "dev", { runs: 3, firstRun: 4 })).toThrow(/first run must be 1 to 3/);
+    expect(() => plan(modelNamed("claude-sonnet-5-5"), "dev", { firstRun: 0 })).toThrow(/first run/);
+  });
 });
 
 describe("the run policy's minimum context", () => {

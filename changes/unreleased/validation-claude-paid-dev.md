@@ -9,3 +9,5 @@
     `NEBULA_VALIDATION_SPEND_STOP` stops a plan below the cap.
   - Sonnet 5.5's cache-read price is $0.20 a million tokens, as `auto/cost.ts`
     has it, not $0.10.
+  - `NEBULA_VALIDATION_RUN_FROM` starts a plan at a later repeat, so repeats
+    2 and 3 can be added to a plan that ran repeat 1.

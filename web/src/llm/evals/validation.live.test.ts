@@ -12,6 +12,7 @@
 // NEBULA_VALIDATION_ARMS    B,C (default)
 // NEBULA_VALIDATION_ONLY    case ids, comma-separated (default all of the split)
 // NEBULA_VALIDATION_RUNS    runs per case and arm (default 3)
+// NEBULA_VALIDATION_RUN_FROM  the first of those runs (default 1): 2 with RUNS=3 runs repeats 2 and 3 alone
 // NEBULA_VALIDATION_ROUNDS  rounds of tool calls per run (default the Pilot's own, 12)
 // NEBULA_VALIDATION_TIMEOUT minutes per run (default 10)
 // NEBULA_VALIDATION_WALL    minutes for the whole plan (default 30): a plan expected to take
@@ -83,7 +84,8 @@ describe.skipIf(!live)("validation, live", () => {
     const wall = Number(env("NEBULA_VALIDATION_WALL") ?? preset?.wallMinutes ?? DEFAULT_WALL_MINUTES);
     const auto = (env("NEBULA_VALIDATION_MODE") ?? preset?.mode) === "auto";
     const planStarted = Date.now();
-    const jobs = plan(model, split, { report: env("NEBULA_VALIDATION_REPORT") === "1", arms, only: list("NEBULA_VALIDATION_ONLY"), runs });
+    const firstRun = Number(env("NEBULA_VALIDATION_RUN_FROM") ?? 1);
+    const jobs = plan(model, split, { report: env("NEBULA_VALIDATION_REPORT") === "1", arms, only: list("NEBULA_VALIDATION_ONLY"), runs, firstRun });
     // Fail at once, not after hours: a plan expected to pass the wall-clock cap does not start.
     const tooLong = planRefusal(model.key, jobs.length, wall);
     if (tooLong) throw new Error(tooLong);

@@ -867,7 +867,7 @@ cd web && NEBULA_VALIDATION_RENDER=../docs/evals/validation/lmstudio-qwen3.8-27b
 
 The model keys are `lmstudio-qwen3.8-27b`, `ollama-gemma4-26b`,
 `lmstudio-muse-glimmer`, `claude-haiku-5-5` and `claude-sonnet-5-5`. `NEBULA_VALIDATION_ONLY`,
-`_ARMS`, `_RUNS`, `_ROUNDS` (default the Pilot's twelve), `_TIMEOUT` (10 minutes a
+`_ARMS`, `_RUNS`, `_RUN_FROM` (the first of those runs, so a later plan adds repeats alone), `_ROUNDS` (default the Pilot's twelve), `_TIMEOUT` (10 minutes a
 run), `_WALL` (30 minutes for the plan), `_PRESET`, `_OUT` and `_BASE_URL` are in the
 header of `validation.live.test.ts`. The
 test split is `--split test --report` in steps 1 and 4 and `NEBULA_VALIDATION_SPLIT=test
