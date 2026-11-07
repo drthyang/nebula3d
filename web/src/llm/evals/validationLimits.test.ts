@@ -16,10 +16,13 @@ describe("the validation's time limits", () => {
     expect(p.runMinutes).toBeLessThan(p.wallMinutes);
   });
 
-  it("the quick-auto preset (B-auto) is the quick preset's plan and limits, through auto mode", () => {
-    const { mode, ...plain } = PRESETS["quick-auto"];
+  it("the quick-auto preset (B-auto) is the quick preset's plan and cap, through auto mode, with 8 minutes a run", () => {
+    const { mode, runMinutes, ...plain } = PRESETS["quick-auto"];
+    const { runMinutes: quickRun, ...quick } = PRESETS.quick;
     expect(mode).toBe("auto");
-    expect(plain).toEqual(PRESETS.quick);
+    expect(plain).toEqual(quick);
+    expect([runMinutes, quickRun]).toEqual([8, 5]);
+    expect(runMinutes).toBeLessThan(plain.wallMinutes);
     expect(presetNamed("quick-auto")?.mode).toBe("auto");
   });
 

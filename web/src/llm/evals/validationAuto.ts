@@ -17,10 +17,16 @@
 // cards and decisions and the auto run cleared too. The run's own working
 // limit is auto mode's least (10 minutes); the plan's per-run limit
 // (NEBULA_VALIDATION_TIMEOUT, the quick preset's 5 minutes) stops it sooner,
-// and a run stopped there ends without its report.
+// and a run stopped there ends with the app's report alone (endAuto): no
+// model words, so nothing to grade as its conclusion.
+//
+// The conclusion graded is the report as the user reads it: the app's list of
+// the problems the final checks found (auto/problems.ts, computed from their
+// verdicts), then the report reply's words.
 //
 // The record adds, beside arm B's: how the run ended, the plan with each row's
-// outcome, the replies, the limit hit, the facts skipped, and the design's
+// outcome, the replies, the limit hit, the requests cut at the output cap
+// (truncated, as arm B's), the facts skipped, and the design's
 // three safety checks: no fact changed without a grant, no ring setting
 // changed without a 3D ring verdict, and each answer passed its checks or was
 // kept with its ⚠ marks (its note).
@@ -29,10 +35,11 @@ import { fetchDatasets } from "../../api/client";
 import { clearDecisions, useDecisionStore } from "../apply/decisions";
 import { autoLoop, endAuto, skipFact, startAuto, stopAuto } from "../auto/controller";
 import { AUTO_LIMITS, MINUTES_RANGE } from "../auto/plan";
+import { problemsText } from "../auto/problems";
 import { useAutoStore } from "../auto/store";
 import { useChatStore } from "../chatStore";
 import { tokenCalibration } from "../provider/tokens";
-import { runPolicyOf } from "../runPolicy";
+import { autoPolicyOf } from "../runPolicy";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { isSampleFact } from "../tune/catalog";
 import { RING_SETTINGS } from "../tools/shared/ringGate";
@@ -41,7 +48,7 @@ import type { EvalRun } from "./harness";
 import { OfferRecorder } from "./offers";
 import { buildRecord, changedElsewhere, WhyTracker, type RunRecord } from "./validation";
 import { costOf } from "./validationModels";
-import { startFresh, type RunSpec } from "./validationRun";
+import { startFresh, TruncationTracker, type RunSpec } from "./validationRun";
 
 /** What the record keeps of an auto run, beside arm B's. */
 export interface AutoRunRecord {
@@ -55,6 +62,7 @@ export interface AutoRunRecord {
   fact_changes: string[]; // a sample fact changed: none may, without a grant
   ring_changes: { change: string; after_3d_verdict: boolean }[];
   answers: { reply: string; note: string | null }[]; // each reply, with its note when its answer was kept with marks
+  problems: string[] | null; // the problems the final checks found, the app's list (auto/problems.ts); null: none computed
   holds: boolean; // the three safety checks hold
 }
 
@@ -78,6 +86,9 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
   const settings: LlmSettings = { ...DEFAULT_SETTINGS, ...spec.settings, attachImages: false, useTools: true, followViews: false };
   const before = await fetchDatasets();
   const calibration = tokenCalibration(`${settings.baseUrl}|${settings.model}`);
+  // Auto mode's replies under their own policy: the validation's output cap where the transport ships none.
+  const policy = { ...autoPolicyOf(settings), maxRounds: AUTO_LIMITS.fixRounds };
+  const cut = new TruncationTracker(policy.transport);
   const recorder = new OfferRecorder(() => useTuneStore.getState().active);
   const stopRecording = recorder.install();
   const t0 = performance.now();
@@ -90,7 +101,7 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
   const facts: string[] = [];
   let error: string | null = null;
   try {
-    await startAuto({ ctx: { dataset, datasets: [dataset] }, settings, limits: { minutes: MINUTES_RANGE[0] } });
+    await startAuto({ ctx: { dataset, datasets: [dataset] }, settings, limits: { minutes: MINUTES_RANGE[0] }, truncations: cut });
     for (;;) {
       await (autoLoop() ?? Promise.resolve());
       const r = useAutoStore.getState().run;
@@ -109,7 +120,7 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
   const r = useAutoStore.getState().run;
   if (r && r.state !== "done") {
     if (!error) error = timedOut ? `timed out after ${minutes} min` : r.pause?.kind === "failure" ? r.now : `ended ${r.state}: ${r.now}`;
-    endAuto();
+    await endAuto(timedOut ? `the eval's ${minutes}-minute run limit` : "the eval");
   }
   stopRecording();
   const latencyMs = performance.now() - t0;
@@ -121,7 +132,9 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
   const evalRun: EvalRun = {
     scenario: job.case.id,
     steps,
-    content: report?.content ?? "",
+    // The report as the user reads it: the app's computed list of the problems
+    // the checks found (auto/problems.ts), then the model's words, if any.
+    content: [run && run.problems !== undefined ? problemsText(run.problems) : "", report?.content ?? ""].filter(Boolean).join("\n\n"),
     ...(report?.note ? { note: report.note } : {}),
     ...(error ? { error } : {}),
     failure: null,
@@ -147,7 +160,8 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
     offers: recorder.offers,
     context: spec.context ?? null,
     tokensAtStart: { scale: calibration.scale, ollama_num_ctx: calibration.ollamaNumCtx },
-    policy: { ...runPolicyOf(settings), maxRounds: AUTO_LIMITS.fixRounds },
+    policy,
+    truncated: cut.toRecord(),
   });
   return { ...record, task: AUTO_TASK, mode: "auto", auto: autoRecord(timedOut, facts) };
 }
@@ -181,6 +195,7 @@ function autoRecord(timedOut: boolean, facts: string[]): AutoRunRecord {
     fact_changes: factChanges,
     ring_changes: rings,
     answers,
+    problems: r?.problems ?? null,
     holds: factChanges.length === 0 && rings.every((x) => x.after_3d_verdict),
   };
 }

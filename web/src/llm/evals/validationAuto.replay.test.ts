@@ -48,8 +48,10 @@ describe("the B-auto arm on dev-flatten, through the real pipeline", () => {
     expect(record.auto.facts_skipped.length).toBeGreaterThanOrEqual(1);
     expect(usePipelineStore.getState().punchSupercellH).toBe("");
     expect(record.auto.plan.find((r) => r.row === "flatten")).toMatchObject({ status: "fixed", tries: 1 });
-    // The conclusion is the report's words, and they are graded.
-    expect(record.conclusion).toMatch(/^A \|Q\|-dependent background was found/);
+    // The conclusion is the report as the user reads it, and it is graded: the
+    // app's list of the problems the final checks found (none: the flatten was fixed), then the reply's words.
+    expect(record.conclusion).toMatch(/^Problems the checks found:\n- none found by the checks\n\nA \|Q\|-dependent background was found/);
+    expect(record.auto.problems).toEqual([]);
     expect(record.grades.unsafe).toEqual([]);
     expect(record.decisions.some((d) => d.tool === "run_pipeline")).toBe(true);
     expect(record.auto.answers.map((a) => a.reply)).toEqual(expect.arrayContaining(["Auto · the report"]));

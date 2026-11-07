@@ -14,6 +14,7 @@ import type { JobEvent } from "../../api/types";
 import { configOf } from "../../state/configMemory";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { clearDecisions } from "../apply/decisions";
+import { REPORT_PROMPT } from "../auto/prompts";
 import { useAutoStore } from "../auto/store";
 import { useChatStore } from "../chatStore";
 import type { ChatMessage, StreamDelta } from "../provider/client";
@@ -40,7 +41,7 @@ const text = (m: ChatMessage): string => (typeof m.content === "string" ? m.cont
 export function phaseOf(messages: readonly ChatMessage[]): Phase {
   const prompt = messages[3] ? text(messages[3]) : "";
   for (const stage of Object.keys(STAGE_NAMES) as TuneStage[]) if (prompt.includes(`Change or tune ${STAGE_NAMES[stage]} `)) return { kind: "fix", stage };
-  if (prompt.includes("Report on this auto run")) return { kind: "report" };
+  if (prompt.includes(REPORT_PROMPT)) return { kind: "report" };
   return { kind: "other" };
 }
 
@@ -59,6 +60,7 @@ export const say = (content: string): StreamDelta[] => [{ content }];
 export interface Request {
   messages: ChatMessage[];
   tools?: { function: { name: string } }[];
+  maxTokens?: number; // the output cap it asked for (the run policy's)
 }
 
 /** What the scripted model answers, and what it was sent. */
@@ -72,7 +74,7 @@ export const model = {
 
 /** The fake streamChat: hand to the provider client's mock. */
 export function scriptedStream(args: Request & { signal?: AbortSignal }): AsyncGenerator<StreamDelta> {
-  model.sent.push({ messages: [...args.messages], tools: args.tools });
+  model.sent.push({ messages: [...args.messages], tools: args.tools, ...(args.maxTokens !== undefined ? { maxTokens: args.maxTokens } : {}) });
   const reply = model.respond(phaseOf(args.messages), roundOf(args.messages), args);
   return (async function* () {
     for (const d of reply) {

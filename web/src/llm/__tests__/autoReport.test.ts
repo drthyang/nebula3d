@@ -6,7 +6,8 @@
 import { describe, expect, it } from "vitest";
 
 import { captureSession, parseSession } from "../../state/session";
-import { autoReportSection } from "../auto/report";
+import { APP_REPORT_TURN, appReportQuestion, appReportTurn, autoReportSection, isAutoReportTurn } from "../auto/report";
+import { problemsText } from "../auto/problems";
 import { newRun, readAutoRun, restoreAutoRun, useAutoStore, type AutoRun } from "../auto/store";
 import { startClock, stopClock } from "../clock";
 import { reportHtml, reportMarkdown } from "../report/render";
@@ -70,6 +71,63 @@ describe("the report of an auto run", () => {
     const html = reportHtml(report);
     expect(html).toContain("<h2>Auto run</h2>");
     expect(html).toContain("<td>passed after its first fix</td>");
+  });
+});
+
+describe("the app's own report of a run Stop ended", () => {
+  const stopped = (): AutoRun => ({
+    ...sampleRun(),
+    limit: null,
+    appReport: "stopped",
+    ended: "Stopped by you: the app's report, from what the run checked, with no model reply.",
+    problems: ["the UB is turned by 0.601° (ub_check)"],
+  });
+
+  it("stands on no chat turn, with the run's steps and no words, says why in its question, and is marked stopped by you", () => {
+    const r = stopped();
+    const turn = appReportTurn(r);
+    expect(turn).toEqual({ id: APP_REPORT_TURN, role: "assistant", content: "", steps: r.steps });
+    expect(isAutoReportTurn(r, turn)).toBe(true);
+    expect(isAutoReportTurn({ ...r, appReport: null }, turn)).toBe(false);
+    expect(appReportQuestion(r)).toBe("Auto analysis, stopped by you: the app's report from what the run checked, with no model reply.");
+    expect(appReportQuestion({ ...r, appReport: "limit", limit: "replies" })).toBe("Auto analysis: the app's report, with no model reply (the limit on model replies).");
+    const report = buildReport({
+      created: new Date(0),
+      question: appReportQuestion(r),
+      answer: turn.content,
+      steps: [],
+      model: { provider: "Ollama", model: "gemma4:26b", local: true },
+      dataset: { label: "synthetic_a", rawName: "a.nxs", temperature: null },
+      settings: [],
+      sampleFacts: {},
+      tuning: null,
+      measured: {},
+      figures: [],
+      auto: autoReportSection(r, 99 * M),
+    });
+    const md = reportMarkdown(report);
+    expect(md).toContain("> Auto analysis, stopped by you: the app's report from what the run checked, with no model reply.");
+    expect(md).toContain("- Stopped by you: the app's report, from what the run checked, with no model reply.");
+    // The problems the checks found: the app's list, computed, never the model's.
+    expect(md).toContain("## Problems the checks found\n\n*Computed from the checks' verdicts, not from the model's words.*\n\n- the UB is turned by 0.601° (ub_check)\n");
+    expect(reportHtml(report)).toContain("<h2>Problems the checks found</h2>");
+    // No model wrote it: no summary of the model's.
+    expect(md).not.toContain("## The model's summary");
+    expect(report.narrative).toBe("");
+  });
+
+  it("says so when the checks found no problem, or checked nothing", () => {
+    expect(autoReportSection({ ...stopped(), problems: [] }, 0).problems).toEqual(["none found by the checks"]);
+    expect(autoReportSection({ ...stopped(), problems: null }, 0).problems).toEqual(["none: the run checked nothing"]);
+    expect(autoReportSection({ ...stopped(), problems: undefined }, 0).problems).toBeUndefined();
+    expect(problemsText([])).toBe("Problems the checks found:\n- none found by the checks");
+  });
+
+  it("is kept over a reload and in a session file", () => {
+    const back = readAutoRun(JSON.parse(JSON.stringify(stopped())), { fromFile: false })!;
+    expect(back.appReport).toBe("stopped");
+    expect(back.problems).toEqual(["the UB is turned by 0.601° (ub_check)"]);
+    expect(readAutoRun({ ...JSON.parse(JSON.stringify(stopped())), appReport: "bogus" }, { fromFile: true })!.appReport).toBeNull();
   });
 });
 

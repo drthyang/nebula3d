@@ -15,6 +15,8 @@
 // (arm B), so it runs on its transport's policy, with the run's round limit and
 // the validation's output cap (validationPolicy, evals/validationModels.ts),
 // and its record keeps the policy it ran under (run_policy, evals/validation.ts).
+// An auto-mode reply (auto/controller.ts) runs on its transport's policy too,
+// with that same output cap where the transport asks for none (autoPolicyOf).
 
 import { COMPLETE_MAX_TOKENS, isAnthropicUrl, STREAM_MAX_TOKENS } from "./provider/anthropic";
 import { isOllamaUrl } from "./provider/client";
@@ -34,6 +36,14 @@ export const MAX_TOOL_ROUNDS = 12;
 // the newest result before it is refused.
 export const SOFT_BUDGET = 24_000;
 export const KEEP_FULL = 3;
+
+/**
+ * The output cap a capped reply asks for, thinking included: every request of
+ * a validation run (VALIDATION_MAX_TOKENS, evals/validationModels.ts: the
+ * manager's decision, confirmed by the user, 2026-10-24), and an auto-mode
+ * reply's where its transport ships none (autoPolicyOf).
+ */
+export const CAPPED_OUTPUT_TOKENS = 16_000;
 
 /** How a request goes to the model server (provider/client.ts). */
 export type Transport =
@@ -121,4 +131,25 @@ export const RUN_POLICIES: Readonly<Record<"claude" | "lmStudio" | "ollama" | "o
 export function runPolicyOf(settings: Pick<LlmSettings, "baseUrl" | "temperature">): RunPolicy {
   const policy = shipped(transportOf(settings.baseUrl), isLocalUrl(settings.baseUrl));
   return { ...policy, temperature: policy.temperature === null ? null : settings.temperature };
+}
+
+/**
+ * The policy an auto-mode reply runs under (auto/controller.ts): the app's on
+ * *settings*, with the validation's output cap (CAPPED_OUTPUT_TOKENS) on the
+ * loop's and the tuning's requests where the transport ships none (a local
+ * server, an OpenAI-compatible cloud one). A local model's auto report once
+ * ran to about 11,000 tokens with no cap (the B-auto eval, 2026-11-07); Claude
+ * keeps its own caps. A reply cut at the cap keeps what the agent loop keeps
+ * of one (agent.ts: the answer it sent back, with its ⚠ marks, or the text so
+ * far with its note), and the run goes on to its report.
+ */
+export function autoPolicyOf(settings: Pick<LlmSettings, "baseUrl" | "temperature">): RunPolicy {
+  const policy = runPolicyOf(settings);
+  return {
+    ...policy,
+    outputCap: {
+      loop: policy.outputCap.loop ?? CAPPED_OUTPUT_TOKENS,
+      tuning: policy.outputCap.tuning ?? CAPPED_OUTPUT_TOKENS,
+    },
+  };
 }
