@@ -19,6 +19,7 @@ import { useDockLayout } from "./components/useDockLayout";
 import { TouchTitles } from "./components/TouchTitles";
 import { useKeyboardFrame } from "./components/useKeyboardFrame";
 import { useAgentHighlights } from "./llm/highlight";
+import { useExamine } from "./llm/examine/store";
 import { useRememberedConfig } from "./state/configMemory";
 import { ConsistencyViewer } from "./pages/ConsistencyViewer";
 import { BraggProfileViewer } from "./pages/BraggProfileViewer";
@@ -166,6 +167,8 @@ export function App() {
   useInitializeDataset(datasets);
   const datasetId = useDatasetStore((s) => s.datasetId);
   const setDataset = useDatasetStore((s) => s.setDataset);
+  // The Highlights follow the chat's checks on the open dataset (llm/examine/).
+  useExamine(datasets.find((d) => d.id === datasetId));
 
   // In the compact top bar the nav is a horizontally scrolling row of pills;
   // keep the active one in view when the tab changes (including programmatic
