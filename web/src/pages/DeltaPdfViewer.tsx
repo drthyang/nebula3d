@@ -41,6 +41,11 @@ import { useStructureStore } from "../state/structureStore";
 import type { Marker } from "../structure/pairs";
 import { markersNear, usePlaneMarkers, useStructureModel } from "../structure/useStructure";
 import { useGlow } from "../llm/highlight";
+import { HighlightLayer } from "../components/HighlightLayer";
+import { ExamineBar } from "../llm/components/ExamineBar";
+import { legend, viewDraw, type ViewDraw } from "../llm/examine/draw";
+import { DPDF } from "../llm/examine/overlays";
+import { usePageHighlights } from "../llm/examine/store";
 
 function axisValue(
   range: [number, number] | undefined,
@@ -227,6 +232,23 @@ export function DeltaPdfViewer() {
     });
   };
 
+  // The Highlights (llm/examine/): a Pilot check's overlays on each section,
+  // drawn within half a voxel of it; the sections are outlined while it reads them.
+  const hl = usePageHighlights(dataset);
+  const step = (a: Ax) => {
+    const r = range[a], n = shape[a];
+    return r && n && n > 1 ? Math.abs(r[1] - r[0]) / (n - 1) : 0;
+  };
+  const hlDraws: Record<string, ViewDraw | undefined> = {};
+  if (hl.shown) {
+    for (const p of PLANES) {
+      const sl = results[p.plane].data;
+      if (!sl) continue;
+      hlDraws[p.plane] = viewDraw(hl.shown.set, { stage: DPDF, plane: p.plane, cut: val(p.cut), cutStep: step(p.cut), sx: 1, sy: 1, angle: sl.header.axes_angle ?? 90, slice: sl });
+    }
+  }
+  const hlLegend = hl.shown ? legend(hl.shown.set, PLANES.map((p) => ({ stage: DPDF, draw: hlDraws[p.plane] }))) : { counts: {}, notes: {} };
+
   const valueAt = (s: Slice | undefined, pt: [number, number]) => {
     if (!s) return undefined;
     const ij = sampleIndex(s.header, pt[0], pt[1], { sx: 1, sy: 1, angle: s.header.axes_angle ?? 90 });
@@ -294,6 +316,9 @@ export function DeltaPdfViewer() {
         ]}
       />
 
+      {/* ── What a Pilot check is examining, and its legend (THY-66) ── */}
+      {volumeId && <ExamineBar shown={hl.shown} counts={hlLegend.counts} notes={hlLegend.notes} stages={[DPDF]} />}
+
       {structurePanel && (
         <StructurePanel
           model={structure}
@@ -320,6 +345,7 @@ export function DeltaPdfViewer() {
             return {
               id: p.plane,
               glow: pdfLit,
+              outline: hl.outlined[DPDF],
               title: p.title,
               badge: p.badge,
               badgeClass: `qr-rt-badge ${p.badgeClass}`,
@@ -368,6 +394,20 @@ export function DeltaPdfViewer() {
                       latY={lat[p.v]}
                       angle={r.data.header.axes_angle}
                       lut={lut}
+                    />
+                  )}
+                  {hl.enabled && hlDraws[p.plane] && (
+                    <HighlightLayer
+                      draw={hlDraws[p.plane]!}
+                      tones={hl.tones}
+                      codes={hl.codes}
+                      off={hl.off}
+                      viewport={viewport}
+                      sx={1}
+                      sy={1}
+                      angle={r.data.header.axes_angle ?? 90}
+                      extent={r.data.header}
+                      primary={hl.shown?.set.views[DPDF] === "primary"}
                     />
                   )}
                   {dpdfMarks.length > 0 && (

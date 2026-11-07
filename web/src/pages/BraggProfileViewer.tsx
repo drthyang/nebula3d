@@ -5,7 +5,7 @@
 // intensity around the peak in three orthogonal slices + fit ellipses, zoomed
 // and panned together as one linked view about the peak (components/braggView.ts).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useQueries } from "@tanstack/react-query";
 
@@ -46,6 +46,12 @@ import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
 import { useViewerStore } from "../state/viewerStore";
 import { useGlow } from "../llm/highlight";
+import { HighlightLayer } from "../components/HighlightLayer";
+import { TONE } from "../components/highlightTones";
+import { ExamineBar } from "../llm/components/ExamineBar";
+import { legend, viewDraw, type ViewDraw } from "../llm/examine/draw";
+import { BRAGG, type ClassId } from "../llm/examine/overlays";
+import { usePageHighlights } from "../llm/examine/store";
 
 // Axis colour-coding shared across the whole page (matches Configure / Reciprocal).
 // Labels are profile-driven: the spherical punch reports widths along (ρ, θ, φ),
@@ -196,18 +202,32 @@ function fitGaussian(values: number[], domain: [number, number], bins: number): 
 // ---------------------------------------------------------------------------
 // Scatter — width vs |Q|, three axis series
 // ---------------------------------------------------------------------------
+/** A peak a Pilot check listed, ringed on the scatter (the Highlights). */
+interface ScatterMark {
+  hkl: number[];
+  cls: ClassId;
+  color: string;
+  dashed: boolean;
+  label?: string;
+}
+
+// The page's peak for a listed hkl (bragg_peaks gives it to 4 significant figures).
+const sameHkl = (a: readonly number[], b: readonly number[]) => a.every((x, i) => Math.abs(x - b[i]) <= 1e-3 * Math.max(1, Math.abs(x)));
+
 function Scatter({
   peaks,
   axes,
   selected,
   onSelect,
   padFloorQ,
+  marks = [],
 }: {
   peaks: BraggPeakWidth[];
   axes: Axis[];
   selected: number;
   onSelect: (i: number) => void;
   padFloorQ: number | null;
+  marks?: ScatterMark[];
 }) {
   const qs = peaks.map((p) => p.q_abs).filter(Number.isFinite);
   const ws: number[] = [];
@@ -273,6 +293,24 @@ function Scatter({
             );
           }),
         )}
+        {marks.map((m, mi) => {
+          // The listed peak's dots, one per axis, ringed; its name over the highest.
+          const p = peaks.find((x) => sameHkl(m.hkl, x.center_hkl));
+          if (!p || !Number.isFinite(p.q_abs)) return null;
+          const ws = axes.map((a) => displayQ(p, a.i)).filter((w): w is number => w != null);
+          return (
+            <span key={`m${mi}`} data-hl={m.cls}>
+              {ws.map((w, k) => (
+                <span key={k} className="bragg-hl-ring" style={{ left: `${X(p.q_abs)}%`, top: `${Y(w)}%`, borderColor: m.color, borderStyle: m.dashed ? "dashed" : "solid" }} />
+              ))}
+              {m.label && ws.length > 0 && (
+                <span className="bragg-hl-label" style={{ left: `${X(p.q_abs)}%`, top: `${Y(Math.max(...ws))}%`, color: m.color }}>
+                  {m.label}
+                </span>
+              )}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -474,7 +512,11 @@ function SelectedPeak({
   scale,
   soft,
   sweep,
+  overlay,
+  outline,
 }: {
+  overlay?: (i: number, viewport: Viewport) => ReactNode; // the Highlights over tile i, at its view
+  outline?: "primary" | "reading"; // the tiles a Pilot check reads
   peak: BraggPeakWidth;
   peaks: BraggPeakWidth[];
   axes: Axis[];
@@ -544,6 +586,7 @@ function SelectedPeak({
           const q = slices[i];
           return {
             id: t.id,
+            outline,
             title: <span style={{ color: t.color }}>{t.label}</span>,
             caption: `${t.fixedLabel} = ${r(fixedValue(centre, t))}`,
             onResetView: resetView,
@@ -573,7 +616,9 @@ function SelectedPeak({
                   floor={floorEll(t.xa, t.ya)}
                   swept={sweptOn(t)}
                   sweptStep={steps ? [steps[t.xa], steps[t.ya]] : undefined}
-                />
+                >
+                  {overlay?.(i, tileViewport(centre, offset, half, t))}
+                </BraggPeakSlice>
                 {q?.isFetching && q.data && <span className="spin vf-spin" />}
               </>
             ),
@@ -720,6 +765,37 @@ export function BraggProfileViewer() {
   });
   const lut = COLORMAPS[colormap] ?? COLORMAPS.inferno;
 
+  // The Highlights (llm/examine/): a Pilot check's overlays on the three tiles
+  // about the selected peak, and the peaks it listed ringed on the scatter.
+  const hl = usePageHighlights(dataset);
+  const shape = meta.data?.shape;
+  const ranges = meta.data ? [meta.data.h_range, meta.data.k_range, meta.data.l_range] : null;
+  const tileDraws: (ViewDraw | undefined)[] = TILES.map((t, i) => {
+    const sl = slices[i]?.data;
+    if (!hl.shown || !sl || !centre || !ranges || !shape) return undefined;
+    const fixed = 3 - t.xa - t.ya;
+    return viewDraw(hl.shown.set, {
+      stage: BRAGG,
+      plane: t.plane,
+      cut: fixedValue(centre, t),
+      cutStep: Math.abs(ranges[fixed][1] - ranges[fixed][0]) / Math.max(1, shape[fixed] - 1),
+      sx: 1,
+      sy: 1,
+      lattice: meta.data?.lattice,
+      ub: meta.data?.ub_matrix,
+      slice: sl,
+    });
+  });
+  const scatterMarks: ScatterMark[] = (hl.shown?.set.items ?? []).flatMap((it) =>
+    (it.kind === "footprint" || it.kind === "spot") && (it.cls === "fpRes" || it.cls === "fpBroad") && !hl.off.includes(it.cls)
+      ? [{ hkl: it.at, cls: it.cls, color: TONE[it.cls === "fpRes" ? "accent" : "amber"], dashed: it.cls === "fpBroad", ...(it.label ? { label: it.label } : {}) }]
+      : [],
+  );
+  const hlLegend = hl.shown ? legend(hl.shown.set, tileDraws.map((draw) => ({ stage: BRAGG, draw }))) : { counts: {}, notes: {} };
+  // The listed peaks are counted on the scatter, where every one of them is.
+  const listedOn = (cls: ClassId) => (hl.shown?.set.items ?? []).filter((it) => (it.kind === "footprint" || it.kind === "spot") && it.cls === cls && peaks.some((p) => sameHkl(it.at, p.center_hkl))).length;
+  const hlCounts = { ...hlLegend.counts, fpRes: listedOn("fpRes"), fpBroad: listedOn("fpBroad") };
+
   const empty = (() => {
     if (datasetsQ.isLoading) return <EmptyState title="Loading datasets…" />;
     if (datasetsQ.isError) return <EmptyState error icon={<IconAlert />} title="Backend unreachable" hint="Start the API server and reload." />;
@@ -764,6 +840,9 @@ export function BraggProfileViewer() {
         ]}
       />
 
+      {/* ── What a Pilot check is examining, and its legend (THY-66) ── */}
+      <ExamineBar shown={hl.shown} counts={hlCounts} notes={hlLegend.notes} stages={[BRAGG]} />
+
       <div className="bragg-card">
         {empty ?? (
           <>
@@ -807,7 +886,7 @@ export function BraggProfileViewer() {
             {/* the slices get the wide column: scatter and peak table on the left,
                 the selected peak and the width histograms on the right */}
             <div className="bragg-main">
-              <Scatter peaks={peaks} axes={axes} selected={selected} onSelect={setSelected} padFloorQ={padQ} />
+              <Scatter peaks={peaks} axes={axes} selected={selected} onSelect={setSelected} padFloorQ={padQ} marks={hl.enabled ? scatterMarks : []} />
               {selPeak && (
                 <SelectedPeak
                   peak={selPeak}
@@ -822,6 +901,25 @@ export function BraggProfileViewer() {
                   scale={scale}
                   soft={lv.soft}
                   sweep={profile?.tail_sweep}
+                  outline={hl.outlined[BRAGG]}
+                  overlay={(i, viewport) => {
+                    const draw = tileDraws[i];
+                    const sl = slices[i]?.data;
+                    if (!hl.enabled || !draw || !sl || !hl.shown) return null;
+                    return (
+                      <HighlightLayer
+                        draw={draw}
+                        tones={hl.tones}
+                        codes={hl.codes}
+                        off={hl.off}
+                        viewport={viewport}
+                        sx={1}
+                        sy={1}
+                        extent={sl.header}
+                        primary={hl.shown.set.views[BRAGG] === "primary"}
+                      />
+                    );
+                  }}
                 />
               )}
               <PeakTable peaks={peaks} axes={axes} order={order} selected={selected} sortKey={sortKey} onSort={setSortKey} onSelect={setSelected} />

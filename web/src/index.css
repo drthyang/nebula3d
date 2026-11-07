@@ -7855,6 +7855,30 @@ html.kb-open .ai-side {
   border-color: rgba(79, 143, 247, 0.4);
 }
 
+/* the Bragg page's scatter: a peak a Pilot check listed, ringed and named */
+.bragg-hl-ring {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border: 2px solid;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px rgba(8, 10, 14, 0.72), inset 0 0 0 1px rgba(8, 10, 14, 0.72);
+  pointer-events: none;
+  z-index: 3;
+}
+.bragg-hl-label {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  padding: 0 3px;
+  border-radius: 2px;
+  background: rgba(11, 13, 16, 0.8);
+  font: 600 9.5px var(--font-mono);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* a step whose highlights the views keep */
 .hl-swatch {
   flex: none;

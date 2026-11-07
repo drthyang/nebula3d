@@ -12,7 +12,7 @@ import type { Dataset } from "../../api/types";
 import { resetsWithVolume } from "../../state/volumeReset";
 import type { AgentStep } from "../agent";
 import { useChatStore } from "../chatStore";
-import { examining, overlaysOf, stepKey, type ClassId, type OverlaySet } from "./overlays";
+import { examining, overlaysOf, stepKey, type ClassId, type OverlaySet, type Tone } from "./overlays";
 
 const SWITCH_KEY = "nebula3d.highlights.v1";
 // The sets kept for the steps' Show buttons, newest last.
@@ -77,6 +77,28 @@ resetsWithVolume(useExamineStore, { keep: ["enabled"] });
 /** The set shown now, if any. */
 export const useShownSet = (): ShownSet | null =>
   useExamineStore((s) => (s.current ? (s.sets.find((x) => x.set.key === s.current) ?? null) : null));
+
+/**
+ * What a page with overlays reads of the Highlights: the set shown while it
+ * stands for the outputs as listed, the switch, the classes turned off, the
+ * views the running (else the shown) check reads, and each class's tone and code.
+ */
+export function usePageHighlights(dataset: Dataset | undefined) {
+  const shownSet = useShownSet();
+  const enabled = useExamineStore((s) => s.enabled);
+  const off = useExamineStore((s) => s.off);
+  const running = useExamineStore((s) => s.running?.views);
+  const shown = shownSet && stands(shownSet, dataset) ? shownSet : null;
+  const classes = shown?.set.classes ?? [];
+  return {
+    shown,
+    enabled,
+    off,
+    outlined: running ?? shown?.set.views ?? {},
+    tones: Object.fromEntries(classes.map((c) => [c.id, c.tone])) as Partial<Record<ClassId, Tone>>,
+    codes: Object.fromEntries(classes.flatMap((c) => (c.code ? [[c.id, c.code]] : []))) as Partial<Record<ClassId, string>>,
+  };
+}
 
 /** Each output's version in the listing (its volume and when it was written): a run that rewrites it changes it. */
 export const outputVersion = (dataset: Dataset | undefined, stage: string): string => {

@@ -200,6 +200,13 @@ describe("bragg_peaks", () => {
     expect(tableRows(bySig.peaks)[0].anisotropy).toBe(2);
     const near = JSON.parse((await run("bragg_peaks", { near_hkl: [0, 1, 0], limit: 1 })).text);
     expect(tableRows(near.peaks)).toEqual([expect.objectContaining({ hkl: [0, 1, 0] })]);
+    // Each listed peak's fit beside the result, for the Highlights, never in it.
+    const r = await run("bragg_peaks", { limit: 2 });
+    expect(r.overlay?.braggPeaks).toEqual([
+      { hkl: [2, 0, 0], widths: [0.1, 0.1, 0.1], principal: null, dirs: [] },
+      { hkl: [0, 1, 0], widths: [0.1, 0.1, 0.1], principal: null, dirs: [] },
+    ]);
+    expect(r.text).not.toMatch(/width_hkl|principal|braggPeaks/);
   });
 });
 
@@ -1328,6 +1335,10 @@ describe("grain_check", () => {
     expect(out.near_bragg_nodes).toBe(8);
     expect(r.outcomes?.[0]).toMatchObject({ check: "grain", words: out.verdict });
     expect(r.outcomes?.[0].reasons).not.toContain("second grain");
+    // Beside the result, for the Highlights: the far orbits' images under the operations; no rotated copy where it explains nothing.
+    expect(r.overlay?.grains?.rotated ?? null).toBeNull();
+    expect(r.overlay?.grains?.far.length).toBe(2 * out.far.length);
+    expect(r.text).not.toMatch(/"rotation"|grains/);
     expect((await run("grain_check", { top: 3 })).text).toMatch(/top must be within \[8, 120\]/);
   });
 
@@ -1425,7 +1436,10 @@ describe("ub_check", () => {
     const r = await run("ub_check", { q_max: 14 });
     expect(r.ok).toBe(true);
     expect(api.fetchUbCheck).toHaveBeenLastCalledWith("demo.raw", [2, 2, 2], 14);
+    // The two UBs and the punch cell ride beside the result, for the Highlights' arrows.
+    expect(r.overlay?.ubTurn).toEqual({ ub: [], fitted: [], cell: [2, 2, 2] });
     const out = JSON.parse(r.text);
+    expect(out).not.toHaveProperty("ub_start");
     expect(out.fit).toBe("symmetric");
     expect(out.cell_start).toBe("6.1241, 6.1159, 9.4124 Å; 90.081°, 90.154°, 119.986°");
     expect(out.transform_diagonal).toEqual([1.004073, 1.004073, 1.001154]);
@@ -1584,6 +1598,10 @@ describe("dpdf_peaks", () => {
     expect([out.robust_sigma, out.threshold_sigma, out.origin_disk_A, out.extrema_above_threshold]).toEqual([6.17, 5, 1.95, 619]);
     expect(r.summary).toBe("619 extrema above 5σ; strongest − at (0.497, 0.497, 0) r.l.u., 2.74 Å, 1520σ");
     expect(r.view).toMatchObject({ view: "dpdf", plane: "xy", value: 0 });
+    // Every vector of each feature, beside the result, for the Highlights: the result keeps 4 per feature.
+    const drawn = r.overlay?.dpdfVectors ?? [];
+    expect(drawn.length).toBe(features.groups.reduce((n, g) => n + g.vectors.length, 0));
+    expect(drawn[0]).toMatchObject({ size: -1515.5, rank: 0 });
   });
 
   it("checks its arguments, and says when nothing stands out", async () => {
@@ -1738,8 +1756,8 @@ describe("texture_check", () => {
     api.fetchVolumeTexture.mockResolvedValue(TRUTH);
     const r = await runOn(full, "texture_check", {});
     expect(r.ok).toBe(true);
-    // The backfilled stage's holes, judged by the rule's own limits, the farthest one listed.
-    expect(api.fetchVolumeTexture).toHaveBeenCalledWith("demo.backfilled", 1, LIMITS);
+    // The backfilled stage's holes, judged by the rule's own limits, the farthest 400 listed (for the Highlights).
+    expect(api.fetchVolumeTexture).toHaveBeenCalledWith("demo.backfilled", 400, LIMITS);
     const out = JSON.parse(r.text);
     expect(out).toEqual({
       n_holes: 125, n_judged: 125, median_fill_bias_sigma: 0, median_fill_bias_level: 0, above_fraction: 0, below_fraction: 0,
@@ -1764,6 +1782,10 @@ describe("texture_check", () => {
     expect(out).not.toHaveProperty("not_judged");
     expect(r.outcomes?.[0]).toMatchObject({ kind: "attention", reasons: ["fill bias"] });
     expect(r.summary).toMatch(/^systematic fill bias over 125 holes in 3-D \(median 0\.506 of the level\)/);
+    // The holes outside their range, beside the result, for the Highlights: none of them in it.
+    expect(r.overlay?.fillHoles?.nHoles).toBe(125);
+    expect(r.overlay?.fillHoles?.holes.every((h) => h.bias !== 0)).toBe(true);
+    expect(r.text).not.toMatch(/centre_hkl|fillHoles/);
     expect(r.view).toMatchObject({ view: "cleanup", plane: "hk0", value: 0, label: "H–K plane at L = 0" });
   });
 

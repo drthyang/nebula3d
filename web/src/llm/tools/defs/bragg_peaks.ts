@@ -75,7 +75,9 @@ export const bragg_peaks: ChatTool = {
     // The listed peaks' footprints, beside the result (examine/data.ts).
     const braggPeaks: BraggFootprint[] = listed.flatMap((row) => {
       const p = fitOf.get(row);
-      return p ? [{ hkl: [...row.hkl] as V3, widths: [...p.width_hkl] as V3, principal: p.principal_width_hkl ? ([...p.principal_width_hkl] as V3) : null, dirs: p.principal_directions_hkl ?? null }] : [];
+      const v3 = (x: unknown): V3 | null => (Array.isArray(x) && x.length === 3 && x.every(Number.isFinite) ? ([...x] as V3) : null);
+      const widths = v3(p?.width_hkl);
+      return p && widths ? [{ hkl: [...row.hkl] as V3, widths, principal: v3(p.principal_width_hkl), dirs: Array.isArray(p.principal_directions_hkl) ? p.principal_directions_hkl : null }] : [];
     });
     return {
       result,

@@ -10,7 +10,7 @@ import { useId } from "react";
 
 import { ellipseToPixels, type DisplayEllipse } from "./punchGeometry";
 import { useViewSize } from "./viewSize";
-import { displayToPixel, type Viewport } from "./viewport";
+import { displayToPixel, sliceToDisplay, type Viewport } from "./viewport";
 import type { DrawnShell, ViewDraw } from "../llm/examine/draw";
 import type { ClassId, Tone } from "../llm/examine/overlays";
 import { TONE } from "./highlightTones";
@@ -109,8 +109,16 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
   // The slice's extent in pixels: the overlays are clipped to the voxels it spans.
   const half = (a: number[]) => (a.length > 1 ? Math.abs(a[a.length - 1] - a[0]) / (a.length - 1) / 2 : 0);
   const xs = extent.x_axis, ys = extent.y_axis;
-  const [ax0, ay0] = displayToPixel(viewport, (Math.min(xs[0], xs[xs.length - 1]) - half(xs)) * sx, (Math.max(ys[0], ys[ys.length - 1]) + half(ys)) * sy, w, h);
-  const [ax1, ay1] = displayToPixel(viewport, (Math.max(xs[0], xs[xs.length - 1]) + half(xs)) * sx, (Math.min(ys[0], ys[ys.length - 1]) - half(ys)) * sy, w, h);
+  const [x0, x1] = [Math.min(xs[0], xs[xs.length - 1]) - half(xs), Math.max(xs[0], xs[xs.length - 1]) + half(xs)];
+  const [y0, y1] = [Math.min(ys[0], ys[ys.length - 1]) - half(ys), Math.max(ys[0], ys[ys.length - 1]) + half(ys)];
+  // Its four corners through the slice's geometry (a parallelogram on an oblique cell).
+  const clipPath = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+    .map(([x, y], i) => {
+      const [X, Y] = sliceToDisplay(x, y, { sx, sy, angle });
+      const [px0, py0] = displayToPixel(viewport, X, Y, w, h);
+      return `${i ? "L" : "M"}${px0.toFixed(1)} ${py0.toFixed(1)}`;
+    })
+    .join("") + "Z";
   const small = Math.min(w, h) < 220;
   const big = Math.min(w, h) / 2;
 
@@ -181,7 +189,7 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
     <svg className="hl-overlay" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" data-hl-layer="">
       <defs>
         <clipPath id={`${id}c`}>
-          <rect x={Math.min(ax0, ax1)} y={Math.min(ay0, ay1)} width={Math.abs(ax1 - ax0)} height={Math.abs(ay1 - ay0)} />
+          <path d={clipPath} />
         </clipPath>
         {hatches.length > 0 && (
           // The NeXus Viewer's no-data hatch: thin diagonal lines, 6 px apart.
