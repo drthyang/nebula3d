@@ -36,6 +36,7 @@ import {
   TUNE_STAGES,
   USER_CHOICE_PARAMS,
   type ParamValue,
+  type RunStage,
   type TuneStage,
 } from "../tune/catalog";
 import type { StageRun } from "../tune/tuner";
@@ -66,7 +67,7 @@ export interface Proposal {
   fields: Partial<PipelineConfig>; // canonical, from the catalog's write()
   from: Partial<PipelineConfig>; // the values when the card was made
   shown: { from: string; to: string }; // the change as the card reads
-  runFrom?: TuneStage;
+  runFrom?: RunStage; // the stage a run after it starts from (runStageFor)
   source: { step?: string; via: ProposalVia };
   evidence: Evidence[];
   dataset: string;
@@ -126,6 +127,29 @@ export const cardSetting = (key: string): CardSetting | undefined => SETTINGS.fi
 export const SETTING_KEYS: readonly string[] = SETTINGS.map((s) => s.key);
 
 const isSymmetry = (key: string): boolean => (SYMMETRY_AVERAGE_SETTINGS as readonly string[]).includes(key);
+
+// What the symmetry average reads: the raw input's edge trim, which the load
+// takes before the average, and the average's own settings. With the average
+// on, a change to one leaves its output stale (its record names the edge trim
+// and the Laue class it was made with), and every output after it.
+const AVERAGE_READS: ReadonlySet<string> = new Set(["edgeTrim", ...SYMMETRY_AVERAGE_SETTINGS]);
+
+/**
+ * The stage a run after a change to the settings `keys` starts from, with the
+ * settings as they are after it (`s`): the earliest stage the change reaches.
+ * The symmetry average, while it is on, for a change to what it reads
+ * (AVERAGE_READS), as a whole run would recompute it; the ring removal for
+ * switching the average off, which then reads the raw input; else `stage`,
+ * the setting's own (the edge trim's is the ring removal), and none for a
+ * setting of the average while it is off, which changes no output.
+ */
+export function runStageFor(keys: readonly string[], stage: RunStage | null | undefined, s: Pick<PipelineConfig, "symmetryAverageEnabled">): RunStage | undefined {
+  if (keys.some((k) => AVERAGE_READS.has(k))) {
+    if (s.symmetryAverageEnabled) return "symmetry_average";
+    if (keys.includes("symmetryAverageEnabled")) return "rings";
+  }
+  return stage ?? undefined;
+}
 // The user-only settings update_settings has no write for, beside the symmetry average's.
 const USER_ONLY = new Set(["flattenIon", "pdfQMin", "pdfQMax"]);
 
@@ -213,6 +237,7 @@ export function buildProposals(input: BuildInput): Proposal[] {
     // No change as the setting reads (a blank field is its default): no card.
     if (sameFields(fields, config) || text(setting.read(config)) === text(setting.read(after))) return null;
     const held = heldFor(key);
+    const runFrom = runStageFor([key], setting.stage, after);
     return {
       kind: held ? "fact" : "setting",
       title: setting.title,
@@ -220,7 +245,7 @@ export function buildProposals(input: BuildInput): Proposal[] {
       fields,
       from: pick(config, Object.keys(fields)),
       shown: { from: text(setting.read(config)), to: text(setting.read(after)) },
-      ...(setting.stage ? { runFrom: setting.stage } : {}),
+      ...(runFrom ? { runFrom } : {}),
       source: { ...(step ? { step: step.id } : {}), via },
       evidence: step && setting.stage ? measuredBefore(step, setting.stage) : [],
       ...(held ? { held } : RING_SETTINGS.includes(key) && via === "refused" ? { held: "ring" as const } : {}),
@@ -248,8 +273,11 @@ export function buildProposals(input: BuildInput): Proposal[] {
         const rerun = typeof r.rerun_from === "string" && (TUNE_STAGES as readonly string[]).includes(r.rerun_from) ? (r.rerun_from as TuneStage) : null;
         const changed = Array.isArray(r.changed) ? (r.changed as { setting?: unknown; from?: unknown; to?: unknown }[]) : [];
         const ranAfter = steps.slice(steps.indexOf(s) + 1).some((x) => x.name === "run_pipeline" && x.status === "done");
-        if (rerun && changed.length && !ranAfter) {
-          drafts.push(runDraft(rerun, changed.map((c) => `${cardSetting(String(c.setting))?.title ?? String(c.setting)} ${text(c.from)} → ${text(c.to)}`).join(", "), "rerun", s.id));
+        // The run the changes call for: from their rerun_from, or before it the
+        // symmetry average, when a change reaches what it reads (runStageFor).
+        const runAt = rerun && runStageFor(changed.map((c) => String(c.setting)), rerun, config);
+        if (runAt && changed.length && !ranAfter) {
+          drafts.push(runDraft(runAt, changed.map((c) => `${cardSetting(String(c.setting))?.title ?? String(c.setting)} ${text(c.from)} → ${text(c.to)}`).join(", "), "rerun", s.id));
         }
       } else if (s.status === "error") {
         // Every change refused (the call fails then), or a key it cannot set at all.
@@ -365,7 +393,7 @@ export function buildProposals(input: BuildInput): Proposal[] {
 }
 
 /** A Run card: run from `stage`, the outputs predating `because`. */
-export function runDraft(stage: TuneStage, because: string, via: ProposalVia, step?: string): Draft {
+export function runDraft(stage: RunStage, because: string, via: ProposalVia, step?: string): Draft {
   return {
     kind: "run",
     title: `Run from ${STAGE_TITLE[stage]}`,
@@ -380,19 +408,20 @@ export function runDraft(stage: TuneStage, because: string, via: ProposalVia, st
 }
 
 /** A Run card as a whole proposal, for one made after a decision (Apply, Undo). */
-export function runProposal(id: string, turn: number, dataset: string, stage: TuneStage, because: string, via: ProposalVia): Proposal {
+export function runProposal(id: string, turn: number, dataset: string, stage: RunStage, because: string, via: ProposalVia): Proposal {
   return { ...runDraft(stage, because, via), id, turn, dataset, status: "open" };
 }
 
 // The stages as the console names them (TUNE_STAGE_TITLES' words, here without the model's).
-const STAGE_TITLE: Record<TuneStage, string> = {
+const STAGE_TITLE: Record<RunStage, string> = {
+  symmetry_average: "Symmetry average",
   rings: "Ring removal",
   punch: "Bragg punch",
   backfill: "Backfill",
   flatten: "Background correction",
   pdf: "3D-ΔPDF",
 };
-export const stageTitle = (stage: TuneStage): string => STAGE_TITLE[stage];
+export const stageTitle = (stage: RunStage): string => STAGE_TITLE[stage];
 
 // --------------------------------------------------------------- the answer
 

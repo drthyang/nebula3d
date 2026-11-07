@@ -1,36 +1,13 @@
 // run_pipeline: runs the reduction pipeline on the selected dataset, as the Run
-// button does, and reads the dataset's fresh listing into the context. When
-// the punch's record says its sharp peaks off the lattice bunch at one
-// commensurate fraction, the result carries the question for the user
-// (metrics/bunching.ts).
+// button does, and reads the dataset's fresh listing into the context. The run
+// and what the model reads of it are shared/runPipeline.ts's.
 
-import { fetchBraggProfile, fetchDataset } from "../../../api/client";
-import type { JobEvent } from "../../../api/types";
-import { useNavStore } from "../../../state/navStore";
-import { enabledStages, STAGE_LABELS, STAGES, usePipelineStore } from "../../../state/pipelineStore";
-import { safe, stageVolumeId } from "../../context/loadContext";
-import { offLatticeBunching } from "../../metrics/bunching";
 import { TUNE_STAGES } from "../../tune/catalog";
 import { ALL_STAGES, keysOf } from "../facts";
 import { oneOf } from "../shared/args";
 import { checkIdle } from "../shared/pipeline";
+import { runPipelineFrom } from "../shared/runPipeline";
 import type { ChatTool } from "../types";
-
-// The stages as the tool's lines name them to the model: the console's labels
-// (STAGE_LABELS), but the flatten keeps the name the model's other texts give
-// it while the validation frozen at 812e686 waits for its live runs
-// (docs/evals.md, "The freeze"); the console calls it "Background correction".
-const TOOL_STAGE_LABELS: Record<string, string> = { ...STAGE_LABELS, flatten: "Flatten" };
-const stageLabel = (stage?: string): string => (stage ? TOOL_STAGE_LABELS[stage] ?? stage : "");
-
-// One log line: "Bragg punch 45% · fitting 312 peaks".
-const eventLine = (ev: JobEvent): string =>
-  [
-    stageLabel(ev.stage) + (ev.fraction != null && ev.status === "progress" ? ` ${Math.round(ev.fraction * 100)}%` : ""),
-    ev.message,
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
 export const run_pipeline: ChatTool = {
   name: "run_pipeline",
@@ -58,64 +35,6 @@ export const run_pipeline: ChatTool = {
   run: async (args, ctx, io) => {
     checkIdle();
     const from = args.from_stage === undefined ? null : oneOf(args, "from_stage", TUNE_STAGES);
-    const pipe = usePipelineStore.getState();
-    const stages = enabledStages(pipe).filter(
-      (st) => !from || STAGES.indexOf(st as (typeof STAGES)[number]) >= STAGES.indexOf(from),
-    );
-    if (!stages.length) throw new Error(`every stage${from ? ` from ${stageLabel(from)} on` : ""} is switched off`);
-    const force = from ? true : pipe.force;
-
-    useNavStore.getState().setTab("execution");
-    let seen = 0;
-    const unsubscribe = usePipelineStore.subscribe(({ events }) => {
-      if (events.length === seen) return;
-      seen = events.length;
-      const ev = events[events.length - 1];
-      const at = ev.stage ? stages.indexOf(ev.stage) : -1;
-      io.progress?.((at >= 0 ? `${at + 1}/${stages.length} ` : "") + eventLine(ev));
-    });
-    const cancel = () => void usePipelineStore.getState().cancel();
-    io.signal?.addEventListener("abort", cancel);
-    const t0 = performance.now();
-    let ended: string;
-    try {
-      ended = await usePipelineStore.getState().runStages(stages, { datasetId: ctx.dataset.id, force });
-    } finally {
-      unsubscribe();
-      io.signal?.removeEventListener("abort", cancel);
-    }
-    const seconds = Math.round((performance.now() - t0) / 100) / 10;
-    const events = usePipelineStore.getState().events;
-
-    if (ended !== "done") {
-      // The job's own end (end: the server's reason for a failed job, shown on
-      // the Execution page) is not among the lines the model reads.
-      const failed = [...events].reverse().find((e) => e.status === "error" && !e.end);
-      throw new Error(`the run ${ended === "cancelled" ? "was cancelled" : "failed"}${failed ? `: ${eventLine(failed)}` : ""}`);
-    }
-    // The last word on each stage: done = computed, skip = its output was reused.
-    const outcome: Record<string, string> = {};
-    for (const e of events) {
-      if (e.stage && (e.status === "done" || e.status === "skip")) outcome[e.stage] = e.status === "done" ? "computed" : "reused";
-    }
-    const fresh = await safe(fetchDataset(ctx.dataset.id));
-    if (fresh) ctx.dataset = fresh;
-    const computed = Object.values(outcome).filter((o) => o === "computed").length;
-    // The punch's record of the outputs as they now are: its sharp peaks off
-    // the lattice bunched at one commensurate fraction, put to the user.
-    const record = stageVolumeId(ctx.dataset, "braggpunched") ? await safe(fetchBraggProfile(ctx.dataset.id)) : null;
-    const bunching = offLatticeBunching(record?.modulation);
-    const result = {
-      ended,
-      seconds,
-      stages: outcome,
-      outputs: ctx.dataset.stages.filter((s) => s.exists).map((s) => s.name),
-      log_tail: events.filter((e) => e.message).slice(-5).map(eventLine),
-      ...(bunching ? { off_lattice_bunching: bunching } : {}),
-    };
-    return {
-      result,
-      summary: `done in ${seconds} s · ${computed} computed, ${Object.keys(outcome).length - computed} reused`,
-    };
+    return runPipelineFrom(from, ctx, io);
   },
 };

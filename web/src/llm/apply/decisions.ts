@@ -14,7 +14,7 @@ import { create } from "zustand";
 import { resetsWithVolume } from "../../state/volumeReset";
 import type { PipelineConfig, RunRecord } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
-import { TUNE_STAGES, type ParamValue, type TuneStage } from "../tune/catalog";
+import { RUN_STAGES, TUNE_STAGES, type ParamValue, type RunStage } from "../tune/catalog";
 import type { Held, Proposal, ProposalKind, ProposalStatus, ProposalVia } from "./proposals";
 
 export type DecisionAction = "apply" | "edit-apply" | "dismiss" | "undo";
@@ -30,7 +30,7 @@ export interface Decision {
   at: number; // ms
   before: Partial<PipelineConfig>;
   after: Partial<PipelineConfig>;
-  runFrom?: TuneStage;
+  runFrom?: RunStage;
   undoes?: string; // an undo: the decision it put back
   undoneBy?: string; // put back by this undo
   byClick?: true; // made by the user's own click, under a click grant (a sample fact, a setting only they set, Apply anyway)
@@ -201,7 +201,7 @@ function readProposal(v: unknown): Proposal | null {
     fields,
     from,
     shown,
-    ...(oneOf(v.runFrom, TUNE_STAGES) ? { runFrom: v.runFrom } : {}),
+    ...(oneOf(v.runFrom, RUN_STAGES) ? { runFrom: v.runFrom } : {}),
     source,
     evidence,
     dataset: v.dataset,
@@ -228,7 +228,7 @@ function readDecision(v: unknown): Decision | null {
     at: v.at,
     before,
     after,
-    ...(oneOf(v.runFrom, TUNE_STAGES) ? { runFrom: v.runFrom } : {}),
+    ...(oneOf(v.runFrom, RUN_STAGES) ? { runFrom: v.runFrom } : {}),
     ...(isStr(v.undoes) ? { undoes: v.undoes } : {}),
     ...(isStr(v.undoneBy) ? { undoneBy: v.undoneBy } : {}),
     ...(v.byClick === true ? { byClick: true as const } : {}),
