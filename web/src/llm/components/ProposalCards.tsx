@@ -59,7 +59,7 @@ function Change({ p }: { p: Proposal }) {
   if (p.kind === "run") return <span className="pc-line">{p.title}</span>;
   return (
     <span className="pc-line">
-      {p.title}
+      {p.title}:
       {p.shown.from ? (
         <>
           {" "}
@@ -69,7 +69,7 @@ function Change({ p }: { p: Proposal }) {
           </span>
         </>
       ) : (
-        ": "
+        " "
       )}
       {p.shown.to}
     </span>

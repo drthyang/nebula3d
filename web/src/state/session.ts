@@ -8,7 +8,8 @@
 //    when each was written), and the last run's record (its stages, the
 //    settings it ran with, its log);
 //  - the analysis on top: the NEBULA Pilot conversation, the regions it
-//    marked on the slice views and the structure drawn over the ΔPDF;
+//    marked on the slice views, its Apply cards and the decisions on them,
+//    and the structure drawn over the ΔPDF;
 //  - the NEBULA3D version that saved it.
 //
 // The outputs themselves are not in the file (a volume is hundreds of MB):
