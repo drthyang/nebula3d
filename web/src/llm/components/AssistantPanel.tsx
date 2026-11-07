@@ -4,7 +4,9 @@
 // the model answers from the dataset the pages show and acts on it: it
 // measures and assesses, opens the viewer, runs the pipeline, and tunes it.
 // The regions it marks on the slice views are listed above the chat
-// (MarksList), while the dataset has any.
+// (MarksList), while the dataset has any, and so are the changes applied from
+// its Apply cards (ChangesList). While a reply runs, the title row shows how
+// long it has worked (ReplyClock).
 
 import { useMemo, useState } from "react";
 
@@ -15,10 +17,12 @@ import { useDatasetStore } from "../../state/datasetStore";
 import { contextWarning } from "../provider/client";
 import type { ToolContext } from "../tools";
 import { useAssistant } from "../useAssistant";
+import { ChangesList } from "./ChangesList";
 import { ChatView } from "./ChatView";
 import { ConnectionBar } from "./ConnectionBar";
 import { ConnectionSettings } from "./ConnectionSettings";
 import { MarksList } from "./MarksList";
+import { ReplyClock } from "./ReplyClock";
 
 export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollapse: () => void }) {
   const datasetsQ = useDatasets();
@@ -42,6 +46,7 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
           NEBULA Pilot
           <span className="nav-beta">Beta</span>
         </span>
+        <ReplyClock />
         <button
           type="button"
           className="ai-panel-close"
@@ -91,6 +96,7 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
       )}
 
       <MarksList datasetId={datasetId} />
+      <ChangesList datasetId={datasetId} />
 
       <ChatView
         assistant={contextQuery.data}

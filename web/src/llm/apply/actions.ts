@@ -1,0 +1,291 @@
+// What the Apply cards do (docs/pilot-auto-mode-design.md §1.1–1.5), through
+// today's paths: a setting or a trial through update_settings' own run(),
+// with its checks, its guards and the Configure page's highlight; a run
+// through run_pipeline's; Undo puts back the values from before, while the
+// fields still hold the ones applied. The calls carry a context the model
+// never builds and that names no sample fact (userMessage ""), so the
+// sample-fact guard, the edge trim's, the symmetry average's and the ring
+// gate refuse here exactly as they refuse the model.
+
+import { noteAgentEdit } from "../../state/agentEdits";
+import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { toolStepsIn, type AgentStep } from "../agent";
+import { useChatStore } from "../chatStore";
+import { CHAT_TOOLS, type ToolContext } from "../tools";
+import { ringVerdictAllowsChange } from "../tools/shared/ringGate";
+import { TUNE_STAGES, type TuneStage } from "../tune/catalog";
+import { useTuneStore } from "../tune/tuner";
+import {
+  addProposals,
+  logDecision,
+  nextProposalNumber,
+  setNote,
+  updateDecision,
+  updateProposal,
+  useDecisionStore,
+  type Decision,
+} from "./decisions";
+import { buildProposals, runProposal, stageTitle, type Proposal } from "./proposals";
+
+const tool = (name: string) => {
+  const t = CHAT_TOOLS.find((x) => x.name === name);
+  if (!t) throw new Error(`no ${name} tool`);
+  return t;
+};
+
+const config = (): PipelineConfig => usePipelineStore.getState();
+
+const pick = (keys: readonly string[]): Partial<PipelineConfig> => {
+  const s = config();
+  return Object.fromEntries(keys.map((k) => [k, s[k as keyof PipelineConfig]])) as Partial<PipelineConfig>;
+};
+
+const holds = (fields: Partial<PipelineConfig>): boolean => {
+  const s = config();
+  return Object.entries(fields).every(([k, v]) => s[k as keyof PipelineConfig] === v);
+};
+
+/** The context of a card's call: the conversation's steps as evidence, this reply's none, no message naming anything. */
+export function cardContext(ctx: ToolContext): ToolContext {
+  return {
+    dataset: ctx.dataset,
+    datasets: ctx.datasets,
+    userMessage: "",
+    replySteps: [],
+    earlierSteps: toolStepsIn(useChatStore.getState().turns),
+  };
+}
+
+// --------------------------------------------------------------- after a reply
+
+/** Build and keep the proposals a finished reply leads to (session.ts calls it with the reply's whole steps). */
+export function proposeFromReply(turn: number, steps: readonly AgentStep[], answer: string, dataset: string | undefined): void {
+  if (!dataset) return;
+  const ps = buildProposals({
+    turn,
+    steps,
+    answer,
+    config: config(),
+    dataset,
+    tune: useTuneStore.getState().stages,
+    firstId: nextProposalNumber(),
+  });
+  addProposals(ps);
+}
+
+// --------------------------------------------------------------- the card's state
+
+export type CardState =
+  | { can: true }
+  | { can: false; why: string };
+
+/** Whether a card can be applied now, and why not. */
+export function cardState(p: Proposal, datasetId: string | undefined, ctx: ToolContext | null, busy: boolean): CardState {
+  if (p.status !== "open") return { can: false, why: "" };
+  if (datasetId !== p.dataset) return { can: false, why: "Stale: another dataset is open." };
+  if (p.kind !== "run" && !holds(p.from)) return { can: false, why: "Stale: the settings changed since." };
+  if (p.held === "ring") {
+    if (!ctx || !ringVerdictAllowsChange(cardContext(ctx))) return { can: false, why: "Held: no 3D verdict of a ring left yet." };
+  } else if (p.held) {
+    return { can: false, why: HELD_NOTE[p.held] };
+  }
+  if (busy) return { can: false, why: "Wait for the reply to end." };
+  if (useDecisionStore.getState().working) return { can: false, why: "" };
+  return { can: true };
+}
+
+export const HELD_NOTE: Record<NonNullable<Proposal["held"]>, string> = {
+  fact: "A sample fact: set it on Configure, or name it in your message.",
+  choice: "Yours to choose: set it on Configure, or name it in your message.",
+  symmetry: "Yours to set on Configure.",
+  "user-only": "Yours to set on Configure.",
+  ring: "Held: no 3D verdict of a ring left yet.",
+};
+
+// --------------------------------------------------------------- apply
+
+const message = (e: unknown): string => (e as Error).message.replace(/\.$/, "");
+
+/** Apply a setting or a trial card through update_settings (an edited value in place of the card's, with Edit). */
+export async function applyCard(p: Proposal, ctx: ToolContext, edited?: Record<string, unknown>): Promise<void> {
+  if (p.kind === "run") return runCard(p, ctx);
+  const state = cardState(p, ctx.dataset.id, ctx, false);
+  if (!state.can) {
+    setNote(p.id, state.why || "Not now.");
+    return;
+  }
+  const changes = edited ?? p.change;
+  const keys = [...new Set([...Object.keys(p.fields), ...Object.keys(p.from)])];
+  setNote(p.id, null);
+  useDecisionStore.setState({ working: p.id });
+  try {
+    const before = pick(keys);
+    let out: { result: unknown };
+    try {
+      out = await tool("update_settings").run({ changes }, cardContext(ctx), {});
+    } catch (e) {
+      setNote(p.id, `Not applied: ${message(e)}.`);
+      return;
+    }
+    const r = out.result as { changed?: { setting: string }[]; refused?: { setting: string; why: string }[] };
+    if (r.refused?.length) setNote(p.id, `Not applied: ${r.refused.map((x) => x.why).join(" ")}`);
+    if (!r.changed?.length) {
+      if (!r.refused?.length) setNote(p.id, "Already set.");
+      return;
+    }
+    const after = pick(keys);
+    const changedKeys = keys.filter((k) => before[k as keyof PipelineConfig] !== after[k as keyof PipelineConfig]);
+    const b = Object.fromEntries(changedKeys.map((k) => [k, before[k as keyof PipelineConfig]])) as Partial<PipelineConfig>;
+    const a = Object.fromEntries(changedKeys.map((k) => [k, after[k as keyof PipelineConfig]])) as Partial<PipelineConfig>;
+    const shown = edited ? { from: p.shown.from, to: Object.values(edited).map(String).join(", ") } : p.shown;
+    logDecision({
+      proposal: p.id,
+      kind: p.kind,
+      title: p.title,
+      shown,
+      action: edited ? "edit-apply" : "apply",
+      by: "you",
+      at: Date.now(),
+      before: b,
+      after: a,
+      ...(p.runFrom ? { runFrom: p.runFrom } : {}),
+    });
+    updateProposal(p.id, { status: "applied", ...(edited ? { shown } : {}) });
+    if (p.runFrom) offerRun(p.turn, p.dataset, p.runFrom, changeText(p.title, shown));
+  } finally {
+    useDecisionStore.setState({ working: null });
+  }
+}
+
+export const changeText = (title: string, shown: { from: string; to: string }): string => (shown.from ? `${title} ${shown.from} → ${shown.to}` : `${title}: ${shown.to}`);
+
+/** The change a decision made, in one line ("punchMinSig 8 → 6"). */
+export const decisionText = (d: Pick<Decision, "title" | "shown" | "kind" | "runFrom">): string =>
+  d.kind === "run" ? `Ran from ${d.runFrom ? stageTitle(d.runFrom) : "the start"}` : changeText(d.title, d.shown);
+
+/**
+ * A Run card after a change: one open Run card per dataset, from the earliest
+ * stage any change since calls for (Apply first, then a separate Run card).
+ */
+export function offerRun(turn: number, dataset: string, stage: TuneStage, because: string): void {
+  const open = useDecisionStore.getState().proposals.find((p) => p.kind === "run" && p.status === "open" && p.dataset === dataset);
+  if (open) {
+    const earlier = TUNE_STAGES.indexOf(stage) < TUNE_STAGES.indexOf(open.runFrom ?? "rings") ? stage : open.runFrom!;
+    const reasons = open.shown.to.split("; ").filter(Boolean);
+    updateProposal(open.id, {
+      runFrom: earlier,
+      title: `Run from ${stageTitle(earlier)}`,
+      shown: { from: "", to: [...reasons.filter((x) => x !== because), because].join("; ") },
+      ...(open.turn < turn ? { turn } : {}),
+    });
+    return;
+  }
+  addProposals([runProposal(`P${nextProposalNumber()}`, turn, dataset, stage, because, "apply")]);
+}
+
+/** Run the pipeline from the card's stage, through run_pipeline (it opens the Execution page). */
+async function runCard(p: Proposal, ctx: ToolContext): Promise<void> {
+  const state = cardState(p, ctx.dataset.id, ctx, false);
+  if (!state.can || !p.runFrom) {
+    setNote(p.id, (state.can ? "" : state.why) || "Not now.");
+    return;
+  }
+  setNote(p.id, null);
+  useDecisionStore.setState({ working: p.id });
+  try {
+    await tool("run_pipeline").run({ from_stage: p.runFrom }, cardContext(ctx), {});
+    logDecision({ proposal: p.id, kind: "run", title: p.title, shown: p.shown, action: "apply", by: "you", at: Date.now(), before: {}, after: {}, runFrom: p.runFrom });
+    updateProposal(p.id, { status: "applied" });
+  } catch (e) {
+    setNote(p.id, `The run did not finish: ${message(e)}.`);
+  } finally {
+    useDecisionStore.setState({ working: null });
+  }
+}
+
+/** Dismiss a card: logged, nothing changed. */
+export function dismissCard(p: Proposal): void {
+  if (p.status !== "open") return;
+  logDecision({ proposal: p.id, kind: p.kind, title: p.title, shown: p.shown, action: "dismiss", by: "you", at: Date.now(), before: {}, after: {}, ...(p.runFrom ? { runFrom: p.runFrom } : {}) });
+  updateProposal(p.id, { status: "dismissed" });
+  setNote(p.id, null);
+}
+
+// --------------------------------------------------------------- undo
+
+/** Whether a decision can be undone: a change applied, not undone yet. */
+export const undoable = (d: Decision): boolean => (d.action === "apply" || d.action === "edit-apply") && d.kind !== "run" && !d.undoneBy && Object.keys(d.after).length > 0;
+
+/**
+ * Undo a decision: put back `before` for exactly its fields, while they still
+ * hold `after`; otherwise say so. A Run card follows, as after any change.
+ */
+export function undoDecision(d: Decision): boolean {
+  if (!undoable(d)) return false;
+  if (!holds(d.after)) {
+    setNote(d.id, "Changed since: undo on Configure.");
+    return false;
+  }
+  const pipe = usePipelineStore.getState();
+  pipe.patch(d.before);
+  noteAgentEdit(Object.keys(d.before) as (keyof PipelineConfig)[]);
+  const undo = logDecision({
+    proposal: d.proposal,
+    kind: d.kind,
+    title: d.title,
+    shown: { from: d.shown.to, to: d.shown.from || "before" },
+    action: "undo",
+    by: "you",
+    at: Date.now(),
+    before: d.after,
+    after: d.before,
+    ...(d.runFrom ? { runFrom: d.runFrom } : {}),
+    undoes: d.id,
+  });
+  updateDecision(d.id, { undoneBy: undo.id });
+  updateProposal(d.proposal, { status: "undone" });
+  setNote(d.id, null);
+  const { proposals, decisions } = useDecisionStore.getState();
+  const p = proposals.find((x) => x.id === d.proposal);
+  if (!d.runFrom || !p) return true;
+  // No run since the change: the outputs still follow from the settings put
+  // back, so the Run card the change led to loses that reason (and goes, with none left).
+  const ranSince = decisions.some((x) => x.kind === "run" && x.action === "apply" && x.at >= d.at);
+  const open = proposals.find((x) => x.kind === "run" && x.status === "open" && x.dataset === p.dataset);
+  const text = changeText(d.title, d.shown);
+  if (!ranSince && open) {
+    const reasons = open.shown.to.split("; ").filter((x) => x && x !== text);
+    updateProposal(open.id, reasons.length ? { shown: { from: "", to: reasons.join("; ") } } : { status: "dismissed" });
+    return true;
+  }
+  if (ranSince) offerRun(p.turn, p.dataset, d.runFrom, `undid ${text}`);
+  return true;
+}
+
+/** Undo every change still standing, newest first. */
+export function undoAll(): void {
+  const ds = [...useDecisionStore.getState().decisions].reverse();
+  for (const d of ds) if (undoable(d)) undoDecision(useDecisionStore.getState().decisions.find((x) => x.id === d.id)!);
+}
+
+// --------------------------------------------------------------- the report
+
+const ACTION_WORD: Record<Decision["action"], string> = { apply: "Applied", "edit-apply": "Edited and applied", dismiss: "Dismissed", undo: "Put back" };
+
+/** One decision as the report's Decisions section lists it. */
+export function decisionLine(d: Decision): string {
+  if (d.kind === "run") return d.action === "dismiss" ? `Dismissed ${d.title}` : decisionText(d);
+  return `${ACTION_WORD[d.action]} ${changeText(d.title, d.shown)}`;
+}
+
+/** The decisions on the dataset's cards, oldest first, for the report. */
+export function reportDecisions(datasetId: string): { time: string; by: string; decision: string }[] {
+  const { proposals, decisions } = useDecisionStore.getState();
+  const mine = new Set(proposals.filter((p) => p.dataset === datasetId).map((p) => p.id));
+  return decisions
+    .filter((d) => mine.has(d.proposal))
+    .map((d) => {
+      const t = new Date(d.at);
+      return { time: `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`, by: d.by, decision: decisionLine(d) };
+    });
+}

@@ -527,3 +527,22 @@ describe("a card states only what it judges", () => {
     expect(buildReport(input({ measured: { ...sound, texture: { per_cut: [] } } })).achieved.text).toBe("met: every stage meets its goal");
   });
 });
+
+describe("the Decisions section (the Apply cards, apply/decisions.ts)", () => {
+  it("lists each decision under the details, escaped; none: no section", () => {
+    const decisions = [
+      { time: "10:42", by: "you", decision: "Applied punchMinSig 5 → 6" },
+      { time: "10:44", by: "you", decision: "Dismissed <b>x</b>" },
+    ];
+    const r = buildReport(input({ decisions }));
+    expect(r.decisions).toEqual(decisions);
+    const md = reportMarkdown(r);
+    expect(md).toContain("### Decisions\n\n| Time | By | Decision |\n| --- | --- | --- |\n| 10:42 | you | Applied punchMinSig 5 → 6 |");
+    const html = reportHtml(r);
+    expect(html).toContain("<h3 class=\"sub\">Decisions</h3>");
+    expect(html).toContain("<td>Dismissed &lt;b&gt;x&lt;/b&gt;</td>");
+    const none = buildReport(input());
+    expect(none.decisions).toBeUndefined();
+    expect(reportMarkdown(none)).not.toContain("### Decisions");
+  });
+});

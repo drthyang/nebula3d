@@ -1,0 +1,66 @@
+// The Changes list above the chat (docs/pilot-auto-mode-design.md §1.5),
+// framed like MarksList: every change applied from an Apply card on the
+// selected dataset, newest last, who made it, when, and Undo while the fields
+// still hold what was applied; Undo all puts back every one still standing.
+// Shown only while there is one.
+
+import { useMemo, useState } from "react";
+
+import { decisionText, undoable, undoAll, undoDecision } from "../apply/actions";
+import { useDecisionStore } from "../apply/decisions";
+import { useChatStore } from "../chatStore";
+
+const clockTime = (ms: number): string => {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+export function ChangesList({ datasetId }: { datasetId: string | undefined }) {
+  const proposals = useDecisionStore((s) => s.proposals);
+  const decisions = useDecisionStore((s) => s.decisions);
+  const notes = useDecisionStore((s) => s.notes);
+  const busy = useChatStore((s) => s.busy);
+  const [open, setOpen] = useState(true);
+  const rows = useMemo(() => {
+    const onDataset = new Set(proposals.filter((p) => p.dataset === datasetId).map((p) => p.id));
+    return decisions.filter((d) => onDataset.has(d.proposal) && (d.action === "apply" || d.action === "edit-apply"));
+  }, [proposals, decisions, datasetId]);
+  if (!datasetId || !rows.length) return null;
+  const standing = rows.filter(undoable).length;
+
+  return (
+    <section className="ai-marks ai-changes" aria-label="Changes">
+      <div className="ai-marks-head">
+        <button type="button" className="ai-marks-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          {open ? "▾" : "▸"} Changes <span className="ai-marks-count">{rows.length}</span>
+        </button>
+        {standing > 1 && (
+          <button type="button" className="ai-marks-act" disabled={busy} onClick={undoAll} title="Put back every change still standing, newest first">
+            Undo all
+          </button>
+        )}
+      </div>
+      {open && (
+        <ul className="ai-mark-list">
+          {rows.map((d) => (
+            <li key={d.id} className={`ch-row${d.undoneBy ? " is-undone" : ""}`}>
+              <span className={`who${d.by === "auto" ? " auto" : ""}`}>{d.by}</span>
+              <span className="what" title={notes[d.id] ?? decisionText(d)}>
+                {decisionText(d)}
+                {notes[d.id] && <span className="ch-note"> · {notes[d.id]}</span>}
+              </span>
+              <span className="when">{clockTime(d.at)}</span>
+              {undoable(d) ? (
+                <button type="button" className="ai-marks-act" disabled={busy} onClick={() => undoDecision(d)} title="Put back the values from before">
+                  Undo
+                </button>
+              ) : d.undoneBy ? (
+                <span className="ch-state">undone</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}

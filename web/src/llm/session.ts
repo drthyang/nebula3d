@@ -4,6 +4,9 @@
 // keeps whatever was written so far.
 
 import { runAgent, toolStepsIn, type AgentStep } from "./agent";
+import { proposeFromReply } from "./apply/actions";
+import { clearDecisions } from "./apply/decisions";
+import { elapsedMs, startClock, stopClock } from "./clock";
 import { marksMade } from "./answerChecks";
 import { beginReply, endReply, recordUsage, type Usage } from "./usage";
 import { useMarkStore } from "../state/markStore";
@@ -53,7 +56,12 @@ export async function askAssistant({
   const abort = new AbortController();
   controller = abort;
   chat.addTurn({ role: "user", content: label });
-  useChatStore.setState({ busy: true, live: { content: "", reasoning: "", steps: [] }, error: null });
+  // The reply's clock (clock.ts): the panel shows it while the reply runs, and the turn keeps it.
+  useChatStore.setState({ busy: true, live: { content: "", reasoning: "", steps: [] }, error: null, clock: startClock(Date.now()) });
+  const took = (): { ms?: number } => {
+    const c = useChatStore.getState().clock;
+    return c ? { ms: elapsedMs(stopClock(c, Date.now()), Date.now()) } : {};
+  };
   // The reply's model requests, a tuning run's inside it included (usage.ts).
   beginReply();
   try {
@@ -78,6 +86,7 @@ export async function askAssistant({
       ...reply,
       ...(shown ? { content: shown } : {}),
       ...(tokens.requests || tokens.uncounted ? { tokens } : {}),
+      ...took(),
       note:
         result.note ??
         (empty
@@ -86,6 +95,9 @@ export async function askAssistant({
             : "The model sent back an empty reply. Ask again, or try another model."
           : undefined),
     });
+    // The Apply cards the reply leads to, built from its steps' whole results
+    // (the transcript keeps what was read): UI only, the model reads none of them.
+    proposeFromReply(lastTurnId(), result.steps, result.content, ctx?.dataset.id);
   } catch (e) {
     const counted = endReply();
     const tokens = counted.requests || counted.uncounted ? { tokens: counted } : {};
@@ -96,7 +108,7 @@ export async function askAssistant({
     const live = ended && { ...ended, steps: endSteps(ended.steps, stopped ? "you stopped the reply" : "the reply ended with an error") };
     const kept = live && (live.content || live.reasoning || live.steps.length);
     if (stopped) {
-      if (kept) useChatStore.getState().addTurn({ role: "assistant", ...live, ...tokens, note: "Stopped." });
+      if (kept) useChatStore.getState().addTurn({ role: "assistant", ...live, ...tokens, ...took(), note: "Stopped." });
       else withQuestion(tokens);
     } else if (kept) {
       // The steps already ran (a tuning run, a pipeline run): keep them, and
@@ -105,6 +117,7 @@ export async function askAssistant({
         role: "assistant",
         ...live,
         ...tokens,
+        ...took(),
         note: `The reply ended with an error: ${(e as Error).message.replace(/\.$/, "")}. The steps above ran; ask again to continue from them.`,
       });
     } else {
@@ -113,9 +126,14 @@ export async function askAssistant({
     }
   } finally {
     if (controller === abort) controller = null;
-    useChatStore.setState({ busy: false, live: null });
+    useChatStore.setState({ busy: false, live: null, clock: null });
   }
 }
+
+const lastTurnId = (): number => {
+  const turns = useChatStore.getState().turns;
+  return turns[turns.length - 1]?.id ?? 0;
+};
 
 // A reply that ended with nothing to keep adds no turn, but its requests are
 // in the conversation's total already: they go with the question that asked,
@@ -138,12 +156,14 @@ export function stopAssistant(): void {
 }
 
 /**
- * The chat's Clear: the conversation, and the regions it marked in the slice
- * views (state/markStore.ts), every dataset's. A mark rests on the steps of
+ * The chat's Clear: the conversation, the regions it marked in the slice
+ * views (state/markStore.ts), every dataset's, and its Apply cards' record
+ * (apply/decisions.ts). A mark rests on the steps of
  * the reply that made it, and the transcript's Show reopens it: with the
  * transcript gone, its marks go too.
  */
 export function clearConversation(): void {
   useChatStore.getState().clear();
   useMarkStore.getState().clearAll();
+  clearDecisions();
 }

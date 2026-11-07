@@ -1,0 +1,268 @@
+// The Apply cards under a reply (docs/pilot-auto-mode-design.md §1.6): each
+// change the reply proposed, from what its tools returned or its answer named
+// (apply/proposals.ts), as one line, result first, with its evidence in the
+// tool's own numbers and "?" for the rest; Apply, Edit and Dismiss. After a
+// decision the card shrinks to one line with Undo. A change applied leads to a
+// separate Run card. A card the user alone may act on (a sample fact, a
+// setting only they choose) shows why, with Apply off.
+
+import { useState } from "react";
+
+import { useDatasetStore } from "../../state/datasetStore";
+import { enabledStages, STAGES, usePipelineStore } from "../../state/pipelineStore";
+import { applyCard, cardState, changeText, dismissCard, undoDecision, undoable } from "../apply/actions";
+import { useDecisionStore, type Decision } from "../apply/decisions";
+import type { Proposal } from "../apply/proposals";
+import { useChatStore } from "../chatStore";
+import type { ToolContext } from "../tools";
+
+const KIND_LABEL = (p: Proposal): string =>
+  p.kind === "run" ? "Run" : p.kind === "trial" ? "Trial" : p.held === "fact" ? "Sample fact" : p.held && p.held !== "ring" ? "Yours" : "Setting";
+
+const VIA_DETAIL: Record<Proposal["source"]["via"], string> = {
+  refused: "update_settings refused this change, so nothing was set.",
+  rerun: "update_settings changed the settings and no run followed: the outputs predate them.",
+  ask_user: "The run's punch record asks this question; only you can answer it.",
+  suggestion: "The tool's own suggestion; the value is yours to set.",
+  answer: "Named in the answer with this value, and checked against the settings catalog. No call set it.",
+  trial: "A trial of the tuning run.",
+  apply: "A change you applied: the outputs predate it.",
+  undo: "A change you undid: the outputs predate it.",
+};
+
+/** The card's fields as the settings hold them, as one string a store selector can compare. */
+const watched = (s: object, p: Proposal): string =>
+  Object.keys(p.from)
+    .map((k) => String((s as Record<string, unknown>)[k]))
+    .join("\u0000");
+
+/** Scroll the transcript to a step and pulse it. */
+function goToStep(turn: number, step: string): void {
+  const el = document.getElementById(`ai-step-${turn}-${step}`);
+  if (!el) return;
+  const list = el.closest("details");
+  if (list && !list.open) list.open = true;
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  el.classList.remove("is-pulsed");
+  void el.offsetWidth;
+  el.classList.add("is-pulsed");
+}
+
+/** The stages a run from `stage` recomputes, as the Configure page has them switched on. */
+function stagesFrom(stage: string): number {
+  const pipe = usePipelineStore.getState();
+  const at = STAGES.indexOf(stage as (typeof STAGES)[number]);
+  return enabledStages(pipe).filter((s) => STAGES.indexOf(s as (typeof STAGES)[number]) >= at).length;
+}
+
+function Change({ p }: { p: Proposal }) {
+  if (p.kind === "run") return <span className="pc-line">{p.title}</span>;
+  return (
+    <span className="pc-line">
+      {p.title}
+      {p.shown.from ? (
+        <>
+          {" "}
+          <span className="from">{p.shown.from}</span>
+          <span className="arrow" aria-label="to">
+            →
+          </span>
+        </>
+      ) : (
+        ": "
+      )}
+      {p.shown.to}
+    </span>
+  );
+}
+
+function OpenCard({ p, ctx }: { p: Proposal; ctx: ToolContext | null }) {
+  const datasetId = useDatasetStore((s) => s.datasetId);
+  const busy = useChatStore((s) => s.busy);
+  const working = useDecisionStore((s) => s.working);
+  const note = useDecisionStore((s) => s.notes[p.id]);
+  // The card's fields as they stand, so it goes stale as they move.
+  usePipelineStore((s) => watched(s, p));
+  const [details, setDetails] = useState(false);
+  const key = Object.keys(p.change)[0];
+  const editable = p.kind === "setting" && Object.keys(p.change).length === 1;
+  const [edit, setEdit] = useState<string | null>(null);
+  const state = cardState(p, datasetId, ctx, busy);
+  const running = working === p.id;
+  const why = state.can ? null : state.why;
+
+  return (
+    <div className={`pc pc--${p.kind}${p.held && p.held !== "ring" ? " pc--fact" : ""}`} data-proposal={p.id}>
+      <div className="pc-row">
+        <span className={`pc-kind pc-kind--${p.kind === "run" ? "run" : p.held && p.held !== "ring" ? "fact" : p.kind}`}>{KIND_LABEL(p)}</span>
+        <Change p={p} />
+        {p.kind === "run" ? (
+          <span className="pc-note pc-count">
+            {stagesFrom(p.runFrom ?? "rings")} stage{stagesFrom(p.runFrom ?? "rings") === 1 ? "" : "s"}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="gh-trigger pc-q"
+            aria-expanded={details}
+            aria-label="Details"
+            title="Where this card comes from"
+            onClick={() => setDetails((d) => !d)}
+          >
+            ?
+          </button>
+        )}
+      </div>
+      {p.kind === "run" ? (
+        <div className="pc-ev">The outputs predate {p.shown.to}.</div>
+      ) : p.source.via === "answer" ? (
+        <div className="pc-ev">Suggested in the answer.</div>
+      ) : (
+        p.evidence.map((e) => (
+          <div className="pc-ev" key={e.step}>
+            {e.text && <>{e.text} · </>}
+            <button type="button" className="pc-src" onClick={() => goToStep(p.turn, e.step)} title="Show this step in the chat">
+              {e.label}, step {e.n}
+            </button>
+          </div>
+        ))
+      )}
+      {details && (
+        <div className="pc-details">
+          {VIA_DETAIL[p.source.via]}
+          {Object.keys(p.fields).length > 0 && (
+            <>
+              {" "}
+              Sets {Object.entries(p.fields).map(([k, v], i) => (
+                <span key={k}>
+                  {i ? ", " : ""}
+                  <code>{k}</code> = {String(v) || "(default)"}
+                </span>
+              ))}
+              .
+            </>
+          )}
+        </div>
+      )}
+      {(note || why) && <div className="pc-note">{note ?? why}</div>}
+      {edit !== null && (
+        <label className="pc-edit">
+          <span>{key}</span>
+          <input
+            type="text"
+            value={edit}
+            autoFocus
+            onChange={(e) => setEdit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && ctx && state.can) void applyCard(p, ctx, { [key]: edit.trim() });
+              if (e.key === "Escape") setEdit(null);
+            }}
+          />
+        </label>
+      )}
+      <div className="pc-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!state.can || !ctx}
+          title={why ?? (p.kind === "run" ? "Run the pipeline from this stage, as the Run button does" : "Set this on the Configure page")}
+          onClick={() => ctx && void applyCard(p, ctx, edit !== null ? { [key]: edit.trim() } : undefined)}
+        >
+          {running ? (p.kind === "run" ? "Running…" : "Applying…") : p.kind === "run" ? "Run" : "Apply"}
+        </button>
+        {editable && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={!state.can}
+            aria-pressed={edit !== null}
+            onClick={() => setEdit((e) => (e === null ? String(p.change[key]) : null))}
+          >
+            Edit
+          </button>
+        )}
+        <button type="button" className="btn btn-ghost btn-quiet" disabled={running} onClick={() => dismissCard(p)}>
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DoneCard({ p, decision }: { p: Proposal; decision: Decision | undefined }) {
+  const note = useDecisionStore((s) => (decision ? s.notes[decision.id] : undefined));
+  const busy = useChatStore((s) => s.busy);
+  const text = p.kind === "run" ? p.title : changeText(p.title, decision?.shown ?? p.shown);
+  const what =
+    p.status === "dismissed" ? "dismissed" : p.status === "undone" ? "undone" : p.kind === "run" ? "run by you" : "applied by you";
+  return (
+    <div className={`pc-done pc-done--${p.status}`} data-proposal={p.id}>
+      <span className="ok" aria-hidden="true">
+        {p.status === "applied" ? "✓" : p.status === "undone" ? "↶" : "–"}
+      </span>
+      <span className="pc-done-text">
+        <b>{text}</b> · {what}
+        {note && <span className="pc-note"> · {note}</span>}
+      </span>
+      {decision && undoable(decision) && (
+        <button type="button" className="pc-link" disabled={busy} onClick={() => undoDecision(decision)}>
+          Undo
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The cards one reply led to, under its answer; none: nothing. */
+export function ProposalCards({ turn, ctx }: { turn: number; ctx: ToolContext | null }) {
+  const proposals = useDecisionStore((s) => s.proposals);
+  const decisions = useDecisionStore((s) => s.decisions);
+  const mine = proposals.filter((p) => p.turn === turn && p.kind !== "trial");
+  if (!mine.length) return null;
+  const applied = (p: Proposal) => [...decisions].reverse().find((d) => d.proposal === p.id && (d.action === "apply" || d.action === "edit-apply"));
+  return (
+    <section className="pc-group" aria-label="Proposed changes">
+      <div className="pc-group-head">Proposed changes · {mine.length}</div>
+      {mine.map((p) => (p.status === "open" ? <OpenCard key={p.id} p={p} ctx={ctx} /> : <DoneCard key={p.id} p={p} decision={applied(p)} />))}
+    </section>
+  );
+}
+
+/** A tuning trial's Apply, on its row (TuneProgress): its settings onto the Configure page. */
+export function TrialApply({ turn, stage, n, ctx }: { turn: number | null; stage: string; n: number; ctx: ToolContext | null }) {
+  const p = useDecisionStore((s) => s.proposals.find((x) => x.kind === "trial" && x.turn === turn && x.trial?.stage === stage && x.trial.n === n));
+  const decision = useDecisionStore((s) => (p ? [...s.decisions].reverse().find((d) => d.proposal === p.id && d.action !== "dismiss" && d.action !== "undo") : undefined));
+  const note = useDecisionStore((s) => (p ? s.notes[p.id] : undefined));
+  const datasetId = useDatasetStore((s) => s.datasetId);
+  const busy = useChatStore((s) => s.busy);
+  usePipelineStore((s) => (p ? watched(s, p) : ""));
+  if (!p) return null;
+  if (p.status === "applied" && decision) {
+    return (
+      <span className="tune-apply">
+        applied
+        {undoable(decision) && (
+          <button type="button" className="pc-link" disabled={busy} onClick={() => undoDecision(decision)}>
+            Undo
+          </button>
+        )}
+      </span>
+    );
+  }
+  if (p.status !== "open") return null;
+  const state = cardState(p, datasetId, ctx, busy);
+  return (
+    <span className="tune-apply">
+      {note && <span className="pc-note">{note}</span>}
+      <button
+        type="button"
+        className="btn btn-ghost tune-apply-btn"
+        disabled={!state.can || !ctx}
+        title={state.can ? "Put this trial's settings on the Configure page" : state.why}
+        onClick={() => ctx && void applyCard(p, ctx)}
+      >
+        Apply
+      </button>
+    </span>
+  );
+}

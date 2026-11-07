@@ -40,6 +40,13 @@ export interface ReportTuningStage {
   trials: ReportTrial[];
 }
 
+/** A decision on an Apply card (apply/decisions.ts), as the report lists it. */
+export interface ReportDecision {
+  time: string; // "10:42"
+  by: string; // "you" | "auto"
+  decision: string; // "Applied punchMinSig 8 → 6"
+}
+
 export interface ReportStep {
   tool: string;
   summary: string;
@@ -75,6 +82,8 @@ export interface Report {
   figures: ReportFigure[];
   narrative: string;
   caveats: string[];
+  // The decisions on the Apply cards, oldest first; none: left out.
+  decisions?: ReportDecision[];
 }
 
 // ---------------------------------------------------------------- inputs
@@ -111,6 +120,7 @@ export interface ReportInput {
   tuning: ReportTuningStage[] | null;
   measured: Measured;
   figures: ReportFigure[];
+  decisions?: ReportDecision[];
 }
 
 // ---------------------------------------------------------------- helpers
@@ -471,5 +481,6 @@ export function buildReport(input: ReportInput): Report {
     figures: input.figures,
     narrative: input.answer.trim(),
     caveats,
+    ...(input.decisions?.length ? { decisions: input.decisions } : {}),
   };
 }
