@@ -24,7 +24,12 @@
 // NEBULA_VALIDATION_MODE    auto: run the plan through auto mode, whatever the preset
 // NEBULA_VALIDATION_OUT     where the record and the transcripts go (default ../docs/evals/validation)
 // NEBULA_VALIDATION_BASE_URL  the model server, where it is not the model's usual one
-// NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it (12: $12 for NEBULA, within the $40 total)
+// NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it (40: $40 in all, on the
+//                           ledger the Claude models share)
+// NEBULA_VALIDATION_LEDGER  the spend ledger's file (default .spend-<ledger>.json beside the record), so plans
+//                           written to different folders draw on one ledger and one cap
+// NEBULA_VALIDATION_SPEND_STOP  dollars: no run starts once the ledger has spent this much, a stop below the cap
+//                           for a plan that should leave the rest (the reserve rule still holds under the cap)
 // NEBULA_VALIDATION_RENDER  a scored record to write the transcripts and findings of again
 // NEBULA_VALIDATION_REGRADE a record to grade again with the current graders, in place: each
 //                           run's words from its conclusion and decisions, its unsafe actions
@@ -48,7 +53,7 @@ import { installEventSource } from "./eventSource";
 import { candidateFindings, renderTranscript, type Finding } from "./findings";
 import { ARMS, caseNamed, PRE_68_RULE, regradeRecord, validationDatasets, type Arm, type RunRecord, type Split } from "./validation";
 import { DEFAULT_RUN_MINUTES, DEFAULT_WALL_MINUTES, expectedMinutes, nextRun, planRefusal, presetNamed } from "./validationLimits";
-import { modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
+import { ledgerOf, spendStopRefusal, modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
 import { runAutoCase } from "./validationAuto";
 import { runCase } from "./validationRun";
 
@@ -108,7 +113,9 @@ describe.skipIf(!live)("validation, live", () => {
     const transcripts = new URL(`${name}/`, dir);
     await makeDir(transcripts);
     const recordUrl = new URL(`${name}.json`, dir);
-    const ledgerUrl = new URL(`.spend-${model.key}.json`, dir);
+    const ledgerUrl = env("NEBULA_VALIDATION_LEDGER") ? new URL(env("NEBULA_VALIDATION_LEDGER")!, here()) : new URL(`.spend-${ledgerOf(model)}.json`, dir);
+    const spendStop = env("NEBULA_VALIDATION_SPEND_STOP") == null ? null : Number(env("NEBULA_VALIDATION_SPEND_STOP"));
+    if (spendStop != null && !(spendStop > 0)) throw new Error("NEBULA_VALIDATION_SPEND_STOP must be a positive number of dollars");
     const tracker =
       model.spendCapUsd === null
         ? null
@@ -151,7 +158,7 @@ describe.skipIf(!live)("validation, live", () => {
         await save(false);
         throw new Error(limit.stop);
       }
-      const refusal = tracker?.refusal();
+      const refusal = tracker ? (tracker.refusal() ?? spendStopRefusal(tracker, spendStop)) : null;
       if (refusal) {
         console.log(`stopped before ${job.stem}: ${refusal}`);
         break;

@@ -46,7 +46,6 @@ import {
   FIRST_RUN_WORST,
   firstRunWorstUsd,
   modelNamed,
-  SPEND_CAP_USD,
   SpendTracker,
   TUNE_REQUESTS_PER_STAGE,
   VALIDATION_MAX_TOKENS,
@@ -123,6 +122,9 @@ const only = (r: RunRecord, tool: string): Decision => {
 
 /** What a decision's tool found, as the model read it. */
 const read = (d: Decision): Record<string, unknown> => JSON.parse(d.result) as Record<string, unknown>;
+
+// The tracker's arithmetic, worked at a $12 cap (NEBULA's until THY-52's $40): the class takes any cap.
+const CAP_12 = 12;
 
 describe("validation runs back to back", () => {
   it("the second reads nothing the first left: its log, its views, its tuning run, its settings", async () => {
@@ -218,7 +220,7 @@ describe("validation runs back to back", () => {
 
 describe("a validation run's tuning", () => {
   // What the run's model costs, as a paid model's entry gives it (validationModels.ts).
-  const PRICE: Price = { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 };
+  const PRICE: Price = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
   const total = (requests: ScriptedRequest[]) => ({
     input: requests.reduce((n, r) => n + r.usage!.input, 0),
     output: requests.reduce((n, r) => n + r.usage!.output, 0),
@@ -282,7 +284,7 @@ describe("a validation run's tuning", () => {
     const usd = (u: { input: number; output: number }) => (u.input * PRICE.input + u.output * PRICE.output) / 1e6;
     expect(usd(tuning)).toBeGreaterThan(0);
     expect(record.cost_usd).toBeCloseTo(usd(loop) + usd(tuning), 12);
-    const tracker = new SpendTracker(SPEND_CAP_USD);
+    const tracker = new SpendTracker(CAP_12);
     tracker.record({ case: record.case, arm: record.arm, run: record.run, usd: record.cost_usd });
     expect(tracker.spent).toBeCloseTo(usd(loop) + usd(tuning), 12);
     expect(tracker.spent - costOf(loop, PRICE)!).toBeCloseTo(usd(tuning), 12);
@@ -401,7 +403,7 @@ describe("a validation run's tuning", () => {
       (1 + margin);
     expect(worst).toBeLessThanOrEqual(firstRunWorstUsd(sonnet));
     expect(worst).toBeLessThanOrEqual(SpendTracker.FIRST_RUN_RESERVE_USD);
-    const tracker = new SpendTracker(SPEND_CAP_USD);
+    const tracker = new SpendTracker(CAP_12);
     expect(tracker.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
     expect(tracker.canStart()).toBe(true);
     expect(record.usage?.tuning?.requests).toBe(3);
@@ -424,7 +426,7 @@ describe("a paid run against the $12 cap", () => {
   };
 
   it("at its hard bound fits inside the first run's reserve, $7.37; the next is held to 1.5 times it, and the cap stops it", async () => {
-    const tracker = new SpendTracker(SPEND_CAP_USD);
+    const tracker = new SpendTracker(CAP_12);
     expect(tracker.reserve()).toBe(7.37);
     expect(firstRunWorstUsd(sonnet).toFixed(2)).toBe("7.37");
     expect(tracker.canStart()).toBe(true);
@@ -487,7 +489,7 @@ describe("a paid run against the $12 cap", () => {
   }, 600_000);
 
   it("after a cheap run holds the next to the first run's reserve, not 1.5 times the cheap one", async () => {
-    const tracker = new SpendTracker(SPEND_CAP_USD);
+    const tracker = new SpendTracker(CAP_12);
     const { record, overrun } = await run(devCase("dev-control"), "B", [{ calls: [{ name: "configure_settings" }] }, { text: "Done." }], {
       price: sonnet,
       tuningBudget: tracker.tuningBudget(),
@@ -505,7 +507,7 @@ describe("a paid run against the $12 cap", () => {
   it("skips a second tuning the budget left beyond the run's reserve does not cover, records the skip, and finishes", async () => {
     // An earlier run cost $2.00: this one may start ($2.00 + $7.37 ≤ $12), and
     // $2.63 is left beyond its reserve, short of a tuning's $3.47.
-    const tracker = SpendTracker.fromJSON({ entries: [{ case: "an earlier run", arm: "B", run: 1, usd: 2, estimated: false }] }, SPEND_CAP_USD);
+    const tracker = SpendTracker.fromJSON({ entries: [{ case: "an earlier run", arm: "B", run: 1, usd: 2, estimated: false }] }, CAP_12);
     expect(tracker.canStart()).toBe(true);
     const c = devCase("dev-control");
     const { record, log, overrun } = await run(
@@ -542,7 +544,7 @@ describe("a paid run against the $12 cap", () => {
 
   it("tunes again when the budget covers it, each tuning past the first drawing its share", async () => {
     // The first run: $12 − $7.37 = $4.63 beyond its reserve, one tuning's $3.47 and $1.16 over.
-    const tracker = new SpendTracker(SPEND_CAP_USD);
+    const tracker = new SpendTracker(CAP_12);
     const { record, log, overrun } = await run(
       devCase("dev-control"),
       "C",

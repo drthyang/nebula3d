@@ -439,7 +439,9 @@ its numbers are read once, to be reported. These tests enforce this:
   paths is run on a made-up test case
   (`test_a_failure_shows_nothing_of_a_held_out_case`, and in
   `validation.test.ts` for the web harness's own checks);
-- the one paid model runs the test split only (`validationModels.test.ts`).
+- the paid models run the dev split, and Sonnet 5.5 the test split only with
+  `--report`; Haiku 5.5 runs the dev split only (`validationModels.test.ts`).
+  The test split is sealed: no model has run it.
 
 ### Scoring
 
@@ -737,7 +739,7 @@ architecture review filed on 2026-10-19 (`D1` to `D9`, `Q10`, `Q11`, read on
 
 ### The models
 
-All four are set up the same way and reported side by side. Each runs three times
+All five are set up the same way and reported side by side. Each runs three times
 per case and arm; the context is the least window the run policy accepts.
 
 | Model | Served by | Context | Splits | Notes |
@@ -745,7 +747,8 @@ per case and arm; the context is the least window the run policy accepts.
 | qwen/qwen3.8-27b | LM Studio | 32k or more (loaded) | dev, test | Local |
 | gemma4:26b | Ollama | 32k or more (supported) | dev, test | Local |
 | meta/muse-glimmer | LM Studio | 32k or more (loaded) | dev, test | Local |
-| Claude Sonnet 5.5 | Anthropic | – | **test only** | Paid; spend capped at $12 |
+| Claude Haiku 5.5 | Anthropic | – | dev | Paid: breadth (THY-52); the shared $40 cap |
+| Claude Sonnet 5.5 | Anthropic | – | dev, test | Paid: confirms Haiku's failures on dev (THY-52); test only with `--report`; the shared $40 cap |
 
 **Every request of a validation run is capped at 16,000 tokens out**
 (`VALIDATION_MAX_TOKENS`, thinking included), on every model, in arms B and C
@@ -768,7 +771,7 @@ also compares their policies:
   was loaded with, read and never set; on Ollama, a length sized for each
   request with room for the reply.
 
-The round limit, twelve, and the output cap are the same for all four.
+The round limit, twelve, and the output cap are the same for all five.
 
 **A local live run needs at least 32k of context (32,768 tokens).** This is
 the run policy (`RUN_POLICY.minLocalContextTokens` in
@@ -814,18 +817,26 @@ Each run's record keeps the window it had and the minimum it was held to
 (`context_window`: `tokens`, `min_tokens`, and `read_from`,
 `lmstudio-loaded` or `ollama-supported`), and the record's `model` keeps
 `min_context_tokens`. The field is optional, so records made before it keep the
-schema `nebula3d-validation-run/1`. The paid model also needs its cap typed
-(`NEBULA_VALIDATION_ALLOW_SPEND=12`) and a key in `ANTHROPIC_API_KEY`, which is
-never written out. The cap is $12 for NEBULA, within the $40 total. The spend
+schema `nebula3d-validation-run/1`. A paid model also needs its cap typed
+(`NEBULA_VALIDATION_ALLOW_SPEND=40`) and a key in `ANTHROPIC_API_KEY`, which is
+never written out. The cap is $40, the user's for THY-52's re-baseline
+(2026-11-07), on one ledger the two Claude models share (`.spend-claude.json`
+beside the record, or `NEBULA_VALIDATION_LEDGER`), so Haiku's runs and
+Sonnet's draw on one total; it was $12 for NEBULA alone until then.
+`NEBULA_VALIDATION_SPEND_STOP` stops a plan below the cap: no run starts once
+the ledger has spent that much. Prices are Anthropic's published list, as
+`auto/cost.ts` has them: Sonnet 5.5 $2 in, $10 out, $0.20 a cache read and
+$2.50 a cache write per million tokens (the cache read was written $0.10 until
+2026-11-07); Haiku 5.5 $0.10, $0.50, $0.01 and $0.125. The spend
 tracker (`SpendTracker`, `web/src/llm/evals/validationModels.ts`) charges a run
 only after it ends, from its record's cost, so the reserve a run is held to
 before it starts is what keeps the total within the cap: no run starts while
-what is spent and its reserve pass $12. The first run's reserve is the dearest
+what is spent and its reserve pass $40. The first run's reserve is the dearest
 a run can be, every request at its hard bound, at Sonnet 5.5's $2 per million
 tokens in and $10 out: the agent loop's 13 requests at 40,000 tokens in and
 16,000 out, and one tuning's 15 at 12,500 in and 16,000 out, $5.895, which a
-25 % margin makes $7.37. A later run's reserve is that, or 1.5 times the
-dearest run so far when more, so a run starts only while at most $4.63 is
+25 % margin makes $7.37, whichever Claude model runs. A later run's reserve is that, or 1.5 times the
+dearest run so far when more, so a run starts only while at most $32.63 is
 spent. The reserve covers one tuning. A second in the same run starts only if
 what the cap leaves beyond the spend and the reserve covers one more at its
 hard bound, $3.47; otherwise it is skipped, and the record says so
@@ -855,7 +866,7 @@ cd web && NEBULA_VALIDATION_RENDER=../docs/evals/validation/lmstudio-qwen3.8-27b
 ```
 
 The model keys are `lmstudio-qwen3.8-27b`, `ollama-gemma4-26b`,
-`lmstudio-muse-glimmer` and `claude-sonnet-5-5`. `NEBULA_VALIDATION_ONLY`,
+`lmstudio-muse-glimmer`, `claude-haiku-5-5` and `claude-sonnet-5-5`. `NEBULA_VALIDATION_ONLY`,
 `_ARMS`, `_RUNS`, `_ROUNDS` (default the Pilot's twelve), `_TIMEOUT` (10 minutes a
 run), `_WALL` (30 minutes for the plan), `_PRESET`, `_OUT` and `_BASE_URL` are in the
 header of `validation.live.test.ts`. The
@@ -1065,7 +1076,7 @@ runs of B and C on the eight dev cases are 48 runs, 16 to 28 hours; one run each
 16 runs, 5 to 9 hours. The earlier runs shared the machine with other servers, so
 this may be high. The same plan on Claude Sonnet 5.5 is about 48 runs at an
 estimated $0.12 to $0.25, from the earlier mean of $0.0245 on a run a quarter as long;
-the $12 cap is there for the case that estimate is low.
+the cap is there for the case that estimate is low.
 
 ### The freeze
 

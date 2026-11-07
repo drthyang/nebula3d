@@ -35,6 +35,7 @@ export interface ValidationModel {
   apiKeyEnv: string | null; // the environment variable holding its key, never written out
   price: Price | null; // null: local, no cost
   spendCapUsd: number | null; // null: no cap, because nothing is paid
+  ledger?: string; // the spend ledger it draws on, where models share one (CLAUDE_LEDGER); else its key
   how: string; // what to do before it runs
 }
 
@@ -94,12 +95,18 @@ const LOAD_IN_LM_STUDIO =
   `(LM Studio reloads an idle model with its defaults); the run checks the loaded context and refuses less.`;
 
 /**
- * What NEBULA may spend on a paid model: $12. The user's $40 is the total
- * across three apps' Sonnet runs, so $12 for each keeps the total under it.
+ * What NEBULA may spend on the paid models: $40, the user's cap for THY-52's
+ * paid re-baseline (2026-11-07), on one ledger the Claude models share
+ * (ValidationModel.ledger), so Haiku's runs and Sonnet's draw on one total.
+ * It was $12 for NEBULA alone, a share of a $40 total across three apps'
+ * Sonnet runs, until that re-baseline.
  */
-export const SPEND_CAP_USD = 12;
+export const SPEND_CAP_USD = 40;
 export const SPEND_TOTAL_USD = 40;
-const CAP_SHARE = `$${SPEND_CAP_USD} for NEBULA, within the $${SPEND_TOTAL_USD} total`;
+const CAP_SHARE = `$${SPEND_CAP_USD} in all, on one ledger the Claude models share`;
+
+/** The ledger the Claude models share: Haiku 5.5 and Sonnet 5.5 spend against one cap. */
+export const CLAUDE_LEDGER = "claude";
 
 export const MODELS: readonly ValidationModel[] = [
   {
@@ -157,6 +164,29 @@ export const MODELS: readonly ValidationModel[] = [
     how: LOAD_IN_LM_STUDIO,
   },
   {
+    key: "claude-haiku-5-5",
+    label: "Claude Haiku 5.5 (Anthropic)",
+    provider: "Anthropic",
+    baseUrl: "https://api.anthropic.com",
+    model: "claude-haiku-5-5",
+    local: false,
+    contextTokens: 32768,
+    minContextTokens: null,
+    // Breadth on the dev split (the user, 2026-11-02 and 2026-11-07: Haiku for
+    // breadth, Sonnet to confirm its failures); the test split stays sealed.
+    splits: ["dev"],
+    runsPerCase: 3,
+    temperature: null,
+    apiKeyEnv: "ANTHROPIC_API_KEY",
+    // Anthropic's published prices (the claude-api reference, cached 2026-10-06;
+    // auto/cost.ts): prompts up to 100k tokens, a cache read a tenth of the
+    // input price, a cache write 1.25 times it.
+    price: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+    spendCapUsd: SPEND_CAP_USD,
+    ledger: CLAUDE_LEDGER,
+    how: `Paid (${CAP_SHARE}). Set ANTHROPIC_API_KEY and NEBULA_VALIDATION_ALLOW_SPEND=${SPEND_CAP_USD}; the dev split only.`,
+  },
+  {
     key: "claude-sonnet-5-5",
     label: "Claude Sonnet 5.5 (Anthropic)",
     provider: "Anthropic",
@@ -165,16 +195,22 @@ export const MODELS: readonly ValidationModel[] = [
     local: false,
     contextTokens: 32768,
     minContextTokens: null,
-    splits: ["test"],
+    // The dev split to confirm Haiku's failures (THY-52); the test split only with NEBULA_VALIDATION_REPORT=1.
+    splits: ["dev", "test"],
     runsPerCase: 3,
     temperature: null,
     apiKeyEnv: "ANTHROPIC_API_KEY",
-    // Anthropic's published prices, fetched 2026-10-10 (docs/evals.md).
-    price: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+    // Anthropic's published prices (the claude-api reference, cached 2026-10-06;
+    // auto/cost.ts): a cache read is $0.20, not the $0.10 written here on 2026-10-10.
+    price: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
     spendCapUsd: SPEND_CAP_USD,
-    how: `Paid (${CAP_SHARE}). Set ANTHROPIC_API_KEY and NEBULA_VALIDATION_ALLOW_SPEND=${SPEND_CAP_USD}; the test split only, with NEBULA_VALIDATION_REPORT=1.`,
+    ledger: CLAUDE_LEDGER,
+    how: `Paid (${CAP_SHARE}). Set ANTHROPIC_API_KEY and NEBULA_VALIDATION_ALLOW_SPEND=${SPEND_CAP_USD}; the dev split, or the test split with NEBULA_VALIDATION_REPORT=1.`,
   },
 ];
+
+/** The ledger a model's spend is kept in: the one it shares (ValidationModel.ledger), or its own. */
+export const ledgerOf = (model: Pick<ValidationModel, "key" | "ledger">): string => model.ledger ?? model.key;
 
 export const modelNamed = (key: string): ValidationModel => {
   const m = MODELS.find((x) => x.key === key);
@@ -433,7 +469,7 @@ export class SpendTracker {
    *   together                                          = $5.895
    *   with a 25% margin, × 1.25                         = $7.36875, so $7.37
    *
-   * rounded up to the cent. $7.37 is inside the $12 cap; a later run is held to
+   * rounded up to the cent. $7.37 is inside the $40 cap; a later run is held to
    * it, or to 1.5 times the dearest run so far when more.
    */
   static readonly FIRST_RUN_RESERVE_USD = centsUp(firstRunWorstUsd(reservePrice()));
@@ -502,4 +538,14 @@ export class SpendTracker {
     const entries = (x as { entries?: SpendEntry[] } | null)?.entries;
     return new SpendTracker(capUsd, Array.isArray(entries) ? entries.map((e) => ({ ...e })) : []);
   }
+}
+
+/**
+ * A plan's own stop below the cap (NEBULA_VALIDATION_SPEND_STOP): no run starts
+ * once the ledger has spent *stopUsd* or more. Null: no stop, or not reached.
+ * The cap and its reserve (SpendTracker.refusal) still hold beneath it.
+ */
+export function spendStopRefusal(tracker: Pick<SpendTracker, "spent">, stopUsd: number | null): string | null {
+  if (stopUsd == null || !covers(tracker.spent, stopUsd)) return null;
+  return `the plan's spend stop is reached: $${tracker.spent.toFixed(2)} spent, and it stops at $${stopUsd.toFixed(2)} (NEBULA_VALIDATION_SPEND_STOP)`;
 }

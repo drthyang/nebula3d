@@ -19,7 +19,10 @@ import {
   plan,
   RUN_POLICY,
   runContext,
+  CLAUDE_LEDGER,
+  ledgerOf,
   SPEND_CAP_USD,
+  spendStopRefusal,
   SPEND_TOTAL_USD,
   SpendTracker,
   TUNE_REQUESTS_PER_STAGE,
@@ -28,6 +31,7 @@ import {
   validationPolicy,
 } from "./validationModels";
 import { casesIn } from "./validation";
+import { priceOf } from "../auto/cost";
 
 // What LM Studio says a model is loaded with, and what Ollama says it supports;
 // nothing else of the client is replaced.
@@ -39,8 +43,8 @@ vi.mock("../provider/client", async (importOriginal) => ({
 }));
 
 describe("the models", () => {
-  it("are the four the validation names, each with a context, splits and three runs per case", () => {
-    expect(MODELS.map((m) => m.model)).toEqual(["qwen/qwen3.8-27b", "gemma4:26b", "meta/muse-glimmer", "claude-sonnet-5-5"]);
+  it("are the five the validation names, each with a context, splits and three runs per case", () => {
+    expect(MODELS.map((m) => m.model)).toEqual(["qwen/qwen3.8-27b", "gemma4:26b", "meta/muse-glimmer", "claude-haiku-5-5", "claude-sonnet-5-5"]);
     for (const m of MODELS) {
       expect(m.runsPerCase).toBe(3);
       expect(m.contextTokens).toBeGreaterThanOrEqual(32768);
@@ -58,20 +62,37 @@ describe("the models", () => {
       expect(m.spendCapUsd === null).toBe(m.local);
       expect(m.apiKeyEnv === null).toBe(m.local);
     }
-    const claude = modelNamed("claude-sonnet-5-5");
-    expect(claude.spendCapUsd).toBe(12);
-    expect(SPEND_CAP_USD).toBe(12);
-    // NEBULA's share of the user's $40 across three apps' runs.
+    // The user's $40 for THY-52's re-baseline, on one ledger the Claude models share.
+    expect(SPEND_CAP_USD).toBe(40);
     expect(SPEND_TOTAL_USD).toBe(40);
-    expect(3 * SPEND_CAP_USD).toBeLessThanOrEqual(SPEND_TOTAL_USD);
-    expect(claude.how).toContain("$12 for NEBULA, within the $40 total");
-    expect(claude.splits).toEqual(["test"]);
+    const claude = MODELS.filter((m) => !m.local);
+    expect(claude.map((m) => m.key)).toEqual(["claude-haiku-5-5", "claude-sonnet-5-5"]);
+    for (const m of claude) {
+      expect(m.spendCapUsd).toBe(SPEND_CAP_USD);
+      expect(ledgerOf(m)).toBe(CLAUDE_LEDGER);
+      expect(m.how).toContain("$40 in all, on one ledger the Claude models share");
+    }
+    for (const m of MODELS.filter((x) => x.local)) expect(ledgerOf(m)).toBe(m.key);
+    expect(modelNamed("claude-haiku-5-5").splits).toEqual(["dev"]);
+    expect(modelNamed("claude-sonnet-5-5").splits).toEqual(["dev", "test"]);
+  });
+
+  it("price Claude at the published list (the claude-api reference, as auto/cost.ts does)", () => {
+    for (const key of ["claude-haiku-5-5", "claude-sonnet-5-5"]) {
+      const m = modelNamed(key);
+      expect(m.price, key).toEqual(priceOf({ baseUrl: m.baseUrl, model: m.model }));
+    }
+    expect(modelNamed("claude-sonnet-5-5").price).toEqual({ input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 });
+    expect(modelNamed("claude-haiku-5-5").price).toEqual({ input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 });
   });
 
   it("run the held-out split only to be reported, and a paid model nothing else", () => {
     const claude = modelNamed("claude-sonnet-5-5");
-    expect(() => plan(claude, "dev", { report: true })).toThrow(/test split only/);
+    expect(plan(claude, "dev")).toHaveLength(casesIn("dev").length * 2 * 3);
     expect(() => plan(claude, "test")).toThrow(/held out/);
+    const haiku = modelNamed("claude-haiku-5-5");
+    expect(plan(haiku, "dev")).toHaveLength(casesIn("dev").length * 2 * 3);
+    expect(() => plan(haiku, "test", { report: true })).toThrow(/dev split only/);
     const local = modelNamed("ollama-gemma4-26b");
     expect(() => plan(local, "test")).toThrow(/held out/);
     expect(plan(local, "dev")).toHaveLength(casesIn("dev").length * 2 * 3);
@@ -272,11 +293,12 @@ describe("what a paid model needs", () => {
 
   it("is the user typing its cap", () => {
     expect(paidRunGate(claude, undefined)).toBe(
-      "Claude Sonnet 5.5 (Anthropic) is paid: set NEBULA_VALIDATION_ALLOW_SPEND=12 to approve spending at most $12 on it ($12 for NEBULA, within the $40 total)",
+      "Claude Sonnet 5.5 (Anthropic) is paid: set NEBULA_VALIDATION_ALLOW_SPEND=40 to approve spending at most $40 on it ($40 in all, on one ledger the Claude models share)",
     );
     expect(paidRunGate(claude, "5")).not.toBeNull();
-    expect(paidRunGate(claude, "1")).not.toBeNull();
-    expect(paidRunGate(claude, "12")).toBeNull();
+    expect(paidRunGate(claude, "12")).not.toBeNull();
+    expect(paidRunGate(claude, "40")).toBeNull();
+    expect(paidRunGate(modelNamed("claude-haiku-5-5"), "40")).toBeNull();
     expect(paidRunGate(modelNamed("ollama-gemma4-26b"), undefined)).toBeNull();
   });
 });
@@ -287,7 +309,7 @@ describe("cost", () => {
   it("counts cached input at its own price, as the eval table does", () => {
     // 1M input of which 900k cache reads and 50k cache writes, 100k output.
     const usd = costOf({ input: 1_000_000, output: 100_000, cacheRead: 900_000, cacheWrite: 50_000 }, price);
-    expect(usd).toBeCloseTo((50_000 * 2 + 900_000 * 0.1 + 50_000 * 2.5 + 100_000 * 10) / 1e6, 10);
+    expect(usd).toBeCloseTo((50_000 * 2 + 900_000 * 0.2 + 50_000 * 2.5 + 100_000 * 10) / 1e6, 10);
     expect(costOf({ input: 1000, output: 100 }, price)).toBeCloseTo((1000 * 2 + 100 * 10) / 1e6, 10);
   });
 
@@ -341,15 +363,19 @@ describe("the spend tracker", () => {
 
   it("covers every paid model at its own price", () => {
     const paid = MODELS.filter((m) => m.spendCapUsd !== null);
-    expect(paid.map((m) => m.key)).toEqual(["claude-sonnet-5-5"]);
+    expect(paid.map((m) => m.key)).toEqual(["claude-haiku-5-5", "claude-sonnet-5-5"]);
     for (const m of paid) {
       expect(firstRunWorstUsd(m.price!)).toBeLessThanOrEqual(SpendTracker.FIRST_RUN_RESERVE_USD);
       expect(tuningWorstUsd(m.price!)).toBeLessThanOrEqual(SpendTracker.EXTRA_TUNING_USD);
     }
   });
 
+  // The tracker's arithmetic, at a $12 cap (NEBULA's cap until THY-52): the
+  // class takes any cap, and the numbers below are worked at that one.
+  const CAP_12 = 12;
+
   it("holds a later run to the first run's reserve after cheap runs, and to 1.5 times the dearest after a dear one", () => {
-    const t = new SpendTracker(SPEND_CAP_USD);
+    const t = new SpendTracker(CAP_12);
     t.record(run(0.2));
     t.record(run(0.1));
     // Not 1.5 × $0.20: never below the first run's.
@@ -360,7 +386,7 @@ describe("the spend tracker", () => {
     t.record(run(4.91));
     expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
     // A dear run: 1.5 × $5.00 = $7.50.
-    const dear = new SpendTracker(SPEND_CAP_USD);
+    const dear = new SpendTracker(CAP_12);
     dear.record(run(0.2));
     dear.record(run(5));
     dear.record(run(0.1));
@@ -368,7 +394,7 @@ describe("the spend tracker", () => {
   });
 
   it("stops at the $12 cap whatever the reserve says: no run starts while what is spent and its reserve pass it", () => {
-    const t = new SpendTracker(SPEND_CAP_USD);
+    const t = new SpendTracker(CAP_12);
     t.record(run(4.62));
     expect(t.canStart()).toBe(true); // $4.62 + $7.37 = $11.99
     expect(t.refusal()).toBeNull();
@@ -377,7 +403,7 @@ describe("the spend tracker", () => {
     expect(t.canStart()).toBe(false); // $4.64 + $7.37 = $12.01
     expect(t.refusal()).toBe("the spend cap is reached: $4.64 spent of $12.00, and the next run may cost up to $7.37");
     // A dear run's 1.5 times, past what is left.
-    const dear = new SpendTracker(SPEND_CAP_USD);
+    const dear = new SpendTracker(CAP_12);
     dear.record(run(6));
     expect(dear.reserve()).toBe(9);
     expect(dear.canStart()).toBe(false);
@@ -388,20 +414,20 @@ describe("the spend tracker", () => {
 
   it("never runs a $12 cap past $12 over a whole session, whatever each run costs within its reserve", () => {
     for (const cost of [0.05, 0.3, 1, 2.5, 5.895, 7.37]) {
-      const t = new SpendTracker(SPEND_CAP_USD);
+      const t = new SpendTracker(CAP_12);
       let runs = 0;
       while (t.canStart() && runs < 1000) {
         // Each run costs `cost`, or the most its reserve allows when that is less.
         t.record(run(Math.min(cost, t.reserve())));
         runs += 1;
       }
-      expect(t.spent, `runs of $${cost}`).toBeLessThanOrEqual(SPEND_CAP_USD);
+      expect(t.spent, `runs of $${cost}`).toBeLessThanOrEqual(CAP_12);
       expect(runs).toBeGreaterThan(0);
     }
     // Every run that starts after the first is held to $7.37: one starts only while
     // the spend is at most $12 − $7.37 = $4.63, so the dearest so far is at most that,
     // and 1.5 times it under $7.37.
-    const cheap = new SpendTracker(SPEND_CAP_USD);
+    const cheap = new SpendTracker(CAP_12);
     let runs = 0;
     while (cheap.canStart()) {
       expect(cheap.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
@@ -412,30 +438,30 @@ describe("the spend tracker", () => {
   });
 
   it("charges a run whose tokens were not reported at the reserve, so the total is never short", () => {
-    const t = new SpendTracker(SPEND_CAP_USD);
+    const t = new SpendTracker(CAP_12);
     t.record(run(0.2));
     const e = t.record(run(null));
     expect(e.estimated).toBe(true);
     expect(e.usd).toBe(SpendTracker.FIRST_RUN_RESERVE_USD);
     expect(t.reserve()).toBe(SpendTracker.FIRST_RUN_RESERVE_USD); // an estimate does not raise the ceiling
-    const dear = new SpendTracker(SPEND_CAP_USD);
+    const dear = new SpendTracker(CAP_12);
     dear.record(run(5));
     expect(dear.record(run(null)).usd).toBeCloseTo(7.5, 10);
   });
 
   it("gives a run's tunings past its first what the cap leaves beyond the spend and the run's reserve", () => {
     // The first run: $12 − $7.37 = $4.63, which covers one more tuning.
-    const first = new SpendTracker(SPEND_CAP_USD).tuningBudget();
+    const first = new SpendTracker(CAP_12).tuningBudget();
     expect(first.leftUsd).toBeCloseTo(4.63, 10);
     expect(first.perTuningUsd).toBe(SpendTracker.EXTRA_TUNING_USD);
     expect(covers(first.leftUsd, first.perTuningUsd)).toBe(true);
     // After $2.00: $12 − $2 − $7.37 = $2.63, which does not.
-    const later = new SpendTracker(SPEND_CAP_USD);
+    const later = new SpendTracker(CAP_12);
     later.record(run(2));
     expect(later.tuningBudget().leftUsd).toBeCloseTo(2.63, 10);
     expect(covers(later.tuningBudget().leftUsd, SpendTracker.EXTRA_TUNING_USD)).toBe(false);
     // Past the cap, nothing.
-    const spent = new SpendTracker(SPEND_CAP_USD);
+    const spent = new SpendTracker(CAP_12);
     spent.record(run(5));
     expect(spent.tuningBudget().leftUsd).toBe(0);
     // To the micro-dollar.
@@ -482,5 +508,20 @@ describe("the validation's run policy", () => {
       expect(validationPolicy({ baseUrl: m.baseUrl, temperature: m.temperature }, 12).temperature).toBe(m.temperature);
       expect(m.temperature === null).toBe(transportOf(m.baseUrl) === "anthropic");
     }
+  });
+});
+
+describe("a plan's spend stop below the cap", () => {
+  it("starts no run once the ledger has spent the stop, and is no stop without one", () => {
+    const t = new SpendTracker(SPEND_CAP_USD);
+    expect(spendStopRefusal(t, null)).toBeNull();
+    expect(spendStopRefusal(t, 25)).toBeNull();
+    t.record({ case: "dev-ub", arm: "B", run: 1, usd: 24.99 });
+    expect(spendStopRefusal(t, 25)).toBeNull();
+    t.record({ case: "dev-ub", arm: "B", run: 2, usd: 0.01 });
+    expect(spendStopRefusal(t, 25)).toBe("the plan's spend stop is reached: $25.00 spent, and it stops at $25.00 (NEBULA_VALIDATION_SPEND_STOP)");
+    // The cap's own rule still holds beneath the stop: $32.63 spent leaves no room for the $7.37 reserve under $40.
+    const near = new SpendTracker(SPEND_CAP_USD, [{ case: "dev-ub", arm: "B", run: 1, usd: 32.64, estimated: false }]);
+    expect(near.refusal()).toMatch(/spend cap is reached/);
   });
 });
