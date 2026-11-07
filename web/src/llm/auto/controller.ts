@@ -163,10 +163,8 @@ export function finalChecks(dataset: Dataset): Call[] {
  * or an auto run is open (Resume it, or End it).
  */
 export async function startAuto(start: AutoStart): Promise<void> {
-  const open = useAutoStore.getState().run;
-  if (open && open.state !== "done") throw new Error("an auto run is open: resume it or end it first");
-  if (useChatStore.getState().busy) throw new Error("wait for the reply to end");
-  if (useTuneStore.getState().active || usePipelineStore.getState().running) throw new Error("wait for the run under way to end");
+  const blocked = startBlocked();
+  if (blocked) throw new Error(blocked);
   const s = openSession(start);
   const limits = limitsOf(start.limits);
   useAutoStore.setState({
@@ -181,6 +179,30 @@ export async function startAuto(start: AutoStart): Promise<void> {
   });
   return go();
 }
+
+/**
+ * Why a run cannot start now, or null: an auto run open, a reply, a tuning run
+ * or a pipeline run under way. Read again whenever it is shown: a start
+ * refused while the demo's run went on is said only while that run goes on
+ * (refusalNote).
+ */
+export function startBlocked(): string | null {
+  const open = useAutoStore.getState().run;
+  if (open && open.state !== "done") return "an auto run is open: resume it or end it first";
+  if (useChatStore.getState().busy) return "wait for the reply to end";
+  if (useTuneStore.getState().active || usePipelineStore.getState().running) return "wait for the run under way to end";
+  return null;
+}
+
+/**
+ * The note under the chip after a refused start (`refused`): the reason that
+ * holds now, and none once it no longer does. The note once kept the reason
+ * of the moment it was refused until the next click: in the Pyodide build,
+ * where a reload empties the engine and the demo is loaded and run again, a
+ * click during that run left "wait for the run under way to end" standing
+ * long after the run had ended (THY-65 PR 7's browser check).
+ */
+export const refusalNote = (refused: boolean, blocked: string | null): string | null => (refused && blocked ? `Not started: ${blocked}.` : null);
 
 /** Resume a paused or stopped run (Retry after a failure): it restarts the row it stopped in. `start`: after a reload, the dataset and settings. */
 export async function resumeAuto(start?: AutoStart): Promise<void> {

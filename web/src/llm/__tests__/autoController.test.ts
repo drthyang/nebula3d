@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
-import { applyFact, autoLoop, endAuto, resumeAuto, skipFact, startAuto, stopAuto, undoAutoRun } from "../auto/controller";
+import { applyFact, autoLoop, endAuto, refusalNote, resumeAuto, skipFact, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
 import { REPORT_PROMPT } from "../auto/prompts";
 import { useAutoStore, type AutoRun } from "../auto/store";
 import { autoTranscript, isAppStep, isSeeded } from "../auto/transcript";
@@ -520,6 +520,32 @@ describe("the output cap (the validation's, where the transport ships none)", ()
     const turn = useChatStore.getState().turns.find((t) => t.id === run().reportTurn)!;
     expect(turn.content).toBe(`${UNSUPPORTED_MARK} The UB is turned by 12.5° and the HKL origin is shifted by 0.37 r.l.u.`);
     expect(turn.note).toMatch(/^This answer failed its checks, and its revision did not replace it\. The lines marked ⚠ hold what no tool result in this reply supports: .*The reply was cut off: /);
+  });
+});
+
+describe("a start refused while the demo's run goes on (Pyodide, after a reload)", () => {
+  it("is refused while the run goes on, says so only while it does, and starts once it has ended", async () => {
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? cleanPunch(e) : e);
+    model.respond = () => say("Done.");
+    // A reload empties the in-browser engine: the demo is loaded and run again, and the chip clicked during that run.
+    usePipelineStore.setState({ running: true });
+    await expect(startAuto({ ctx: CTX, settings: SCRIPTED, now: clock.now })).rejects.toThrow("wait for the run under way to end");
+    expect(refusalNote(true, startBlocked())).toBe("Not started: wait for the run under way to end.");
+    expect(useAutoStore.getState().run).toBeNull();
+    // The demo's run ends: the note no longer stands (it once stayed until the next click), and a start goes through.
+    usePipelineStore.setState({ running: false, terminal: "done" });
+    expect(startBlocked()).toBeNull();
+    expect(refusalNote(true, startBlocked())).toBeNull();
+    await start();
+    expect(run().state).toBe("done");
+    // Each other reason is said while it holds, and none once nothing blocks.
+    useChatStore.setState({ busy: true });
+    expect(refusalNote(true, startBlocked())).toBe("Not started: wait for the reply to end.");
+    useChatStore.setState({ busy: false });
+    useTuneStore.setState({ active: true });
+    expect(refusalNote(true, startBlocked())).toBe("Not started: wait for the run under way to end.");
+    useTuneStore.setState({ active: false });
+    expect(refusalNote(false, startBlocked())).toBeNull();
   });
 });
 

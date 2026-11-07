@@ -30,8 +30,9 @@ import { useDatasets } from "../../api/hooks";
 import { HelpTip } from "../../components/ui";
 import { useDatasetStore } from "../../state/datasetStore";
 import { useNavStore } from "../../state/navStore";
+import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
-import { endAuto, resumeAuto, startAuto, stopAuto, undoAutoRun } from "../auto/controller";
+import { endAuto, refusalNote, resumeAuto, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
 import { usd } from "../auto/cost";
 import { appReportQuestion, appReportTurn } from "../auto/report";
 import { activity, type Activity, type ActivityRow } from "../auto/activity";
@@ -409,8 +410,13 @@ function goToTurn(turn: number): void {
  */
 export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart: boolean }) {
   const state = useAutoStore((s) => s.run?.state);
-  // Why a start was refused (a run or a reply under way): said, not swallowed.
-  const [refused, setRefused] = useState<string | null>(null);
+  // A start refused (a run or a reply under way): said, not swallowed, and
+  // only while its reason holds (refusalNote): the stores it reads are watched.
+  const [refused, setRefused] = useState(false);
+  usePipelineStore((s) => s.running);
+  useTuneStore((s) => s.active);
+  useChatStore((s) => s.busy);
+  const note = refusalNote(refused, state === undefined || state === "done" ? startBlocked() : null);
   if (state === "running") {
     return (
       <div className="ai-reviews">
@@ -433,8 +439,8 @@ export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart:
         disabled={!canStart || !ctx}
         onClick={() => {
           if (!ctx) return;
-          setRefused(null);
-          void startAuto({ ctx }).catch((e: unknown) => setRefused(`Not started: ${(e as Error)?.message ?? String(e)}.`));
+          setRefused(false);
+          void startAuto({ ctx }).catch(() => setRefused(true));
         }}
         title={`Preflight, a run, check and fix each stage, then a report. It pauses for a sample fact; ${AUTO_LIMITS.fixesPerStage} fixes a stage and ${AUTO_LIMITS.replies} model replies at most.`}
       >
@@ -443,7 +449,7 @@ export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart:
         </svg>
         Run auto analysis
       </button>
-      {refused && <span className="auto-refused">{refused}</span>}
+      {note && <span className="auto-refused">{note}</span>}
     </div>
   );
 }
