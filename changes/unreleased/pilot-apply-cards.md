@@ -4,10 +4,10 @@
   each tuning trial. Apply makes the change through the same checks the
   Pilot's own calls go through, and a separate Run card follows. A sample
   fact, the edge trim, the Laue class and the |Q| band stay yours: their cards
-  show the value and its evidence with Apply off, and you set them on
-  Configure. Each change appears in a Changes list above the chat with Undo,
-  is saved with the conversation and in session files, and is listed in the
-  report's Decisions section. While a reply runs, the panel's title row shows
+  show the value and its evidence, and apply only on your own click. Each
+  change appears in a Changes list above the chat with Undo, is saved with
+  the conversation and in session files, and is listed in the report's
+  Decisions section. While a reply runs, the panel's title row shows
   how long it has worked, and each reply keeps its time.
 
 - **Fixed: Clear was cut off in NEBULA Pilot's toggles row** when the panel
