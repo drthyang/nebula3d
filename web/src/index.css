@@ -3962,6 +3962,31 @@ input[type="range"]::-moz-range-track {
 .qr-saved--err {
   color: var(--red);
 }
+/* The pipeline's ΔPDF row (components/QBandPipeline.tsx): its |Q| band, Use in pipeline, Run from ΔPDF, Undo. */
+.qr-pipe {
+  gap: 6px 10px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.qr-pipe-what {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.qr-pipe-stale {
+  color: var(--amber);
+}
+.qr-pipe-ok {
+  color: var(--green);
+}
+.qr-pipe-r {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+}
+.qr-pipe-note {
+  color: var(--text-3);
+}
 .qr-dot {
   width: 5px;
   height: 5px;

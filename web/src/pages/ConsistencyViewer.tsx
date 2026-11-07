@@ -24,6 +24,7 @@ import { RegionMarks, type MarkItem } from "../components/RegionMarks";
 import { SliceCanvas } from "../components/SliceCanvas";
 import { StructureHits, StructureOverlay } from "../components/StructureOverlay";
 import { EmptyState, IconAlert, RangeSlider, Segmented, Slider, Switch } from "../components/ui";
+import { QBandPipeline } from "../components/QBandPipeline";
 import { HklGrid, UnitCellGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
@@ -603,15 +604,17 @@ export function ConsistencyViewer() {
           },
         ]}
         notes={
-          showStructure &&
-          structure &&
-          structureNote && (
-            <div className="ws-row">
-              <span className="struct-sub">
-                <b>{structure.def.name}</b>: {structureNote}
-              </span>
-            </div>
-          )
+          <>
+            {showStructure && structure && structureNote && (
+              <div className="ws-row">
+                <span className="struct-sub">
+                  <b>{structure.def.name}</b>: {structureNote}
+                </span>
+              </div>
+            )}
+            {/* The pipeline's ΔPDF: Use in pipeline sets its |Q| band to the one applied here (THY-68). */}
+            {selectedUsable && <QBandPipeline datasetId={datasetId} band={band} rBand={rBand} spanMax={spanMax} computing={computing} />}
+          </>
         }
       />
 
