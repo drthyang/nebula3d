@@ -520,7 +520,7 @@ function sec2() {
     ...math(["Δρ(r)  ≈  FT[ I_cleaned(Q) ]"]),
     p("where I_cleaned(Q) is the diffuse volume after ring removal, Bragg punching, and backfill."),
     ...callout("note", "Foundational references",
-      "Weber & Simonov, Z. Kristallogr. 227, 238–247 (2012); Simonov, Weber & Steurer, J. Appl. Cryst. 47, 2011–2018 (2014). These establish the 3D-ΔPDF formalism and the punch-and-fill data-reduction strategy implemented here."),
+      "Weber & Simonov, Z. Kristallogr. 227, 238–247 (2012), establish the 3D-ΔPDF formalism; Kobas, Weber & Steurer, Phys. Rev. B 71, 224205 (2005), introduced the punch-and-fill reduction; Simonov, Weber & Steurer, J. Appl. Cryst. 47, 2011–2018 (2014), quantify its experimental uncertainties."),
 
     h2("2.3", "Coordinate Systems and Conventions"),
     li([{ text: "Fractional HKL.  ", bold: true }, { text: "Reciprocal-lattice coordinates (h, k, l) in units of a*, b*, c*. Integer values are Bragg positions." }]),
@@ -1084,12 +1084,14 @@ function sec12() {
 function sec13() {
   const refs = [
     ['T. Weber and A. Simonov, "The three-dimensional pair distribution function analysis of disordered single crystals: basic concepts," Z. Kristallogr. 227, 238–247 (2012). DOI: 10.1524/zkri.2012.1504.'],
-    ['A. Simonov, T. Weber, and W. Steurer, "Diffuse scattering from the disordered intermetallic compound TbFe₂(Si,Al)₄," J. Appl. Cryst. 47, 2011–2018 (2014). DOI: 10.1107/S1600576714023668.'],
+    ['A. Simonov, T. Weber, and W. Steurer, "Experimental uncertainties of three-dimensional pair distribution function investigations exemplified on the diffuse scattering from a tris-tert-butyl-1,3,5-benzene tricarboxamide single crystal," J. Appl. Cryst. 47, 2011–2018 (2014). DOI: 10.1107/S1600576714023668.'],
     ['A. Chambolle and T. Pock, "A First-Order Primal–Dual Algorithm for Convex Problems with Applications to Imaging," J. Math. Imaging Vision 40, 120–145 (2011). DOI: 10.1007/s10851-010-0251-1.'],
     ['M. Bertalmío, G. Sapiro, V. Caselles, and C. Ballester, "Image inpainting," Proc. ACM SIGGRAPH, 417–424 (2000). DOI: 10.1145/344779.344972.'],
     ['M. Bertero and P. Boccacci, Introduction to Inverse Problems in Imaging, IOP Publishing, Bristol (1998). ISBN: 978-0750304351.'],
     ['Mantid Project, "Mantid — Manipulation and Analysis Toolkit for Instrument Data," (2013–present). www.mantidproject.org.'],
-    ['C. G. Ryan et al., "SNIP, a statistics-sensitive background treatment for the quantitative analysis of PIXE spectra," Nucl. Instrum. Methods B 34, 396–402 (1988).'],
+    ['C. G. Ryan, E. Clayton, W. L. Griffin, S. H. Sie, and D. R. Cousens, "SNIP, a statistics-sensitive background treatment for the quantitative analysis of PIXE spectra in geoscience applications," Nucl. Instrum. Methods B 34, 396–402 (1988). DOI: 10.1016/0168-583X(88)90063-8.'],
+    ['M. Kobas, T. Weber, and W. Steurer, "Structural disorder in the decagonal Al–Co–Ni. I. Patterson analysis of diffuse x-ray scattering data," Phys. Rev. B 71, 224205 (2005). DOI: 10.1103/PhysRevB.71.224205.'],
+    ['A. Simonov, T. Weber, and W. Steurer, "Yell: a computer program for diffuse scattering analysis via three-dimensional delta pair distribution function refinement," J. Appl. Cryst. 47, 1146–1152 (2014). DOI: 10.1107/S1600576714008668.'],
   ];
   const W = 760;
   return [
