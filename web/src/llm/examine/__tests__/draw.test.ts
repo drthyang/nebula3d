@@ -193,7 +193,7 @@ describe("v2 on a view", () => {
     const t = 0.002;
     // About x: a node on K moves along L, out of the H–K plane.
     const fitted = mm([[1, 0, 0], [0, Math.cos(t), -Math.sin(t)], [0, Math.sin(t), Math.cos(t)]], ub);
-    const set = setOf("ub_check", {}, {}, { ubTurn: { ub, fitted, cell: [0.2, 0.2, 0.2] } });
+    const set = setOf("ub_check", {}, { orientation_change_deg: 0.11 }, { ubTurn: { ub, fitted, cell: [0.2, 0.2, 0.2] } });
     const d = viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0, slice: slice(11) }));
     const north = d.arrows!.find((a) => Math.abs(a.X) < 1e-9 && Math.abs(a.Y - 0.4) < 1e-9)!;
     expect(Math.hypot(north.dX, north.dY)).toBeLessThan(1e-9);

@@ -380,7 +380,9 @@ describe("v2: the UB turn", () => {
     expect(set.items).toHaveLength(1);
     expect(set.items[0]).toMatchObject({ kind: "turn", cls: "turn", cell: [1, 1, 1] });
     expect(set.views).toEqual({ raw: "primary", bragg: "reading" });
-    // No turn (a symmetrised volume's fit), or no UBs beside the result: nothing.
+    // A turn under the rule's limit (the fit's noise), a symmetrised volume's fit, or no UBs beside the result: nothing.
+    expect(overlaysOf(step("ub_check", {}, { ...r, orientation_change_deg: 0.01 }, { ubTurn: { ub, fitted, cell: [1, 1, 1] } }))).toBeNull();
+    expect(overlaysOf(step("ub_check", {}, { ...r, fit: "symmetric" }, { ubTurn: { ub, fitted, cell: [1, 1, 1] } }))).toBeNull();
     expect(overlaysOf(step("ub_check", {}, r, { ubTurn: { ub, fitted: ub, cell: [1, 1, 1] } }))).toBeNull();
     expect(overlaysOf(step("ub_check", {}, r))).toBeNull();
   });

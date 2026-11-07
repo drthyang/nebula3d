@@ -20,6 +20,7 @@ import type { AgentStep } from "../agent";
 import { found, type Found } from "../readings";
 import { isTable, tableRows } from "../tools/shared/table";
 import { inv3, mm } from "./linalg";
+import { UB_TURNED } from "../verdicts/rules";
 import type { ViewTarget } from "../tools/openView";
 import type { LeftoverPeak, OverlayData } from "./data";
 
@@ -589,6 +590,8 @@ const dpdfPeaks: Mapper = (r, _args, data) => {
 };
 
 const ubCheck: Mapper = (r, _args, data) => {
+  // Only a turn the UB's rule reports (UB_TURN or more, on a fit that can judge it): below it the arrows would draw the fit's noise.
+  if (!UB_TURNED(r)) return null;
   const turn = data?.ubTurn;
   if (!turn || !isM3(turn.ub) || !isM3(turn.fitted)) return null;
   const omega = ubOmega(turn.ub, turn.fitted);
