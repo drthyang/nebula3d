@@ -24,6 +24,10 @@ export interface MessageOptions extends SkillsSwitch {
   // decisions on the Apply cards changed since the model last replied, at the
   // end of the context. Only the request after a decision carries it.
   since?: string | null;
+  // Summarize and continue (summarize.ts): the app's summary of the earlier
+  // turns, which the model reads in their place, after the context and before
+  // the "since" line. Every request after the summary carries it.
+  earlier?: string | null;
 }
 
 /** The system prompt's options: the messages' own, and whether a message carries an image. */
@@ -92,10 +96,8 @@ export function summaryBlock(context: PipelineContext): string {
  * last reply" line. It sits here, not in the latest message, so what the
  * sample-fact guard reads as the user's words (userMessage) is theirs alone.
  */
-const openingContext = (context: PipelineContext, { tools = false, skills, since }: MessageOptions): string => {
-  const block = tools ? summaryBlock(context) : contextBlock(context, skills);
-  return since ? `${block}\n${since}` : block;
-};
+const openingContext = (context: PipelineContext, { tools = false, skills, since, earlier }: MessageOptions): string =>
+  [tools ? summaryBlock(context) : contextBlock(context, skills), earlier, since].filter(Boolean).join("\n");
 
 // Attach an optional image to a text prompt, producing either a plain string or
 // the multimodal content-parts array the vision path needs.
@@ -109,6 +111,8 @@ const withImage = (text: string, imageDataUrl?: string | null): string | Content
 
 // Keep only the newest turns so long conversations stay inside small local
 // models' context windows; the opening context is re-sent every call anyway.
+// The chat says so where the turns before them stop being sent (ChatView), and
+// Summarize and continue puts the app's summary of them in the context.
 export const CHAT_HISTORY_TURNS = 8;
 
 export interface HistoryTurn {
@@ -121,10 +125,10 @@ export const buildChatMessages = (
   history: HistoryTurn[],
   userText: string,
   imageDataUrl?: string | null,
-  { tools = false, skills, rounds, since }: MessageOptions = {},
+  { tools = false, skills, rounds, since, earlier }: MessageOptions = {},
 ): ChatMessage[] => [
   systemMessage({ tools, skills, rounds, image: Boolean(imageDataUrl) }),
-  { role: "user", content: openingContext(context, { tools, skills, since }) },
+  { role: "user", content: openingContext(context, { tools, skills, since, earlier }) },
   {
     role: "assistant",
     content: tools

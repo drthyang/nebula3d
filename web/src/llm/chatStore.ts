@@ -14,6 +14,7 @@ import { create } from "zustand";
 import { resetsWithVolume } from "../state/volumeReset";
 import type { AgentProgress, AgentStep } from "./agent";
 import type { RunClock } from "./clock";
+import type { ChatSummary } from "./summarize";
 import type { Usage } from "./usage";
 import type { ComputedVerdict } from "./verdicts";
 
@@ -40,6 +41,11 @@ interface ChatState {
   clock: RunClock | null; // the reply's clock while it runs (clock.ts)
   error: string | null;
   usage: Usage | null; // the conversation's model requests so far (usage.ts); null before the first
+  // Summarize and continue (summarize.ts): what the model reads in place of
+  // the turns up to `through`; null: it reads them all (the newest
+  // CHAT_HISTORY_TURNS of them, prompts/templates.ts).
+  summary: ChatSummary | null;
+  setSummary: (summary: ChatSummary | null) => void;
   addUsage: (u: Usage) => void;
   addTurn: (turn: Omit<ChatTurn, "id">) => void;
   setDraft: (draft: string) => void;
@@ -52,6 +58,7 @@ interface ChatState {
 const TRANSCRIPT_KEY = "nebula3d.chat.turns.v1";
 const DRAFT_KEY = "nebula3d.chat.draft.v1";
 const USAGE_KEY = "nebula3d.chat.usage.v1";
+const SUMMARY_KEY = "nebula3d.chat.summary.v1";
 export const TRANSCRIPT_BYTES = 1_000_000;
 
 const isTurn = (t: unknown): t is ChatTurn =>
@@ -136,6 +143,17 @@ const restoreUsage = (): Usage | null => {
   }
 };
 
+// The summary, kept with its transcript.
+const restoreSummary = (): ChatSummary | null => {
+  try {
+    const v: unknown = JSON.parse(sessionStorage.getItem(SUMMARY_KEY) ?? "null");
+    const o = v as ChatSummary | null;
+    return o && typeof o === "object" && typeof o.through === "number" && typeof o.turns === "number" && typeof o.text === "string" ? o : null;
+  } catch {
+    return null;
+  }
+};
+
 const restored = restore();
 let nextId = restored.turns.reduce((m, t) => Math.max(m, t.id), 0) + 1;
 
@@ -162,6 +180,8 @@ export const useChatStore = create<ChatState>((set) => ({
   clock: null,
   error: null,
   usage: restoreUsage(),
+  summary: restoreSummary(),
+  setSummary: (summary) => set({ summary }),
   addUsage: (u) =>
     set((s) => {
       const t = s.usage;
@@ -181,7 +201,7 @@ export const useChatStore = create<ChatState>((set) => ({
     }),
   addTurn: (turn) => set((s) => ({ turns: [...s.turns, { ...turn, ...(turn.steps ? { steps: asRead(turn.steps) } : {}), id: nextId++ }] })),
   setDraft: (draft) => set({ draft }),
-  clear: () => set({ turns: [], draft: "", error: null, usage: null }),
+  clear: () => set({ turns: [], draft: "", error: null, usage: null, summary: null }),
   restoreTurns: (saved) => {
     const turns = saved.filter(isTurn).map((t) => settled(fromFile(t)));
     nextId = Math.max(nextId, turns.reduce((m, t) => Math.max(m, t.id), 0) + 1);
@@ -198,7 +218,7 @@ export const useChatStore = create<ChatState>((set) => ({
           ...(a.uncounted || u.uncounted ? { uncounted: (a.uncounted ?? 0) + (u.uncounted ?? 0) } : {}),
         }))
       : null;
-    set({ turns, error: null, usage });
+    set({ turns, error: null, usage, summary: null });
   },
 }));
 
@@ -207,11 +227,12 @@ useChatStore.subscribe((s, prev) => {
     if (s.turns !== prev.turns) sessionStorage.setItem(TRANSCRIPT_KEY, fitTranscript(s.turns));
     if (s.draft !== prev.draft) sessionStorage.setItem(DRAFT_KEY, s.draft);
     if (s.usage !== prev.usage) sessionStorage.setItem(USAGE_KEY, JSON.stringify(s.usage));
+    if (s.summary !== prev.summary) sessionStorage.setItem(SUMMARY_KEY, JSON.stringify(s.summary));
   } catch {
     // Full or blocked: the transcript just does not survive a reload.
   }
 });
 
 // Closing the volume starts the conversation afresh (it was about that
-// volume), here and in storage: no turns, no draft, no token total.
-resetsWithVolume(useChatStore, { fresh: () => ({ turns: [], draft: "", usage: null }) });
+// volume), here and in storage: no turns, no draft, no token total, no summary.
+resetsWithVolume(useChatStore, { fresh: () => ({ turns: [], draft: "", usage: null, summary: null }) });
