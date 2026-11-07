@@ -37,6 +37,7 @@ import { AutoChip, AutoPanel } from "./AutoPanel";
 import { Markdown } from "./Markdown";
 import { ProposalCards } from "./ProposalCards";
 import { ReportView } from "./ReportView";
+import { composerPlaceholder } from "./composerText";
 import { TuneProgress } from "./TuneProgress";
 import { ContextMeterAction, ContextMeterChip, ContextMeterDetail } from "./ContextMeter";
 import { useOllamaMax } from "../useOllamaMax";
@@ -669,7 +670,7 @@ export function ChatView({
         <div className={`ai-composer${disabled ? " is-disabled" : ""}`}>
           <textarea
             value={draft}
-            placeholder={autoRunning ? "Auto analysis is running…" : disabled ? "Connect a model to chat…" : "Ask about this reduction…"}
+            placeholder={composerPlaceholder({ connected, assistant: Boolean(assistant), contextLoading, autoRunning })}
             disabled={disabled}
             rows={1}
             onChange={(e) => setDraft(e.target.value)}
