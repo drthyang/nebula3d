@@ -59,6 +59,8 @@ import { BUNCHING_REMEDY, offLatticeBunching } from "../metrics/bunching";
 import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations } from "./methodText";
 import { budgetSince, everyKind } from "./sinceSamples";
+import { SUMMARY_TURNS, summaryDecided } from "./summarySamples";
+import { summarizeTurns } from "../summarize";
 import { longestDigest } from "./autoSamples";
 import { FIX_TOOLS, REPORT_TOOLS } from "../auto/controller";
 import { AUTO_LIMITS } from "../auto/plan";
@@ -237,6 +239,23 @@ describe("1. the system prompt and the first user message, as the app builds the
           .join("\n")}`,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/1-chat-since-last-reply.md`);
+  });
+
+  it("after Summarize and continue: the app's summary of the earlier turns", async () => {
+    const summary = summarizeTurns(SUMMARY_TURNS, summaryDecided())!;
+    const history = [{ role: "user" as const, content: "And the backfill?" }, { role: "assistant" as const, content: "It is seamless." }];
+    const b = buildChatMessages(context, history, QUESTION, null, { tools: true, earlier: summary.text });
+    const plain = buildChatMessages(context, history, QUESTION, null, { tools: true });
+    // The summary ends the context, the first user message (before a "since" line); every other message is as without it.
+    expect(b[1].content).toBe(`${plain[1].content as string}\n${summary.text}`);
+    expect(b.filter((_, i) => i !== 1)).toEqual(plain.filter((_, i) => i !== 1));
+    await expect(
+      doc(
+        "Opening messages after Summarize and continue",
+        "`buildChatMessages(context, history, question, null, { tools: true, earlier })`: once the user pressed Summarize and continue (the context meter, THY-74), every request ends its context with the app's summary of the turns up to then (summarize.ts), and sends only the later turns as their text. No model writes it: the questions, the checks each reply ran, the app's computed verdict then, and the decisions on the Apply cards a reply's context listed. No number a tool measured or the model wrote. The sample: four questions (summarySamples.ts), one reply stopped before it answered, the token budget's three decisions; then two later turns.",
+        renderMessages(b.slice(0, 2), 1),
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/1-chat-summarized.md`);
   });
 
   it("tools off: the fixed-cut metrics only", async () => {

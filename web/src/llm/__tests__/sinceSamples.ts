@@ -44,9 +44,10 @@ const decision = (d: Partial<Decision> & Pick<Decision, "id" | "proposal" | "kin
 /**
  * The budget's case (docs/pilot-auto-mode-design.md §4: three decisions): the
  * user applied the punch setting, declined the modulation (the longest line a
- * card makes: its declaration in words) and ran from the punch.
+ * card makes: its declaration in words) and ran from the punch. `lead`: the
+ * line's words before them (sinceLine's; a summary's "on the Apply cards").
  */
-export function budgetSince(): string {
+export function budgetSince(lead?: string): string {
   const { modulation, punch } = sampleCards();
   return sinceLine(
     [
@@ -55,6 +56,7 @@ export function budgetSince(): string {
       decision({ id: "D3", proposal: "P9", kind: "run", title: "Run from Bragg punch", shown: { from: "", to: "Punch min σ 5 → 6" }, action: "apply", runFrom: "punch" }),
     ],
     [modulation, punch],
+    lead,
   )!;
 }
 
