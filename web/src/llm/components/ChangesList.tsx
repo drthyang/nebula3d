@@ -2,11 +2,13 @@
 // framed like MarksList: every change applied from an Apply card on the
 // selected dataset, newest last, who made it, when, and Undo while the fields
 // still hold what was applied; Undo all puts back every one still standing.
-// Shown only while there is one; folded at first on a phone.
+// A change only the user's own click makes ("you (click)") is undone on their
+// own click too: the DOM's event goes with the Undo. Shown only while there
+// is one; folded at first on a phone.
 
 import { useMemo, useState } from "react";
 
-import { decisionText, undoable, undoAll, undoDecision } from "../apply/actions";
+import { byText, decisionText, undoable, undoAll, undoDecision } from "../apply/actions";
 import { useDecisionStore } from "../apply/decisions";
 import { useChatStore } from "../chatStore";
 
@@ -37,7 +39,7 @@ export function ChangesList({ datasetId, folded = false }: { datasetId: string |
           {open ? "▾" : "▸"} Changes <span className="ai-marks-count">{rows.length}</span>
         </button>
         {standing > 1 && (
-          <button type="button" className="ai-marks-act" disabled={busy} onClick={undoAll} title="Put back every change still standing, newest first">
+          <button type="button" className="ai-marks-act" disabled={busy} onClick={(e) => undoAll(e.nativeEvent)} title="Put back every change still standing, newest first">
             Undo all
           </button>
         )}
@@ -46,14 +48,16 @@ export function ChangesList({ datasetId, folded = false }: { datasetId: string |
         <ul className="ai-mark-list">
           {rows.map((d) => (
             <li key={d.id} className={`ch-row${d.undoneBy ? " is-undone" : ""}`}>
-              <span className={`who${d.by === "auto" ? " auto" : ""}`}>{d.by}</span>
+              <span className={`who${d.by === "auto" ? " auto" : ""}`} title={d.byClick ? "Applied by your own click" : undefined}>
+                {byText(d)}
+              </span>
               <span className="what" title={notes[d.id] ?? decisionText(d)}>
                 {decisionText(d)}
                 {notes[d.id] && <span className="ch-note"> · {notes[d.id]}</span>}
               </span>
               <span className="when">{clockTime(d.at)}</span>
               {undoable(d) ? (
-                <button type="button" className="ai-marks-act" disabled={busy} onClick={() => undoDecision(d)} title="Put back the values from before">
+                <button type="button" className="ai-marks-act" disabled={busy} onClick={(e) => undoDecision(d, e.nativeEvent)} title="Put back the values from before">
                   Undo
                 </button>
               ) : d.undoneBy ? (
