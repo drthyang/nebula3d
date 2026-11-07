@@ -318,6 +318,17 @@ export function ProposalCards({ turn, ctx }: { turn: number; ctx: ToolContext | 
   );
 }
 
+/**
+ * One card by its id, wherever it was made: the fact an auto run waits for,
+ * pinned where the run shows (AutoHook; PR 7's panel). Its Apply is the
+ * card's own, on the user's click; Dismiss declines it.
+ */
+export function PinnedCard({ id, ctx }: { id: string; ctx: ToolContext | null }) {
+  const p = useDecisionStore((s) => s.proposals.find((x) => x.id === id));
+  if (!p || p.status !== "open") return null;
+  return <OpenCard p={p} ctx={ctx} />;
+}
+
 /** A tuning trial's Apply, on its row (TuneProgress): its settings onto the Configure page. */
 export function TrialApply({ turn, stage, n, ctx }: { turn: number | null; stage: string; n: number; ctx: ToolContext | null }) {
   const p = useDecisionStore((s) => s.proposals.find((x) => x.kind === "trial" && x.turn === turn && x.trial?.stage === stage && x.trial.n === n));

@@ -27,6 +27,8 @@ import { showStep, useExamineStore, useHasSet } from "../examine/store";
 import type { AssistantContext } from "../useAssistant";
 import { reportable } from "../report/collect";
 import { formatDuration } from "../clock";
+import { useAutoStore } from "../auto/store";
+import { AutoHook } from "./AutoHook";
 import { Markdown } from "./Markdown";
 import { ProposalCards } from "./ProposalCards";
 import { ReportView } from "./ReportView";
@@ -266,6 +268,8 @@ export function ChatView({
   const error = useChatStore((s) => s.error);
   const setDraft = useChatStore((s) => s.setDraft);
   const usage = useChatStore((s) => s.usage);
+  // An auto run under way owns the conversation: the composer waits (auto/controller.ts).
+  const autoRunning = useAutoStore((s) => s.run?.state === "running");
   const scrollRef = useRef<HTMLDivElement>(null);
   // The reply whose analysis report is open (its turn id).
   const [reportFor, setReportFor] = useState<number | null>(null);
@@ -285,7 +289,7 @@ export function ChatView({
 
   const ask = useCallback(
     (text: string) => {
-      if (!text || !assistant || busy) return;
+      if (!text || !assistant || busy || autoRunning) return;
       pinned.current = true;
       const history = turns.map(({ role, content }) => ({ role, content }));
       // What the user's decisions on the cards changed since the last reply
@@ -303,7 +307,7 @@ export function ChatView({
         ctx: toolContext && replyContext(toolContext, turns),
       });
     },
-    [assistant, busy, turns, tools, settings.useTools, toolContext],
+    [assistant, busy, autoRunning, turns, tools, settings.useTools, toolContext],
   );
 
   const sendChat = useCallback(() => {
@@ -313,7 +317,7 @@ export function ChatView({
     ask(text);
   }, [draft, setDraft, ask]);
 
-  const disabled = !connected || !assistant;
+  const disabled = !connected || !assistant || autoRunning;
   const empty = turns.length === 0 && !busy;
   // The tuning store holds one run: its card goes under the reply that started
   // it — the live one while it runs, else the last turn that called it.
@@ -401,6 +405,7 @@ export function ChatView({
 
       <div className="ai-dock">
         {connected && contextNote && <div className="ai-conn-warn">{contextNote}</div>}
+        {tools && <AutoHook ctx={toolContext} canStart={connected && Boolean(assistant) && !busy} />}
         <div className="ai-toggles">
           <button
             type="button"
@@ -489,7 +494,7 @@ export function ChatView({
         <div className={`ai-composer${disabled ? " is-disabled" : ""}`}>
           <textarea
             value={draft}
-            placeholder={disabled ? "Connect a model to chat…" : "Ask about this reduction…"}
+            placeholder={autoRunning ? "The auto run is under way: Stop it to ask…" : disabled ? "Connect a model to chat…" : "Ask about this reduction…"}
             disabled={disabled}
             rows={1}
             onChange={(e) => setDraft(e.target.value)}
