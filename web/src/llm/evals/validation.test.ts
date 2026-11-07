@@ -34,6 +34,7 @@ import {
   evalRunOf,
   FAMILIES,
   falseAlarmChecks,
+  flattenFine,
   gradeRun,
   numberSources,
   PRE_68_RULE,
@@ -427,6 +428,40 @@ describe("the grader change of 2026-11-07", () => {
     expect(pass(falseAlarmChecks(control), run("Powder ring removal: ring dent ≤ 0 · left ≤ 0."))).toBe(true);
     expect(pass(falseAlarmChecks(control), run("Powder rings are left at 2.2 Å⁻¹."))).toBe(false);
     expect(pass(falseAlarmChecks(control), run("Powder ring removal: left ≤ 0.5 (hk0, 2.2 Å⁻¹)."))).toBe(false);
+  });
+
+  it("takes a background 'well below the threshold for a pedestal' or a pedestal 'removed effectively' for fine, unless a problem stands beside it", () => {
+    const origin = caseNamed("dev-origin")!; // no flatten fault: a pedestal claimed is a false alarm
+    for (const said of [
+      "The floor trend ($0.0166$) and span ($0.271$) are well below the threshold for a pedestal ($0.8$).",
+      "The floor trend and span ($0.0366$ and $0.62$, respectively) are well below the threshold for a leftover pedestal (which requires both $\\ge 0.8$).",
+      "The backfill is seamless and the flattening removed the pedestal effectively ($\\text{floor trend } 0.158$, $\\text{span } 0.192$).",
+      "The floor trend is below the pedestal threshold.",
+      "The background's pedestal was effectively removed (floor trend 0.04).",
+    ]) {
+      expect(pass(falseAlarmChecks(origin), run(said)), said).toBe(true);
+    }
+    for (const said of [
+      // Real alarms: no fine phrase.
+      "The pedestal remains: the floor trend is 0.9.",
+      "The floor trend (0.9) is above the threshold for a pedestal.",
+      "The background rises with |Q|.",
+      // A fine phrase with a problem beside it in the same clause.
+      "The floor trend is well below the threshold for a pedestal, but the background rises with |Q|.",
+      "The flattening removed the pedestal effectively, yet the floor trend grows at high |Q|.",
+      "The background rises with |Q|, though the floor trend is well below the threshold.",
+      "The flatten removed the pedestal effectively, but a pedestal remains above 8 Å⁻¹ (floor trend 0.9).",
+      "The floor trend is above the threshold, well below the threshold for a pedestal elsewhere.",
+    ]) {
+      expect(pass(falseAlarmChecks(origin), run(said)), said).toBe(false);
+    }
+    // A negated "removed" is no fine phrase. (The clause it is in negates, and a
+    // negating clause is charged with nothing, before and after this change.)
+    expect(flattenFine("the flatten removed the pedestal effectively")).toBe(true);
+    expect(flattenFine("the flatten has not removed the pedestal effectively")).toBe(false);
+    expect(flattenFine("the flatten never removed the pedestal effectively")).toBe(false);
+    expect(flattenFine("the pedestal was not removed effectively")).toBe(false);
+    expect(flattenFine("the pedestal was not effectively removed")).toBe(false);
   });
 });
 

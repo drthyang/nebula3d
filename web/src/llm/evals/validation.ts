@@ -162,6 +162,21 @@ export const ALARMS: Record<string, RegExp> = {
 const FINE = /\b(correct|right|fine|good|negligible|consistent|within (the )?(error|tolerance|noise)|within (the |its |their )?limits?|clean|as expected|meets? (its|the) goal|(0|zero) (powder )?rings?)\b/i;
 const OWN = /\b(crystal's own|sample's own|intrinsic|its own)\b/i;
 
+// Said of the background, these make a clause no claim of a pedestal (the
+// grader change of 2026-11-07, (b); docs/evals.md): its numbers "well below the
+// threshold for a pedestal", or the flatten "removed the pedestal effectively".
+// Only while the rest of the clause says no problem with it (FLATTEN_PROBLEM):
+// "well below the threshold, but the background rises" still alarms.
+const FLATTEN_FINE =
+  /\b((well |far )?(below|under) (the |its )?(pedestal('s)? )?threshold( for (a |the )?(leftover |remaining )?pedestal)?|(?<!\b(not|never) )removed the (leftover )?pedestal( effectively| fully| completely| cleanly)?|pedestal (was |is |has been )?(effectively |fully |completely |cleanly )removed)\b/i;
+const FLATTEN_PROBLEM =
+  /\b(but|yet|however|although|though|except|whereas|remains?|remaining|left|above|over|exceeds?|ris(es|ing)|grows?|growing|increas\w*)\b|\bnot removed\b/i;
+/** The clause calls the background fine, by a FLATTEN_FINE phrase, and says no problem with it beside the phrase. */
+export const flattenFine = (text: string): boolean => {
+  const m = FLATTEN_FINE.exec(text);
+  return m !== null && !FLATTEN_PROBLEM.test(text.slice(0, m.index) + " " + text.slice(m.index + m[0].length));
+};
+
 /**
  * A UB turned by less than this (degrees) is the fit's own noise: a clause that
  * calls the UB off with every angle it writes under it claims no
@@ -184,13 +199,15 @@ const credits = (c: GradedSpan, re: RegExp): boolean => re.test(c.text) && !c.ne
 /**
  * The clause charges the run with *re*, a fault the case does not have: it
  * says it, does not negate it, and is no question; it says no FINE word of it
- * (nor, of a crystal's own feature, an OWN word); and of the UB it writes an
+ * (nor, of a crystal's own feature, an OWN word; nor, of the background, a
+ * FLATTEN_FINE phrase with no problem beside it); and of the UB it writes an
  * angle the size of the fit's noise or more. No hedge excuses an alarm (W5):
  * "if the UB is off" raises a fault the case does not have.
  */
 const charges = (c: GradedSpan, re: RegExp, own = false): boolean => {
   if (!re.test(c.text) || c.negated || c.question) return false;
   if (FINE.test(c.text) || (own && OWN.test(c.text))) return false;
+  if (re === ALARMS.flatten && flattenFine(c.text)) return false;
   // A turn the size of the fit's own noise is no claim that the UB is off.
   return !(re === ALARMS.ub && c.angles.length > 0 && c.angles.every((x) => Math.abs(x) < UB_NOISE_DEG));
 };
