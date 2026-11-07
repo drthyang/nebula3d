@@ -42,7 +42,7 @@ import type { Marker } from "../structure/pairs";
 import { markersNear, usePlaneMarkers, useStructureModel } from "../structure/useStructure";
 import { useGlow } from "../llm/highlight";
 import { HighlightLayer } from "../components/HighlightLayer";
-import { ExamineBar } from "../llm/components/ExamineBar";
+import { ExamineBar, ViewLegend } from "../llm/components/ExamineBar";
 import { legend, viewDraw, type ViewDraw } from "../llm/examine/draw";
 import { DPDF } from "../llm/examine/overlays";
 import { usePageHighlights } from "../llm/examine/store";
@@ -346,6 +346,7 @@ export function DeltaPdfViewer() {
               id: p.plane,
               glow: pdfLit,
               outline: hl.outlined[DPDF],
+              legend: hlDraws[p.plane] && <ViewLegend shown={hl.shown} stage={DPDF} counts={hlDraws[p.plane]!.counts} notes={hlDraws[p.plane]!.notes} />,
               title: p.title,
               badge: p.badge,
               badgeClass: `qr-rt-badge ${p.badgeClass}`,

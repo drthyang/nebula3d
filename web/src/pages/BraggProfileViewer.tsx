@@ -48,7 +48,7 @@ import { useViewerStore } from "../state/viewerStore";
 import { useGlow } from "../llm/highlight";
 import { HighlightLayer } from "../components/HighlightLayer";
 import { TONE } from "../components/highlightTones";
-import { ExamineBar } from "../llm/components/ExamineBar";
+import { ExamineBar, ViewLegend } from "../llm/components/ExamineBar";
 import { legend, viewDraw, type ViewDraw } from "../llm/examine/draw";
 import { BRAGG, type ClassId } from "../llm/examine/overlays";
 import { usePageHighlights } from "../llm/examine/store";
@@ -516,8 +516,10 @@ function SelectedPeak({
   sweep,
   overlay,
   outline,
+  legend,
 }: {
   overlay?: (i: number, viewport: Viewport) => ReactNode; // the Highlights over tile i, at its view
+  legend?: (i: number) => ReactNode; // their legend inside tile i when it is the large one
   outline?: "primary" | "reading"; // the tiles a Pilot check reads
   peak: BraggPeakWidth;
   peaks: BraggPeakWidth[];
@@ -589,6 +591,7 @@ function SelectedPeak({
           return {
             id: t.id,
             outline,
+            legend: legend?.(i),
             title: <span style={{ color: t.color }}>{t.label}</span>,
             caption: `${t.fixedLabel} = ${r(fixedValue(centre, t))}`,
             onResetView: resetView,
@@ -904,6 +907,7 @@ export function BraggProfileViewer() {
                   soft={lv.soft}
                   sweep={profile?.tail_sweep}
                   outline={hl.outlined[BRAGG]}
+                  legend={(i) => tileDraws[i] && <ViewLegend shown={hl.shown} stage={BRAGG} counts={tileDraws[i]!.counts} notes={tileDraws[i]!.notes} />}
                   overlay={(i, viewport) => {
                     const draw = tileDraws[i];
                     const sl = slices[i]?.data;

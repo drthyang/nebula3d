@@ -7855,6 +7855,37 @@ html.kb-open .ai-side {
   border-color: rgba(79, 143, 247, 0.4);
 }
 
+/* the legend inside the large view (Focus, Single): read only, under the axis label */
+.ex-view-legend {
+  position: absolute;
+  left: 34px;
+  bottom: 30px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  max-width: calc(100% - 120px);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(11, 13, 16, 0.78);
+  font-size: 10.5px;
+  color: var(--text-2);
+  pointer-events: none;
+}
+.ex-view-legend .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.ex-view-legend .lg b {
+  color: var(--text);
+  font: 600 10px var(--font-mono);
+}
+.ex-view-legend .lg .code {
+  font: 700 9px var(--font-mono);
+}
+
 /* the Bragg page's scatter: a peak a Pilot check listed, ringed and named */
 .bragg-hl-ring {
   position: absolute;

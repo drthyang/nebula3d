@@ -42,7 +42,7 @@ import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { useDpdfStore } from "../state/dpdfStore";
 import { isReciprocal, useMarkStore, visibleMarks, WHERE_OUTPUT, type Mark } from "../state/markStore";
 import { litStage, useHighlightKeys } from "../llm/highlight";
-import { ExamineBar } from "../llm/components/ExamineBar";
+import { ExamineBar, ViewLegend } from "../llm/components/ExamineBar";
 import { legend, viewDraw, type ViewDraw } from "../llm/examine/draw";
 import { usePageHighlights } from "../llm/examine/store";
 import { useTouchOnly } from "../components/usePlatform";
@@ -397,6 +397,7 @@ export function ReciprocalViewer() {
               id: s.name,
               glow: litStage(lit, s.name),
               outline: outlined[s.name],
+              legend: draws[s.name] && <ViewLegend shown={shown} stage={s.name} counts={draws[s.name]!.counts} notes={draws[s.name]!.notes} />,
               title: STAGE_LABELS[s.name] ?? s.name,
               badge: i + 1,
               badgeClass: i === stages.length - 1 ? "view-badge--out" : "",

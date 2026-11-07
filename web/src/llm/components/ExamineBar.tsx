@@ -185,3 +185,27 @@ export function ExamineBar({ shown, counts, notes = {}, stages }: Props) {
     </div>
   );
 }
+
+/**
+ * The legend inside a large view (Focus and Single layouts): the classes drawn
+ * on that view, each with its swatch and count, read only (the bar's chips
+ * turn them on and off). Nothing where none is drawn there.
+ */
+export function ViewLegend({ shown, stage, counts, notes = {} }: { shown: ShownSet | null; stage: string; counts: Partial<Record<ClassId, number>>; notes?: Partial<Record<ClassId, string>> }) {
+  const enabled = useExamineStore((s) => s.enabled);
+  const off = useExamineStore((s) => s.off);
+  if (!shown || !enabled) return null;
+  const rows = shown.set.classes.filter((c) => c.views[stage] && !off.includes(c.id) && (!HIDDEN_WHEN_NONE.has(c.id) || counts[c.id]));
+  if (!rows.length) return null;
+  return (
+    <div className="ex-view-legend" aria-label="Highlights on this view">
+      {rows.map((c) => (
+        <span key={c.id} className="lg" data-cls={c.id}>
+          <Swatch c={c} />
+          {c.code ? <span className="code" style={{ color: TONE[c.tone] }}>{c.code}</span> : c.label}
+          {notes[c.id] ? <b>{notes[c.id]}</b> : COUNTED.has(c.id) && <b>{counts[c.id] ?? 0}</b>}
+        </span>
+      ))}
+    </div>
+  );
+}
