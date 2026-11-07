@@ -204,6 +204,8 @@ describe("a fix that made its check worse", () => {
     expect(run().plan.find((r) => r.id === "punch")).toMatchObject({ status: "attention", tries: 2 });
     expect(sinceLine(ds, useDecisionStore.getState().proposals)).toContain("auto mode ran the pipeline from the start; applied punchMinSig");
     expect(sinceLine(ds, useDecisionStore.getState().proposals)).toContain("undid punchMinSig");
+    // The activity log says the fix was put back, and why.
+    expect(activityNow()!.rows.find((r) => r.title === "Fix the Bragg punch, first of two")!.line).toMatch(/^Changed Punch min σ .* → 4 \(it made the check worse: put back\)$/);
   });
 });
 

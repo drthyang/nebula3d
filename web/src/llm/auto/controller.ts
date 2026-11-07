@@ -55,6 +55,8 @@ import { askAssistant, type ReplyOutcome } from "../session";
 import { loadSettings, type LlmSettings } from "../settings";
 import { callTool, CHAT_TOOLS, factsOf, type AgentTool, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
+import { BRAGG, DPDF, examining } from "../examine/overlays";
+import { useNavStore } from "../../state/navStore";
 import { useTuneStore } from "../tune/tuner";
 import { RUN_STAGES, type ParamValue, type RunStage } from "../tune/catalog";
 import { addUsage, measured, notCounted, type Usage } from "../usage";
@@ -492,6 +494,9 @@ async function appStep(call: Call): Promise<AgentStep> {
   const id = `auto:${run().id}:${stepNumber}`;
   patchRun({ now: `${factsOf(call.name).runningLabel}…` });
   useAutoStore.setState({ live: { id, name: call.name, args: call.args, status: "running" } });
+  // Follow: the console goes to the page the check examines as it starts, so the
+  // "Now examining" bar and the overlays follow the step under way.
+  if (s.settings.followViews) followTo(call);
   let out: Awaited<ReturnType<typeof callTool>>;
   try {
     out = await callTool(ctx, call.name, call.args, { signal: s.abort.signal });
@@ -512,10 +517,17 @@ async function appStep(call: Call): Promise<AgentStep> {
     ...(out.outcomes ? { outcomes: out.outcomes } : {}),
   };
   patchRun((x) => ({ steps: [...x.steps, keptStep(step)] }));
-  useAutoStore.setState({ live: out.overlay ? { ...step, overlay: out.overlay } : step });
+  useAutoStore.setState({ live: out.overlay ? { ...step, overlay: out.overlay } : step, work: s.work.dataset });
   // Follow, as a reply's steps do (agent.ts): the console goes to the figure the step looked at.
   if (step.status === "done" && step.view && s.settings.followViews) openView(step.view);
   return step;
+}
+
+/** The page a check examines (examine/overlays.ts, examining): the Bragg page, the ΔPDF's, or the cleanup page; none for a run. */
+function followTo(call: Call): void {
+  const views = Object.keys(examining({ name: call.name, args: call.args })?.views ?? {});
+  if (!views.length) return;
+  useNavStore.getState().setTab(views.includes(BRAGG) ? "bragg" : views.includes(DPDF) ? "dpdf" : "reciprocal");
 }
 
 const evidenceOf = (steps: readonly AgentStep[]): PlanRow["evidence"] =>

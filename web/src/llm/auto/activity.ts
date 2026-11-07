@@ -137,7 +137,9 @@ function stepRow(s: AgentStep, i: number): ActivityRow {
 function replyLine(turn: number, a: ActivityInput, report: boolean): { line: string; detail: string[] } {
   const ps = a.proposals.filter((p) => p.turn === turn);
   const ds = a.decisions.filter((d) => ps.some((p) => p.id === d.proposal) && d.by === "auto" && d.action !== "undo");
-  const changed = ds.filter((d) => d.kind === "setting").map((d) => `${d.title} ${d.shown.from} → ${d.shown.to}`);
+  // A change the run put back for making its check worse says so (controller.ts, madeWorse).
+  const putBack = (d: Decision) => !!d.undoneBy && a.decisions.some((u) => u.id === d.undoneBy && u.by === "auto");
+  const changed = ds.filter((d) => d.kind === "setting").map((d) => `${d.title} ${d.shown.from} → ${d.shown.to}${putBack(d) ? " (it made the check worse: put back)" : ""}`);
   const asked = ps.filter((p) => p.held === "fact").map((p) => `${p.title} ${p.shown.from ? `${p.shown.from} → ` : ""}${p.shown.to}`);
   const t = a.turns.find((x) => x.id === turn);
   const steps = (t?.steps ?? []).filter((s) => !/:seed_\d+$/.test(s.id)).map((s) => `${factsOf(s.name).label}${s.summary ? `: ${s.summary}` : ""}`);

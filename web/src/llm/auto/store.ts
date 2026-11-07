@@ -14,6 +14,8 @@
 
 import { create } from "zustand";
 
+import type { Dataset } from "../../api/types";
+
 import { resetsWithVolume } from "../../state/volumeReset";
 import type { PipelineConfig } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
@@ -71,6 +73,8 @@ interface AutoStore {
   // The app's own step under way, or the last one done, whole (its overlay
   // data with it): what the Highlights follow (examine/store.ts). Never kept.
   live: AgentStep | null;
+  // The dataset as the run's last call left it (a run rewrites its outputs): what the Highlights measure against.
+  work: Dataset | null;
 }
 
 const KEY = "nebula3d.pilot.auto.v1";
@@ -96,7 +100,7 @@ const restore = (): AutoRun | null => {
   }
 };
 
-export const useAutoStore = create<AutoStore>(() => ({ run: restore(), live: null }));
+export const useAutoStore = create<AutoStore>(() => ({ run: restore(), live: null, work: null }));
 
 useAutoStore.subscribe((s, prev) => {
   if (s.run === prev.run) return;
@@ -109,7 +113,7 @@ useAutoStore.subscribe((s, prev) => {
 });
 
 // Closing the volume ends the conversation, and the run with it.
-resetsWithVolume(useAutoStore, { fresh: () => ({ run: null, live: null }) });
+resetsWithVolume(useAutoStore, { fresh: () => ({ run: null, live: null, work: null }) });
 
 /** Change the run (none: nothing). */
 export function patchRun(patch: Partial<AutoRun> | ((r: AutoRun) => Partial<AutoRun>)): void {
@@ -177,7 +181,7 @@ export const autoForFile = (): AutoRun | null => {
 
 /** Replace the record with a saved one (a session file's, read by readAutoRun). */
 export function restoreAutoRun(run: AutoRun | null): void {
-  useAutoStore.setState({ run: run && interrupted(run), live: null });
+  useAutoStore.setState({ run: run && interrupted(run), live: null, work: null });
 }
 
 // --------------------------------------------------------------- reading back

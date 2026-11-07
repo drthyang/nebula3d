@@ -362,7 +362,7 @@ export function ChatView({
   }, [draft, setDraft, ask]);
 
   const disabled = !connected || !assistant || autoRunning;
-  const empty = turns.length === 0 && !busy;
+  const empty = turns.length === 0 && !busy && auto.blocks.length === 0;
   // The tuning store holds one run: its card goes under the reply that started
   // it — the live one while it runs, else the last turn that called it.
   const tunes = (steps?: AgentStep[]) => Boolean(steps?.some((s) => s.name === "tune_pipeline"));

@@ -229,7 +229,8 @@ export function useExamine(dataset: Dataset | undefined): void {
         }
         if (step.status !== "done") return;
         const set = overlaysOf(step);
-        if (set) addSet(set, listed, n, null);
+        // Measured against the dataset as the run left it: the listing may not have caught up with its run yet.
+        if (set) addSet(set, s.work ?? listed, n, null);
       }),
     [],
   );
