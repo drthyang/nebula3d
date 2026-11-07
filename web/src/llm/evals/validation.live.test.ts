@@ -18,7 +18,7 @@
 //                           longer is refused before it starts, and a plan that reaches it stops,
 //                           keeping the runs that finished (validationLimits.ts)
 // NEBULA_VALIDATION_PRESET  quick: gemma4:26b, arm B, 1 run per dev case, 5 min a run (about 12 min);
-//                           quick-auto: the same, each run through auto mode (the B-auto arm,
+//                           quick-auto: the same, each run through auto mode, 8 min a run (the B-auto arm,
 //                           validationAuto.ts), its record and transcripts named -auto;
 //                           the variables above still override it
 // NEBULA_VALIDATION_MODE    auto: run the plan through auto mode, whatever the preset

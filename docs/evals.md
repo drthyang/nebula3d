@@ -850,14 +850,19 @@ cd web && NEBULA_VALIDATION=1 NEBULA_VALIDATION_PRESET=quick NEBULA_EVAL_API=htt
 **The B-auto arm** (`NEBULA_VALIDATION_PRESET=quick-auto`; THY-65 PR 7,
 [pilot-auto-mode-design.md](pilot-auto-mode-design.md) §6) runs the quick
 preset's plan through auto mode instead of one agent loop: gemma4:26b, one run per
-dev case, 5 minutes a run, the 30-minute cap. It uses the same data root, arm B's
+dev case, 8 minutes a run (5 until the second run below), the 30-minute cap. It
+uses the same data root, arm B's
 datasets and the same graders (`validationAuto.ts`):
 
 - The app runs the preflight, the pipeline and the checks. The model writes the
   fixes and the report, on the fixed phase prompts. Auto mode reads no task text,
   so the report's words are the run's conclusion.
 - Each run's own working limit is auto mode's least, 10 minutes. The plan's
-  5 minutes a run stops it sooner. A run stopped there ends with the app's
+  8 minutes a run stops it sooner. That is more than the quick preset's 5: an
+  auto run is the pipeline, its checks, up to two fixes a stage and the report,
+  where an arm-B run is one reply, and at 5 minutes two of the second run's
+  eight were cut in a reply short of the output cap (16,000 tokens are about
+  6 minutes of gemma4:26b's output). A run stopped there ends with the app's
   report alone, so it has no model words to grade as its conclusion.
 - Auto replies on a local model ask for arm B's output cap, 16,000 tokens, and
   the record keeps the requests cut at it (`truncated`), as arm B's does.
