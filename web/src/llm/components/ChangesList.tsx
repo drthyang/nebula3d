@@ -2,7 +2,7 @@
 // framed like MarksList: every change applied from an Apply card on the
 // selected dataset, newest last, who made it, when, and Undo while the fields
 // still hold what was applied; Undo all puts back every one still standing.
-// Shown only while there is one.
+// Shown only while there is one; folded at first on a phone.
 
 import { useMemo, useState } from "react";
 
@@ -15,12 +15,14 @@ const clockTime = (ms: number): string => {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
-export function ChangesList({ datasetId }: { datasetId: string | undefined }) {
+// `folded`: start folded, its count in the head (on a phone's bottom sheet,
+// where the list would take the room the chat has).
+export function ChangesList({ datasetId, folded = false }: { datasetId: string | undefined; folded?: boolean }) {
   const proposals = useDecisionStore((s) => s.proposals);
   const decisions = useDecisionStore((s) => s.decisions);
   const notes = useDecisionStore((s) => s.notes);
   const busy = useChatStore((s) => s.busy);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(!folded);
   const rows = useMemo(() => {
     const onDataset = new Set(proposals.filter((p) => p.dataset === datasetId).map((p) => p.id));
     return decisions.filter((d) => onDataset.has(d.proposal) && (d.action === "apply" || d.action === "edit-apply"));

@@ -96,7 +96,7 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
       )}
 
       <MarksList datasetId={datasetId} />
-      <ChangesList datasetId={datasetId} />
+      <ChangesList datasetId={datasetId} folded={mode === "sheet"} />
 
       <ChatView
         assistant={contextQuery.data}
