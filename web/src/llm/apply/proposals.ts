@@ -6,8 +6,9 @@
 //
 //  - update_settings refused a change (a sample fact, the edge trim, a
 //    symmetry* setting, a ring change the ring gate held): a card with the
-//    call's own values. In this build Apply is off for these (`held`): only
-//    the user sets a sample fact, on Configure or by naming it.
+//    call's own values, `held`: only the user's own click applies it, under a
+//    click grant for exactly its values (llm/consent.ts), or, for a ring
+//    change, a 3D verdict of a ring left (actions.ts).
 //  - update_settings changed settings and no run followed: Run from its
 //    rerun_from.
 //  - a run's punch record found its sharp peaks off the lattice bunching
@@ -38,6 +39,7 @@ import {
   type TuneStage,
 } from "../tune/catalog";
 import type { StageRun } from "../tune/tuner";
+import { USER_SETTINGS } from "../tune/userSettings";
 import { settingLabel } from "../../pages/configSections";
 import type { PipelineConfig } from "../../state/pipelineStore";
 
@@ -45,7 +47,7 @@ export type ProposalKind = "setting" | "fact" | "run" | "trial";
 export type ProposalVia = "refused" | "rerun" | "ask_user" | "suggestion" | "answer" | "trial" | "apply" | "undo";
 export type ProposalStatus = "open" | "applied" | "dismissed" | "undone";
 
-/** Why Apply is off on a card in this build: the user's own to set (a fact, the edge trim, the symmetry average), or held by the ring gate. */
+/** Why a card needs the user's own click (a click grant) to apply: theirs to set (a fact, the edge trim, the symmetry average, the |Q| band, the ion), or held by the ring gate. */
 export type Held = "fact" | "choice" | "symmetry" | "ring" | "user-only";
 
 export interface Evidence {
@@ -78,7 +80,7 @@ export interface Proposal {
 /** A setting the cards change: one of update_settings' (the catalog's method choices and thresholds, the sample's facts, the edge trim). */
 interface CardSetting {
   key: string;
-  stage: TuneStage;
+  stage: TuneStage | null; // null: the symmetry average's, which a whole run recomputes (no Run card)
   title: string;
   read: (s: PipelineConfig) => ParamValue;
   write: (value: unknown) => Partial<PipelineConfig>;
@@ -113,10 +115,14 @@ const SETTINGS: CardSetting[] = [
   })),
 ];
 
-/** A setting the cards may change, by the name update_settings takes. */
-export const cardSetting = (key: string): CardSetting | undefined => SETTINGS.find((s) => s.key === key);
+// The settings only the user sets, which update_settings writes under a click
+// grant alone (tune/userSettings.ts): a card reads and checks them the same way.
+const USER_CARD_SETTINGS: CardSetting[] = USER_SETTINGS.map((u) => ({ key: u.key, stage: u.stage, title: factTitle(u.key), read: u.read, write: u.write }));
 
-/** The keys the answer parser reads: update_settings' names, exactly. */
+/** A setting the cards may change, by the name update_settings takes. */
+export const cardSetting = (key: string): CardSetting | undefined => SETTINGS.find((s) => s.key === key) ?? USER_CARD_SETTINGS.find((s) => s.key === key);
+
+/** The keys the answer parser reads: update_settings' names, exactly (none of the settings only the user sets). */
 export const SETTING_KEYS: readonly string[] = SETTINGS.map((s) => s.key);
 
 const isSymmetry = (key: string): boolean => (SYMMETRY_AVERAGE_SETTINGS as readonly string[]).includes(key);
@@ -148,6 +154,16 @@ const readsSame = (keys: readonly string[], fields: Partial<PipelineConfig>, s: 
 };
 
 const text = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
+
+// A setting's fields at `value`, checked by its write; null when the check fails.
+const checked = (key: string, value: unknown): Partial<PipelineConfig> | null => {
+  try {
+    return cardSetting(key)?.write(value) ?? null;
+  } catch (e) {
+    if (e instanceof ProposalError) return null;
+    throw e;
+  }
+};
 
 // --------------------------------------------------------------- the builder
 
@@ -185,23 +201,7 @@ export function buildProposals(input: BuildInput): Proposal[] {
   // A card for one change a call asked for, checked by the catalog; none when it fails the check or changes nothing.
   const settingDraft = (key: string, value: unknown, via: ProposalVia, step: AgentStep | null): Draft | null => {
     const setting = cardSetting(key);
-    if (!setting) {
-      if (!isSymmetry(key) && !(USER_ONLY.has(key))) return null;
-      // A setting update_settings has no write for: shown as asked, the user's to set.
-      const field = key as keyof PipelineConfig;
-      if (!(field in config)) return null;
-      return {
-        kind: "fact",
-        title: factTitle(key),
-        change: { [key]: value as ParamValue },
-        fields: {},
-        from: pick(config, [key]),
-        shown: { from: text(config[field]) || "none", to: text(value) },
-        source: { ...(step ? { step: step.id } : {}), via },
-        evidence: step ? measuredBefore(step, "pdf") : [],
-        held: heldFor(key),
-      };
-    }
+    if (!setting) return null;
     let fields: Partial<PipelineConfig>;
     try {
       fields = setting.write(value);
@@ -220,9 +220,9 @@ export function buildProposals(input: BuildInput): Proposal[] {
       fields,
       from: pick(config, Object.keys(fields)),
       shown: { from: text(setting.read(config)), to: text(setting.read(after)) },
-      runFrom: setting.stage,
+      ...(setting.stage ? { runFrom: setting.stage } : {}),
       source: { ...(step ? { step: step.id } : {}), via },
-      evidence: step ? measuredBefore(step, setting.stage) : [],
+      evidence: step && setting.stage ? measuredBefore(step, setting.stage) : [],
       ...(held ? { held } : RING_SETTINGS.includes(key) && via === "refused" ? { held: "ring" as const } : {}),
     };
   };
@@ -274,14 +274,15 @@ export function buildProposals(input: BuildInput): Proposal[] {
       }
     }
     // The Laue class compare_laue_classes suggests.
-    if (s.name === "compare_laue_classes" && typeof r.suggestion === "string" && r.suggestion && r.suggestion !== config.symmetryLaue) {
+    const laue = typeof r.suggestion === "string" && r.suggestion ? checked("symmetryLaue", r.suggestion) : null;
+    if (s.name === "compare_laue_classes" && laue && !sameFields(laue, config)) {
       drafts.push({
         kind: "fact",
         title: settingLabel("symmetryLaue"),
-        change: { symmetryLaue: r.suggestion },
-        fields: { symmetryLaue: r.suggestion },
+        change: { symmetryLaue: r.suggestion as string },
+        fields: laue,
         from: pick(config, ["symmetryLaue"]),
-        shown: { from: config.symmetryLaue || "none", to: r.suggestion },
+        shown: { from: config.symmetryLaue || "none", to: r.suggestion as string },
         source: { step: s.id, via: "suggestion" },
         evidence: [evidenceOf(s)],
         held: "symmetry",
@@ -291,8 +292,10 @@ export function buildProposals(input: BuildInput): Proposal[] {
     const band = r.suggested_band;
     if (s.name === "qmax_coverage" && Array.isArray(band) && band.length === 2 && band.every((x) => typeof x === "number") && typeof r.band_check === "string" && !/stays inside the counts/.test(r.band_check)) {
       const [lo, hi] = band as number[];
-      const fields = { pdfQMin: String(lo), pdfQMax: String(hi) };
-      if (!sameFields(fields, config)) {
+      const min = checked("pdfQMin", lo);
+      const max = checked("pdfQMax", hi);
+      const fields = min && max && lo < hi ? { ...min, ...max } : null;
+      if (fields && !sameFields(fields, config)) {
         drafts.push({
           kind: "fact",
           title: "|Q| band",
