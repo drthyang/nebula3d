@@ -75,23 +75,25 @@ describe("the meter's maths and levels", () => {
   const promptAt = (w: ContextWindow, share: number) => Math.round(share * w.size!) - w.reserve;
 
   it("counts the reply's room: (prompt + reserve) / window", () => {
-    const r = meterReading(14_336, w32); // 14,336 + 6,144 = 20,480 = 62.5 %
-    expect(r).toEqual({ prompt: 14_336, used: 20_480, share: 0.625, percent: 63, level: "ok" });
+    const r = meterReading(14_336, w32); // 14,336 + 6,144 = 20,480 = 62.5 %, shown as 62 %
+    expect(r).toEqual({ prompt: 14_336, used: 20_480, share: 0.625, percent: 62, level: "ok" });
   });
 
-  it("neutral below 70 %, amber from 70 % to 90 %, red above 90 %", () => {
+  it("neutral below 70 %, amber from 70 % to 90 %, red above 90 %, by the percent shown", () => {
     const w = { size: 100_000, reserve: 6_144, source: "tools" as const };
-    expect(meterReading(promptAt(w, 0.6999), w).level).toBe("ok");
-    expect(meterReading(promptAt(w, AMBER_AT), w).level).toBe("amber");
-    expect(meterReading(promptAt(w, RED_ABOVE), w).level).toBe("amber");
-    expect(meterReading(promptAt(w, 0.9001), w).level).toBe("red");
+    expect(meterReading(promptAt(w, 0.6999), w)).toMatchObject({ percent: 69, level: "ok" });
+    expect(meterReading(promptAt(w, AMBER_AT), w)).toMatchObject({ percent: 70, level: "amber" });
+    expect(meterReading(promptAt(w, RED_ABOVE), w)).toMatchObject({ percent: 90, level: "amber" });
+    // Past 90 % but shown as 90 %: amber, as the number says.
+    expect(meterReading(promptAt(w, 0.9099), w)).toMatchObject({ percent: 90, level: "amber" });
+    expect(meterReading(promptAt(w, 0.91), w)).toMatchObject({ percent: 91, level: "red" });
     expect(meterReading(promptAt(w, 1.2), w)).toMatchObject({ percent: 120, level: "red" });
   });
 
   it("per model window: the same request reads differently on each", () => {
     const prompt = 20_000;
-    expect(meterReading(prompt, contextWindow(on(OLLAMA))).percent).toBe(80); // 26,144 / 32,768
-    expect(meterReading(prompt, contextWindow(on(LM_STUDIO), { loaded: { loaded: 65_536, max: null } })).percent).toBe(40);
+    expect(meterReading(prompt, contextWindow(on(OLLAMA))).percent).toBe(79); // 26,144 / 32,768 = 79.8 %
+    expect(meterReading(prompt, contextWindow(on(LM_STUDIO), { loaded: { loaded: 65_536, max: null } })).percent).toBe(39); // 26,144 / 65,536 = 39.9 %
     expect(meterReading(prompt, contextWindow(on(LM_STUDIO), { loaded: { loaded: 16_384, max: null } })).level).toBe("red");
     expect(meterReading(prompt, contextWindow(on(CLAUDE, "claude-opus-5-5"))).percent).toBe(8); // 84,000 / 1M
     expect(meterReading(prompt, contextWindow(on(CLAUDE, "claude-haiku-4-5"))).percent).toBe(42); // 84,000 / 200k

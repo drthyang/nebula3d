@@ -37,7 +37,7 @@ import type { Usage } from "./usage";
 
 /** Below this share of the window the meter is neutral; from it, amber. */
 export const AMBER_AT = 0.7;
-/** Above this share, red. */
+/** Above this share (the percent shown, rounded down), red. */
 export const RED_ABOVE = 0.9;
 
 // Claude's context windows by model id, most specific first (the claude-api
@@ -125,12 +125,17 @@ export interface MeterReading {
   level: MeterLevel;
 }
 
-/** The meter for a request of `prompt` tokens in window `w`. */
+/**
+ * The meter for a request of `prompt` tokens in window `w`. The percent is
+ * the share rounded down, and the level is read from it, so the number shown
+ * and its colour always agree: 69 % neutral, 70 % to 90 % amber, 91 % red.
+ */
 export function meterReading(prompt: number, w: ContextWindow): MeterReading {
   const used = prompt + w.reserve;
   const share = w.size ? used / w.size : null;
-  const level: MeterLevel = share === null ? "ok" : share > RED_ABOVE ? "red" : share >= AMBER_AT ? "amber" : "ok";
-  return { prompt, used, share, percent: share === null ? null : Math.round(share * 100), level };
+  const percent = share === null ? null : Math.floor(share * 100 + 1e-9);
+  const level: MeterLevel = percent === null ? "ok" : percent > RED_ABOVE * 100 ? "red" : percent >= AMBER_AT * 100 ? "amber" : "ok";
+  return { prompt, used, share, percent, level };
 }
 
 const n = (x: number): string => x.toLocaleString("en-US");
