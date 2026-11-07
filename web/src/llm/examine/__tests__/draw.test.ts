@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Slice } from "../../../api/types";
 import type { AgentStep } from "../../agent";
-import { legendCounts, MAX_PRIMITIVES, traceHoles, viewDraw, voxelsOnCut, type ViewContext } from "../draw";
+import { legend, legendCounts, mapEllipse, MAX_PRIMITIVES, traceHoles, viewDraw, voxelsOnCut, type ViewContext } from "../draw";
+import { inv3, mm } from "../linalg";
 import { overlaysOf, type OverlaySet } from "../overlays";
 
 // A slice on a grid of 0.1 r.l.u. from -n/20 … with NaN where `hole` says.
@@ -112,5 +113,116 @@ describe("a set on a view", () => {
     // the plane H = 1 lies 1.57 Å⁻¹ from the origin: past the counts.
     const off = viewDraw(cov, ctx({ stage: "raw", cut: 1, slice: slice(11) }));
     expect(off.hatches[0].outside).toBeNull();
+  });
+});
+
+describe("v2 on a view", () => {
+  const unit = (over: Partial<ViewContext> = {}): ViewContext => ctx({ sx: 1, sy: 1, ...over });
+
+  it("a spot on its cut within half a voxel (or its own reach), on the slice", () => {
+    const set = setOf("dpdf_peaks", {}, { features: [{ length_A: 0.3, size_sigma: 50, vectors_A: [[0, 0.3, 0.04]] }, { length_A: 0.5, size_sigma: -9, vectors_A: [[0, 0.2, 0.2]] }] });
+    // 0kl on the ΔPDF is not a section: yz is (x = cut).
+    const d = viewDraw(set, unit({ stage: "delta_pdf", plane: "yz", cut: 0, slice: slice(11) }));
+    expect(d.peaks.map((p) => [p.cls, p.X, p.Y, p.label])).toEqual([
+      ["dpos", 0.3, 0.04, "0.3 Å"],
+      ["dpos", -0.3, -0.04, "0.3 Å"],
+      ["dneg", 0.2, 0.2, "0.5 Å"],
+      ["dneg", -0.2, -0.2, "0.5 Å"],
+    ]);
+    // xy (z = cut): 0.04 lies within half a voxel (0.05) of z = 0, 0.2 does not.
+    expect(viewDraw(set, unit({ stage: "delta_pdf", plane: "xy", cut: 0, slice: slice(11) })).peaks.map((p) => p.cls)).toEqual(["dpos", "dpos"]);
+  });
+
+  it("a hole's spot reaches the cuts through it", () => {
+    const fillHoles = { nHoles: 1, holes: [{ hkl: [0.2, 0.2, 0.25] as [number, number, number], bias: 1, biasSigma: 5, voxels: 125 }] };
+    const set = setOf("texture_check", {}, { systematic_fill_bias: false }, { fillHoles });
+    // hk0 at L = 0: 0.25 r.l.u. off, within 2.5 voxels (∛125 / 2) of 0.1.
+    expect(viewDraw(set, ctx({ stage: "backfilled", plane: "hk0", slice: slice(11) })).counts).toEqual({ fillUp: 1 });
+    expect(viewDraw(set, ctx({ stage: "backfilled", plane: "hk0", cut: 0.6, slice: slice(11) })).counts).toEqual({});
+  });
+
+  it("an ellipse through the view's geometry: its half-axes and tilt", () => {
+    // A circle stays a circle under one scale; one scale per axis stretches it.
+    expect(mapEllipse(1, 2, 0.5, 0.5, 0, { sx: 2, sy: 2, angle: 90 })).toMatchObject({ cx: 2, cy: 4, rx: 1, ry: 1 });
+    const e = mapEllipse(0, 0, 1, 0.5, 0, { sx: 3, sy: 1, angle: 90 });
+    expect([e.rx, e.ry, e.angle]).toEqual([3, 0.5, 0].map((x) => expect.closeTo(x, 9)));
+    // Tilted 90° (y down): the long axis along y.
+    const t = mapEllipse(0, 0, 1, 0.5, 90, { sx: 1, sy: 1, angle: 90 });
+    expect(t.rx).toBeCloseTo(1, 9);
+    expect(Math.abs(t.angle)).toBeCloseTo(90, 6);
+  });
+
+  it("a footprint on the cuts within its width, its fit as the Bragg page draws it", () => {
+    const braggPeaks = [{ hkl: [0.2, 0.3, 0.02] as [number, number, number], widths: [0.05, 0.03, 0.04] as [number, number, number], principal: null, dirs: null }];
+    const set = setOf("bragg_peaks", {}, { n_peaks: 1, peaks: { cols: ["hkl", "resolution_limited"], rows: [[[0.2, 0.3, 0.02], [true, true, true]]] } }, { braggPeaks });
+    const d = viewDraw(set, unit({ stage: "bragg", plane: "hk0", cut: 0, slice: slice(11) }));
+    expect(d.ellipses).toHaveLength(1);
+    expect(d.ellipses![0]).toMatchObject({ cls: "fpRes", label: "0.2 0.3 0.02" });
+    expect(d.ellipses![0].e.rx).toBeCloseTo(0.05, 9);
+    expect(d.ellipses![0].e.ry).toBeCloseTo(0.03, 9);
+    // 0.05 off the cut is past its width along L (0.04): not on this cut.
+    expect(viewDraw(set, unit({ stage: "bragg", plane: "hk0", cut: -0.05, slice: slice(11) })).ellipses).toBeUndefined();
+  });
+
+  it("the UB turn: an arrow at each node of a node plane, across Q, scaled by a round factor", () => {
+    const ub = [[1.6, 0, 0], [0, 1.6, 0], [0, 0, 1.6]];
+    const t = 0.002;
+    const fitted = mm([[Math.cos(t), -Math.sin(t), 0], [Math.sin(t), Math.cos(t), 0], [0, 0, 1]], ub);
+    const set = setOf("ub_check", {}, { orientation_change_deg: 0.11 }, { ubTurn: { ub, fitted, cell: [0.2, 0.2, 0.2] } });
+    const d = viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0, slice: slice(11) }));
+    // A 11×11 grid of 0.1 r.l.u. from −0.5: nodes every 0.2 from −0.4 to 0.4, less the origin.
+    expect(d.arrows).toHaveLength(24);
+    for (const a of d.arrows!) expect(a.X * a.dX + a.Y * a.dY).toBeCloseTo(0, 9); // across Q
+    // About z, counter-clockwise: at (0.4, 0) the shift is along +K.
+    const east = d.arrows!.find((a) => Math.abs(a.X - 0.4) < 1e-9 && Math.abs(a.Y) < 1e-9)!;
+    expect(east.dY).toBeGreaterThan(0);
+    expect(Math.abs(east.dX)).toBeLessThan(1e-9);
+    const { notes, counts } = legend(set, { raw: d });
+    expect(notes.turn).toMatch(/^×\d+$/);
+    expect(counts.turn).toBe(24);
+    // The longest is at most 0.35 of the node spacing, more than a seventh of it.
+    const longest = Math.max(...d.arrows!.map((a) => Math.hypot(a.dX, a.dY)));
+    expect(longest).toBeLessThanOrEqual(0.35 * 0.2 + 1e-12);
+    expect(longest).toBeGreaterThan(0.35 * 0.2 / 2.5);
+    // Off a node plane: none.
+    expect(viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0.1, slice: slice(11) })).arrows).toBeUndefined();
+  });
+
+  it("the rotated copy's nodes within a voxel of the cut", () => {
+    const map = [[0.2, 0, 0], [0, 0.2, 0], [0, 0, 0.2]]; // its nodes every 0.2 r.l.u. (no turn, for the count)
+    const set = setOf("grain_check", {}, { far: [] }, { grains: { far: [], rotated: map } });
+    const d = viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0, slice: slice(11) }));
+    expect(d.counts.rotated).toBe(24);
+    expect(new Set(d.keys!.rotated).size).toBe(24);
+  });
+
+  it("a line along one of the view's axes, at its place, across the slice", () => {
+    const set = setOf("line_profile", {}, { stage: "raw", along: "K", through: { H: 0, L: 0.2 } });
+    // 0kl at H = 0: K along x, at L = 0.2.
+    const d = viewDraw(set, unit({ stage: "raw", plane: "0kl", cut: 0, slice: slice(11) }));
+    expect(d.lines).toEqual([{ cls: "line", style: "full", X0: -0.5, Y0: 0.2, X1: 0.5, Y1: 0.2 }]);
+    // hk0 at L = 0 does not hold it.
+    expect(viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0, slice: slice(11) })).lines).toBeUndefined();
+  });
+
+  it("counts a thing once over a page's views of one stage", () => {
+    const set = setOf("dpdf_peaks", {}, { features: [{ length_A: 0, size_sigma: 50, vectors_A: [[0, 0, 0]] }, { length_A: 0.3, size_sigma: 40, vectors_A: [[0.3, 0, 0]] }] });
+    const views = (["xy", "xz", "yz"] as const).map((plane) => ({ stage: "delta_pdf", draw: viewDraw(set, unit({ stage: "delta_pdf", plane, cut: 0, slice: slice(11) })) }));
+    // The origin's on all three sections, ±0.3 x on xy and xz: three things.
+    expect(legend(set, views).counts.dpos).toBe(3);
+  });
+
+  it("an oblique view's points through its geometry", () => {
+    const set = setOf("grain_check", {}, { far: [] }, { grains: { far: [[0, 0.3, 0]], rotated: null } });
+    const d = viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0, angle: 120, slice: slice(11) }));
+    expect(d.peaks[0].X).toBeCloseTo(0.3 * Math.cos((120 * Math.PI) / 180), 9);
+    expect(d.peaks[0].Y).toBeCloseTo(0.3 * Math.sin((120 * Math.PI) / 180), 9);
+  });
+
+  it("inverts a 3×3 matrix", () => {
+    const m = [[2, 1, 0], [0, 1, 3], [1, 0, 1]];
+    const p = mm(m, inv3(m)!);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) expect(p[i][j]).toBeCloseTo(i === j ? 1 : 0, 12);
+    expect(inv3([[1, 2, 3], [2, 4, 6], [0, 0, 1]])).toBeNull();
   });
 });

@@ -6,26 +6,22 @@
 // offers "Go there" (the step's figure). The Highlights switch hides the
 // overlays, not the bar.
 
+import { TONE } from "../../components/highlightTones";
 import { HelpTip } from "../../components/ui";
 import { useNavStore } from "../../state/navStore";
-import type { ClassDef, ClassId, Tone } from "../examine/overlays";
+import type { ClassDef, ClassId } from "../examine/overlays";
 import { useExamineStore, type ShownSet } from "../examine/store";
 import { useLlmSettings } from "../settings";
 import { openView } from "../tools/openView";
 
-const TONE: Record<Tone, string> = {
-  red: "var(--red)",
-  amber: "var(--amber)",
-  green: "var(--green)",
-  cyan: "var(--hl-cyan)",
-  grey: "var(--hl-grey)",
-  white: "#ffffff",
-  r2: "var(--r2)",
-  accent: "var(--accent-hi)",
-};
 
 // The classes counted on the cut; the bands, hatches and the coverage's lines are shown without a number.
-const COUNTED = new Set<ClassId>(["node", "sharp", "broad", "protected", "holes", "r2", "AL", "LEFT", "GRID", "XTAL", "NJ"]);
+const COUNTED = new Set<ClassId>([
+  "node", "sharp", "broad", "protected", "holes", "r2", "AL", "LEFT", "GRID", "XTAL", "NJ", "RM",
+  "fpRes", "fpBroad", "dpos", "dneg", "fillUp", "fillDown", "far", "rotated",
+]);
+// Classes with no chip where they draw nothing, beside the counted ones: the UB turn's arrows, a profile's line.
+const HIDDEN_WHEN_NONE = new Set<ClassId>([...COUNTED, "turn", "line"]);
 
 /** A class's swatch, as the views draw it. */
 function Swatch({ c }: { c: ClassDef }) {
@@ -49,11 +45,39 @@ function Swatch({ c }: { c: ClassDef }) {
           <rect x="0.5" y="0.5" width="11" height="11" fill="none" stroke="var(--border-strong)" />
         </svg>
       );
+    case "fpRes":
+    case "fpBroad":
+      return <svg width="14" height="12" aria-hidden="true"><ellipse cx="7" cy="6" rx="5.5" ry="3.6" transform="rotate(-25 7 6)" fill="none" stroke={col} strokeWidth="1.6" strokeDasharray={c.id === "fpBroad" ? "2.5 1.8" : undefined} /></svg>;
+    case "dpos":
+    case "dneg":
+      return (
+        <svg width="12" height="12" aria-hidden="true">
+          <circle cx="6" cy="6" r="4.8" fill="none" stroke={col} strokeWidth="1.5" />
+          <path d={c.id === "dpos" ? "M3.8 6h4.4M6 3.8v4.4" : "M3.8 6h4.4"} stroke={col} strokeWidth="1.3" />
+        </svg>
+      );
+    case "turn":
+      return <svg width="16" height="12" aria-hidden="true"><path d="M2 9L13 3M9.2 2.6L13 3L11.3 6.4" fill="none" stroke={col} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+    case "fillUp":
+      return <svg width="12" height="12" aria-hidden="true"><path d="M6 1.5L10.5 9.8H1.5Z" fill="none" stroke={col} strokeWidth="1.6" strokeLinejoin="round" /></svg>;
+    case "fillDown":
+      return <svg width="12" height="12" aria-hidden="true"><path d="M6 10.5L10.5 2.2H1.5Z" fill="none" stroke={col} strokeWidth="1.6" strokeLinejoin="round" /></svg>;
+    case "far":
+      return <svg width="12" height="12" aria-hidden="true"><path d="M2.5 2.5L9.5 9.5M9.5 2.5L2.5 9.5" stroke={col} strokeWidth="1.8" strokeLinecap="round" /></svg>;
+    case "rotated":
+      return <svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="3.6" fill="none" stroke={col} strokeWidth="1.8" /></svg>;
+    case "line":
+      return (
+        <svg width="16" height="12" aria-hidden="true">
+          <rect x="0" y="3" width="16" height="6" fill={col} fillOpacity="0.18" />
+          <line x1="0" y1="6" x2="16" y2="6" stroke={col} strokeWidth="1.4" strokeDasharray="4 2.5" />
+        </svg>
+      );
     case "judged":
     case "pedestal":
       return <svg width="16" height="12" aria-hidden="true"><rect x="1" y="2" width="14" height="8" fill={col} fillOpacity="0.18" stroke={col} strokeDasharray="3 2" /></svg>;
     default: {
-      const dash = { AL: "4 3", GRID: "1.5 2.5", XTAL: "5 3", NJ: "1 3", edges: "4 3", band: "4 3", reach: "6 2" }[c.id as string];
+      const dash = { AL: "4 3", RM: "2 2", GRID: "1.5 2.5", XTAL: "5 3", NJ: "1 3", edges: "4 3", band: "4 3", reach: "6 2" }[c.id as string];
       return <svg width="16" height="12" aria-hidden="true"><line x1="1" y1="6" x2="15" y2="6" stroke={col} strokeWidth={c.id === "LEFT" ? 2 : 1.6} strokeDasharray={dash} /></svg>;
     }
   }
@@ -76,10 +100,12 @@ function goToStep(shown: { turn: number | null; stepId: string }): void {
 
 interface Props {
   shown: ShownSet | null;
-  counts: Partial<Record<ClassId, number>>; // on this cut, per class (draw.ts legendCounts)
+  counts: Partial<Record<ClassId, number>>; // on this cut, per class (draw.ts legend)
+  notes?: Partial<Record<ClassId, string>>; // a chip's word in place of its count (the UB turn's scale)
+  stages?: readonly string[]; // the page's views: a class that draws on none of them has no chip
 }
 
-export function ExamineBar({ shown, counts }: Props) {
+export function ExamineBar({ shown, counts, notes = {}, stages }: Props) {
   const running = useExamineStore((s) => s.running);
   const enabled = useExamineStore((s) => s.enabled);
   const off = useExamineStore((s) => s.off);
@@ -128,8 +154,10 @@ export function ExamineBar({ shown, counts }: Props) {
         <div className="ex-legend" role="group" aria-label="Highlights legend">
           {shown.set.classes.map((c) => {
             const on = !off.includes(c.id);
+            // A class that draws on no view of this page has no chip.
+            if (stages && !stages.some((st) => c.views[st])) return null;
             // A class with nothing on this cut has no chip (one turned off keeps its chip, to turn it on).
-            if (on && COUNTED.has(c.id) && !counts[c.id]) return null;
+            if (on && HIDDEN_WHEN_NONE.has(c.id) && !counts[c.id]) return null;
             return (
               <button
                 key={c.id}
@@ -147,7 +175,7 @@ export function ExamineBar({ shown, counts }: Props) {
                   </span>
                 )}
                 {c.label}
-                {COUNTED.has(c.id) && <b>{counts[c.id] ?? 0}</b>}
+                {notes[c.id] ? <b>{notes[c.id]}</b> : COUNTED.has(c.id) && <b>{counts[c.id] ?? 0}</b>}
               </button>
             );
           })}

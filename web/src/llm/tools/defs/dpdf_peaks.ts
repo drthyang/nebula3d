@@ -69,10 +69,15 @@ export const dpdf_peaks: ChatTool = {
       origin_disk_A: roundSig(f.origin_radius, 3),
       extrema_above_threshold: f.n_extrema,
     };
+    // Every vector of each feature listed, for the Highlights (examine/data.ts).
+    const dpdfVectors = f.groups.flatMap((g, rank) =>
+      g.vectors.map((v) => ({ v: [v[0], v[1], v[2]] as [number, number, number], size: (g.sign > 0 ? 1 : -1) * Math.abs(g.size_sigma), length: g.length, rank })),
+    );
     const top = f.groups[0];
     const where = top ? `(${vec(top.vectors_rlu[0] ?? top.vectors[0], 3)!.join(", ")})${top.vectors_rlu[0] ? " r.l.u." : " Å"}` : "";
     return {
       result,
+      overlay: { dpdfVectors },
       summary: top
         ? `${f.n_extrema} extrema above ${f.min_sigma}σ; strongest ${sign(top.sign)} at ${where}, ${roundSig(top.length, 3)} Å, ${roundSig(top.size_sigma, 3)}σ`
         : `no extremum above ${f.min_sigma}σ outside the origin's disk`,

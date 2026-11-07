@@ -17,6 +17,9 @@ import { checkInRange, cleanupView, HKL, planeLabel, RECIP_FIXED, RECIP_PLANES, 
 import { described, description } from "../shared/describe";
 import type { ChatTool } from "../types";
 
+// The most holes the Highlights draw (examine/draw.ts MAX_PRIMITIVES).
+const HOLES_DRAWN = 400;
+
 /** The limits the backend judged the fills by, where they are not the rule's (FILL_BIAS_LIMITS); else null. */
 const otherLimits = (t: VolumeTexture): string | null => {
   const used = { minSigma: t.min_sigma, oneWay: t.one_way, minHoles: t.min_holes, floor: t.floor };
@@ -65,7 +68,8 @@ export const texture_check: ChatTool = {
     // Every hole of the volume (the one farthest outside its range listed,
     // for the figure), and each cut's azimuthal texture, which only a cut measures.
     const [volume, rows] = await Promise.all([
-      fetchVolumeTexture(ids[2], 1, FILL_BIAS_LIMITS),
+      // The holes farthest outside their range, for the figure and the Highlights; the summary is over every hole.
+      fetchVolumeTexture(ids[2], HOLES_DRAWN, FILL_BIAS_LIMITS),
       Promise.all(
         cuts.map(async ({ plane, value }) => {
           const [before, punched, filled] = await Promise.all(
@@ -99,8 +103,18 @@ export const texture_check: ChatTool = {
         : cuts.length
           ? cleanupView(cuts[0].plane, cuts[0].value)
           : undefined;
+    // The holes filled outside their range, beside the result (examine/data.ts).
+    const fillHoles = {
+      nHoles: volume.n_holes,
+      holes: volume.holes.flatMap((h) =>
+        h.not_judged === null && h.bias != null && h.bias !== 0 && h.centre_hkl.length === 3
+          ? [{ hkl: [h.centre_hkl[0], h.centre_hkl[1], h.centre_hkl[2]] as [number, number, number], bias: h.bias, biasSigma: h.bias_sigma, voxels: h.voxels }]
+          : [],
+      ),
+    };
     return {
       result,
+      overlay: { fillHoles },
       outcomes: [judge("texture", result)],
       summary: said + (ratios.length ? ` · azimuthal ratio ${Math.min(...ratios)}–${Math.max(...ratios)}` : ""),
       view,

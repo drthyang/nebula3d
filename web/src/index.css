@@ -37,6 +37,9 @@
   --hl-cyan: #00e5ff;
   --hl-grey: rgba(214, 219, 228, 0.9);
   --hl-hatch: rgba(214, 219, 228, 0.42);
+  /* the Highlights' "fewer" (a ΔPDF − feature, a hole filled below) and a second grain */
+  --hl-blue: #5ab0ff;
+  --hl-teal: #2ee6c0;
 
   --radius: 10px;
   --radius-sm: 7px;

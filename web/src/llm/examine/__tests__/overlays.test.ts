@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentStep } from "../../agent";
 import { toolsWhere } from "../../tools";
 import type { OverlayData } from "../data";
-import { examining, fccLines, leftoverClass, OVERLAYS, overlaysOf, parseStageShells, ringShells, stepKey } from "../overlays";
+import { examining, hklLabel, leftoverClass, OVERLAYS, overlaysOf, parseStageShells, ringShells, stepKey, ubOmega } from "../overlays";
 
 const step = (name: string, args: Record<string, unknown>, result: unknown, overlay?: OverlayData): AgentStep => ({
   id: "0:c1",
@@ -30,12 +30,21 @@ describe("the registry", () => {
     const all = new Set(toolsWhere(() => true));
     for (const name of Object.keys(OVERLAYS)) expect(all.has(name), name).toBe(true);
   });
-  it("draws for v1's three tools alone", () => {
+  it("draws for v1's three tools and v2's six", () => {
     expect(Object.entries(OVERLAYS).filter(([, e]) => typeof e === "function").map(([n]) => n).sort()).toEqual([
       "assess_stage",
+      "bragg_peaks",
+      "dpdf_peaks",
+      "grain_check",
+      "line_profile",
       "measure_reciprocal_cut",
       "qmax_coverage",
+      "texture_check",
+      "ub_check",
     ]);
+  });
+  it("defers the radial profile's sparkline alone", () => {
+    expect(Object.entries(OVERLAYS).filter(([, e]) => typeof e === "object" && "later" in e).map(([n]) => n)).toEqual(["radial_profile"]);
   });
 });
 
@@ -133,13 +142,7 @@ describe("the ring shells", () => {
     expect(parseStageShells(undefined)).toBeNull();
   });
 
-  it("lists an fcc lattice's lines (h, k, l unmixed)", () => {
-    const lines = fccLines(4.0495, 6.3);
-    expect(lines.map((l) => l.hkl)).toEqual(["111", "200", "220", "311", "222", "400"]);
-    expect(lines[0].q).toBeCloseTo((2 * Math.PI * Math.sqrt(3)) / 4.0495, 6);
-  });
-
-  it("codes each shell: LEFT, GRID, NJ, AL, XTAL, one per |Q|", () => {
+  it("codes each shell: LEFT, GRID, NJ, AL, RM, XTAL, one per |Q|", () => {
     const a = 4.0495;
     const q111 = (2 * Math.PI * Math.sqrt(3)) / a; // 2.687
     const q200 = (2 * Math.PI * 2) / a; // 3.103
@@ -155,7 +158,13 @@ describe("the ring shells", () => {
         h0l: { ring_residuals: [] },
       },
     };
-    const shells = ringShells(rings, { ringsAtGrid: [6.1] });
+    const q220 = (2 * Math.PI * Math.sqrt(8)) / a;
+    const removed = [
+      { q: q200, al: true, code: "Al200" },
+      { q: q220, al: true, code: "Al220" },
+      { q: 3.62, al: false, code: null },
+    ];
+    const shells = ringShells(rings, { ringsAtGrid: [6.1], ringsRemoved: removed });
     const byQ = (q: number) => shells.find((s) => Math.abs(s.q - q) < 0.05)?.cls;
     expect(byQ(1.41)).toBe("XTAL");
     expect(byQ(q111)).toBe("GRID"); // left by the stage on its grid, an Al line though it is
@@ -163,7 +172,10 @@ describe("the ring shells", () => {
     expect(byQ(4.8)).toBe("NJ");
     expect(byQ(5.5)).toBe("NJ");
     expect(byQ(6.1)).toBe("GRID");
-    expect(byQ((2 * Math.PI * Math.sqrt(8)) / a)).toBe("AL"); // 220: an Al line, not left
+    expect(byQ(q220)).toBe("AL"); // removed on an Al line, not left
+    expect(byQ(3.62)).toBe("RM"); // removed on none
+    // Exactly the record's Al shells: no other Al line of the fitted lattice (3.1 is left, so LEFT).
+    expect(shells.filter((s) => s.cls === "AL").map((s) => s.q)).toEqual([q220]);
     // one shell per |Q|
     const qs = shells.map((s) => s.q);
     for (let i = 1; i < qs.length; i++) expect(qs[i] - qs[i - 1]).toBeGreaterThan(0.05);
@@ -177,9 +189,21 @@ describe("the ring shells", () => {
     expect(ringShells(rings)).toEqual([{ cls: "LEFT", q: 2.5, tick: "down" }]);
   });
 
-  it("leaves out a confirmed ring the removal took out cleanly", () => {
+  it("draws a confirmed ring the removal took out cleanly as the record lists it", () => {
     const rings = { shells_judged: [{ at: 2.5, ring: true }], per_plane: { hk0: { ring_residuals: [{ at: 2.5, residual_fraction: 0.001, significant: false }] } } };
+    // Without the record's list, nothing is drawn as removed.
     expect(ringShells(rings)).toEqual([]);
+    expect(ringShells(rings, { ringsRemoved: [{ q: 2.52, al: true, code: "Al200" }] })).toEqual([{ cls: "AL", q: 2.52 }]);
+    expect(ringShells(rings, { ringsRemoved: [{ q: 2.52, al: false, code: "Sn200" }] })).toEqual([{ cls: "RM", q: 2.52 }]);
+    // Confirmed, not left, and not in the record's list: removed, on no Al line it names.
+    expect(ringShells(rings, { ringsRemoved: [] })).toEqual([{ cls: "RM", q: 2.5 }]);
+  });
+
+  it("draws as many Al shells as the record says it removed (the 9-vs-8 bug)", () => {
+    const removed = [2.69, 3.1, 4.39, 5.15, 5.38, 6.21, 6.77, 6.94].map((q) => ({ q, al: true, code: "Al" }));
+    const set = overlaysOf(step("assess_stage", { stage: "rings" }, { rings: { shells_judged: [], stage_shells: "Al a=4.049 Å; removed 8 (Al 8)" } }, { ringsRemoved: removed }))!;
+    expect(set.items.filter((i) => i.cls === "AL")).toHaveLength(8);
+    expect(set.where).toBe("0 shells judged in 3D · removed 8 (Al 8)");
   });
 
   it("with the 3D test not run, every significant bump is not judged", () => {
@@ -262,5 +286,167 @@ describe("a step", () => {
     expect(examining({ name: "symmetry_check", args: {} })).toEqual({ title: "Symmetry", views: {} });
     expect(examining({ name: "read_skill", args: {} })).toBeNull();
     expect(examining({ name: "run_pipeline", args: {} })).toBeNull();
+  });
+});
+
+describe("v2: the Bragg peaks", () => {
+  const result = {
+    n_peaks: 120,
+    sorted_by: "significance",
+    peaks: {
+      cols: ["hkl", "q", "significance", "resolution_limited"],
+      rows: [
+        [[2, 0, 0], 3.2, 40, [true, true, true]],
+        [[1, 1, 1], 2.8, 30, [true, false, true]],
+        [[0, 0, 2], 3.2, 20, null],
+      ],
+    },
+  };
+  const fp = (hkl: [number, number, number]) => ({ hkl, widths: [0.02, 0.03, 0.04] as [number, number, number], principal: null, dirs: null });
+
+  it("draws each listed peak's footprint: solid resolution-limited, dashed broadened; the first 8 named", () => {
+    const set = overlaysOf(step("bragg_peaks", {}, result, { braggPeaks: [fp([2, 0, 0]), fp([1, 1, 1]), fp([0, 0, 2])] }))!;
+    expect(set.title).toBe("Bragg peaks");
+    expect(set.where).toBe("3 of 120 peaks by significance · 2 resolution-limited · 1 broadened");
+    expect(set.items.map((i) => [i.kind, i.cls, "label" in i ? i.label : null])).toEqual([
+      ["footprint", "fpRes", "2 0 0"],
+      ["footprint", "fpBroad", "1 1 1"],
+      ["footprint", "fpRes", "0 0 2"],
+    ]);
+    expect(set.views).toEqual({ bragg: "primary", raw: "reading" });
+    expect(set.measured).toEqual(["braggpunched"]);
+  });
+
+  it("without the fits beside the result, a spot at each peak", () => {
+    const set = overlaysOf(step("bragg_peaks", {}, result))!;
+    expect(set.items.every((i) => i.kind === "spot")).toBe(true);
+  });
+
+  it("draws nothing without a profile", () => {
+    expect(overlaysOf(step("bragg_peaks", {}, { has_profile: false }))).toBeNull();
+  });
+});
+
+describe("v2: the ΔPDF features", () => {
+  const result = {
+    grouped_by: "point group",
+    features: [
+      { length_A: 2.76, size_sigma: 1520, n_vectors: 2, vectors_A: [[2.76, 0, 0], [0, 2.76, 0]] },
+      { length_A: 3.9, size_sigma: -40, n_vectors: 1, vectors_A: [[3.9, 0, 0]] },
+    ],
+    threshold_sigma: 5,
+    extrema_above_threshold: 31,
+  };
+
+  it("a ring at every vector and its opposite, + red and − blue, named by length", () => {
+    const set = overlaysOf(step("dpdf_peaks", {}, result))!;
+    expect(set.where).toBe("2 features of 31 extrema above 5σ · strongest + at 2.76 Å, 1520σ");
+    const spots = set.items.filter((i) => i.kind === "spot");
+    expect(spots).toHaveLength(6);
+    expect(spots.slice(0, 2)).toEqual([
+      { kind: "spot", cls: "dpos", at: [2.76, 0, 0], size: 1520, label: "2.76 Å" },
+      { kind: "spot", cls: "dpos", at: [-2.76, 0, 0], size: 1520, label: "2.76 Å" },
+    ]);
+    expect(spots.filter((i) => i.cls === "dneg")).toHaveLength(2);
+    expect(set.views).toEqual({ delta_pdf: "primary" });
+  });
+
+  it("every vector the backend gave, where the data beside the result holds them", () => {
+    const dpdfVectors = [{ v: [1, 2, 3] as [number, number, number], size: 9, length: 3.74, rank: 0 }];
+    const set = overlaysOf(step("dpdf_peaks", {}, result, { dpdfVectors }))!;
+    expect(set.items.map((i) => (i.kind === "spot" ? i.at : null))).toEqual([[1, 2, 3], [-1, -2, -3]]);
+  });
+});
+
+describe("v2: the UB turn", () => {
+  const ub = [[1.6, 0, 0], [0, 1.6, 0], [0, 0, 1.6]];
+  // A turn of 0.01 rad about z: fitted = R · ub.
+  const t = 0.01;
+  const fitted = [[1.6 * Math.cos(t), -1.6 * Math.sin(t), 0], [1.6 * Math.sin(t), 1.6 * Math.cos(t), 0], [0, 0, 1.6]];
+
+  it("ω from the two UBs: the turn alone", () => {
+    const w = ubOmega(ub, fitted)!;
+    expect(w[0]).toBeCloseTo(0, 9);
+    expect(w[1]).toBeCloseTo(0, 9);
+    expect(w[2]).toBeCloseTo(Math.sin(t), 9);
+    // A cell's change alone (symmetric) turns nothing.
+    expect(Math.hypot(...ubOmega(ub, [[1.7, 0, 0], [0, 1.6, 0], [0, 0, 1.6]])!)).toBe(0);
+  });
+
+  it("maps ub_check to arrows on the raw view and the Bragg page", () => {
+    const r = { verdict: "x", orientation_change_deg: 0.573, axis_uvw: [0, 0, 1], rms_start: 0.012, rms: 0.004 };
+    const set = overlaysOf(step("ub_check", {}, r, { ubTurn: { ub, fitted, cell: [1, 1, 1] } }))!;
+    expect(set.where).toBe("turned 0.573° about [0 0 1] · RMS 0.012 → 0.004 Å⁻¹");
+    expect(set.items).toHaveLength(1);
+    expect(set.items[0]).toMatchObject({ kind: "turn", cls: "turn", cell: [1, 1, 1] });
+    expect(set.views).toEqual({ raw: "primary", bragg: "reading" });
+    // No turn (a symmetrised volume's fit), or no UBs beside the result: nothing.
+    expect(overlaysOf(step("ub_check", {}, r, { ubTurn: { ub, fitted: ub, cell: [1, 1, 1] } }))).toBeNull();
+    expect(overlaysOf(step("ub_check", {}, r))).toBeNull();
+  });
+});
+
+describe("v2: the fill's holes", () => {
+  it("▲ above and ▼ below their range, drawn on the cuts through each", () => {
+    const fillHoles = {
+      nHoles: 300,
+      holes: [
+        { hkl: [1, 0, 0] as [number, number, number], bias: 2, biasSigma: 6.1, voxels: 27 },
+        { hkl: [0, 2, 0] as [number, number, number], bias: -1, biasSigma: -4, voxels: 1 },
+      ],
+    };
+    const set = overlaysOf(step("texture_check", {}, { systematic_fill_bias: false, n_judged: 280 }, { fillHoles }))!;
+    expect(set.where).toBe("no systematic fill bias · 1 filled above their range, 1 below (of 280 judged)");
+    expect(set.items).toEqual([
+      { kind: "spot", cls: "fillUp", at: [1, 0, 0], size: 6.1, tolVoxels: 1.5, label: "+6.1σ" },
+      { kind: "spot", cls: "fillDown", at: [0, 2, 0], size: 4, tolVoxels: 0.5, label: "−4σ" },
+    ]);
+    expect(set.views).toEqual({ backfilled: "primary", braggpunched: "reading" });
+    expect(overlaysOf(step("texture_check", {}, { systematic_fill_bias: false }, { fillHoles: { nHoles: 3, holes: [] } }))).toBeNull();
+  });
+});
+
+describe("v2: the grains", () => {
+  const r = { judged: 40, near_bragg_nodes: 2, far: [{ hkl: [0.5, 0.5, 0], q: 1, offset_q: 0.4 }], rotated_copy: { indexed: 31, misorientation_deg: 12.5 }, random_control: 3 };
+  it("✕ at every image of the far orbits; the rotated copy's nodes where it explains them", () => {
+    const map = [[0.98, -0.2, 0], [0.2, 0.98, 0], [0, 0, 1]];
+    const set = overlaysOf(step("grain_check", {}, r, { grains: { far: [[0.5, 0.5, 0], [-0.5, 0.5, 0]], rotated: map } }))!;
+    expect(set.where).toBe("a rotated copy indexes 31 of 40 orbits (random 3), 12.5° off · 1 far from any node");
+    expect(set.items).toEqual([
+      { kind: "spot", cls: "far", at: [0.5, 0.5, 0], size: 1 },
+      { kind: "spot", cls: "far", at: [-0.5, 0.5, 0], size: 1 },
+      { kind: "lattice", cls: "rotated", map },
+    ]);
+  });
+  it("from the result alone, the far orbits it lists", () => {
+    const set = overlaysOf(step("grain_check", {}, r))!;
+    expect(set.items).toEqual([{ kind: "spot", cls: "far", at: [0.5, 0.5, 0], size: 1 }]);
+  });
+});
+
+describe("v2: a line profile", () => {
+  it("the line on its stage's view", () => {
+    const r = { stage: "flattened", along: "H", through: { K: 0.333, L: 0 }, units: "r.l.u.", max: { at: 1, value: 3.2 } };
+    const set = overlaysOf(step("line_profile", { stage: "flattened", along: "H" }, r))!;
+    expect(set.where).toBe("flattened along H at K = 0.333, L = 0 · max 3.2 at 1");
+    expect(set.items).toEqual([{ kind: "line", cls: "line", along: 0, through: [0, 0.333, 0] }]);
+    expect(set.classes[0].views).toEqual({ flattened: "full" });
+    expect(set.views).toEqual({ flattened: "primary" });
+  });
+  it("on the ΔPDF, x y z", () => {
+    const r = { stage: "delta_pdf", along: "z", through: { x: 1.5, y: 0 } };
+    expect(overlaysOf(step("line_profile", {}, r))!.items).toEqual([{ kind: "line", cls: "line", along: 2, through: [1.5, 0, 0] }]);
+  });
+});
+
+describe("v2: what runs", () => {
+  it("names the v2 tools and the views they read", () => {
+    expect(examining({ name: "bragg_peaks", args: {} })).toEqual({ title: "Bragg peaks", views: { bragg: "primary", raw: "reading" } });
+    expect(examining({ name: "dpdf_peaks", args: {} })).toEqual({ title: "ΔPDF features", views: { delta_pdf: "primary" } });
+    expect(examining({ name: "line_profile", args: { stage: "raw" } })).toEqual({ title: "A line profile", views: { raw: "primary" } });
+  });
+  it("names an hkl", () => {
+    expect(hklLabel([2, 0, -1])).toBe("2 0 -1");
+    expect(hklLabel([1.5, 0.3333, 0])).toBe("1.5 0.33 0");
   });
 });

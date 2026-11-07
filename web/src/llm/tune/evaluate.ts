@@ -5,7 +5,7 @@
 // The numbers are the same pure metrics the chat context uses.
 
 import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy, fetchShellFloors } from "../../api/client";
-import type { Dataset } from "../../api/types";
+import type { Dataset, RingDiagnostics } from "../../api/types";
 import { declaringMeta, dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
 import { offLatticeBunching } from "../metrics/bunching";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
@@ -16,7 +16,7 @@ import type { GridSlice } from "../metrics/sliceStats";
 import { operationSymmetry, pointGroup, sectionSymmetry, transpose } from "../metrics/symmetry";
 import { judge, pedestalOfVolume, shownWeight, UNROUNDED, WEIGHT_FIGURES, type Unrounded } from "../verdicts/rules";
 import type { TuneStage } from "./catalog";
-import { withOverlayData, type LeftoverPeak } from "../examine/data";
+import { withOverlayData, type LeftoverPeak, type OverlayData } from "../examine/data";
 
 const RECIP_CUTS: Cut[] = [
   { plane: "hk0", value: 0 },
@@ -34,6 +34,15 @@ const DPDF_CUTS: Cut[] = [
 // writes), for the ΔPDF's rule.
 // What its overlays draw rides beside it, out of every copy (examine/data.ts).
 export type StageEvaluation = Record<string, unknown> & { [UNROUNDED]?: Unrounded };
+
+/** What the ring stage's record gives the overlays (examine/data.ts): the shells left on its grid, and those it removed. */
+function ringOverlay(atGrid: number[] | undefined, removed: RingDiagnostics["removed_shells"]): OverlayData | null {
+  const data: OverlayData = {
+    ...(atGrid?.length ? { ringsAtGrid: [...atGrid] } : {}),
+    ...(removed ? { ringsRemoved: removed.map((s) => ({ q: s.q, al: s.al, code: s.code })) } : {}),
+  };
+  return Object.keys(data).length ? data : null;
+}
 
 // Bumps within this |Q| (Å⁻¹) on the planes are one shell, judged once.
 const RING_MATCH_Q = 0.1;
@@ -300,7 +309,7 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
           ring_residuals: residuals,
         };
       }),
-    }, atGrid?.length ? { ringsAtGrid: [...atGrid] } : null);
+    }, ringOverlay(atGrid, record?.removed_shells));
   }
   if (stage === "punch") {
     const rawId = hklVolumeId(dataset);

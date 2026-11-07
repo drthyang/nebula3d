@@ -4,12 +4,46 @@
 import { fetchBraggProfile } from "../../../api/client";
 import { usePipelineStore } from "../../../state/pipelineStore";
 import { declaringMeta, safe } from "../../context/loadContext";
-import { grainCheck, shownGrains } from "../../metrics/grains";
+import { grainCheck, shownGrains, type GrainFacts } from "../../metrics/grains";
+import type { OverlayData } from "../../examine/data";
+import { inv3 } from "../../examine/linalg";
 import { skillsOn } from "../../skills";
 import { judge } from "../../verdicts/rules";
 import { num } from "../shared/args";
 import { described, description } from "../shared/describe";
 import { ToolArgError, type ChatTool } from "../types";
+
+type V3 = [number, number, number];
+type M3 = number[][];
+const mv = (m: M3, v: readonly number[]): V3 => [0, 1, 2].map((i) => m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2]) as V3;
+
+/**
+ * What the Highlights draw of the check (examine/data.ts): every image of the
+ * far orbits under the declared operations, and, where the verdict says the
+ * rotated copy explains the orbits (a second grain, or the UB off), the map
+ * from its nodes n to H K L: UB⁻¹ · R · UB · diag(cell).
+ */
+function grainOverlay(facts: GrainFacts, reasons: readonly string[], ops: readonly M3[], ub: M3, cell: V3): NonNullable<OverlayData["grains"]> {
+  const far: V3[] = [];
+  for (const f of facts.far) {
+    for (const op of ops) {
+      const im = mv(op, f.hkl);
+      if (!far.some((x) => Math.hypot(x[0] - im[0], x[1] - im[1], x[2] - im[2]) < 1e-3)) far.push(im);
+    }
+  }
+  const explains = reasons.includes("second grain") || reasons.includes("UB off");
+  const inv = inv3(ub);
+  const R = facts.rotation;
+  const rotated = explains && R && inv
+    ? [0, 1, 2].map((i) => [0, 1, 2].map((j) => {
+        // (UB⁻¹ · R · UB)[i][j] · cell[j]
+        let sum = 0;
+        for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) sum += inv[i][a] * R[a][b] * ub[b][j];
+        return sum * cell[j];
+      }))
+    : null;
+  return { far, rotated };
+}
 
 export const grain_check: ChatTool = {
   name: "grain_check",
@@ -51,6 +85,7 @@ export const grain_check: ChatTool = {
       result: { ...g, off_lattice_peaks: peaks.length, declared_symmetry: meta.symmetry ?? null, punch_cell: cell },
       summary: g.verdict.length > 160 ? `${g.verdict.slice(0, 157)}…` : g.verdict,
       outcomes: [outcome],
+      overlay: { grains: grainOverlay(facts, outcome.reasons, ops, meta.ub_matrix as M3, cell) },
     };
   },
 };

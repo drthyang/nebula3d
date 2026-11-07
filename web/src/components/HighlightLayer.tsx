@@ -13,17 +13,8 @@ import { useViewSize } from "./viewSize";
 import { displayToPixel, type Viewport } from "./viewport";
 import type { DrawnShell, ViewDraw } from "../llm/examine/draw";
 import type { ClassId, Tone } from "../llm/examine/overlays";
+import { TONE } from "./highlightTones";
 
-const TONE: Record<Tone, string> = {
-  red: "var(--red)",
-  amber: "var(--amber)",
-  green: "var(--green)",
-  cyan: "var(--hl-cyan)",
-  grey: "var(--hl-grey)",
-  white: "#ffffff",
-  r2: "var(--r2)",
-  accent: "var(--accent-hi)",
-};
 const HALO = "rgba(8, 10, 14, 0.72)";
 
 interface Props {
@@ -32,8 +23,9 @@ interface Props {
   codes: Partial<Record<ClassId, string>>; // a shell's code chip (AL, LEFT, …)
   off: readonly ClassId[];
   viewport: Viewport;
-  sx: number; // display units per r.l.u. (the paths are in r.l.u.)
+  sx: number; // display units per slice unit (the paths are in slice units)
   sy: number;
+  angle?: number; // the angle between the slice's axes (deg, default 90)
   extent: { x_axis: number[]; y_axis: number[] }; // the slice's sample axes: clipped to them
   primary: boolean; // the view the check reads: shell codes and the strongest peak's σ
 }
@@ -61,6 +53,8 @@ function onEllipse(p: DisplayEllipse, a: number): [number, number] {
 const DASH: Partial<Record<ClassId, string>> = {
   broad: "4 3",
   AL: "5 3",
+  RM: "2 2",
+  fpBroad: "3 2",
   GRID: "1.5 2.5",
   XTAL: "6 3",
   NJ: "1 3",
@@ -81,7 +75,27 @@ function chip(x: number, y: number, text: string, color: string, key: string) {
   );
 }
 
-export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, extent, primary }: Props) {
+// A label beside a mark: its text over a dark plate, in the mark's colour.
+function label(x: number, y: number, text: string, color: string, key: string) {
+  const w = 6 * text.length + 6;
+  return (
+    <g key={key} className="hl-label">
+      <rect x={x - w / 2} y={y - 6.5} width={w} height={13} rx={2} fill="rgba(11, 13, 16, 0.78)" />
+      <text x={x} y={y + 0.5} textAnchor="middle" dominantBaseline="central" fill={color} style={{ font: "600 9.5px var(--font-mono)" }}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
+// A spot's radius (px): fixed by its class, or growing with its size (a ΔPDF feature's |σ|).
+function spotRadius(cls: ClassId, sigma: number): number {
+  if (cls === "dpos" || cls === "dneg") return Math.min(14, Math.max(5, 5 + 3 * Math.log10(Math.max(1, sigma / 5))));
+  if (cls === "rotated") return 4;
+  return cls === "broad" ? 9 : 7;
+}
+
+export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angle = 90, extent, primary }: Props) {
   const { w, h } = useViewSize();
   const id = useId().replace(/:/g, "");
   if (w <= 1 || h <= 1) return null;
@@ -105,6 +119,12 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, exte
   const shells = draw.shells.filter((x) => shown(x.cls));
   const paths = draw.paths.filter((x) => shown(x.cls));
   const peaks = draw.peaks.filter((x) => shown(x.cls));
+  const ellipses = (draw.ellipses ?? []).filter((x) => shown(x.cls));
+  const arrows = (draw.arrows ?? []).filter((x) => shown(x.cls));
+  const lines = (draw.lines ?? []).filter((x) => shown(x.cls));
+  // The slice's units to pixels: through its geometry (the angle between its axes), y up.
+  const t = (angle * Math.PI) / 180;
+  const pathMatrix = `matrix(${k * sx} 0 ${k * sy * Math.cos(t)} ${-k * sy * Math.sin(t)} ${tx} ${ty})`;
   const strongest = primary && !small ? peaks.find((p) => p.style === "full") : undefined;
 
   const shellShape = (s: DrawnShell, i: number) => {
@@ -195,7 +215,7 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, exte
           );
         })}
         {paths.length > 0 && (
-          <g transform={`matrix(${k * sx} 0 0 ${-k * sy} ${tx} ${ty})`}>
+          <g transform={pathMatrix}>
             {paths.map((p) =>
               p.cls === "r2" ? (
                 <path key="r2" data-hl="r2" d={p.d} fill="var(--r2-fill)" stroke="var(--r2)" strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
@@ -208,25 +228,91 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, exte
             )}
           </g>
         )}
+        {lines.map((l, i) => {
+          const [x0, y0] = displayToPixel(viewport, l.X0, l.Y0, w, h);
+          const [x1, y1] = displayToPixel(viewport, l.X1, l.Y1, w, h);
+          const c = color(l.cls);
+          // The NeXus Viewer's cut: the line in a faint band, dashed.
+          return (
+            <g key={`ln${i}`} data-hl={l.cls}>
+              <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={c} strokeOpacity={0.16} strokeWidth={10} />
+              <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={HALO} strokeWidth={3} />
+              <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={c} strokeWidth={1.4} strokeDasharray="6 4" />
+            </g>
+          );
+        })}
         {shells.map(shellShape)}
+        {ellipses.map((f, i) => {
+          const p = px(f.e);
+          if (p.cx < -40 || p.cx > w + 40 || p.cy < -40 || p.cy > h + 40) return null;
+          const c = color(f.cls);
+          const dash = DASH[f.cls];
+          // At least a few pixels across, so a footprint shows at any zoom (its shape kept).
+          const grow = Math.max(1, 5 / Math.max(p.rx, p.ry, 1e-9));
+          const [rx, ry] = [Math.max(2.5, p.rx * grow), Math.max(2.5, p.ry * grow)];
+          const transform = p.angle ? `rotate(${p.angle.toFixed(2)} ${p.cx.toFixed(1)} ${p.cy.toFixed(1)})` : undefined;
+          const ring = (stroke: string, sw: number) => (
+            <ellipse cx={p.cx} cy={p.cy} rx={rx} ry={ry} transform={transform} fill="none" stroke={stroke} strokeWidth={sw} strokeDasharray={dash} />
+          );
+          return (
+            <g key={`f${i}`} data-hl={f.cls} opacity={f.style === "faint" ? 0.6 : 1}>
+              {ring(HALO, 3.4)}
+              {ring(c, 1.5)}
+              {f.label && !small && label(p.cx, p.cy - Math.max(rx, ry) - 9, f.label, c, "l")}
+            </g>
+          );
+        })}
+        {arrows.length > 0 && (
+          <g data-hl={arrows[0].cls}>
+            {arrows.map((a, i) => {
+              const [x0, y0] = displayToPixel(viewport, a.X, a.Y, w, h);
+              const [x1, y1] = displayToPixel(viewport, a.X + a.dX, a.Y + a.dY, w, h);
+              const len = Math.hypot(x1 - x0, y1 - y0);
+              if (len < 2 || Math.max(x0, x1) < -10 || Math.min(x0, x1) > w + 10 || Math.max(y0, y1) < -10 || Math.min(y0, y1) > h + 10) return null;
+              const ux = (x1 - x0) / len, uy = (y1 - y0) / len;
+              const head = Math.min(6, len / 2);
+              const d = `M${x0.toFixed(1)} ${y0.toFixed(1)}L${x1.toFixed(1)} ${y1.toFixed(1)}M${(x1 - head * ux - head * 0.6 * uy).toFixed(1)} ${(y1 - head * uy + head * 0.6 * ux).toFixed(1)}L${x1.toFixed(1)} ${y1.toFixed(1)}L${(x1 - head * ux + head * 0.6 * uy).toFixed(1)} ${(y1 - head * uy - head * 0.6 * ux).toFixed(1)}`;
+              return (
+                <g key={i}>
+                  <path d={d} fill="none" stroke={HALO} strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={d} fill="none" stroke={color(a.cls)} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx={x0} cy={y0} r={1.8} fill={color(a.cls)} />
+                </g>
+              );
+            })}
+          </g>
+        )}
         {peaks.map((p, i) => {
           const [x, y] = displayToPixel(viewport, p.X, p.Y, w, h);
           if (x < -12 || x > w + 12 || y < -12 || y > h + 12) return null;
           const c = color(p.cls);
           const faint = p.style === "faint";
-          const dash = faint || p.cls === "broad" ? "3 2" : undefined;
+          const dash = faint || p.cls === "broad" || p.cls === "fpBroad" ? "3 2" : undefined;
           const sw = faint ? 1.2 : p.cls === "broad" ? 1.3 : 1.8;
-          const r = p.cls === "broad" ? 9 : 7;
-          const shape = (stroke: string, width: number) =>
-            p.cls === "sharp" ? (
-              <path d={`M${x} ${y - 6}L${x + 6} ${y}L${x} ${y + 6}L${x - 6} ${y}Z`} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} />
-            ) : (
-              <circle cx={x} cy={y} r={r} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} />
-            );
+          const r = spotRadius(p.cls, p.sigma);
+          const shape = (stroke: string, width: number) => {
+            switch (p.cls) {
+              case "sharp":
+                return <path d={`M${x} ${y - 6}L${x + 6} ${y}L${x} ${y + 6}L${x - 6} ${y}Z`} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} />;
+              case "fillUp":
+                return <path d={`M${x} ${y - 7}L${x + 6.5} ${y + 5}H${x - 6.5}Z`} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} strokeLinejoin="round" />;
+              case "fillDown":
+                return <path d={`M${x} ${y + 7}L${x + 6.5} ${y - 5}H${x - 6.5}Z`} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} strokeLinejoin="round" />;
+              case "far":
+                return <path d={`M${x - 5} ${y - 5}L${x + 5} ${y + 5}M${x + 5} ${y - 5}L${x - 5} ${y + 5}`} stroke={stroke} strokeWidth={width} strokeLinecap="round" />;
+              default:
+                return <circle cx={x} cy={y} r={r} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} />;
+            }
+          };
           return (
             <g key={`p${i}`} data-hl={p.cls}>
               {shape(HALO, sw + 2.2)}
               {shape(c, sw)}
+              {/* + and − inside a ΔPDF feature's ring */}
+              {(p.cls === "dpos" || p.cls === "dneg") && r >= 6 && (
+                <path d={p.cls === "dpos" ? `M${x - 3} ${y}h6M${x} ${y - 3}v6` : `M${x - 3} ${y}h6`} stroke={c} strokeWidth={1.4} />
+              )}
+              {p.label && label(x, y - r - 9, p.label, c, "l")}
             </g>
           );
         })}
