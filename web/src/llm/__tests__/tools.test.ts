@@ -633,7 +633,8 @@ describe("run_pipeline", () => {
     usePipelineStore.setState({ runStages, flatten: false });
     api.fetchDataset.mockResolvedValue(dataset);
     await callTool({ ...ctx }, "run_pipeline", { from_stage: "punch" });
-    expect(runStages).toHaveBeenCalledWith(["punch", "backfill", "pdf", "pdf_check"], { datasetId: "demo", force: true });
+    // The stage before it (the ring removal) rides along, decided by its record.
+    expect(runStages).toHaveBeenCalledWith(["rings", "punch", "backfill", "pdf", "pdf_check"], { datasetId: "demo", force: false, forceFrom: "punch" });
   });
 
   it("reports a failed run as an error with its last error line", async () => {
