@@ -168,6 +168,8 @@ export async function resumeAuto(start?: AutoStart): Promise<void> {
   const r = useAutoStore.getState().run;
   if (!r || r.state === "done" || r.state === "running") return;
   if (r.pause?.kind === "fact") return; // it waits for your Apply or Skip
+  // The loop a stop or a pause ended unwinds first: one loop at a time.
+  if (loop) await loop;
   if (!session) {
     if (!start) throw new Error("resume needs the dataset after a reload");
     openSession(start);
@@ -302,8 +304,14 @@ async function drive(): Promise<void> {
       else if (row.id === "report") await reportRow();
       else await stageRow(row.id);
     } catch (e) {
-      if (e instanceof Halt || session?.abort.signal.aborted || (e as Error)?.name === "AbortError") return;
-      fail("run", (e as Error)?.message ?? String(e));
+      // Paused, stopped or ended already (a stop unwinds what was under way): nothing more to record.
+      const now = useAutoStore.getState().run;
+      if (e instanceof Halt || !now || now.state !== "running" || !session || session.abort.signal.aborted || (e as Error)?.name === "AbortError") return;
+      try {
+        fail("run", (e as Error)?.message ?? String(e));
+      } catch {
+        // fail halts
+      }
       return;
     }
   }
@@ -319,6 +327,7 @@ function finish(): void {
 
 // A failure pauses the run (§2.5): Retry (resumeAuto) restarts the row.
 function fail(what: "model" | "run", message: string): never {
+  if (run().state !== "running") throw new Halt(message);
   const at = run().at;
   patchRun((x) => ({
     state: "paused",
@@ -389,9 +398,11 @@ function watchFact(id: string): void {
 function answered(p: Proposal): void {
   const r = run();
   if (r.pause?.kind !== "fact" || r.pause.proposal !== p.id) return;
-  settleFacts();
-  wake();
-  void go();
+  void (async () => {
+    if (loop) await loop;
+    wake();
+    await go();
+  })();
 }
 
 /**
@@ -581,11 +592,23 @@ async function stageRow(stage: Stage): Promise<void> {
     const tries = rowOf(run(), stage).tries + 1;
     patchRow(stage, { status: "fixing", tries });
     const before = settingsNow();
-    const reply = await modelReply({ label: fixLabel(stage, tries, limits.fixesPerStage), prompt: fixPrompt(stage), seed: checks, rounds: limits.fixRounds });
+    let reply: ReplyOutcome | null = null;
+    let changes: Decision[] = [];
+    let from: RunStage = stage;
+    try {
+      reply = await modelReply({ label: fixLabel(stage, tries, limits.fixesPerStage), prompt: fixPrompt(stage), seed: checks, rounds: limits.fixRounds });
+    } finally {
+      // What the reply changed is logged however it ended (a stop, a failure,
+      // the spend limit), and its run is owed: Resume, or the report, runs it first.
+      changes = logChanges(before, reply?.turn ?? lastTurn());
+      if (changes.length) {
+        from = runStageFor(changes.flatMap((d) => Object.keys(d.after)), stage, usePipelineStore.getState() as PipelineConfig) ?? stage;
+        patchRun((x) => ({ pendingRun: x.pendingRun && RUN_STAGES.indexOf(x.pendingRun) < RUN_STAGES.indexOf(from) ? x.pendingRun : from }));
+      }
+    }
     if (!reply) return endFixes("cost", stage);
-    const changes = logChanges(before, reply.turn ?? lastTurn());
     if (changes.length) {
-      const from = runStageFor(changes.flatMap((d) => Object.keys(d.after)), stage, usePipelineStore.getState() as PipelineConfig) ?? stage;
+      from = run().pendingRun ?? from;
       await appRun(from);
       const after = await checkStage(stage);
       if (madeWorse(stage, checks, after)) {
@@ -798,6 +821,9 @@ function keepReplySteps(out: ReplyOutcome): void {
 
 async function reportRow(): Promise<void> {
   patchRow("report", { status: "running" });
+  // A change whose run is owed (the spend limit stopped its reply): the report measures the outputs of the settings in place.
+  const pending = run().pendingRun;
+  if (pending) await appRun(pending);
   const checks: AgentStep[] = [];
   for (const c of finalChecks(session!.work.dataset)) checks.push(await appStep(c));
   const r = run();

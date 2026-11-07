@@ -315,6 +315,31 @@ describe("Stop and Resume", () => {
     expect(status()).toMatchObject({ punch: "fixed", report: "done" });
   });
 
+  it("Stop after the fix's change ran: the change is logged as auto mode's, its run owed, and Resume runs it first", async () => {
+    outputs.tweak = (stage, e, ranWith) => (stage === "rings" ? cleanRings(e) : stage === "punch" && ranWith.punchMinSig === "6" ? cleanPunch(e) : e);
+    let stopOnce = true;
+    model.respond = (phase, round) => {
+      if (phase.kind === "fix" && round === 2 && stopOnce) {
+        stopOnce = false;
+        stopAuto();
+      }
+      return phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done.");
+    };
+    await start();
+    expect(run().state).toBe("stopped");
+    expect(usePipelineStore.getState().punchMinSig).toBe("6");
+    expect(decisions().map((d) => [d.kind, d.by, d.after])).toEqual([
+      ["run", "auto", {}],
+      ["setting", "auto", { punchMinSig: "6" }],
+    ]);
+    expect(run().pendingRun).toBe("punch");
+    await resumeAuto();
+    expect(run().state).toBe("done");
+    expect(run().pendingRun).toBeNull();
+    expect(pipeline.runs.map((r) => r.with.punchMinSig)).toEqual(["", "6"]);
+    expect(status()).toMatchObject({ punch: "passed", report: "done" });
+  });
+
   it("Stop in a pipeline run cancels it; Resume runs a change whose run had not finished first", async () => {
     outputs.tweak = (stage, e, ranWith) => (stage === "rings" ? cleanRings(e) : stage === "punch" && ranWith.punchMinSig === "6" ? cleanPunch(e) : e);
     model.respond = (phase, round) => {
