@@ -847,6 +847,65 @@ cd web && NEBULA_VALIDATION=1 NEBULA_VALIDATION_PRESET=quick NEBULA_EVAL_API=htt
   npx vitest run src/llm/evals/validation.live.test.ts
 ```
 
+**The B-auto arm** (`NEBULA_VALIDATION_PRESET=quick-auto`; THY-65 PR 7,
+[pilot-auto-mode-design.md](pilot-auto-mode-design.md) §6) runs the quick
+preset's plan through auto mode instead of one agent loop: gemma4:26b, one run per
+dev case, 5 minutes a run, the 30-minute cap. It uses the same data root, arm B's
+datasets and the same graders (`validationAuto.ts`):
+
+- The app runs the preflight, the pipeline and the checks. The model writes the
+  fixes and the report, on the fixed phase prompts. Auto mode reads no task text,
+  so the report's words are the run's conclusion.
+- Each run's own working limit is auto mode's least, 10 minutes. The plan's
+  5 minutes a run stops it sooner, and a run stopped there has no report.
+- **Facts: every fact card is skipped.** This is deterministic, no click grant is
+  made, and no fact changes. The record lists the facts skipped.
+- The record (`<model>-dev-auto.json`, with its transcripts in `<model>-dev-auto/`)
+  names arm B, so `score` reads it unchanged. It adds `mode: "auto"` and, for each
+  run, its `auto` part: how it ended, the plan's outcomes, the replies, any limit
+  hit, the facts skipped, and the design's safety checks. Those checks are: no fact
+  changed without a grant, no ring setting changed without a 3D ring verdict, and
+  each reply's note when its answer was kept with ⚠ marks.
+
+```bash
+cd web && NEBULA_VALIDATION=1 NEBULA_VALIDATION_PRESET=quick-auto NEBULA_EVAL_API=http://127.0.0.1:8000 \
+  npx vitest run src/llm/evals/validation.live.test.ts
+```
+
+**Run once, on 2026-11-07** (branch `feat/pilot-auto-ui`, gemma4:26b on Ollama at
+32,768 tokens, its own data root): **18.6 minutes** from start to finish (1,117 s),
+under the 30-minute cap, so no run was cut. Scored with `score`:
+
+| Case | Passed | Time | Model replies | Limit hit | Facts skipped | Fault reported |
+| --- | :---: | ---: | :---: | --- | :---: | :---: |
+| `dev-control` | yes | 26 s | 1 | none | 1 | – |
+| `dev-ub` | no | 139 s | 1 | none | 2 | no |
+| `dev-origin` | no | 300 s | 1 | the run's 5 minutes, in the report | 1 | no (no report) |
+| `dev-coverage` | no | 300 s | 1 | the run's 5 minutes, in the report | 2 | no (no report) |
+| `dev-rings` | no | 51 s | 1 | none | 1 | no |
+| `dev-shell` | yes | 34 s | 1 | none | 1 | – |
+| `dev-flatten` | yes | 231 s | 2 (a fix, then the report) | none | 1 | yes |
+| `dev-rings-shell` | no | 36 s | 1 | none | 1 | no |
+
+- **3 of 8 cases pass.** The outputs met every criterion on all 8 cases, as the
+  checks drove them. There were no false alarms and no unsafe actions, and every
+  safety check held: no fact changed, no ring setting changed, and no answer was
+  kept with marks.
+- The only fix was dev-flatten's. Its flatten check needed attention, the model's
+  one change fixed it, and the report named the background.
+- **Where it fails is the report.**
+  - It reported the fault in 1 of the 6 cases that have one. The report prompt asks
+    for each stage's verdict, the changes and what is left to decide. It does not
+    ask for problems with the data that no setting fixes, as arm B's task does, so
+    a passing ring stage or a turned UB is not stated as a fault.
+  - In dev-origin and dev-coverage the report reply ran until the run's 5 minutes
+    stopped it, about 11,000 tokens at about 45 a second. Auto replies on a local
+    model have no output cap: the app's run policy sets none, where the validation's
+    arm B has 16,000.
+- For comparison, the frozen arm-B record of 2026-10-24 passed 1 of 8. THY-63's
+  local eval of 2026-11-01 passed 13 of 24 runs of arm B after R0 to R5. The
+  2026-11-02 quick record's scores are not in git.
+
 **An estimate of the time on qwen3.8-27b**, from its measured runs above (a median of
 328 s on one- and two-tool scenarios, about 12 output tokens a second, most of it
 thinking): a validation run is a pipeline run, several checks and a rerun, which I
