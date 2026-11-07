@@ -22,6 +22,17 @@ const helped = (key: string) => (strings: TemplateStringsArray, ...values: Value
 export const TUNE_STAGES = ["rings", "punch", "backfill", "flatten", "pdf"] as const;
 export type TuneStage = (typeof TUNE_STAGES)[number];
 
+/**
+ * The stages a run can start from: before the model's (TUNE_STAGES, what
+ * run_pipeline's from_stage takes), the symmetry average, which only the app
+ * starts a run from (an Apply card's Run, after a change to what the average
+ * reads). Nothing the model reads names it: a run the model starts from the
+ * ring removal recomputes a stale average by its record
+ * (state/pipelineStore.ts, runFrom).
+ */
+export const RUN_STAGES = ["symmetry_average", ...TUNE_STAGES] as const;
+export type RunStage = (typeof RUN_STAGES)[number];
+
 // The words that name a fact about the sample in the user's latest message
 // (namesSampleFact), for update_settings' gate: it changes a fact only when
 // that message names it. Each list is conservative: a false refusal costs the

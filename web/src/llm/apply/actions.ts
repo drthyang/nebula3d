@@ -17,15 +17,21 @@
 // too. A card holding a ring change can check the rings in 3D itself
 // (checkRings): a verdict of a ring left opens the gate for that card, on
 // the outputs it judged, and the model's calls never read it.
+//
+// A run after a change starts from the earliest stage the change reaches
+// (proposals.ts, runStageFor): the symmetry average, while it is on, for a
+// change to what it reads (the edge trim, the Laue class).
 
 import { noteAgentEdit } from "../../state/agentEdits";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { ringOutputChanged, ringOutputMark } from "../../state/ringOutput";
 import { toolStepsIn, type AgentStep } from "../agent";
 import { useChatStore } from "../chatStore";
 import { grantForClick, grantIsFor, isTrustedClick, revokeGrant, type AppCallContext, type ClickEvent, type Grant } from "../consent";
 import { callTool, CHAT_TOOLS, type ToolContext } from "../tools";
+import { runPipelineFrom } from "../tools/shared/runPipeline";
 import { RING_SETTINGS, ringVerdictAllowsChange } from "../tools/shared/ringGate";
-import { TUNE_STAGES, type TuneStage } from "../tune/catalog";
+import { RUN_STAGES, TUNE_STAGES, type RunStage } from "../tune/catalog";
 import { useTuneStore } from "../tune/tuner";
 import {
   addProposals,
@@ -40,7 +46,7 @@ import {
   type RingCheck,
 } from "./decisions";
 import { changeOf } from "./edit";
-import { buildProposals, cardSetting, runProposal, stageTitle, type Proposal } from "./proposals";
+import { buildProposals, cardSetting, runProposal, runStageFor, stageTitle, type Proposal } from "./proposals";
 
 const tool = (name: string) => {
   const t = CHAT_TOOLS.find((x) => x.name === name);
@@ -145,17 +151,24 @@ export function ringHeldNow(p: Proposal, ctx: ToolContext | null): boolean {
   return !ctx || !ringVerdictAllowsChange(ringContext(p, ctx));
 }
 
-/** A card's own ring check while it judges the outputs as they are: same dataset, no run started since, none running. */
-export function currentRingCheck(p: Proposal): RingCheck | undefined {
+/**
+ * A card's own ring check while it judges the outputs as they are: same
+ * dataset, no run started since, none running, and the ring output it judged
+ * still the one there (state/ringOutput.ts, the ring gate's own test of a
+ * verdict: recomputed since by any run, or dated otherwise in `dataset`, the
+ * dataset as it is listed now).
+ */
+export function currentRingCheck(p: Proposal, dataset?: ToolContext["dataset"]): RingCheck | undefined {
   const check = useDecisionStore.getState().ringChecks[p.id];
   const pipe = usePipelineStore.getState();
-  return check && check.dataset === p.dataset && !pipe.running && pipe.lastRun === check.lastRun ? check : undefined;
+  if (!check || check.dataset !== p.dataset || pipe.running || pipe.lastRun !== check.lastRun) return undefined;
+  return ringOutputChanged(check.ringOutput, dataset) ? undefined : check;
 }
 
 // The card's context, its own ring check, while it stands, as the reply's step the ring gate reads last.
 function ringContext(p: Proposal, ctx: ToolContext): ToolContext {
   const base = cardContext(ctx);
-  const check = currentRingCheck(p);
+  const check = currentRingCheck(p, ctx.dataset);
   return check ? { ...base, replySteps: [check.step] } : base;
 }
 
@@ -254,6 +267,7 @@ async function applyChange(p: Proposal, ctx: ToolContext, edited: Record<string,
     const b = Object.fromEntries(changedKeys.map((k) => [k, before[k as keyof PipelineConfig]])) as Partial<PipelineConfig>;
     const a = Object.fromEntries(changedKeys.map((k) => [k, after[k as keyof PipelineConfig]])) as Partial<PipelineConfig>;
     const shown = edited ? { from: p.shown.from, to: shownTo(p, config()) } : p.shown;
+    const runAt = runStageOf(p);
     logDecision({
       proposal: p.id,
       kind: p.kind,
@@ -264,17 +278,29 @@ async function applyChange(p: Proposal, ctx: ToolContext, edited: Record<string,
       at: Date.now(),
       before: b,
       after: a,
-      ...(p.runFrom ? { runFrom: p.runFrom } : {}),
+      ...(runAt ? { runFrom: runAt } : {}),
       ...(grant ? { byClick: true as const } : {}),
     });
     updateProposal(p.id, { status: "applied", ...(edited ? { shown } : {}) });
-    if (p.runFrom) offerRun(p.turn, p.dataset, p.runFrom, changeText(p.title, shown));
+    if (runAt) offerRun(p.turn, p.dataset, runAt, changeText(p.title, shown));
   } finally {
     useDecisionStore.setState({ working: null });
   }
 }
 
 export const changeText = (title: string, shown: { from: string; to: string }): string => (shown.from ? `${title} ${shown.from} → ${shown.to}` : `${title}: ${shown.to}`);
+
+/**
+ * The stage a run after a card's change starts from, with the settings as
+ * they are now, the change applied (runStageFor): its settings' own stage (a
+ * trial's, its stage), or the symmetry average before it, while the average
+ * is on, for a change to what it reads.
+ */
+function runStageOf(p: Proposal): RunStage | undefined {
+  const keys = Object.keys(p.change);
+  const own = p.trial?.stage ?? TUNE_STAGES.find((st) => keys.some((k) => cardSetting(k)?.stage === st));
+  return runStageFor(keys, own, config());
+}
 
 const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
 
@@ -310,6 +336,8 @@ export async function checkRings(p: Proposal, ctx: ToolContext): Promise<void> {
   useDecisionStore.setState({ checking: p.id });
   try {
     const lastRun = usePipelineStore.getState().lastRun;
+    // The ring output as it stands before the check reads it.
+    const ringOutput = ringOutputMark(ctx.dataset);
     const run = await callTool(cardContext(ctx), "assess_stage", { stage: "rings" });
     if (!run.ok) {
       setNote(p.id, `The ring check did not run: ${run.summary.replace(/\.$/, "")}.`);
@@ -325,7 +353,7 @@ export async function checkRings(p: Proposal, ctx: ToolContext): Promise<void> {
       ...(run.full !== undefined ? { full: run.full } : {}),
       ...(run.outcomes ? { outcomes: run.outcomes } : {}),
     };
-    setRingCheck(p.id, { step, dataset: p.dataset, lastRun });
+    setRingCheck(p.id, { step, dataset: p.dataset, lastRun, ringOutput });
   } finally {
     useDecisionStore.setState({ checking: null });
   }
@@ -339,10 +367,10 @@ export const decisionText = (d: Pick<Decision, "title" | "shown" | "kind" | "run
  * A Run card after a change: one open Run card per dataset, from the earliest
  * stage any change since calls for (Apply first, then a separate Run card).
  */
-export function offerRun(turn: number, dataset: string, stage: TuneStage, because: string): void {
+export function offerRun(turn: number, dataset: string, stage: RunStage, because: string): void {
   const open = useDecisionStore.getState().proposals.find((p) => p.kind === "run" && p.status === "open" && p.dataset === dataset);
   if (open) {
-    const earlier = TUNE_STAGES.indexOf(stage) < TUNE_STAGES.indexOf(open.runFrom ?? "rings") ? stage : open.runFrom!;
+    const earlier = RUN_STAGES.indexOf(stage) < RUN_STAGES.indexOf(open.runFrom ?? "rings") ? stage : open.runFrom!;
     const reasons = open.shown.to.split("; ").filter(Boolean);
     updateProposal(open.id, {
       runFrom: earlier,
@@ -355,7 +383,11 @@ export function offerRun(turn: number, dataset: string, stage: TuneStage, becaus
   addProposals([runProposal(`P${nextProposalNumber()}`, turn, dataset, stage, because, "apply")]);
 }
 
-/** Run the pipeline from the card's stage, through run_pipeline (it opens the Execution page). */
+/**
+ * Run the pipeline from the card's stage, through run_pipeline (it opens the
+ * Execution page); from the symmetry average, which run_pipeline's from_stage
+ * does not name, through its own run (runPipelineFrom).
+ */
 async function runCard(p: Proposal, ctx: ToolContext): Promise<void> {
   const state = cardState(p, ctx.dataset.id, ctx, false);
   if (!state.can || !p.runFrom) {
@@ -365,7 +397,8 @@ async function runCard(p: Proposal, ctx: ToolContext): Promise<void> {
   setNote(p.id, null);
   useDecisionStore.setState({ working: p.id });
   try {
-    await tool("run_pipeline").run({ from_stage: p.runFrom }, cardContext(ctx), {});
+    if (p.runFrom === "symmetry_average") await runPipelineFrom(p.runFrom, cardContext(ctx), {});
+    else await tool("run_pipeline").run({ from_stage: p.runFrom }, cardContext(ctx), {});
     logDecision({ proposal: p.id, kind: "run", title: p.title, shown: p.shown, action: "apply", by: "you", at: Date.now(), before: {}, after: {}, runFrom: p.runFrom });
     updateProposal(p.id, { status: "applied" });
   } catch (e) {

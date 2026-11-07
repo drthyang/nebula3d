@@ -49,6 +49,7 @@ import {
 import type { OverlayData } from "./examine/data";
 import { openView } from "./tools/openView";
 import { verdicts, type ComputedVerdict, type Outcome } from "./verdicts";
+import type { RingOutputMark } from "../state/ringOutput";
 
 export interface AgentStep {
   id: string;
@@ -74,6 +75,11 @@ export interface AgentStep {
   // What its overlays draw that the result leaves out (examine/data.ts): the
   // live reply's alone, never kept in the transcript.
   overlay?: OverlayData;
+  // The ring output its 3D ring verdict judged (its rings outcome's mark,
+  // state/ringOutput.ts), which the transcript keeps where it drops the
+  // outcomes (chatStore.ts): the ring gate holds an earlier reply's verdict
+  // to it. Never in the result.
+  ringOutput?: RingOutputMark;
   // Brought back from a saved session file (state/session.ts): shown, but
   // never taken as evidence for a later reply's numbers (toolStepsIn), since
   // the file could say anything.

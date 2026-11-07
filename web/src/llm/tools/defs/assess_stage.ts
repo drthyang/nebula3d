@@ -1,6 +1,7 @@
 // assess_stage: a stage's output judged against its goal, by the stage's rule
 // (verdicts/), on the principal planes and the records the stage writes.
 
+import { ringOutputMark } from "../../../state/ringOutput";
 import { stageVolumeId } from "../../context/loadContext";
 import { SIGMA_OF } from "../../metrics/dpdf";
 import { skillsOn } from "../../skills";
@@ -122,6 +123,9 @@ export const assess_stage: ChatTool = {
     const sent = criteriaSent(ctx.replySteps);
     // What the stages' overlays draw beside their numbers (examine/data.ts).
     let overlay: OverlayData | undefined;
+    // The ring output as it stands before it is read: the ring verdict holds
+    // it, and stands while it is the one there (state/ringOutput.ts).
+    const ringOutput = ringOutputMark(dataset);
     for (const stage of stages) {
       if (!stageVolumeId(dataset, STAGE_OUTPUT[stage])) {
         result[stage] = { missing: `no ${STAGE_OUTPUT[stage]} output yet; run_pipeline computes it` };
@@ -141,7 +145,7 @@ export const assess_stage: ChatTool = {
       // The verdict is computed from the numbers, by the stage's rule
       // (verdicts/), never left to the model (answerChecks.ts holds the model to it).
       const outcome = judge(stage, evaluation, { skills: skillsOn(ctx) });
-      outcomes.push(outcome);
+      outcomes.push(stage === "rings" ? { ...outcome, ringOutput } : outcome);
       const verdict = outcome.words;
       // All five stages' detail, or their goals, would overflow the result
       // (MAX_RESULT_CHARS): one stage at a time gives both.

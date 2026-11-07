@@ -146,11 +146,13 @@ export interface PipelineConfig {
 
 // What the last run was asked to do, kept beside its log: which dataset, which
 // stages, the settings it ran with (as the pipeline took them) and whether it
-// recomputed existing outputs. A saved session carries it (state/session.ts).
+// recomputed existing outputs (all of them, or those from `forceFrom` on).
+// A saved session carries it (state/session.ts).
 export interface RunRecord {
   datasetId: string;
   stages: string[];
   force: boolean;
+  forceFrom?: string;
   flattenEnabled: boolean;
   params: StageParamsIn;
   tuning?: TuningTrial;
@@ -321,6 +323,11 @@ export interface RunOptions {
   tuning?: TuningTrial;
   datasetId?: string;
   force?: boolean; // runStages: recompute outputs that exist (default true)
+  // Recompute this stage's output and those after it, whatever they hold; the
+  // stages before it are reused while their outputs still follow from their
+  // inputs and settings, and recomputed when they do not (the backend's
+  // resume rule, nebula3d.pipeline.resume_plan). With `force: false`.
+  forceFrom?: string;
   // Run with these settings instead of the form's: a restored session
   // recomputes its outputs with the settings of the run that made them.
   params?: StageParamsIn;
@@ -342,6 +349,7 @@ async function start(
   closeStream();
   const params = opts.params ?? formToParams(s);
   const flattenEnabled = opts.flattenEnabled ?? s.flatten;
+  const forceFrom = opts.forceFrom;
   set({
     events: [],
     times: [],
@@ -349,11 +357,19 @@ async function start(
     running: true,
     reconnecting: false,
     jobId: null,
-    lastRun: { datasetId, stages, force, flattenEnabled, params, ...(opts.tuning ? { tuning: opts.tuning } : {}) },
+    lastRun: {
+      datasetId,
+      stages,
+      force,
+      ...(forceFrom ? { forceFrom } : {}),
+      flattenEnabled,
+      params,
+      ...(opts.tuning ? { tuning: opts.tuning } : {}),
+    },
   });
 
   if (PYODIDE_MODE) {
-    await runInBrowser(datasetId, params, flattenEnabled, force, stages, set, get, opts.tuning);
+    await runInBrowser(datasetId, params, flattenEnabled, force, stages, set, get, opts.tuning, forceFrom);
     return;
   }
 
@@ -362,6 +378,7 @@ async function start(
       dataset_id: datasetId,
       flatten_enabled: flattenEnabled,
       force,
+      ...(forceFrom ? { force_from: forceFrom } : {}),
       stages,
       params,
       tuning: opts.tuning,
@@ -494,6 +511,40 @@ export function enabledStages(s: PipelineConfig): string[] {
   ].filter((x): x is string => Boolean(x));
 }
 
+/** A run from a stage, as the backend is asked for it (runFrom). */
+export interface RunFrom {
+  stages: string[];
+  force: boolean;
+  forceFrom?: string;
+}
+
+const stageIndex = (stage: string): number => (STAGES as readonly string[]).indexOf(stage);
+
+/**
+ * The run from `from`, one of STAGES, that the Pilot's run_pipeline and the
+ * Apply cards' Run ask for: that stage and every enabled one after it
+ * recomputed. With no stage (null), the Run button's run: every enabled
+ * stage, the outputs that still follow reused unless Force is on.
+ *
+ * With the symmetry average on, its output comes before every stage a run
+ * starts from, and what it reads (the raw input's edge trim, the Laue class)
+ * can have changed since it was made: a run of the stages from `from` alone
+ * would hand the ring removal that average as it is on disk. So the run takes
+ * every enabled stage and recomputes those from `from` on (forceFrom); the
+ * stages before it the backend's resume rule decides by their records
+ * (nebula3d.pipeline.resume_plan), as the Configure page's stage track marks
+ * them: the average is made again, with every stage after it, when it no
+ * longer follows from the raw input and its settings, or is missing, and
+ * reused otherwise. With the average off, the run is the stages from `from`
+ * on, forced, as it always was.
+ */
+export function runFrom(s: PipelineConfig, from: string | null): RunFrom {
+  if (from === null) return { stages: enabledStages(s), force: s.force };
+  if (stageIndex(from) < 0) throw new Error(`no stage ${JSON.stringify(from)}; the stages are ${STAGES.join(", ")}`);
+  if (s.symmetryAverageEnabled) return { stages: enabledStages(s), force: false, forceFrom: from };
+  return { stages: enabledStages(s).filter((st) => stageIndex(st) >= stageIndex(from)), force: true };
+}
+
 /** The raw coverage-edge trim the backend takes when none is sent: 1 voxel layer (PipelineParams.edge_trim). */
 export const DEFAULT_EDGE_TRIM = 1;
 /** The layers the page offers (the NeXus Viewer's edge erosion takes the same rule). */
@@ -611,6 +662,7 @@ async function runInBrowser(
   set: Setter,
   get: Getter,
   tuning?: TuningTrial,
+  forceFrom?: string,
 ): Promise<void> {
   const log = (ev: JobEvent) =>
     set({ events: [...get().events, ev], times: [...get().times, Date.now()] });
@@ -620,6 +672,7 @@ async function runInBrowser(
       paramsJson: JSON.stringify(params),
       flattenEnabled: flatten,
       force,
+      ...(forceFrom ? { forceFrom } : {}),
       stages,
       tuning,
       onProgress: (ev) =>

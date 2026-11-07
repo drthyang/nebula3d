@@ -142,14 +142,16 @@ let nextId = restored.turns.reduce((m, t) => Math.max(m, t.id), 0) + 1;
 // A step's outcomes (verdicts/) and its whole result (`full`, readings/)
 // serve the reply's own checks and its record, and its overlay data the
 // Highlights (examine/): the transcript keeps what the model and the user
-// read, at the size it had.
+// read, at the size it had. Of the outcomes it keeps the mark of the ring
+// output a ring verdict judged (state/ringOutput.ts), which the ring gate
+// holds a later reply to.
 const asRead = (steps: AgentStep[]): AgentStep[] =>
   steps.map((step) => {
     const { outcomes, full, overlay, ...kept } = step;
-    void outcomes;
     void full;
     void overlay;
-    return kept;
+    const ringOutput = outcomes?.find((o) => o.check === "rings")?.ringOutput;
+    return ringOutput ? { ...kept, ringOutput } : kept;
   });
 
 export const useChatStore = create<ChatState>((set) => ({
