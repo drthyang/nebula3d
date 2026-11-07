@@ -29,9 +29,10 @@
 //    says so; Undo of auto changes (undoAutoRun) puts back the run's changes,
 //    a click-made one only on your own click.
 //  - Limits (plan.ts, AUTO_LIMITS) end the fixes and send the run to its
-//    report, which names the limit. Stop aborts the reply or the pipeline
-//    run under way; Resume restarts the row it stopped in, running first a
-//    change whose run had not finished.
+//    report, which names the limit. Pause (stopAuto) aborts the reply or the
+//    pipeline run under way; Resume restarts the row it stopped in, running
+//    first a change whose run had not finished. Stop (endAuto) ends the run
+//    there with the app's report from what exists: no model reply, no cost.
 //
 // The record (store.ts) is what the Auto panel (components/AutoPanel.tsx)
 // renders; the app's own step under way is published whole (store.ts, `live`)
@@ -52,6 +53,8 @@ import type { ClickEvent } from "../consent";
 import { hklVolumeId, loadPipelineContext, safe, stageVolumeId } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { askAssistant, type ReplyOutcome } from "../session";
+import type { UsageReport } from "../provider/client";
+import { autoPolicyOf, type RunPolicy } from "../runPolicy";
 import { loadSettings, type LlmSettings } from "../settings";
 import { callTool, CHAT_TOOLS, factsOf, type AgentTool, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
@@ -83,6 +86,7 @@ import {
   type RowStatus,
   type Stage,
 } from "./plan";
+import { problemsFound } from "./problems";
 import { autoMessages, digest, fixLabel, fixPrompt, REPORT_LABEL, REPORT_PROMPT } from "./prompts";
 import { keptStep, newRun, patchRow, patchRun, rowOf, useAutoStore, type AutoFact, type AutoRun } from "./store";
 import { seedFormFor } from "./transport";
@@ -95,12 +99,23 @@ export interface AutoStart {
   // The dataset's summary for each reply's context (loadContext.ts unless given).
   loadContext?: (dataset: Dataset) => Promise<PipelineContext>;
   now?: () => number; // the clock (tests give a fake one)
+  // Each request cut at the output cap (autoPolicyOf): a reply's (agent.ts,
+  // onTruncated) and a tuning run's in it (its stop reason); the eval records them.
+  truncations?: Truncations;
+}
+
+/** Where the requests cut at the output cap are told (evals/validationRun.ts, TruncationTracker, takes these). */
+export interface Truncations {
+  loop: (cut: { request: number; reason: string }) => void;
+  tuning: UsageReport;
 }
 
 interface Session {
   abort: AbortController;
   reply: AbortController | null; // the reply under way: the spend limit stops it alone
   settings: LlmSettings;
+  policy: RunPolicy; // the replies' (autoPolicyOf): the output cap where the transport ships none
+  truncations: Truncations | null;
   price: Price | null;
   loadContext: (dataset: Dataset) => Promise<PipelineContext>;
   now: () => number;
@@ -149,10 +164,8 @@ export function finalChecks(dataset: Dataset): Call[] {
  * or an auto run is open (Resume it, or End it).
  */
 export async function startAuto(start: AutoStart): Promise<void> {
-  const open = useAutoStore.getState().run;
-  if (open && open.state !== "done") throw new Error("an auto run is open: resume it or end it first");
-  if (useChatStore.getState().busy) throw new Error("wait for the reply to end");
-  if (useTuneStore.getState().active || usePipelineStore.getState().running) throw new Error("wait for the run under way to end");
+  const blocked = startBlocked();
+  if (blocked) throw new Error(blocked);
   const s = openSession(start);
   const limits = limitsOf(start.limits);
   useAutoStore.setState({
@@ -167,6 +180,30 @@ export async function startAuto(start: AutoStart): Promise<void> {
   });
   return go();
 }
+
+/**
+ * Why a run cannot start now, or null: an auto run open, a reply, a tuning run
+ * or a pipeline run under way. Read again whenever it is shown: a start
+ * refused while the demo's run went on is said only while that run goes on
+ * (refusalNote).
+ */
+export function startBlocked(): string | null {
+  const open = useAutoStore.getState().run;
+  if (open && open.state !== "done") return "an auto run is open: resume it or end it first";
+  if (useChatStore.getState().busy) return "wait for the reply to end";
+  if (useTuneStore.getState().active || usePipelineStore.getState().running) return "wait for the run under way to end";
+  return null;
+}
+
+/**
+ * The note under the chip after a refused start (`refused`): the reason that
+ * holds now, and none once it no longer does. The note once kept the reason
+ * of the moment it was refused until the next click: in the Pyodide build,
+ * where a reload empties the engine and the demo is loaded and run again, a
+ * click during that run left "wait for the run under way to end" standing
+ * long after the run had ended (THY-65 PR 7's browser check).
+ */
+export const refusalNote = (refused: boolean, blocked: string | null): string | null => (refused && blocked ? `Not started: ${blocked}.` : null);
 
 /** Resume a paused or stopped run (Retry after a failure): it restarts the row it stopped in. `start`: after a reload, the dataset and settings. */
 export async function resumeAuto(start?: AutoStart): Promise<void> {
@@ -200,13 +237,44 @@ export function stopAuto(): void {
   session?.abort.abort();
 }
 
-/** End a paused or stopped run where it is, without its report. */
-export function endAuto(): void {
+/**
+ * Stop the run for good (the panel's Stop; Pause is stopAuto): the step under
+ * way is aborted and unwinds first (what a fix reply changed is logged, its
+ * run owed), then the run ends with the app's report from what exists (its
+ * plan, its checks' own lines, the facts, the decisions; the report measures
+ * the outputs afresh when opened, report/collect.ts): no model reply, no
+ * cost. The rows it did not reach are marked not checked. `by`: who stopped
+ * it, as the report says ("you"; the eval's run limit).
+ */
+export async function endAuto(by = "you"): Promise<void> {
   const r = useAutoStore.getState().run;
   if (!r || r.state === "done") return;
   if (r.state === "running") stopAuto();
   session?.unwatch?.();
-  patchRun((x) => ({ state: "done", pause: null, ended: "Ended by you before its report.", now: "Ended.", clock: stopClock(x.clock, now()) }));
+  if (session) session.unwatch = null;
+  // One loop at a time: the one the stop ended unwinds before the run ends.
+  if (loop) await loop;
+  const x = useAutoStore.getState().run;
+  if (!x || x.id !== r.id || x.state === "done") return;
+  const owed = x.pendingRun ? ` A change's run had not finished (${x.pendingRun} on): the outputs are those from before it.` : "";
+  const ended = `Stopped by ${by}: the app's report, from what the run checked, with no model reply.${owed}`;
+  const at = x.at;
+  patchRun((y) => ({
+    state: "done",
+    pause: null,
+    appReport: "stopped",
+    // What the run's checks found so far, as the final checks' list would (auto/problems.ts).
+    problems: y.problems !== undefined ? y.problems : problemsFound(y.steps),
+    ended,
+    now: `Stopped by ${by}.`,
+    clock: stopClock(y.clock, now()),
+    plan: y.plan.map((row): PlanRow => {
+      if (row.id === "report") return { ...row, status: "done", detail: `the app's alone: stopped by ${by}, no model reply` };
+      if (finished(row.status)) return row;
+      if (row.id === at) return { ...row, status: "stopped" };
+      return { ...row, status: "skipped", detail: `not checked: stopped by ${by}` };
+    }),
+  }));
   session = null;
 }
 
@@ -261,6 +329,8 @@ function openSession(start: AutoStart): Session {
     abort: new AbortController(),
     reply: null,
     settings,
+    policy: autoPolicyOf(settings),
+    truncations: start.truncations ?? null,
     price: priceOf(settings),
     loadContext: start.loadContext ?? (async (d) => (await loadPipelineContext(d)).context),
     now: start.now ?? Date.now,
@@ -791,7 +861,14 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
     skillsReadEarlier: new Set(),
     earlierSteps: toolStepsIn([{ steps: earlier }]),
     marksEarlier: new Set(marksMade(earlier)),
-    model: { settings: s.settings, usage: (u) => onUsage(u ? measured(u) : notCounted()) },
+    model: {
+      settings: s.settings,
+      usage: (u, stopReason) => {
+        onUsage(u ? measured(u) : notCounted());
+        s.truncations?.tuning(u, stopReason);
+      },
+      ...(s.policy.outputCap.tuning != null ? { maxTokens: s.policy.outputCap.tuning } : {}),
+    },
   };
   let out: ReplyOutcome | null;
   try {
@@ -807,6 +884,8 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
         seed: { steps: seed, form: seedFormFor(s.settings, r.seedForm) },
         userMessage: "",
         maxRounds: rounds,
+        policy: { ...s.policy, maxRounds: rounds },
+        ...(s.truncations ? { onTruncated: s.truncations.loop } : {}),
         onSeedForm: (form) => patchRun({ seedForm: form }),
       },
     });
@@ -857,16 +936,19 @@ async function reportRow(): Promise<void> {
   if (pending) await appRun(pending);
   const checks: AgentStep[] = [];
   for (const c of finalChecks(session!.work.dataset)) checks.push(await appStep(c));
+  // The problems they found, computed from their outcomes: the report's list, never the model's.
+  patchRun({ problems: problemsFound(checks) });
   const r = run();
   // The report is the model's while a reply and the spend allow it; else the app's alone, which names the limit.
   const noModel: LimitHit | null = r.replies + 1 > r.limits.replies ? "replies" : r.costUsd !== null && r.costUsd >= r.limits.costUsd ? "cost" : null;
   if (noModel) {
-    patchRun((x) => ({ limit: x.limit ?? noModel }));
+    patchRun((x) => ({ limit: x.limit ?? noModel, appReport: "limit" }));
     patchRow("report", { status: "done", detail: `written without the model: ${LIMIT_WORDS[noModel]}`, evidence: evidenceOf(checks) });
     return;
   }
   const reply = await modelReply({ label: REPORT_LABEL, prompt: REPORT_PROMPT, seed: checks, rounds: r.limits.reportRounds });
-  patchRun({ reportTurn: reply?.turn ?? null });
+  // Cut short by the spend limit with no turn kept: the report is the app's alone.
+  patchRun({ reportTurn: reply?.turn ?? null, ...(reply?.turn == null ? { appReport: "limit" as const } : {}) });
   patchRow("report", { status: "done", detail: reply ? "written" : `cut short: ${LIMIT_WORDS.cost}`, evidence: evidenceOf(checks) });
 }
 

@@ -29,5 +29,5 @@ export type {
   SymmetryMeasurements,
   Unrounded,
 } from "./rules";
-export { verdicts } from "./readers";
+export { attentionLabel, verdicts } from "./readers";
 export type { ComputedVerdict, Verdicts } from "./readers";

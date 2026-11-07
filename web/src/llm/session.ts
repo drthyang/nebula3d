@@ -52,13 +52,14 @@ export interface ReplyOutcome {
 /**
  * The options an auto-mode reply adds (auto/controller.ts): its settings, its
  * run's Stop (`signal`, besides stopAssistant), and what runAgent takes for it
- * (the seeded checks, the user's words as "", its round limit); each
+ * (the seeded checks, the user's words as "", its round limit, its run
+ * policy with the output cap, and a hook for a request cut at it); each
  * request's tokens go to `onUsage` as well.
  */
 export interface ReplyOptions {
   settings?: LlmSettings;
   signal?: AbortSignal;
-  agent?: Pick<RunAgentOptions, "seed" | "userMessage" | "maxRounds" | "onSeedForm">;
+  agent?: Pick<RunAgentOptions, "seed" | "userMessage" | "maxRounds" | "onSeedForm" | "policy" | "onTruncated">;
   onUsage?: (u: Usage) => void;
 }
 

@@ -32,6 +32,7 @@ import { reportable } from "../report/collect";
 import { formatDuration } from "../clock";
 import { useAutoStore } from "../auto/store";
 import { autoTranscript, isSeeded, type AutoBlock } from "../auto/transcript";
+import { problemLines, PROBLEMS_TITLE } from "../auto/problems";
 import { AutoChip, AutoPanel } from "./AutoPanel";
 import { Markdown } from "./Markdown";
 import { ProposalCards } from "./ProposalCards";
@@ -159,6 +160,32 @@ function Steps({ steps, live, turn, block }: { steps: AgentStep[]; live?: boolea
         ))}
       </ol>
     </details>
+  );
+}
+
+// The problems an auto run's final checks found, above its report reply: the
+// app's list, computed from the checks' outcomes (auto/problems.ts), never the
+// model's words, which refer to it.
+function AutoProblems({ lines }: { lines: readonly string[] | null }) {
+  return (
+    <div className="ai-msg ai-msg-assistant ai-msg-auto ai-problems" role="note" aria-label={PROBLEMS_TITLE}>
+      <span className="ai-avatar" aria-hidden="true">
+        <BrandGlyph size={22} />
+      </span>
+      <div className="ai-msg-main">
+        <div className="ai-problems-head">
+          <span className="auto-tag" title="Auto mode computed this from the checks' verdicts">
+            auto
+          </span>
+          {PROBLEMS_TITLE}
+        </div>
+        <ul className="ai-problems-list">
+          {problemLines(lines).map((l, i) => (
+            <li key={i}>{l}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 
@@ -320,6 +347,7 @@ export function ChatView({
   const fromFile = useChatStore((s) => s.fromFile);
   // An auto run under way owns the conversation: the composer waits (auto/controller.ts).
   const autoRunning = useAutoStore((s) => s.run?.state === "running");
+  const autoRun = useAutoStore((s) => s.run);
   // Running or paused: its own replies, which the meter does not measure (AutoPanel shows their tokens).
   const autoUnderWay = useAutoStore((s) => s.run?.state === "running" || s.run?.state === "paused");
   // The decisions' record: the next request's "since" line reads it.
@@ -493,6 +521,7 @@ export function ChatView({
               <AutoSteps key={b.key} block={b} live={false} />
             ))}
             {t.id === firstSent && <DroppedNotice dropped={dropped} summarized={Boolean(summary)} />}
+            {autoRun && autoRun.reportTurn === t.id && autoRun.problems !== undefined && <AutoProblems lines={autoRun.problems} />}
             <PastTurn
               turn={t}
               tuning={t.id === tuneTurn}

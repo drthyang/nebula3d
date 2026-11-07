@@ -19,6 +19,7 @@ import { factsOf } from "../tools";
 import { useTuneStore, type StageRun } from "../tune/tuner";
 import { STAGE_NAMES } from "../verdicts/rules";
 import { isStage, LIMIT_WORDS, ROW_IDS, STAGES, type RowId, type Stage } from "./plan";
+import { problemLines, PROBLEMS_TITLE } from "./problems";
 import { useAutoStore, type AutoRun } from "./store";
 import { isAppStep } from "./transcript";
 
@@ -160,10 +161,20 @@ export function activityRows(a: ActivityInput): ActivityRow[] {
   for (const f of run.facts) factAt.set(f.at ?? run.steps.length, [...(factAt.get(f.at ?? run.steps.length) ?? []), f]);
   const pausedOn = run.state === "paused" && run.pause?.kind === "fact" ? run.pause.proposal : null;
 
+  // The problems the final checks found (problems.ts): the app's list,
+  // computed, once the run is done; before the report reply, as in the chat.
+  let problemsShown = false;
+  const problemsRow = () => {
+    if (run.state !== "done" || run.problems === undefined) return;
+    const lines = problemLines(run.problems);
+    rows.push({ key: "problems", status: "done", title: PROBLEMS_TITLE, line: lines.join("; "), detail: lines });
+    problemsShown = true;
+  };
   const replyRow = (turn: number) => {
     const t = a.turns.findIndex((x) => x.id === turn);
     const label = (t > 0 && a.turns[t - 1].role === "user" ? a.turns[t - 1].content : "").replace(/^Auto · /, "");
     const report = turn === run.reportTurn || label === "the report";
+    if (turn === run.reportTurn) problemsRow();
     const { line, detail } = replyLine(turn, a, report);
     rows.push({ key: `reply:${turn}`, status: "done", title: report ? "Wrote the report" : cap(label || "A model reply"), line, detail, turn });
   };
@@ -203,6 +214,11 @@ export function activityRows(a: ActivityInput): ActivityRow[] {
     const r = run.plan.find((x) => x.id === id)!;
     if (r.status === "skipped") rows.push({ key: `skipped:${id}`, status: "skipped", title: `Not checked: ${r.title}`, line: r.detail ?? "skipped", detail: [] });
   }
+  // The problems the final checks found, where no report reply came after them.
+  if (!problemsShown) problemsRow();
+  // The report the app wrote alone (store.ts, appReport): no reply, no cost.
+  if (run.appReport === "stopped") rows.push({ key: "app-report", status: "done", title: "The app's report", line: `${(run.ended ?? "Stopped by you").split(":")[0]}: written from what the run checked, with no model reply and no cost`, detail: [] });
+  if (run.appReport === "limit") rows.push({ key: "app-report", status: "done", title: "The app's report", line: `Written without the model${run.limit ? `: ${LIMIT_WORDS[run.limit]}` : ""}`, detail: [] });
   if (run.state === "stopped") {
     const at = run.plan.find((r) => r.id === run.at);
     rows.push({ key: "stopped", status: "stopped", title: "Paused by you", line: at ? `In ${rowName(at.id)}; Resume restarts it` : "Resume goes on", detail: [] });

@@ -2,7 +2,8 @@
 // the chat while an auto run is open. Its header holds the title, the state,
 // the time worked (never against the limit: the user's own bound) and the
 // controls, there the whole time: Pause or Resume (Retry after a failure),
-// and Stop, which ends the run without its report. Under it:
+// and Stop, which ends the run there with the app's report from what exists
+// (no model reply, no cost), marked stopped by you. Under it:
 //  - the Now line: what the run is doing at this moment, in plain words
 //    ("Checking the Bragg punch (stage 2 of 5)…", "Fixing the ring removal,
 //    try 1 of 2", "Waiting for your answer: Laue class");
@@ -15,7 +16,8 @@
 //    behind a click;
 //  - the replies, fixes, tokens and spend, and the time waiting for you apart;
 //  - the fact the run waits for, pinned with Apply, Edit and Skip; once it
-//    ends, a link to its report and Undo auto changes.
+//    ends, its report (the reply in the chat, or the app's own, opened here)
+//    and Undo auto changes.
 // The Now line and the log are built from the run's own record, results and
 // decisions (auto/activity.ts): nothing is asked of the model. In the sheet
 // layout (a phone, a narrow window) the panel shows the header, the Now line
@@ -28,9 +30,11 @@ import { useDatasets } from "../../api/hooks";
 import { HelpTip } from "../../components/ui";
 import { useDatasetStore } from "../../state/datasetStore";
 import { useNavStore } from "../../state/navStore";
+import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
-import { endAuto, resumeAuto, startAuto, stopAuto, undoAutoRun } from "../auto/controller";
+import { endAuto, refusalNote, resumeAuto, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
 import { usd } from "../auto/cost";
+import { appReportQuestion, appReportTurn } from "../auto/report";
 import { activity, type Activity, type ActivityRow } from "../auto/activity";
 import { clockText, compact, pausedText, progressOf, rowMeta, rowSub, rowTone, STATE_WORD, TITLES } from "../auto/panel";
 import { AUTO_LIMITS, LIMIT_WORDS, type PlanRow } from "../auto/plan";
@@ -43,8 +47,10 @@ import { drawsOverlays } from "../examine/overlays";
 import { showStep } from "../examine/store";
 import type { ToolContext } from "../tools";
 import { openView } from "../tools/openView";
+import { loadSettings } from "../settings";
 import { goToStep } from "./goToStep";
 import { PinnedCard } from "./ProposalCards";
+import { ReportView } from "./ReportView";
 
 /** The time now, each second until the clock stops (while it waits for you too: the paused time grows). */
 function useNow(clock: RunClock | undefined): number {
@@ -106,14 +112,22 @@ function Row({ run, row, onLink }: { run: AutoRun; row: PlanRow; onLink: (run: A
   );
 }
 
-/** The run's state, as the panel names it: a stop by you is a pause (Resume goes on). */
+/** The run's state, as the panel names it: a pause by you is "Paused" (Resume goes on); a run Stop ended, "Stopped". */
 const stateWord = (run: AutoRun): string =>
-  run.state === "paused" ? (run.pause?.kind === "failure" ? "Failed" : "Needs you") : run.state === "stopped" ? "Paused" : STATE_WORD[run.state];
+  run.state === "paused"
+    ? run.pause?.kind === "failure"
+      ? "Failed"
+      : "Needs you"
+    : run.state === "stopped"
+      ? "Paused"
+      : run.state === "done" && run.appReport === "stopped"
+        ? "Stopped"
+        : STATE_WORD[run.state];
 
 /**
  * The controls, there while the run is open: Pause (the step under way
  * stops; Resume restarts it), or Resume (Retry after a failure); and Stop,
- * which ends the run where it is, without its report.
+ * which ends the run where it is, with the app's report from what exists.
  */
 function Controls({ run, ctx }: { run: AutoRun; ctx: ToolContext | null }) {
   if (run.state === "done") return null;
@@ -142,7 +156,12 @@ function Controls({ run, ctx }: { run: AutoRun; ctx: ToolContext | null }) {
           {failure ? "Retry" : "Resume"}
         </button>
       )}
-      <button type="button" className="auto-btn auto-btn--stop" onClick={endAuto} title="End the run where it is, without its report">
+      <button
+        type="button"
+        className="auto-btn auto-btn--stop"
+        onClick={() => void endAuto()}
+        title="End the run where it is: the app writes its report from what the run checked, with no model reply and no cost"
+      >
         Stop
       </button>
     </span>
@@ -263,6 +282,7 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
   const [open, setOpen] = useState(false); // the plan and the whole log, unfolded in the sheet layout
   const [hidden, setHidden] = useState<string | null>(null); // a finished run's panel, put away
   const [undone, setUndone] = useState<{ run: string; n: number } | null>(null);
+  const [report, setReport] = useState<string | null>(null); // the run whose app report is open
   if (!run || !act || hidden === run.id) return null;
   const fact = run.state === "paused" && run.pause?.kind === "fact" ? run.pause.proposal : null;
   const tone = run.state === "running" ? "run" : run.state === "done" ? "done" : run.pause?.kind === "failure" ? "bad" : "wait";
@@ -332,6 +352,17 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
               Report ↗
             </button>
           )}
+          {run.state === "done" && run.reportTurn === null && run.appReport !== null && (
+            <button
+              type="button"
+              className="auto-btn"
+              disabled={!ctx}
+              onClick={() => setReport(run.id)}
+              title="Open the run's report: the app's alone, measured afresh, with no model reply"
+            >
+              Report ↗
+            </button>
+          )}
           {canUndo && (
             <button
               type="button"
@@ -344,6 +375,16 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
           )}
           {undone?.run === run.id && <span className="auto-msg">{undone.n ? `Put back ${undone.n} change${undone.n === 1 ? "" : "s"}.` : "Nothing to put back."}</span>}
         </div>
+      )}
+      {report === run.id && ctx && (
+        <ReportView
+          dataset={ctx.dataset}
+          datasets={ctx.datasets}
+          turn={appReportTurn(run)}
+          question={appReportQuestion(run)}
+          settings={loadSettings()}
+          onClose={() => setReport(null)}
+        />
       )}
     </section>
   );
@@ -369,8 +410,13 @@ function goToTurn(turn: number): void {
  */
 export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart: boolean }) {
   const state = useAutoStore((s) => s.run?.state);
-  // Why a start was refused (a run or a reply under way): said, not swallowed.
-  const [refused, setRefused] = useState<string | null>(null);
+  // A start refused (a run or a reply under way): said, not swallowed, and
+  // only while its reason holds (refusalNote): the stores it reads are watched.
+  const [refused, setRefused] = useState(false);
+  usePipelineStore((s) => s.running);
+  useTuneStore((s) => s.active);
+  useChatStore((s) => s.busy);
+  const note = refusalNote(refused, state === undefined || state === "done" ? startBlocked() : null);
   if (state === "running") {
     return (
       <div className="ai-reviews">
@@ -393,8 +439,8 @@ export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart:
         disabled={!canStart || !ctx}
         onClick={() => {
           if (!ctx) return;
-          setRefused(null);
-          void startAuto({ ctx }).catch((e: unknown) => setRefused(`Not started: ${(e as Error)?.message ?? String(e)}.`));
+          setRefused(false);
+          void startAuto({ ctx }).catch(() => setRefused(true));
         }}
         title={`Preflight, a run, check and fix each stage, then a report. It pauses for a sample fact; ${AUTO_LIMITS.fixesPerStage} fixes a stage and ${AUTO_LIMITS.replies} model replies at most.`}
       >
@@ -403,7 +449,7 @@ export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart:
         </svg>
         Run auto analysis
       </button>
-      {refused && <span className="auto-refused">{refused}</span>}
+      {note && <span className="auto-refused">{note}</span>}
     </div>
   );
 }

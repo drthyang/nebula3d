@@ -14,7 +14,7 @@
 //   run per dev case, 5 minutes a run, inside the 30-minute cap.
 // - The quick-auto preset (NEBULA_VALIDATION_PRESET=quick-auto): the B-auto
 //   arm, the quick preset's plan with each run through auto mode's controller
-//   (validationAuto.ts), under the same cap and per-run limit.
+//   (validationAuto.ts), under the same cap, 8 minutes a run.
 
 import type { Arm } from "./validation";
 
@@ -49,8 +49,13 @@ export interface Preset {
 export const PRESETS: Readonly<Record<string, Preset>> = {
   // 8 dev cases × 1 run × 90 s ≈ 12 minutes, inside the 30-minute cap.
   quick: { model: "ollama-gemma4-26b", arms: ["B"], runs: 1, runMinutes: 5, wallMinutes: DEFAULT_WALL_MINUTES },
-  // B-auto: the same plan and limits, each run through auto mode; measured on 2026-11-07 (docs/evals.md).
-  "quick-auto": { model: "ollama-gemma4-26b", arms: ["B"], runs: 1, runMinutes: 5, wallMinutes: DEFAULT_WALL_MINUTES, mode: "auto" },
+  // B-auto: the same plan and cap, each run through auto mode, with 8 minutes a
+  // run: an auto run is the pipeline, the checks, up to two fixes a stage and
+  // the report, where an arm-B run is one reply. At 5 minutes, two of the
+  // eight runs of 2026-11-07 were cut in a reply (a fix, a report) that had
+  // not reached the 16,000-token cap: about 6 minutes of output at gemma4's
+  // 45 tokens a second (docs/evals.md). The wall cap still holds the plan.
+  "quick-auto": { model: "ollama-gemma4-26b", arms: ["B"], runs: 1, runMinutes: 8, wallMinutes: DEFAULT_WALL_MINUTES, mode: "auto" },
 };
 
 export function presetNamed(name: string | undefined): Preset | null {

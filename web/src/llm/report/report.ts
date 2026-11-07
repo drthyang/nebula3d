@@ -50,6 +50,7 @@ export interface ReportDecision {
 /** What an auto run adds to its report (auto/report.ts). */
 export interface ReportAuto {
   plan: { row: string; outcome: string; evidence: string }[]; // each row, its outcome, the checks' own lines
+  problems?: string[]; // the problems the checks found, computed (auto/problems.ts): one line each, or the line that there are none
   facts: { fact: string; answer: string }[]; // the facts asked, and how you answered
   held: string[]; // the ring changes the ring gate held
   ended: string; // how the run ended

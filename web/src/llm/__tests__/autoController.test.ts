@@ -12,14 +12,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
-import { applyFact, autoLoop, endAuto, resumeAuto, skipFact, startAuto, stopAuto, undoAutoRun } from "../auto/controller";
+import { applyFact, autoLoop, endAuto, refusalNote, resumeAuto, skipFact, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
+import { REPORT_PROMPT } from "../auto/prompts";
 import { useAutoStore, type AutoRun } from "../auto/store";
 import { autoTranscript, isAppStep, isSeeded } from "../auto/transcript";
 import { activityNow, type Activity } from "../auto/activity";
 import { useTuneStore } from "../tune/tuner";
 import { useChatStore } from "../chatStore";
+import { CUT_OFF_NOTE } from "../agent";
+import { UNSUPPORTED_MARK } from "../answerChecks";
+import { VALIDATION_MAX_TOKENS } from "../evals/validationModels";
+import { STREAM_MAX_TOKENS } from "../provider/anthropic";
 import { CLAUDE_URL } from "./scriptedTransports";
-import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
+import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, phaseOf, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
 import { installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
@@ -112,6 +117,8 @@ describe("a clean run", () => {
     // The next reply's "since the last reply" line says who ran it.
     expect(sinceLine(decisions(), useDecisionStore.getState().proposals)).toBe("- since the last reply, auto mode ran the pipeline from the start");
     expect(run().clock.endedAt).not.toBeNull();
+    // The problems the final checks found: the app's list, computed from their verdicts, each with its tool.
+    expect(run().problems).toEqual(["the counts end at 4.4 Å⁻¹, inside the box (qmax_coverage)"]);
   });
 });
 
@@ -138,7 +145,7 @@ describe("a run with a fixable stage", () => {
       ["run", "auto", "Run from Bragg punch", expect.any(String)],
     ]);
     // The report's digest carries the change, as auto mode's.
-    const report = model.sent.find((r) => String(r.messages[3].content).startsWith("Report on this auto run"))!;
+    const report = model.sent.find((r) => String(r.messages[3].content).startsWith(REPORT_PROMPT))!;
     expect(report.messages[1].content).toContain("the Bragg punch passed after its first fix");
     expect(report.messages[1].content).toMatch(/- in this auto run, auto mode ran the pipeline from the start; applied punchMinSig .* → 6; ran the pipeline from punch/);
     expect(appChanges()).toEqual([]);
@@ -179,6 +186,11 @@ describe("a run with a fixable stage", () => {
     expect(status()).toMatchObject({ punch: "attention", backfill: "passed", report: "done" });
     expect(run().plan.find((r) => r.id === "punch")).toMatchObject({ tries: 2, detail: "still needs attention after two fixes" });
     expect(run().replies).toBe(3); // two fixes and the report
+    expect(run().problems).toEqual(["the Bragg punch needs attention: missed at nodes (assess_stage punch)", "the counts end at 4.4 Å⁻¹, inside the box (qmax_coverage)"]);
+    // The model is not asked for them: its prompt asks for the verdicts, the changes and what is left.
+    const report = model.sent.find((r) => phaseOf(r.messages).kind === "report")!;
+    expect(String(report.messages[3].content)).toBe(REPORT_PROMPT);
+    expect(REPORT_PROMPT).not.toMatch(/problem/i);
   });
 });
 
@@ -314,6 +326,8 @@ describe("limits", () => {
     expect(model.sent).toHaveLength(1);
     expect(status()).toMatchObject({ rings: "attention", punch: "skipped", report: "done" });
     expect(run().plan.find((r) => r.id === "report")!.detail).toBe("written without the model: the spend limit");
+    // The report is the app's alone, opened from the panel (no reply to hang it on).
+    expect(run()).toMatchObject({ appReport: "limit", reportTurn: null });
   });
 
   it("2 fixes a stage, 12 replies, 30 minutes and $2 by default", async () => {
@@ -397,15 +411,150 @@ describe("Stop and Resume", () => {
     expect(status()).toMatchObject({ punch: "passed" });
   });
 
-  it("End closes a stopped run without its report", async () => {
+  it("Stop on a paused run ends it with the app's report: no model reply, no cost, the rows it left not checked", async () => {
     model.respond = (_phase, round) => {
       stopAuto();
       return fixWith("reduction-qc", null)(round);
     };
     await start();
-    endAuto();
-    expect(run()).toMatchObject({ state: "done", ended: "Ended by you before its report." });
+    expect(run().state).toBe("stopped");
+    const sent = model.sent.length;
+    await endAuto();
+    expect(run()).toMatchObject({ state: "done", appReport: "stopped", reportTurn: null, ended: "Stopped by you: the app's report, from what the run checked, with no model reply.", now: "Stopped by you." });
+    expect(model.sent).toHaveLength(sent); // no reply for the report
+    expect(status()).toMatchObject({ preflight: "done", run: "done", rings: "stopped", punch: "skipped", pdf: "skipped", report: "done" });
+    expect(run().plan.find((r) => r.id === "punch")!.detail).toBe("not checked: stopped by you");
+    expect(run().plan.find((r) => r.id === "report")!.detail).toBe("the app's alone: stopped by you, no model reply");
+    // The problems the run's checks found so far, the app's list, as the report's.
+    expect(run().problems).toEqual(expect.arrayContaining([expect.stringMatching(/\((qmax_coverage|ub_check|assess_stage \w+)\)$/)]));
     expect(run().clock.endedAt).not.toBeNull();
+    // The activity log says so, and the record is a finished run's: Resume does nothing.
+    expect(activityNow()!.rows.find((r) => r.key === "app-report")).toMatchObject({ title: "The app's report", line: "Stopped by you: written from what the run checked, with no model reply and no cost" });
+    await resumeAuto();
+    expect(run().state).toBe("done");
+  });
+
+  it("Stop while a fix reply runs: it is aborted and unwinds first, then the run ends with the app's report, at no cost", async () => {
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : e);
+    model.usage = { input: 1000, output: 100 };
+    let ending: Promise<void> | null = null;
+    model.respond = (phase, round) => {
+      if (phase.kind === "fix" && round === 1 && !ending) ending = endAuto();
+      return phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done.");
+    };
+    await startAuto({ ctx: CTX, settings: { ...SCRIPTED, baseUrl: CLAUDE_URL, model: "claude-opus-5-5", apiKey: "k" }, now: clock.now });
+    await ending;
+    const spent = run().costUsd;
+    expect(run()).toMatchObject({ state: "done", appReport: "stopped", reportTurn: null });
+    expect(status()).toMatchObject({ punch: "stopped", backfill: "skipped", report: "done" });
+    // The fix's own requests only: none for the report, and nothing spent after the stop.
+    expect(model.sent.every((r) => phaseOf(r.messages).kind === "fix")).toBe(true);
+    await (autoLoop() ?? Promise.resolve());
+    expect(run().costUsd).toBe(spent);
+    expect(usePipelineStore.getState().punchMinSig).toBe("");
+  });
+
+  it("Stop after a fix's change, before its run: the report says the outputs are from before it", async () => {
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : e);
+    let stopOnce = true;
+    model.respond = (phase, round) => {
+      if (phase.kind === "fix" && round === 2 && stopOnce) {
+        stopOnce = false;
+        stopAuto();
+      }
+      return phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done.");
+    };
+    await start();
+    expect(run().pendingRun).toBe("punch");
+    await endAuto();
+    expect(run().ended).toBe("Stopped by you: the app's report, from what the run checked, with no model reply. A change's run had not finished (punch on): the outputs are those from before it.");
+    expect(decisions().map((d) => [d.kind, d.by, d.after])).toEqual([
+      ["run", "auto", {}],
+      ["setting", "auto", { punchMinSig: "6" }],
+    ]);
+  });
+
+  it("Pause is still the stop Resume goes on from", async () => {
+    model.respond = (_phase, round) => {
+      stopAuto();
+      return fixWith("reduction-qc", null)(round);
+    };
+    await start();
+    expect(run()).toMatchObject({ state: "stopped", appReport: null });
+  });
+});
+
+describe("the output cap (the validation's, where the transport ships none)", () => {
+  beforeEach(() => {
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? cleanPunch(e) : e);
+  });
+
+  it("asks every reply of a run on an uncapped transport for 16,000 tokens at most, as arm B's validation does", async () => {
+    model.respond = () => say("Every stage meets its goal by its checks above.");
+    await start();
+    expect(model.sent.length).toBeGreaterThan(0);
+    expect(model.sent.every((r) => r.maxTokens === VALIDATION_MAX_TOKENS)).toBe(true);
+    expect(VALIDATION_MAX_TOKENS).toBe(16_000);
+  });
+
+  it("leaves Claude's own cap as the app ships it", async () => {
+    model.respond = () => say("Every stage meets its goal by its checks above.");
+    await start({}, { ...SCRIPTED, baseUrl: CLAUDE_URL, model: "claude-opus-5-5", apiKey: "k" });
+    expect(model.sent.map((r) => r.maxTokens)).toEqual([STREAM_MAX_TOKENS]);
+  });
+
+  it("a report reply cut off at the cap: its text kept with the cut-off note, the cut told, and the run ends with its report", async () => {
+    const cuts: { request: number; reason: string }[] = [];
+    model.respond = () => [{ content: "Every stage meets its goal, and" }, { truncated: true, stopReason: "length" }];
+    await startAuto({ ctx: CTX, settings: SCRIPTED, now: clock.now, truncations: { loop: (c) => cuts.push(c), tuning: () => {} } });
+    await (autoLoop() ?? Promise.resolve());
+    expect(run()).toMatchObject({ state: "done", ended: "Done, with its report." });
+    expect(status()).toMatchObject({ report: "done" });
+    expect(run().plan.find((r) => r.id === "report")!.detail).toBe("written");
+    const turn = useChatStore.getState().turns.find((t) => t.id === run().reportTurn)!;
+    expect(turn.content).toBe("Every stage meets its goal, and");
+    expect(turn.note).toBe(CUT_OFF_NOTE);
+    expect(cuts).toEqual([{ request: 1, reason: "length" }]);
+  });
+
+  it("a report whose revision is cut off at the cap: the answer it revised kept with its ⚠ marks, and the run ends with its report", async () => {
+    let n = 0;
+    model.respond = () => {
+      n += 1;
+      // An answer against the UB's verdict, with a number no check returned, is sent back; its revision runs out of room.
+      return n === 1 ? say("The UB is turned by 12.5° and the HKL origin is shifted by 0.37 r.l.u.") : [{ content: "The ring" }, { truncated: true, stopReason: "length" }];
+    };
+    await start();
+    expect(run()).toMatchObject({ state: "done", ended: "Done, with its report." });
+    const turn = useChatStore.getState().turns.find((t) => t.id === run().reportTurn)!;
+    expect(turn.content).toBe(`${UNSUPPORTED_MARK} The UB is turned by 12.5° and the HKL origin is shifted by 0.37 r.l.u.`);
+    expect(turn.note).toMatch(/^This answer failed its checks, and its revision did not replace it\. The lines marked ⚠ hold what no tool result in this reply supports: .*The reply was cut off: /);
+  });
+});
+
+describe("a start refused while the demo's run goes on (Pyodide, after a reload)", () => {
+  it("is refused while the run goes on, says so only while it does, and starts once it has ended", async () => {
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? cleanPunch(e) : e);
+    model.respond = () => say("Done.");
+    // A reload empties the in-browser engine: the demo is loaded and run again, and the chip clicked during that run.
+    usePipelineStore.setState({ running: true });
+    await expect(startAuto({ ctx: CTX, settings: SCRIPTED, now: clock.now })).rejects.toThrow("wait for the run under way to end");
+    expect(refusalNote(true, startBlocked())).toBe("Not started: wait for the run under way to end.");
+    expect(useAutoStore.getState().run).toBeNull();
+    // The demo's run ends: the note no longer stands (it once stayed until the next click), and a start goes through.
+    usePipelineStore.setState({ running: false, terminal: "done" });
+    expect(startBlocked()).toBeNull();
+    expect(refusalNote(true, startBlocked())).toBeNull();
+    await start();
+    expect(run().state).toBe("done");
+    // Each other reason is said while it holds, and none once nothing blocks.
+    useChatStore.setState({ busy: true });
+    expect(refusalNote(true, startBlocked())).toBe("Not started: wait for the reply to end.");
+    useChatStore.setState({ busy: false });
+    useTuneStore.setState({ active: true });
+    expect(refusalNote(true, startBlocked())).toBe("Not started: wait for the run under way to end.");
+    useTuneStore.setState({ active: false });
+    expect(refusalNote(false, startBlocked())).toBeNull();
   });
 });
 

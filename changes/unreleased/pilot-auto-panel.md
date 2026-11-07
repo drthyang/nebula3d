@@ -13,7 +13,7 @@
     latest step in the chat and shows that step's highlights.
   - The header shows the time worked, never against the limit; the time it
     waited for you is shown apart. Pause, Resume and Stop are always there.
-    Stop ends the run without its report.
+    Stop ends the run with the app's report (see below).
   - The panel also shows a progress bar, the replies, fixes, tokens and, on
     Claude, the spend. A fact the run waits for is pinned in it, with Apply,
     Edit and Skip.

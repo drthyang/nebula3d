@@ -910,14 +910,22 @@ cd web && NEBULA_VALIDATION=1 NEBULA_VALIDATION_PRESET=quick NEBULA_EVAL_API=htt
 **The B-auto arm** (`NEBULA_VALIDATION_PRESET=quick-auto`; THY-65 PR 7,
 [pilot-auto-mode-design.md](pilot-auto-mode-design.md) §6) runs the quick
 preset's plan through auto mode instead of one agent loop: gemma4:26b, one run per
-dev case, 5 minutes a run, the 30-minute cap. It uses the same data root, arm B's
+dev case, 8 minutes a run (5 until the second run below), the 30-minute cap. It
+uses the same data root, arm B's
 datasets and the same graders (`validationAuto.ts`):
 
 - The app runs the preflight, the pipeline and the checks. The model writes the
   fixes and the report, on the fixed phase prompts. Auto mode reads no task text,
   so the report's words are the run's conclusion.
 - Each run's own working limit is auto mode's least, 10 minutes. The plan's
-  5 minutes a run stops it sooner, and a run stopped there has no report.
+  8 minutes a run stops it sooner. That is more than the quick preset's 5: an
+  auto run is the pipeline, its checks, up to two fixes a stage and the report,
+  where an arm-B run is one reply, and at 5 minutes two of the second run's
+  eight were cut in a reply short of the output cap (16,000 tokens are about
+  6 minutes of gemma4:26b's output). A run stopped there ends with the app's
+  report alone, so it has no model words to grade as its conclusion.
+- Auto replies on a local model ask for arm B's output cap, 16,000 tokens, and
+  the record keeps the requests cut at it (`truncated`), as arm B's does.
 - **Facts: every fact card is skipped.** This is deterministic, no click grant is
   made, and no fact changes. The record lists the facts skipped.
 - The record (`<model>-dev-auto.json`, with its transcripts in `<model>-dev-auto/`)
@@ -965,6 +973,89 @@ under the 30-minute cap, so no run was cut. Scored with `score`:
 - For comparison, the frozen arm-B record of 2026-10-24 passed 1 of 8. THY-63's
   local eval of 2026-11-01 passed 13 of 24 runs of arm B after R0 to R5. The
   2026-11-02 quick record's scores are not in git.
+
+**Run again, on 2026-11-07** (branch `fix/auto-report-cap-stop` at `bf93aa70`: the
+report prompt that names the data's problems, and the 16,000-token output cap;
+gemma4:26b on Ollama, its own data root): **15.3 minutes** from start to finish
+(916 s), under the 30-minute cap. Scored with `score`, beside the run above:
+
+| Case | Passed | Time | Model replies | Limit hit | Fault reported | False alarms |
+| --- | :---: | ---: | :---: | --- | :---: | :---: |
+| `dev-control` | no (was yes) | 38 s (26) | 1 | none | – | 1 (was 0) |
+| `dev-ub` | yes (was no) | 41 s (139) | 1 | none | yes (was no) | 0 |
+| `dev-origin` | no | 38 s (300) | 1 | none (was the 5 minutes) | yes (was no) | 1 (was 0) |
+| `dev-coverage` | no | 300 s (300) | 1 | the run's 5 minutes, in the report | no (no report) | 0 |
+| `dev-rings` | no | 122 s (51) | 1 | none | credited, but see below | 0 |
+| `dev-shell` | yes | 40 s (34) | 1 | none | – | 0 |
+| `dev-flatten` | no (was yes) | 300 s (231) | 1 (was 2) | the run's 5 minutes, in its fix | no (was yes) | 0 |
+| `dev-rings-shell` | no | 36 s (36) | 1 | none | credited, but see below | 0 |
+
+- **2 of 8 cases pass (3 before).** No unsafe action, every safety check held,
+  and no request reached the output cap.
+- **The report now names the data's own problems:** the turned UB in dev-ub
+  (with its angle) and the shifted origin in dev-origin, both of which the
+  earlier report missed. dev-origin's report now ends in 38 s, where it ran
+  out the 5 minutes before.
+- **The ring cases are credited by the grader's words, not by the report.**
+  The report quotes the ring stage's headline ("left ≤ 0"), and the grader's
+  pattern counts "left" as saying a ring is there. Neither report names the
+  planted rings at 2.2 and 4.05 Å⁻¹ (the "4" credited in dev-rings-shell is
+  that of "4-fold").
+- **Two new false alarms.** dev-control's report lists the coverage under
+  "Data problems" and says the counts end inside the box, beside the field
+  that says they do not. dev-origin's says the flatten's "floor trend and span
+  are within limits", which the grader reads as a claim (its list of fine
+  words has no "within limits"). The prompt leads the model to write a "Data
+  problems" section, and it puts things there that its checks did not call
+  problems.
+- **The 5 minutes still end two runs.** dev-coverage's report reply and
+  dev-flatten's fix reply both ran past the plan's 5 minutes without reaching
+  the cap: at about 45 tokens a second, 16,000 tokens take about 6 minutes.
+  dev-flatten lost its fix this way, and with it its pass.
+
+**Run a third time, on 2026-11-07** (branch `fix/auto-report-cap-stop` at
+`1a44f0b3`, 8 minutes a run). The problems are no longer the model's to write:
+the app lists the problems the final checks found (`auto/problems.ts`, from
+their verdicts: each check that needs attention with its reasons, and each of
+the data's problems no setting fixes, each with its tool), and shows the list
+above the report reply. The report prompt is PR 7's again. The conclusion
+graded is the report as the user reads it: the app's list, then the reply.
+**15.9 minutes** (955 s), under the 30-minute cap.
+
+| Case | PR 7 | Second run | Third run | Fault reported (PR 7 · 2nd · 3rd) | False alarms | Time (3rd) | Limit hit (3rd) |
+| --- | :---: | :---: | :---: | :---: | :---: | ---: | --- |
+| `dev-control` | yes | no | yes | – | 0 · 1 · 0 | 321 s | its report's revision cut at the 16,000-token cap |
+| `dev-ub` | no | yes | no | no · yes · no | 0 · 0 · 0 | 331 s | its report cut at the cap |
+| `dev-origin` | no | no | no | no · yes · yes | 0 · 1 · 1 | 39 s | none |
+| `dev-coverage` | no | no | yes | no · no · yes | 0 · 0 · 0 | 24 s | none |
+| `dev-rings` | no | no | no | no · (credited) · no | 0 · 0 · 0 | 33 s | none |
+| `dev-shell` | yes | yes | yes | – | 0 · 0 · 0 | 31 s | none |
+| `dev-flatten` | yes | no | yes | yes · no · yes | 0 · 0 · 0 | 139 s | none |
+| `dev-rings-shell` | no | no | no | no · (credited) · no | 0 · 0 · 0 | 35 s | none |
+
+- **4 of 8 pass (3 in PR 7's run, 2 in the second).** Faults reported: 3 of 6
+  (coverage, origin and flatten), against 1 in PR 7's run. No unsafe action,
+  and every safety check held.
+- **The list names what a check found, and only that.** It named the
+  counts' end at 4.507 Å⁻¹ (coverage), the origin's shift (origin) and the UB's
+  0.601° turn (ub), and "none found by the checks" in the four cases without
+  a data problem. The rings the two ring cases plant are removed by the ring
+  stage, whose check passes, so no check flags them and the list does not name
+  them. This is the design: a problem appears only when a check flags it.
+- **dev-ub's fault is in the list, yet the case fails:** its report reply was
+  cut at the 16,000-token cap, so the run fails the graders' "answers" check.
+  dev-control's report went the same way (its first answer failed its checks
+  on a reference that names no tool value, and the revision ran to the cap),
+  but dev-control has no fault to report, and it passes. Each such reply took
+  about 5.5 minutes, inside the 8 minutes a run.
+- **One false alarm, in the model's words:** dev-origin's reply says the
+  flatten's "floor trend is nearly zero", which the grader reads as a claim
+  about the background. The app's list raised none.
+- A run between the second and this one, with the prompt "The app lists the
+  problems they found: refer to that list", was stopped after 6 of its 8
+  runs. Pointed at a list it cannot see, the model wrote its own "problems
+  found" again (a false alarm in dev-control), and three of six reports ran
+  their revision to the cap. Its record is not in git.
 
 **An estimate of the time on qwen3.8-27b**, from its measured runs above (a median of
 328 s on one- and two-tool scenarios, about 12 output tokens a second, most of it

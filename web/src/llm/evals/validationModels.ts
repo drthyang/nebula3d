@@ -8,7 +8,7 @@
 
 import { isOllamaUrl, loadedContext, ollamaModel } from "../provider/client";
 import { isLocalUrl } from "../provider/presets";
-import { MAX_TOOL_ROUNDS, runPolicyOf, type RunPolicy } from "../runPolicy";
+import { CAPPED_OUTPUT_TOKENS, MAX_TOOL_ROUNDS, runPolicyOf, type RunPolicy } from "../runPolicy";
 import type { LlmSettings } from "../settings";
 import { TUNE_STAGES } from "../tune/catalog";
 import { casesToRun, datasetStem, type Arm, type RunContextWindow, type Split, type ValidationCase } from "./validation";
@@ -67,12 +67,13 @@ export const RUN_POLICY = {
  * in either arm, and its tuning's (tune_pipeline, which asks the run's model).
  * One cap for every model and arm keeps the arms comparable, where the app's
  * own caps differ by transport (Claude 64,000 for a reply and 16,000 for a
- * tuning request, anthropic.ts; a local server none, runPolicy.ts). A reply
+ * tuning request, anthropic.ts; a local server none, runPolicy.ts, but in
+ * auto mode, whose replies take this cap there: autoPolicyOf). A reply
  * cut at it is recorded and flagged, never graded silently (the record's
  * `truncated`, validation.ts). The manager's decision, confirmed by the user,
  * 2026-10-24 (plan 1.1).
  */
-export const VALIDATION_MAX_TOKENS = 16_000;
+export const VALIDATION_MAX_TOKENS = CAPPED_OUTPUT_TOKENS;
 
 /**
  * The policy a validation run runs under (runPolicy.ts): its transport's as
