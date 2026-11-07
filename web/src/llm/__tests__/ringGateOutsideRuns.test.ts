@@ -18,7 +18,7 @@ import type { Dataset, StageStatus } from "../../api/types";
 import { useDatasetStore } from "../../state/datasetStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { ringOutputChanged, ringOutputMark } from "../../state/ringOutput";
-import type { AgentStep } from "../agent";
+import { toolStepsIn, type AgentStep } from "../agent";
 import { checkRings, currentRingCheck, ringHeldNow } from "../apply/actions";
 import { addProposals, clearDecisions, useDecisionStore } from "../apply/decisions";
 import { buildProposals, type Proposal } from "../apply/proposals";
@@ -132,6 +132,19 @@ describe("a ring verdict in the conversation, then a run outside it", () => {
     const again = await ringVerdict(listed(200));
     expect((await changeRingModel(pilot(listed(200), [verdict, again]))).ok).toBe(true);
     expect(usePipelineStore.getState().ringModel).toBe("parametric");
+  });
+
+  it("a verdict of an earlier reply, as the transcript keeps it (its outcomes dropped): stale the same way", async () => {
+    const verdict = await ringVerdict(listed(100));
+    useChatStore.getState().addTurn({ role: "assistant", content: "A ring is left.", steps: [verdict] });
+    const earlier = toolStepsIn(useChatStore.getState().turns);
+    expect(earlier[0].outcomes).toBeUndefined();
+    expect(earlier[0].ringOutput).toMatchObject({ dataset: "demo", written: 100 });
+    expect(ringVerdictAllowsChange(pilot(listed(100), earlier))).toBe(true);
+    await executionPageRun("computed");
+    const refused = await changeRingModel(pilot(listed(100), toolStepsIn(useChatStore.getState().turns)));
+    expect(refused.text).toBe(`Error: ${ringEvidenceRefusal("ringModel")}`);
+    expect(ringVerdictAllowsChange(pilot(listed(300), earlier))).toBe(false);
   });
 
   it("a run outside the console that wrote the ring output again: the listing's date says it", async () => {

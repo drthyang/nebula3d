@@ -19,7 +19,7 @@
 // one outside the console) is none, and the output the verdict judged says it
 // (its mark, state/ringOutput.ts): recomputed since, it is another output.
 
-import { ringOutputChanged } from "../../../state/ringOutput";
+import { ringOutputChanged, type RingOutputMark } from "../../../state/ringOutput";
 import type { AgentStep } from "../../agent";
 import { found } from "../../readings";
 import { TUNE_PARAMS } from "../../tune/catalog";
@@ -65,7 +65,7 @@ export const namesRingTuning = (message: string | undefined): boolean => !!messa
 export function ringVerdictAllowsChange(ctx: Pick<ToolContext, "replySteps" | "earlierSteps"> & { dataset?: ToolContext["dataset"] }): boolean {
   if (!ctx.replySteps) return true;
   const standing = standingVerdict([...(ctx.earlierSteps ?? []), ...ctx.replySteps]);
-  if (standing?.kind !== "attention") return false;
+  if (standing?.outcome.kind !== "attention") return false;
   return !(standing.ringOutput && ringOutputChanged(standing.ringOutput, ctx.dataset));
 }
 
@@ -82,17 +82,23 @@ const recomputesRings = (s: AgentStep): boolean => {
   return !stages || stages.rings === "computed";
 };
 
-// The newest 3D ring verdict that no run among `steps` recomputed the rings after.
-function standingVerdict(steps: readonly AgentStep[]): Outcome | undefined {
-  let standing: Outcome | undefined;
+// The newest 3D ring verdict that no run among `steps` recomputed the rings
+// after, and the mark of the ring output it judged: its outcome's, or, for a
+// step the transcript keeps without its outcomes, the step's.
+function standingVerdict(steps: readonly AgentStep[]): { outcome: Outcome; ringOutput?: RingOutputMark } | undefined {
+  let standing: { outcome: Outcome; ringOutput?: RingOutputMark } | undefined;
   for (const s of steps) {
     if (recomputesRings(s)) standing = undefined;
-    for (const o of outcomesOf(s)) if (o.check === "rings") standing = o;
+    for (const o of outcomesOf(s)) {
+      if (o.check !== "rings") continue;
+      const ringOutput = o.ringOutput ?? s.ringOutput;
+      standing = { outcome: o, ...(ringOutput ? { ringOutput } : {}) };
+    }
   }
   return standing;
 }
 
 /** The newest 3D ring verdict on the outputs as `steps` leave them: its kind, or undefined where none stands. */
 export function ringVerdict(steps: readonly AgentStep[]): Kind | undefined {
-  return standingVerdict(steps)?.kind;
+  return standingVerdict(steps)?.outcome.kind;
 }
