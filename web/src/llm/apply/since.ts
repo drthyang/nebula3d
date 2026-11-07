@@ -7,8 +7,11 @@
 // markTold), and the replies after it carry it only as their own text did.
 //
 // Facts alone (THY-18): what changed, its values before and after, and who
-// changed it; no verdict, no advice. A declined change names the value kept,
-// so the model reads the settings in force and what the user turned down.
+// changed it; no verdict, no advice. A declined change names the value kept
+// first, by the setting's name, then the value declined ("kept
+// ringPooledSectors 72, declined 32"): worded "declined ringPooledSectors
+// 72 → 32 (kept 72)", gemma4:26b proposed the 32 again in one of two runs of
+// a local smoke test, and in none of three as it is now.
 // The setting's name is update_settings' (the model's own word for it), the
 // values as update_settings reads them (the card's line); a run, the stage
 // run_pipeline names. Nothing of a click grant (llm/consent.ts): a change the
@@ -55,7 +58,7 @@ export function sinceItem(d: Decision, p: Proposal | undefined): string {
   }
   const name = nameOf(d, p);
   const change = `${name} ${d.shown.from} → ${d.shown.to}`;
-  if (d.action === "dismiss") return `declined ${change} (kept ${d.shown.from})`;
+  if (d.action === "dismiss") return `kept ${name} ${d.shown.from}, declined ${d.shown.to}`;
   if (d.action === "undo") return `undid ${change}`;
   if (d.action === "edit-apply") {
     // The value the reply proposed, where it is one value (not the modulation's declaration).

@@ -13,17 +13,17 @@ Context: the dataset as this request found it. Nothing here is measured: the too
 - reciprocal grid: 97 × 97 × 97 voxels, H -3 to 3, K -3 to 3, L -3 to 3 r.l.u.
 - raw volume: symmetrised with mmm
 - on disk: raw, ringremoved, braggpunched, backfilled, flattened, delta_pdf
-- since the last reply, you applied punchMinSig 5 → 6; declined modulation default → k = (0, 1/3, 0), order 1, points, ± 0.08 r.l.u. (kept default); ran the pipeline from punch
+- since the last reply, you applied punchMinSig 5 → 6; kept modulation default, declined k = (0, 1/3, 0), order 1, points, ± 0.08 r.l.u.; ran the pipeline from punch
 ```
 
 ## Each kind of decision
 
 - Apply: `- since the last reply, you applied punchMinSig 5 → 6`
 - Edit and apply: `- since the last reply, you applied ringPooledSectors 72 → 48 (edited from the proposed 32)`
-- Dismiss: `- since the last reply, you declined ringPooledSectors 72 → 32 (kept 72)`
+- Dismiss: `- since the last reply, you kept ringPooledSectors 72, declined 32`
 - Undo: `- since the last reply, you undid punchMinSig 6 → 5`
 - Apply on a sample fact (the user's click): `- since the last reply, you applied modulation default → k = (0, 1/3, 0), order 1, points, ± 0.08 r.l.u.`
-- Dismiss a sample fact: `- since the last reply, you declined modulation default → k = (0, 1/3, 0), order 1, points, ± 0.08 r.l.u. (kept default)`
+- Dismiss a sample fact: `- since the last reply, you kept modulation default, declined k = (0, 1/3, 0), order 1, points, ± 0.08 r.l.u.`
 - Run: `- since the last reply, you ran the pipeline from punch`
 - Dismiss a Run card: `- since the last reply, you declined the run from rings`
 - Apply a tuning trial: `- since the last reply, you applied punch trial #3: punchMinSig 5 → 6, punchSupercellH 1 → 2`

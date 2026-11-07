@@ -63,12 +63,12 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("the line's words, decision by decision", () => {
-  it("Apply, Dismiss and Undo on setting cards: update_settings' names, before → after, the value a decline kept", async () => {
+  it("Apply, Dismiss and Undo on setting cards: update_settings' names, before → after; a decline, the value kept first", async () => {
     const [a] = propose("Try punchMinSig 6.");
     const [b] = propose("Or punchSupercellH 2.");
     await applyCard(a, ctx);
     dismissCard(b);
-    expect(line()).toBe("- since the last reply, you applied punchMinSig 5 → 6; declined punchSupercellH 1 → 2 (kept 1)");
+    expect(line()).toBe("- since the last reply, you applied punchMinSig 5 → 6; kept punchSupercellH 1, declined 2");
     markTold(untoldDecisions().through);
     expect(line()).toBeNull();
     undoDecision(state().decisions[0]);
@@ -117,7 +117,7 @@ describe("the line's words, decision by decision", () => {
       { ...base, id: "D5", proposal: "P1", kind: "trial", title: "Trial #3", shown: trial.shown, action: "dismiss", by: "auto" },
     ];
     expect(sinceLine(ds, [trial, band])).toBe(
-      "- since the last reply, you applied punch trial #3: punchMinSig 5 → 6, punchSupercellH 1 → 2; ran the pipeline from punch; declined |Q| band full → 1–20 Å⁻¹ (kept full); " +
+      "- since the last reply, you applied punch trial #3: punchMinSig 5 → 6, punchSupercellH 1 → 2; ran the pipeline from punch; kept |Q| band full, declined 1–20 Å⁻¹; " +
         "auto mode declined the run from pdf; declined punch trial #3 (punchMinSig=6, punchSupercellH=2)",
     );
   });
@@ -205,7 +205,7 @@ describe("one reply only: the mark of the decisions told", () => {
     const told = untoldDecisions().through;
     dismissCard(b); // during the reply
     markTold(told); // the reply came back
-    expect(line()).toBe("- since the last reply, you declined punchSupercellH 1 → 2 (kept 1)");
+    expect(line()).toBe("- since the last reply, you kept punchSupercellH 1, declined 2");
     markTold(0); // never back
     expect(state().told).toBe(1);
   });
@@ -220,7 +220,7 @@ describe("one reply only: the mark of the decisions told", () => {
     expect(file.told).toBe(1);
     clearDecisions();
     restoreDecisions(readDecisions(file));
-    expect(line()).toBe("- since the last reply, you declined punchSupercellH 1 → 2 (kept 1)");
+    expect(line()).toBe("- since the last reply, you kept punchSupercellH 1, declined 2");
     const { told, ...old } = file;
     void told;
     restoreDecisions(readDecisions(old));

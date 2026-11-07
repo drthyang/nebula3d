@@ -51,7 +51,7 @@ answered from one cut's metrics without a tool call failed. After you
 apply, edit, dismiss or undo a change card, the next reply's context ends
 with one line saying what changed since the last reply, before and after, by
 the setting's name ("- since the last reply, you applied punchMinSig 5 → 6;
-declined punchSupercellH 1 → 2 (kept 1)"). Only that reply gets it, so a
+kept ringPooledSectors 72, declined 32"). Only that reply gets it, so a
 change you turned down is not proposed again as new, and the model knows the
 settings in force (`apply/since.ts`). With *Tools* off,
 the model reads one fixed cut's metrics (H–K at L=0 and the ΔPDF's z=0

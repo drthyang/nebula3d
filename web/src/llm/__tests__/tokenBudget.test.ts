@@ -688,13 +688,13 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
 // conversation, before any card). Measured on the worst turn all the same,
 // with the budget's three decisions (sinceSamples.ts), as the bound of a
 // full-method reply that follows a decision. The line has a ceiling of its
-// own (measured 2026-11-07: 176 characters and its newline, 50.6 est. tokens, rounded up),
-// and the turn with it the 32k window with POLICY_SPARE free. The 20 % target
-// is the worst turn's, which never carries the line: this case's size
-// against it is printed, not held (the turn is 44 over it, the line needing
-// 51 of the 7 to spare).
+// own (measured 2026-11-07: 165 characters and its newline, 47.4 est.
+// tokens, rounded up), and the turn with it the 32k window with POLICY_SPARE
+// free. The 20 % target is the worst turn's, which never carries the line:
+// this case's size against it is printed, not held (the turn is 41 over it,
+// the line needing 48 of the 7 to spare).
 const SINCE = budgetSince();
-const SINCE_CEILING = 51;
+const SINCE_CEILING = 48;
 const withSince = (): ChatMessage[] => buildChatMessages(context, [], TASK, null, { tools: true, since: SINCE });
 
 describe("after a decision: the worst turn with the \"since the last reply\" line (three decisions)", () => {
