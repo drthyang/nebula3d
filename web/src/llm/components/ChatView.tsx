@@ -15,7 +15,7 @@ import { useNavStore } from "../../state/navStore";
 import { toolsKnownUnsupported, type AgentStep } from "../agent";
 import { untoldDecisions, useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
-import { useChatStore, type ChatTurn } from "../chatStore";
+import { TRANSCRIPT_BYTES, useChatStore, type ChatTurn } from "../chatStore";
 import { contextWindow, conversationCost, meterReading, openingSpecs, requestTokens } from "../contextMeter";
 import { buildChatMessages, CHAT_HISTORY_TURNS } from "../prompts/templates";
 import type { ModelContext } from "../provider/client";
@@ -38,7 +38,7 @@ import { Markdown } from "./Markdown";
 import { ProposalCards } from "./ProposalCards";
 import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
-import { ContextMeterChip, ContextMeterPanel } from "./ContextMeter";
+import { ContextMeterAction, ContextMeterChip, ContextMeterDetail, type MeterAction } from "./ContextMeter";
 import { useOllamaMax } from "../useOllamaMax";
 import { usageText } from "../usage";
 import { verdictLine } from "../verdict";
@@ -317,6 +317,8 @@ export function ChatView({
   const setDraft = useChatStore((s) => s.setDraft);
   const usage = useChatStore((s) => s.usage);
   const summary = useChatStore((s) => s.summary);
+  const leftOut = useChatStore((s) => s.leftOut);
+  const fromFile = useChatStore((s) => s.fromFile);
   // An auto run under way owns the conversation: the composer waits (auto/controller.ts).
   const autoRunning = useAutoStore((s) => s.run?.state === "running");
   // Running or paused: its own replies, which the meter does not measure (AutoPanel shows their tokens).
@@ -413,6 +415,10 @@ export function ChatView({
     const before = baseTokens([...off, ...(summary ? [{ role: "user" as const, content: summary.text }] : [])]);
     return next !== null && baseTokens([{ role: "user", content: next.text }]) < before;
   }, [meter, turns, sent, summary, decisionsAt]);
+  // The one action from amber (none while a reply runs, or with no conversation).
+  const action: MeterAction | null =
+    meter && meter.reading.level !== "ok" && turns.length > 0 && !busy ? (summaryHelps ? "summarize" : "fresh") : null;
+  const act = (a: MeterAction) => (a === "summarize" ? summarize : clearConversation);
 
   const sendChat = useCallback(() => {
     const text = draft.trim();
@@ -473,6 +479,19 @@ export function ChatView({
             </span>
           </div>
         )}
+        {turns.length > 0 && leftOut > 0 && (
+          <div className="ai-context-note" role="note">
+            {`${leftOut === 1 ? "The first turn was" : `The first ${leftOut} turns were`} left out when the page reloaded ` +
+              `(this tab keeps the newest ${TRANSCRIPT_BYTES / 1_000_000} MB of the conversation): ${leftOut === 1 ? "it is" : "they are"} not shown, ` +
+              `and the model ${summary && summary.through >= turns[0].id - 1 ? "reads them only through the summary below" : "no longer reads them"}.`}
+          </div>
+        )}
+        {turns.length > 0 && fromFile && (
+          <div className="ai-context-note" role="note">
+            {`Restored from a session file, which keeps no summary: the model reads these turns as text again, the newest ${CHAT_HISTORY_TURNS} of them.`}
+          </div>
+        )}
+        {summary && turns.length > 0 && summary.through < turns[0].id && <SummaryNotice summary={summary} />}
         {turns.map((t) => (
           <Fragment key={t.id}>
             {auto.blocks.filter((b) => b.before === t.id).map((b) => (
@@ -598,6 +617,9 @@ export function ChatView({
               title={usage && (usage.requests > 0 || usage.uncounted) ? `This conversation's model requests: ${usageText(usage)}` : undefined}
             />
           )}
+          {meter && !autoUnderWay && action && (
+            <ContextMeterAction action={action} level={meter.reading.level} onAct={act(action)} />
+          )}
           {turns.length > 0 && (
             <button
               type="button"
@@ -610,16 +632,13 @@ export function ChatView({
             </button>
           )}
         </div>
-        {meter && !autoUnderWay && (
-          <ContextMeterPanel
+        {meter && !autoUnderWay && meterOpen && (
+          <ContextMeterDetail
             reading={meter.reading}
             window={meter.window}
             cost={conversationCost(settings, usage)}
-            open={meterOpen}
-            canAct={turns.length > 0 && !busy}
-            canSummarize={summaryHelps}
-            onSummarize={summarize}
-            onStartFresh={clearConversation}
+            other={action === "summarize" ? "fresh" : null}
+            onOther={act("fresh")}
           />
         )}
 

@@ -111,6 +111,38 @@ describe("chat transcript across reloads", () => {
     }
   });
 
+  it("counts the turns a reload left out, so the chat can say so (THY-74), with those left out before it", async () => {
+    const first = await load();
+    const big = "z".repeat(first.TRANSCRIPT_BYTES / 4);
+    for (let i = 0; i < 6; i++) first.useChatStore.getState().addTurn({ role: i % 2 ? "assistant" : "user", content: big });
+    expect(first.useChatStore.getState().leftOut).toBe(0); // this page still holds them all
+    const second = await load();
+    const kept = second.useChatStore.getState().turns.length;
+    expect(kept).toBeLessThan(6);
+    expect(second.useChatStore.getState().leftOut).toBe(6 - kept);
+    // Two more, and another reload: those left out then add to the count.
+    second.useChatStore.getState().addTurn({ role: "user", content: big });
+    second.useChatStore.getState().addTurn({ role: "assistant", content: big });
+    const third = await load();
+    expect(third.useChatStore.getState().leftOut).toBe(8 - third.useChatStore.getState().turns.length);
+    third.useChatStore.getState().clear();
+    expect((await load()).useChatStore.getState().leftOut).toBe(0);
+  });
+
+  it("marks a conversation restored from a session file (it keeps no summary), and drops the summary in place", async () => {
+    const { useChatStore } = await load();
+    useChatStore.getState().addTurn({ role: "user", content: "a" });
+    useChatStore.getState().setSummary({ through: 1, turns: 1, text: "Earlier in this conversation: …" });
+    useChatStore.getState().restoreTurns([{ id: 1, role: "user", content: "q" }, { id: 2, role: "assistant", content: "r" }]);
+    expect(useChatStore.getState()).toMatchObject({ summary: null, fromFile: true, leftOut: 0 });
+    // Kept over a reload, and gone with Clear.
+    expect((await load()).useChatStore.getState().fromFile).toBe(true);
+    useChatStore.getState().clear();
+    expect(useChatStore.getState().fromFile).toBe(false);
+    useChatStore.getState().restoreTurns([]);
+    expect(useChatStore.getState().fromFile).toBe(false);
+  });
+
   it("starts empty when storage is unavailable", async () => {
     vi.stubGlobal("sessionStorage", undefined);
     const { useChatStore } = await load();

@@ -46,6 +46,11 @@ interface ChatState {
   // CHAT_HISTORY_TURNS of them, prompts/templates.ts).
   summary: ChatSummary | null;
   setSummary: (summary: ChatSummary | null) => void;
+  // What the chat says the model no longer reads (ChatView): `leftOut`, the
+  // oldest turns a reload left out (the tab keeps TRANSCRIPT_BYTES of them);
+  // `fromFile`, the turns came from a session file, which keeps no summary.
+  leftOut: number;
+  fromFile: boolean;
   addUsage: (u: Usage) => void;
   addTurn: (turn: Omit<ChatTurn, "id">) => void;
   setDraft: (draft: string) => void;
@@ -59,6 +64,7 @@ const TRANSCRIPT_KEY = "nebula3d.chat.turns.v1";
 const DRAFT_KEY = "nebula3d.chat.draft.v1";
 const USAGE_KEY = "nebula3d.chat.usage.v1";
 const SUMMARY_KEY = "nebula3d.chat.summary.v1";
+const NOTES_KEY = "nebula3d.chat.notes.v1";
 export const TRANSCRIPT_BYTES = 1_000_000;
 
 const isTurn = (t: unknown): t is ChatTurn =>
@@ -121,7 +127,10 @@ const jsonOf = (turn: ChatTurn): string => {
 // The newest turns whose JSON fits the budget: the JSON of the array, `[a,b,…]`,
 // counted from its turns' own, so a long conversation is not written out again
 // once per turn it drops (that froze the page for seconds on every reply).
-export const fitTranscript = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): string => {
+export const fitTranscript = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): string => fitTranscriptFrom(turns, budget).json;
+
+/** fitTranscript, with how many of the oldest turns it left out (`from`). */
+export const fitTranscriptFrom = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): { json: string; from: number } => {
   const parts = turns.map(jsonOf);
   let length = 2 + parts.reduce((n, p) => n + p.length, 0) + Math.max(0, parts.length - 1);
   let from = 0;
@@ -129,7 +138,7 @@ export const fitTranscript = (turns: ChatTurn[], budget = TRANSCRIPT_BYTES): str
     length -= parts[from].length + (from < parts.length - 1 ? 1 : 0); // the turn, and its comma
     from += 1;
   }
-  return `[${parts.slice(from).join(",")}]`;
+  return { json: `[${parts.slice(from).join(",")}]`, from };
 };
 
 // The conversation's token total, kept with its transcript.
@@ -151,6 +160,16 @@ const restoreSummary = (): ChatSummary | null => {
     return o && typeof o === "object" && typeof o.through === "number" && typeof o.turns === "number" && typeof o.text === "string" ? o : null;
   } catch {
     return null;
+  }
+};
+
+// The notes on what the model no longer reads, kept with the transcript.
+const restoreNotes = (): { leftOut: number; fromFile: boolean } => {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(NOTES_KEY) ?? "null") as { leftOut?: unknown; fromFile?: unknown } | null;
+    return { leftOut: typeof v?.leftOut === "number" && v.leftOut > 0 ? v.leftOut : 0, fromFile: v?.fromFile === true };
+  } catch {
+    return { leftOut: 0, fromFile: false };
   }
 };
 
@@ -182,6 +201,7 @@ export const useChatStore = create<ChatState>((set) => ({
   usage: restoreUsage(),
   summary: restoreSummary(),
   setSummary: (summary) => set({ summary }),
+  ...restoreNotes(),
   addUsage: (u) =>
     set((s) => {
       const t = s.usage;
@@ -201,7 +221,7 @@ export const useChatStore = create<ChatState>((set) => ({
     }),
   addTurn: (turn) => set((s) => ({ turns: [...s.turns, { ...turn, ...(turn.steps ? { steps: asRead(turn.steps) } : {}), id: nextId++ }] })),
   setDraft: (draft) => set({ draft }),
-  clear: () => set({ turns: [], draft: "", error: null, usage: null, summary: null }),
+  clear: () => set({ turns: [], draft: "", error: null, usage: null, summary: null, leftOut: 0, fromFile: false }),
   restoreTurns: (saved) => {
     const turns = saved.filter(isTurn).map((t) => settled(fromFile(t)));
     nextId = Math.max(nextId, turns.reduce((m, t) => Math.max(m, t.id), 0) + 1);
@@ -218,13 +238,18 @@ export const useChatStore = create<ChatState>((set) => ({
           ...(a.uncounted || u.uncounted ? { uncounted: (a.uncounted ?? 0) + (u.uncounted ?? 0) } : {}),
         }))
       : null;
-    set({ turns, error: null, usage, summary: null });
+    set({ turns, error: null, usage, summary: null, leftOut: 0, fromFile: turns.length > 0 });
   },
 }));
 
 useChatStore.subscribe((s, prev) => {
   try {
-    if (s.turns !== prev.turns) sessionStorage.setItem(TRANSCRIPT_KEY, fitTranscript(s.turns));
+    if (s.turns !== prev.turns || s.leftOut !== prev.leftOut || s.fromFile !== prev.fromFile) {
+      // The turns left out here are said after the reload, with any left out before it.
+      const { json, from } = fitTranscriptFrom(s.turns);
+      sessionStorage.setItem(TRANSCRIPT_KEY, json);
+      sessionStorage.setItem(NOTES_KEY, JSON.stringify({ leftOut: s.leftOut + from, fromFile: s.fromFile }));
+    }
     if (s.draft !== prev.draft) sessionStorage.setItem(DRAFT_KEY, s.draft);
     if (s.usage !== prev.usage) sessionStorage.setItem(USAGE_KEY, JSON.stringify(s.usage));
     if (s.summary !== prev.summary) sessionStorage.setItem(SUMMARY_KEY, JSON.stringify(s.summary));
@@ -235,4 +260,4 @@ useChatStore.subscribe((s, prev) => {
 
 // Closing the volume starts the conversation afresh (it was about that
 // volume), here and in storage: no turns, no draft, no token total, no summary.
-resetsWithVolume(useChatStore, { fresh: () => ({ turns: [], draft: "", usage: null, summary: null }) });
+resetsWithVolume(useChatStore, { fresh: () => ({ turns: [], draft: "", usage: null, summary: null, leftOut: 0, fromFile: false }) });

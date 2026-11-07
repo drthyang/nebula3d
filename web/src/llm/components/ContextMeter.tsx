@@ -1,9 +1,11 @@
 // The context meter by the chat box (THY-74; the maths in contextMeter.ts):
 // "Context 62%", neutral below 70 %, amber to 90 %, red above. Its "?" opens
 // one plain line: the tokens of the window, the reply's room, and on Claude
-// what the conversation has cost. From amber it offers Summarize and continue
-// (summarize.ts) and Start fresh. On a phone it stays out of the toggles row
-// until amber. UI only: nothing here is sent.
+// what the conversation has cost. From amber it offers one action beside it:
+// Summarize and continue (summarize.ts) where that shortens the request, else
+// Start fresh; the other one, where there is one, is in the "?" line. On a
+// phone it stays out of the toggles row until amber, and the action takes the
+// bar's place there, so the dock grows by no row. UI only: nothing here is sent.
 
 import { meterDetail, type ContextWindow, type MeterReading } from "../contextMeter";
 
@@ -48,48 +50,56 @@ export function ContextMeterChip({
   );
 }
 
-/** Under the toggles row: the "?" line when open, and from amber the two actions. */
-export function ContextMeterPanel({
+/** The meter's one action from amber: Summarize and continue where it shortens the request, else Start fresh. */
+export type MeterAction = "summarize" | "fresh";
+
+const ACTION: Record<MeterAction, { label: string; short: string; title: string }> = {
+  summarize: {
+    label: "Summarize and continue",
+    short: "Summarize",
+    title:
+      "Summarize and continue: the model reads the app's summary of the turns so far (the questions, the checks run and the app's verdicts), not their text. The transcript keeps them.",
+  },
+  fresh: { label: "Start fresh", short: "Start fresh", title: "Start fresh: clear the conversation and the regions it marked" },
+};
+
+/** The action, in the toggles row beside the meter (a phone shows its short label). */
+export function ContextMeterAction({ action, level, onAct }: { action: MeterAction; level: MeterReading["level"]; onAct: () => void }) {
+  const a = ACTION[action];
+  return (
+    <button type="button" className={`ai-meter-act is-${level}`} onClick={onAct} title={a.title} aria-label={a.label}>
+      <span className="ai-meter-act-long">{a.label}</span>
+      <span className="ai-meter-act-short" aria-hidden="true">
+        {a.short}
+      </span>
+    </button>
+  );
+}
+
+/** The "?" line under the toggles row: the meter's detail, and the other action where there is one. */
+export function ContextMeterDetail({
   reading,
   window: w,
   cost,
-  open,
-  canAct,
-  canSummarize,
-  onSummarize,
-  onStartFresh,
+  other,
+  onOther,
 }: {
   reading: MeterReading;
   window: ContextWindow;
   cost: string | null;
-  open: boolean;
-  canAct: boolean; // a conversation to act on, and no reply under way
-  canSummarize: boolean; // turns the summary does not cover yet
-  onSummarize: () => void;
-  onStartFresh: () => void;
+  other: MeterAction | null; // the action the row does not show
+  onOther: () => void;
 }) {
-  const warn = reading.level !== "ok" && canAct;
-  if (!open && !warn) return null;
   return (
-    <div className={`ai-meter-panel is-${reading.level}`}>
-      {open && <div className="ai-meter-detail">{meterDetail(reading, w, cost)}</div>}
-      {warn && (
-        <div className="ai-meter-actions">
-          <span>{reading.level === "red" ? "The model's context is nearly full." : "The model's context is filling up."}</span>
-          {canSummarize && (
-            <button
-              type="button"
-              className="ai-meter-act"
-              onClick={onSummarize}
-              title="The model reads the app's summary of the turns so far (the questions, the checks run and the app's verdicts), not their text. The transcript keeps them."
-            >
-              Summarize and continue
-            </button>
-          )}
-          <button type="button" className="ai-meter-act" onClick={onStartFresh} title="Clear the conversation and the regions it marked">
-            Start fresh
+    <div className="ai-meter-detail">
+      {meterDetail(reading, w, cost)}
+      {other && (
+        <>
+          {" "}
+          <button type="button" className="ai-meter-other" onClick={onOther} title={ACTION[other].title}>
+            {ACTION[other].label} instead
           </button>
-        </div>
+        </>
       )}
     </div>
   );
