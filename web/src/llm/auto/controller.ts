@@ -462,7 +462,7 @@ function alreadyAsked(p: Proposal): boolean {
   const r = run();
   const asked = new Set([...r.facts.map((f) => f.proposal), ...r.held.map((h) => h.proposal)]);
   const same = (q: Proposal) => q.kind === p.kind && JSON.stringify(q.fields) === JSON.stringify(p.fields) && JSON.stringify(q.change) === JSON.stringify(p.change);
-  return useDecisionStore.getState().proposals.some((q) => (q.status === "open" || asked.has(q.id)) && same(q));
+  return useDecisionStore.getState().proposals.some((q) => q.id !== p.id && (q.status === "open" || asked.has(q.id)) && same(q));
 }
 
 // ---------------------------------------------------------------- the app's own steps
@@ -782,7 +782,7 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
   }
   keepReplySteps(out);
   // The cards the reply led to (session.ts made them): facts to ask, held ring changes logged.
-  if (out.turn !== null) takeCards(useDecisionStore.getState().proposals.filter((p) => p.turn === out!.turn && p.status === "open"));
+  if (out.turn !== null) takeCards(useDecisionStore.getState().proposals.filter((p) => p.turn === out!.turn && p.status === "open" && !alreadyAsked(p)));
   // A run in the reply (a tuning run's kept trial) may have changed the outputs.
   const fresh = await safe(fetchDataset(s.work.dataset.id));
   if (fresh) s.work.dataset = fresh;
