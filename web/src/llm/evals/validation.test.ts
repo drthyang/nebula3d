@@ -376,6 +376,60 @@ describe("grading what a run reported", () => {
   });
 });
 
+// The deliberate grader change of 2026-11-07 (docs/evals.md, "Grader changes"):
+// two artefacts the free B-auto eval found, each fixed narrowly. Synthetic
+// answers only.
+describe("the grader change of 2026-11-07", () => {
+  const pass = (checks: ReturnType<typeof detectionChecks>, r: EvalRun) => checks.every((k) => k.grade(r).pass);
+
+  it("takes a check's numbers 'within limits' for fine, not for a fault, and keeps 'out of limits' a fault", () => {
+    const origin = caseNamed("dev-origin")!; // no flatten fault: a floor trend claimed is a false alarm
+    for (const said of [
+      "The floor trend and span are within limits.",
+      "Flatten: the floor trend and span are within limits $\\text{assess\\_stage.flatten.headline}$.",
+      "The background's floor trend is within its limit.",
+      "The floor trend (0.0384) is within the limits.",
+    ]) {
+      expect(pass(falseAlarmChecks(origin), run(said)), said).toBe(true);
+    }
+    for (const said of [
+      "The floor trend and span are out of limits.",
+      "The floor trend is outside the limits.",
+      "The background rises with |Q|, beyond its limits.",
+      "The floor trend and span are within limits; the floor trend grows with |Q|.",
+    ]) {
+      expect(pass(falseAlarmChecks(origin), run(said)), said).toBe(false);
+    }
+  });
+
+  it("does not take a quoted headline's 'left ≤ 0' for a ring that is left, and keeps a ring that is left a claim", () => {
+    const rings = caseNamed("dev-rings")!;
+    const saysRings = detectionChecks(rings).find((k) => k.name === "says the fault (rings)")!;
+    for (const said of [
+      "Ring Removal: meets its goal (ring ratio 0.799 · over-sub ≤ 0.000193 · ring dent ≤ 0 · left ≤ 0).",
+      "The ring stage reads ring dent ≤ 0 · left ≤ 0.",
+      "The ring removal headline reads left <= 0.000 and ring dent = 0.",
+      "Ring removal: ring ratio 0.8, left = 0",
+    ]) {
+      expect(saysRings.grade(run(said)).pass, said).toBe(false);
+    }
+    for (const said of [
+      "A ring is left at 2.2 Å⁻¹.",
+      "A ring is left at 2.2 Å⁻¹ (left ≤ 0.41).",
+      // A bound above zero is a leftover the stage measured: still a claim, as before.
+      "Ring removal: ring dent ≤ 0 · left ≤ 0.5 (0kl, 2.2 Å⁻¹).",
+      "The ring removal reads left ≤ 0.05 on 0kl.",
+    ]) {
+      expect(saysRings.grade(run(said)).pass, said).toBe(true);
+    }
+    // The same rule on the alarm side: a control quoting the headline raises no ring.
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("Powder ring removal: ring dent ≤ 0 · left ≤ 0."))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("Powder rings are left at 2.2 Å⁻¹."))).toBe(false);
+    expect(pass(falseAlarmChecks(control), run("Powder ring removal: left ≤ 0.5 (hk0, 2.2 Å⁻¹)."))).toBe(false);
+  });
+});
+
 describe("a turned UB: the grader's limit is the app's 0.05°, held by behaviour", () => {
   // The grader keeps its own number (validation.ts imports nothing of the app's
   // verdicts); this test may import the app's rule, and holds the two to one

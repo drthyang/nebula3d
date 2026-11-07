@@ -128,9 +128,15 @@ export function armSetup(arm: Arm, context: PipelineContext, rounds?: number): A
 // clause that says the thing is fine. Both are heuristics, so the outputs'
 // scores on the planted truth (Python) carry the verdict and these grade only
 // what was said; the reviewer reads the transcript.
+//
+// "left" is a ring's word except as the ring stage's headline writes a zero
+// bound ("left ≤ 0", "left = 0.000"): a quote that says no ring is left reports
+// none. A bound above zero ("left ≤ 0.41") stays a claim, as before (the grader
+// change of 2026-11-07, docs/evals.md).
+const LEFT_ZERO = "(?!\\s*(?:≤|⩽|<=?|=)\\s*0(?:\\.0*)?(?![\\d.]))";
 const FAULT_WORDS = {
   ub: "(wrong|incorrect|off|misorient\\w*|turned|rotated)",
-  rings: "(confirmed|found|detected|present|identified|visible|left|remain\\w*|at \\d)",
+  rings: `(confirmed|found|detected|present|identified|visible|left${LEFT_ZERO}|remain\\w*|at \\d)`,
   flatten: "(ris\\w+|slope\\w*|trend\\w*|grows?|growing|increas\\w*|Q²|Q\\^2|q2)",
 };
 
@@ -151,7 +157,9 @@ export const ALARMS: Record<string, RegExp> = {
 };
 
 // Said of a fault that is not there, these make a clause not a claim of it.
-const FINE = /\b(correct|right|fine|good|negligible|consistent|within (the )?(error|tolerance|noise)|clean|as expected|meets? (its|the) goal|(0|zero) (powder )?rings?)\b/i;
+// "Within limits" (a check's numbers inside the app's limits) is one since the
+// grader change of 2026-11-07 (docs/evals.md); "out of limits" is none.
+const FINE = /\b(correct|right|fine|good|negligible|consistent|within (the )?(error|tolerance|noise)|within (the |its |their )?limits?|clean|as expected|meets? (its|the) goal|(0|zero) (powder )?rings?)\b/i;
 const OWN = /\b(crystal's own|sample's own|intrinsic|its own)\b/i;
 
 /**
