@@ -27,15 +27,29 @@ export const SCALE_TITLES = {
 
 export const BRIGHTNESS_TITLE = "Brightness: vmax in stops about Auto; right is brighter";
 
-/** What the "Unit cell" lines are on each kind of view (its tooltip). */
+/** What the grid switch's lines are on each kind of view (its tooltip). */
 export const UNIT_CELL_TITLES = {
   hkl: "Dashed lines at integer h, k, l",
   cell: "Dashed lines at the unit-cell edges",
   both: "Dashed lines at integer h, k, l on the Q views, at the cell edges on the ΔPDF view",
 } as const;
 
-/** The switch's name where it draws only integer h, k, l on the raw volume: the Configure preview. */
+/**
+ * The switch's name on the r.l.u. views (the Configure preview, Reciprocal
+ * cleanup, the Bragg tiles, the Q–R page's Q views): its dashed lines are at
+ * integer h, k, l, which is not a unit cell.
+ */
 export const HKL_GRID_LABEL = "HKL grid";
+
+/** The switch's name on the real-space views (3D-ΔPDF, multi-volume): the unit-cell edges. */
+export const UNIT_CELL_LABEL = "Unit cell";
+
+/** The switch's name on each kind of view: "HKL grid" wherever it draws integer h, k, l. */
+export const GRID_SWITCH_LABELS = {
+  hkl: HKL_GRID_LABEL,
+  cell: UNIT_CELL_LABEL,
+  both: HKL_GRID_LABEL,
+} as const;
 
 export const RESET_ZOOM_TITLE = "Reset zoom (double-click the view, or 0)";
 
