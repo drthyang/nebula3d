@@ -323,3 +323,84 @@ def test_the_browser_lists_them_too(tmp_path, stubbed):
         dataset_id, json.dumps({"edge_trim": 2}), True))["stale"]
     assert stale["ringremoved"] == "it was made with edge trim 1, now 2"
     assert "delta_pdf" in stale
+
+
+# ---------------------------------------------------------------------------
+# A run from a stage with the symmetry average on (THY-81): the console asks
+# for every stage and recomputes those from its stage on (force_from); the
+# resume rule decides the average by its record
+# ---------------------------------------------------------------------------
+def test_a_run_from_the_ring_stage_makes_a_stale_average_again(raw, stubbed):
+    paths, _ = _run(raw, _with_laue("m-3m"))
+    stubbed.calls.clear()
+    p = _with_laue("m-3m", edge_trim=0)
+    plan = _plan(raw, p, force_from="rings")
+    assert plan["symmetry_average"] == "it was made with edge trim 1, now 0"
+    assert set(plan) == {"symmetry_average", *ALL_AFTER_RAW}
+    _, events = _run(raw, p, force_from="rings")
+    assert stubbed.calls == ALL_AFTER_RAW
+    assert "symmetry_average" not in _skipped(events)
+    assert pipeline.read_stage_record(paths.symmetrized)["edge_trim"] == 0
+    assert _plan(raw, p) == {}
+
+
+def test_a_run_from_the_ring_stage_reuses_a_current_average(raw, stubbed):
+    _run(raw, _with_laue("m-3m"))
+    stubbed.calls.clear()
+    p = _with_laue("m-3m")
+    p.rings = dataclasses.replace(p.rings, ring_model="parametric")
+    assert set(_plan(raw, p, force_from="rings")) == set(ALL_AFTER_RAW)
+    _, events = _run(raw, p, force_from="rings")
+    assert stubbed.calls == ALL_AFTER_RAW
+    assert "symmetry_average" in _skipped(events)
+
+
+def test_a_run_of_the_stages_from_the_ring_stage_alone_reads_the_average_on_disk(raw, stubbed):
+    """The request the console sent before: the stages from the ring removal
+    alone, forced. The ring removal reads the stale average as it is, which
+    the resume rule still lists as stale after the run."""
+    _run(raw, _with_laue("m-3m"))
+    stubbed.calls.clear()
+    p = _with_laue("m-3m", edge_trim=0)
+    _, events = _run(raw, p, stages=ALL_AFTER_RAW, force=True)
+    assert stubbed.calls == ALL_AFTER_RAW
+    assert not any(e[0] == "symmetry_average" for e in events)
+    assert _plan(raw, p)["symmetry_average"] == "it was made with edge trim 1, now 0"
+
+
+def test_the_server_and_the_browser_list_a_stale_average(tmp_path, stubbed):
+    """The Configure page's stage track marks the average stale after an
+    edge-trim or Laue class change, and the browser's run from the ring stage
+    (force_from, every stage) makes it again."""
+    from fastapi.testclient import TestClient
+
+    from nebula3d import webbridge
+    from nebula3d.server.app import create_app
+    from nebula3d.server.config import ServerConfig
+
+    cfg = ServerConfig(data_root=tmp_path / "native")
+    cfg.raw_dir.mkdir(parents=True)
+    raw = cfg.raw_dir / "cubic.nxs"
+    nebula3d.save(demo_volume(17, extent=3.0, components=CUBIC, dtype=np.float32), raw)
+    pipeline.run_pipeline(raw, _with_laue("m-3m"), proc_dir=cfg.processed_dir)
+    client = TestClient(create_app(cfg))
+    (ds,) = client.get("/api/datasets").json()
+    on = {"symmetry_average_enabled": True, "symmetry_average_laue": "m-3m"}
+    ask = lambda params: client.post("/api/pipeline/stale", json={  # noqa: E731
+        "dataset_id": ds["id"], "params": params}).json()["stale"]
+    assert ask(on) == {}
+    assert ask({**on, "edge_trim": 0})["symmetrized"] == "it was made with edge trim 1, now 0"
+    assert ask({**on, "symmetry_average_laue": "4/mmm"})["symmetrized"] == (
+        "it was averaged over another Laue class")
+
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=9)
+    flat = {"symmetry_average_enabled": True, "symmetry_average_laue": "-1"}
+    webbridge.run("", json.dumps(flat), flatten_enabled=True)
+    trimmed = json.dumps({**flat, "edge_trim": 0})
+    stale = json.loads(webbridge.stale_outputs_json(dataset_id, trimmed, True))["stale"]
+    assert stale["symmetrized"] == "it was made with edge trim 1, now 0"
+    stubbed.calls.clear()
+    webbridge.run("", trimmed, flatten_enabled=True, force=False, force_from="rings")
+    assert stubbed.calls == ALL_AFTER_RAW
+    assert json.loads(webbridge.stale_outputs_json(dataset_id, trimmed, True)) == {"stale": {}}
