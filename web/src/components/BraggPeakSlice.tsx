@@ -11,7 +11,7 @@
 // overlay map r.l.u. to pixels with the same viewport (viewport.ts), so the
 // ellipses stay registered to the data at any zoom.
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import type { Slice } from "../api/types";
 import { ellipseInView, nearestIndex, RLU_GEOM, type Ellipse } from "./braggView";
@@ -48,6 +48,7 @@ interface Props {
   // The tail sweep's voxels on this plane (x, y in r.l.u.) and a voxel's size.
   swept?: [number, number][];
   sweptStep?: [number, number];
+  children?: ReactNode; // drawn above the fit (the Highlights), in the view's frame
 }
 
 const MAX_RASTER = 480; // raster px along the longer side; CSS scales it to the view
@@ -185,6 +186,7 @@ export function BraggPeakSlice({ slice, failed = false, ...p }: Props) {
       <TileRaster slice={slice} viewport={p.viewport} lut={p.lut} levels={p.levels} scale={p.scale} soft={p.soft} />
       {p.gridlines && <HklGrid viewport={p.viewport} geom={RLU_GEOM} lut={p.lut} />}
       <TileOverlay centre={p.centre} viewport={p.viewport} fitted={p.fitted} measured={p.measured} floor={p.floor} swept={p.swept} sweptStep={p.sweptStep} />
+      {p.children}
     </ViewFrame>
   );
 }

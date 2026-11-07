@@ -74,6 +74,9 @@ export interface GrainFacts {
   rotated_copy: { indexed: number; misorientation_deg: number | null } | null;
   random_control: number; // orbits the same search indexes at random directions
   symmetrised: boolean; // the declared point group holds more than the identity
+  // The rotated copy's rotation (Cartesian, Q = R·UB·n for its nodes), for the
+  // Highlights; no verdict or result reads it.
+  rotation?: M3 | null;
 }
 
 /** grain_check's result: the facts as it shows them, rounded, and its verdict. */
@@ -159,6 +162,7 @@ export function grainCheck({
     rotated_copy: best ? { indexed: best.indexed, misorientation_deg: best.misorientation } : null,
     random_control: control.indexed,
     symmetrised: group.length > 1,
+    rotation: best?.R ?? null,
   };
 }
 
@@ -227,12 +231,12 @@ function rotationSearch(qs: V3[], qOrbit: V3[][], B: M3, tolQ = 0.03, tolA = 1, 
       }
     }
   }
-  if (!best) return { indexed: 0, misorientation: null as number | null };
+  if (!best) return { indexed: 0, misorientation: null as number | null, R: null as M3 | null };
   // The smallest angle from the main grain among the rotations that map the
   // lattice onto itself (its own point group, whatever the data declare).
   const bInv = inv3(B);
   const mis = Math.min(...latticeRotations(B).map((op) => rotationAngle(mm(mm(mm(B, op), bInv), best!.R))));
-  return { indexed: best.indexed, misorientation: mis };
+  return { indexed: best.indexed, misorientation: mis, R: best.R as M3 | null };
 }
 
 // The proper rotations of a lattice, as integer matrices in its own basis: the

@@ -22,6 +22,7 @@ export interface WorkspaceView {
   onResetView?: () => void;
   glow?: boolean; // the assistant is on this view: a breathing edge
   outline?: "primary" | "reading"; // the view a Pilot check reads (Highlights): a thin outline
+  legend?: ReactNode; // the Highlights' legend, shown inside the view when it is the large one (Focus, Single)
   children: ReactNode; // the view body
 }
 
@@ -164,6 +165,7 @@ export function Workspace({
             </header>
             <div className="view-body">
               <div className="view-fill">{v.children}</div>
+              {mode !== "grid" && isPrimary && v.legend}
             </div>
             {v.footer && <footer className="view-foot">{v.footer}</footer>}
           </section>

@@ -624,6 +624,7 @@ def test_ring_diagnostics_missing_returns_empty_state(env):
         "status": None,
         "unconfirmed_at_grid": None,
         "summary": None,
+        "removed_shells": None,
         "phases": None,
         "phase_summary": None,
     }
@@ -706,6 +707,7 @@ def test_ring_diagnostics_give_the_phase_match(tmp_path):
     client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
     body = client.get(f"/api/rings/{SLUG}/diagnostics").json()
     assert body["phases"] == record
+    assert body["removed_shells"] == []
     assert body["phase_summary"].startswith("possibly Sn flux: 2 of 3 rings matched, scale -0.2 %")
     record["candidates"] = []
     paths.ring_diagnostics_json.write_text(json.dumps(

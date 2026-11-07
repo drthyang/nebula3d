@@ -8,6 +8,9 @@ import { num, oneOf } from "../shared/args";
 import { r4 } from "../shared/figures";
 import { columnTable } from "../shared/table";
 import { ToolArgError, type ChatTool } from "../types";
+import type { BraggFootprint } from "../../examine/data";
+
+type V3 = [number, number, number];
 
 export const bragg_peaks: ChatTool = {
   name: "bragg_peaks",
@@ -31,10 +34,12 @@ export const bragg_peaks: ChatTool = {
     if (!profile?.has_profile) {
       return { result: { has_profile: false }, summary: "no fitted Bragg profile (run the punch stage)" };
     }
+    // Each row with its peak as the profile gives it (its fit, for the Highlights).
+    const fitOf = new Map<object, (typeof profile.peaks)[number]>();
     const peaks = profile.peaks.map((p) => {
       const w = p.principal_width_q ?? p.measured_width_q ?? p.width_q;
       const ws = (w ?? []).filter((v): v is number => Number.isFinite(v) && v > 0);
-      return {
+      const row = {
         hkl: p.center_hkl.map((v) => roundSig(v, 4)),
         q: r4(p.q_abs),
         intensity: r4(p.intensity),
@@ -45,6 +50,8 @@ export const bragg_peaks: ChatTool = {
         anisotropy: ws.length >= 2 ? roundSig(Math.max(...ws) / Math.min(...ws), 3) : null,
         fit: p.fit_kind,
       };
+      fitOf.set(row, p);
+      return row;
     });
     // Larger key first; a missing value sorts last.
     const LAST = -Number.MAX_VALUE;
@@ -65,8 +72,16 @@ export const bragg_peaks: ChatTool = {
       peaks: columnTable(listed, ["hkl", "q", "intensity", "local_background", "significance", "measured_width_q", "resolution_limited", "anisotropy", "fit"]),
     };
     const top = listed[0];
+    // The listed peaks' footprints, beside the result (examine/data.ts).
+    const braggPeaks: BraggFootprint[] = listed.flatMap((row) => {
+      const p = fitOf.get(row);
+      const v3 = (x: unknown): V3 | null => (Array.isArray(x) && x.length === 3 && x.every(Number.isFinite) ? ([...x] as V3) : null);
+      const widths = v3(p?.width_hkl);
+      return p && widths ? [{ hkl: [...row.hkl] as V3, widths, principal: v3(p.principal_width_hkl), dirs: Array.isArray(p.principal_directions_hkl) ? p.principal_directions_hkl : null }] : [];
+    });
     return {
       result,
+      overlay: { braggPeaks },
       summary: `${profile.n_peaks} fitted peaks; top ${listed.length} by ${sortedBy}`,
       view: top && {
         view: "bragg",

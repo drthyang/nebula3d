@@ -11,7 +11,9 @@ the run log gives them (:func:`nebula3d.pipeline.unconfirmed_rings_notice`).
 The run log holds it for one session's run; the record holds it for as long
 as the output it describes, so the Pilot's ring check and the report say it
 too. With it, the shells removed and left in one line
-(:func:`nebula3d.preprocessing.pooled_rings.shell_summary`), and the phase
+(:func:`nebula3d.preprocessing.pooled_rings.shell_summary`), each shell removed
+with its |Q| and line (:func:`~nebula3d.preprocessing.pooled_rings.
+removed_shells`, which the console's overlays draw), and the phase
 the rings the Al lines leave may be: the match's record for the console and
 its one line for the Pilot (:func:`nebula3d.preprocessing.powder_phases.summary`).
 
@@ -25,7 +27,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from nebula3d.preprocessing.pooled_rings import shell_summary
+from nebula3d.preprocessing.pooled_rings import removed_shells, shell_summary
 from nebula3d.preprocessing.powder_phases import summary as phase_summary
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import artifact_path, find_dataset
@@ -49,7 +51,9 @@ def saved_ring_diagnostics(cfg: ServerConfig, dataset_id: str) -> dict[str, Any]
     not confirm as powder rings on its grid (``count``, ``needs``, ``notice``,
     ``q_centers``), which it did not subtract; None where it left none. And
     ``summary``, the shells removed and left in one line (None for another
-    model's diagnostics, or none); ``phases``, the phase match's record
+    model's diagnostics, or none); ``removed_shells``, each shell it subtracted
+    with its |Q| and the line it sits on (for the console's overlays alone;
+    None as ``summary``); ``phases``, the phase match's record
     (``powder_phases``: its rings and candidates), and ``phase_summary``, its
     one line, None where no phase was named.
 
@@ -79,6 +83,7 @@ def saved_ring_diagnostics(cfg: ServerConfig, dataset_id: str) -> dict[str, Any]
         "status": status if isinstance(status, str) else None,
         "unconfirmed_at_grid": _unconfirmed(record.get("unconfirmed_at_grid")),
         "summary": shell_summary(record) if isinstance(data, dict) else None,
+        "removed_shells": removed_shells(record) if isinstance(data, dict) else None,
         "phases": phases if isinstance(phases, dict) else None,
         "phase_summary": phase_summary(phases),
     }

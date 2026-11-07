@@ -1176,5 +1176,25 @@ def shell_summary(diagnostics: object) -> str | None:
     return f"{head}; left {len(left)}: " + ", ".join(named) + more
 
 
+def removed_shells(diagnostics: object) -> list[dict[str, object]] | None:
+    """The shells the pooled ring removal subtracted, from its diagnostics, for
+    the console's overlays: each its |Q| (Å⁻¹, the shell's fitted centre), its
+    ``code``, the line it sits on (``"Al111"``, or another phase's, as
+    ``"Sn200"``; None on no line), and ``al``, whether that line is Al's.  In
+    |Q| order.  None for another model's diagnostics."""
+    if not isinstance(diagnostics, dict) or diagnostics.get("algorithm") != "pooled":
+        return None
+    out: list[dict[str, object]] = []
+    for s in diagnostics.get("shells") or []:
+        if not isinstance(s, dict) or not isinstance(s.get("q_center"), (int, float)):
+            continue
+        m = s.get("match")
+        phase = m.get("phase") if isinstance(m, dict) else None
+        hkl = m.get("hkl") if isinstance(m, dict) else None
+        code = f"{phase}{hkl or ''}" if isinstance(phase, str) and phase else None
+        out.append({"q": round(float(s["q_center"]), 4), "code": code, "al": phase == "Al"})
+    return sorted(out, key=lambda x: float(x["q"]))  # type: ignore[arg-type]
+
+
 __all__ = ["SUMMARY_LEFT", "PooledRingConfig", "PooledRingResult", "fit_pooled_rings",
-           "shell_summary"]
+           "removed_shells", "shell_summary"]

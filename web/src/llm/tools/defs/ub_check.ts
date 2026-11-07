@@ -130,6 +130,8 @@ export const ub_check: ChatTool = {
         `${u.fit}: RMS ${u.rms_start.toFixed(4)} → ${u.rms.toFixed(4)} Å⁻¹ over ${u.n_used} peaks; a ${u.cell_start[0].toFixed(3)} → ${u.cell[0].toFixed(3)} Å, c ${u.cell_start[2].toFixed(3)} → ${u.cell[2].toFixed(3)} Å; turned ${u.angle_deg.toFixed(3)}°` +
         (shift ? `; origin shifted ${rlu(shift)} r.l.u.` : ""),
       outcomes: [outcome],
+      // The two UBs, for the Highlights' arrows (examine/data.ts): beside the result.
+      overlay: { ubTurn: { ub: u.ub_start, fitted: u.ub, cell } },
     };
   },
 };

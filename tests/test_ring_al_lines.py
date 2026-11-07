@@ -344,6 +344,38 @@ def test_the_record_in_one_line(al_case):
     assert len(line) < 160
 
 
+def test_the_removed_shells_listed_for_the_overlays(al_case):
+    """The shells the ring stage removed, each its |Q| and line, for the
+    console's overlays (server.rings, ``removed_shells``): exactly the
+    record's ``shells``, the Al lines among them marked, in |Q| order."""
+    from nebula3d.preprocessing.pooled_rings import removed_shells
+
+    d = al_case[3].diagnostics
+    out = removed_shells(d)
+    assert [x["q"] for x in out] == sorted(round(float(s["q_center"]), 4) for s in d["shells"])
+    n_al = sum(1 for s in d["shells"] if (s.get("match") or {}).get("phase") == "Al")
+    assert n_al > 0 and sum(1 for x in out if x["al"]) == n_al
+    assert all(x["code"].startswith("Al") for x in out if x["al"])
+
+
+def test_the_removed_shells_codes():
+    from nebula3d.preprocessing.pooled_rings import removed_shells
+
+    record = {"algorithm": "pooled", "shells": [
+        {"q_center": 3.1, "fwhm": 0.1, "match": {"phase": "Al", "hkl": "200", "q": 3.1}},
+        {"q_center": 2.22, "fwhm": 0.1, "match": {"phase": "Sn", "hkl": "200", "q": 2.2203}},
+        {"q_center": 4.512345, "fwhm": 0.1},
+        {"fwhm": 0.1},
+    ], "rejected_shells": []}
+    assert removed_shells(record) == [
+        {"q": 2.22, "code": "Sn200", "al": False},
+        {"q": 3.1, "code": "Al200", "al": True},
+        {"q": 4.5123, "code": None, "al": False},
+    ]
+    assert removed_shells({"algorithm": "global_v2"}) is None
+    assert removed_shells({"algorithm": "pooled"}) == []
+
+
 def test_the_record_names_four_shells_left_and_counts_the_rest():
     from nebula3d.preprocessing.pooled_rings import shell_summary
 

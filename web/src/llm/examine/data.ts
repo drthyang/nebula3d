@@ -20,6 +20,24 @@ export interface LeftoverPeak {
   hkl?: [number, number, number];
 }
 
+type V3 = [number, number, number];
+
+/** A fitted Bragg peak bragg_peaks listed, as the Bragg page draws its fit (api BraggPeakWidth). */
+export interface BraggFootprint {
+  hkl: V3;
+  widths: V3; // width_hkl (r.l.u.)
+  principal: V3 | null; // principal_width_hkl
+  dirs: number[][] | null; // principal_directions_hkl
+}
+
+/** A hole of the fill (VolumeTexture's), filled outside its rim's range. */
+export interface FillHole {
+  hkl: V3; // its centre, r.l.u.
+  bias: number; // the fill's signed distance outside the range
+  biasSigma: number | null; // ... in the rim's σ
+  voxels: number;
+}
+
 export interface OverlayData {
   leftovers?: LeftoverPeak[];
   // Round 2 of the punch (the tail sweep): every voxel it added, H K L flat.
@@ -27,6 +45,24 @@ export interface OverlayData {
   // The ring candidates the ring stage detected and could not confirm on its
   // grid (its record's unconfirmed_at_grid.q_centers, Å⁻¹).
   ringsAtGrid?: number[];
+  // Every shell the ring stage removed, its |Q| (Å⁻¹) and whether it sat on
+  // an Al line (its record's removed_shells): the Al shells drawn exactly.
+  ringsRemoved?: { q: number; al: boolean; code: string | null }[];
+  // bragg_peaks: each peak it listed, in its order, with its fitted footprint.
+  braggPeaks?: BraggFootprint[];
+  // dpdf_peaks: every vector of each feature it listed (Å, x y z), its signed
+  // size (σ), its length (Å) and its place in the list.
+  dpdfVectors?: { v: V3; size: number; length: number; rank: number }[];
+  // ub_check: the volume's UB and the fitted one (Q = UB · hkl), and the Bragg
+  // nodes' spacing (the punch cell).
+  ubTurn?: { ub: number[][]; fitted: number[][]; cell: V3 };
+  // texture_check: the holes filled outside their range (the farthest first),
+  // and how many the volume holds.
+  fillHoles?: { holes: FillHole[]; nHoles: number };
+  // grain_check: every image of the far orbits under the declared operations,
+  // and, where the rotated copy explains them (a second grain, or the UB off),
+  // the map from its nodes to H K L.
+  grains?: { far: V3[]; rotated: number[][] | null };
 }
 
 /** Where an evaluation (tune/evaluate.ts) keeps its overlay data: a symbol, which JSON never writes. */

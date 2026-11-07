@@ -158,6 +158,11 @@ export interface RingDiagnostics {
   // removed (of them on Al lines), each shell left with its Al line and why
   // (nebula3d.preprocessing.pooled_rings.shell_summary); null for another model.
   summary: string | null;
+  // Each shell it removed: its |Q| (Å⁻¹), the line it sits on ("Al111",
+  // "Sn200"; null on none) and whether that line is Al's (nebula3d.
+  // preprocessing.pooled_rings.removed_shells), for the Highlights alone; null
+  // for another model; absent from an older server's.
+  removed_shells?: { q: number; code: string | null; al: boolean }[] | null;
   // Which phase the rings the Al lines leave may be (nebula3d.preprocessing.
   // powder_phases): the match's record, null where the stage made none; and
   // its one line for the Pilot, null where no phase was named.
