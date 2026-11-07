@@ -58,6 +58,7 @@ import { writtenInferences } from "../inference";
 import { BUNCHING_REMEDY, offLatticeBunching } from "../metrics/bunching";
 import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations } from "./methodText";
+import { budgetSince, everyKind } from "./sinceSamples";
 import { DATASET, DATASETS, freshConsole, installBackend, regridAnswer } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
@@ -213,6 +214,25 @@ describe("1. the system prompt and the first user message, as the app builds the
         renderMessages(c.messages),
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/1-chat-arm-c.md`);
+  });
+
+  it("after a decision on an Apply card: the \"since the last reply\" line", async () => {
+    const since = budgetSince();
+    const b = buildChatMessages(context, [], QUESTION, null, { tools: true, since });
+    const plain = buildChatMessages(context, [], QUESTION, null, { tools: true });
+    // The line ends the context, the first user message; every other message is as without it, in arm C too.
+    expect(b[1].content).toBe(`${plain[1].content as string}\n${since}`);
+    expect(b.filter((_, i) => i !== 1)).toEqual(plain.filter((_, i) => i !== 1));
+    expect(buildChatMessages(context, [], QUESTION, null, { tools: true, skills: false, since })[1]).toEqual(b[1]);
+    await expect(
+      doc(
+        "Opening messages after a decision: the \"since the last reply\" line",
+        "`buildChatMessages(context, history, question, null, { tools: true, since })`: the request after the user applied, edited, dismissed or undid an Apply card ends its context with one line (apply/since.ts), in that reply only. The same in arm C and with tools off (after the cut's metrics). The sample: three decisions (sinceSamples.ts, the token budget's case); then how the line words each kind of decision.",
+        `${renderMessages(b.slice(0, 2), 1)}\n\n## Each kind of decision\n\n${everyKind()
+          .map((k) => `- ${k.what}: \`${k.line}\``)
+          .join("\n")}`,
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/1-chat-since-last-reply.md`);
   });
 
   it("tools off: the fixed-cut metrics only", async () => {

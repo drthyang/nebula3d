@@ -58,7 +58,10 @@ export function sinceItem(d: Decision, p: Proposal | undefined): string {
   if (d.action === "dismiss") return `declined ${change} (kept ${d.shown.from})`;
   if (d.action === "undo") return `undid ${change}`;
   if (d.action === "edit-apply") {
-    const proposed = p && Object.keys(p.change).length === 1 ? text(Object.values(p.change)[0]) : null;
+    // The value the reply proposed, where it is one value (not the modulation's declaration).
+    const v = p && Object.keys(p.change).length === 1 ? Object.values(p.change)[0] : null;
+    // (a session file keeps the declaration as its JSON text)
+    const proposed = v !== null && typeof v !== "object" && !String(v).startsWith("{") ? text(v) : null;
     return `applied ${change} (edited${proposed && proposed !== d.shown.to ? ` from the proposed ${proposed}` : ""})`;
   }
   return `applied ${change}`;
