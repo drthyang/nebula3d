@@ -526,8 +526,9 @@ the graders as they are after the latest change, and its record becomes the
 new frozen baseline. A record made before a change is compared with it only
 after a free re-grade (`NEBULA_VALIDATION_REGRADE`).
 
-**2026-11-07: two artefacts found in the free B-auto eval** (the user's
-approval: "Fix now, before THY-52"). Both are general rules, fixed narrowly in
+**2026-11-07: three artefacts found in the free B-auto eval and its re-grade**
+(the user's approval: "Fix now, before THY-52", and the same day for the
+third). Each is a general rule, fixed narrowly in
 `web/src/llm/evals/validation.ts`. Every other grade stays as it was.
 
 - **"Within limits" is fine.** An answer that said a check's numbers were
@@ -547,15 +548,35 @@ approval: "Fix now, before THY-52"). Both are general rules, fixed narrowly in
   the reviewer. "A ring is left at 2.2 Å⁻¹" is still a claim. The alarm side
   has the same rule: a control that quotes "powder ring removal: left ≤ 0"
   raises no ring.
+- **A background "well below the threshold for a pedestal" is fine.** An
+  answer that wrote the flatten's numbers "well below the threshold for a
+  pedestal", or that the flatten "removed the pedestal effectively", was
+  charged with a pedestal it said was not there, because "floor trend" is a
+  pedestal word. Of the background alone (`FLATTEN_FINE`), these phrases now
+  make a clause no claim: "(well, far) below (or under) the (pedestal)
+  threshold (for a leftover pedestal)", "removed the pedestal (effectively,
+  fully, completely, cleanly)" and "the pedestal was effectively removed".
+  A phrase excuses its clause only while nothing else in the clause says a
+  problem: "but", "yet", "though", "however", "except", "whereas", "remains",
+  "left", "above", "over", "exceeds", "rises", "grows", "increases" or "not
+  removed" (`FLATTEN_PROBLEM`). So "well below the threshold, but the
+  background rises" and "the pedestal remains, above the threshold" still
+  alarm. "Not removed" and "never removed the pedestal" are no fine phrase.
+  The clause they are in negates, and a negating clause is charged with
+  nothing, as before this change.
 
-The free re-grade of the saved dev records moved three grades, all in one
-B-auto run of gemma4:26b that is not in git. Its dev-origin false alarm went
-("within limits"), so that run now passes. Its ring claims on dev-rings and
-dev-rings-shell went ("left ≤ 0"). Those two runs still fail, since neither
-wrote both rings' |Q|. No grade moved in the frozen arm-B record of
-2026-10-24, the PR 7 B-auto record or the dropped qwen3.8 records. The
-regression tests, with near-miss controls, are in `validation.test.ts`
-("the grader change of 2026-11-07").
+The free re-grade of the saved dev records moved six grades. Three are in
+one B-auto run of gemma4:26b that is not in git. Its dev-origin false alarm
+went ("within limits"), so that run now passes. Its ring claims on dev-rings
+and dev-rings-shell went ("left ≤ 0"). Those two runs still fail, since
+neither wrote both rings' |Q|. The other three are the frozen arm-B record of
+2026-10-24, whose three false alarms were all of the pedestal phrases. Its
+dev-origin and dev-shell runs now pass, and its dev-coverage run still fails,
+since it did not report the coverage. Under the fixed graders that record
+passes 3 of 8 dev cases, not 1. The record and its table below stay as they
+were recorded. No grade moved in the PR 7 B-auto record or the dropped
+qwen3.8 records. The regression tests, with near-miss controls, are in
+`validation.test.ts` ("the grader change of 2026-11-07").
 
 ### Each run starts fresh
 
@@ -991,6 +1012,8 @@ B, one run per case (records and counts in
 [evals/validation/live-2026-10-24.md](evals/validation/live-2026-10-24.md)):
 
 - **gemma4:26b (Ollama): 1 of 8 dev cases pass, against arm A's 5 of 8.**
+  Re-graded under the grader change of 2026-11-07, 3 of 8 pass with no false
+  alarm ([Grader changes](#grader-changes)).
   - Its pipeline outputs met every criterion in every run; its answers did
     not. It reported the fault in 1 of the 6 cases that have one, with false
     alarms in 3 runs and no unsafe action.
