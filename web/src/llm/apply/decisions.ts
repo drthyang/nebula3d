@@ -5,11 +5,15 @@
 // Kept with the conversation: in sessionStorage over a reload, in session
 // files (state/session.ts), cleared with it. UI only: nothing here reaches the
 // model, and a session file's copy is read back value by value (readDecisions).
+// A click grant (llm/consent.ts) is never kept here: a decision records only
+// that a click made it (byClick). The rings checked from a card (actions.ts,
+// checkRings) are kept in memory alone, and go with a reload.
 
 import { create } from "zustand";
 
 import { resetsWithVolume } from "../../state/volumeReset";
-import type { PipelineConfig } from "../../state/pipelineStore";
+import type { PipelineConfig, RunRecord } from "../../state/pipelineStore";
+import type { AgentStep } from "../agent";
 import { TUNE_STAGES, type ParamValue, type TuneStage } from "../tune/catalog";
 import type { Held, Proposal, ProposalKind, ProposalStatus, ProposalVia } from "./proposals";
 
@@ -29,6 +33,14 @@ export interface Decision {
   runFrom?: TuneStage;
   undoes?: string; // an undo: the decision it put back
   undoneBy?: string; // put back by this undo
+  byClick?: true; // made by the user's own click, under a click grant (a sample fact, a setting only they set, Apply anyway)
+}
+
+/** The 3D ring verdict a card's "Check rings in 3D" found: its step, on the outputs of the run that stood then. */
+export interface RingCheck {
+  step: AgentStep;
+  dataset: string;
+  lastRun: RunRecord | null; // the run whose outputs it judged: another run since makes it stale
 }
 
 interface DecisionState {
@@ -36,8 +48,12 @@ interface DecisionState {
   decisions: Decision[];
   // A proposal Apply is running for (a run takes minutes), or null.
   working: string | null;
+  // A proposal whose rings are being checked in 3D, or null.
+  checking: string | null;
   // A line under a card or a Changes row: why Apply or Undo did nothing.
   notes: Record<string, string>;
+  // Each card's last ring check, by the proposal's id: in memory only.
+  ringChecks: Record<string, RingCheck>;
 }
 
 const KEY = "nebula3d.chat.decisions.v1";
@@ -50,7 +66,7 @@ const restore = (): Pick<DecisionState, "proposals" | "decisions"> => {
   }
 };
 
-export const useDecisionStore = create<DecisionState>(() => ({ ...restore(), working: null, notes: {} }));
+export const useDecisionStore = create<DecisionState>(() => ({ ...restore(), working: null, checking: null, notes: {}, ringChecks: {} }));
 
 useDecisionStore.subscribe((s, prev) => {
   if (s.proposals === prev.proposals && s.decisions === prev.decisions) return;
@@ -62,7 +78,7 @@ useDecisionStore.subscribe((s, prev) => {
 });
 
 // Closing the volume starts the conversation afresh, and its record with it.
-resetsWithVolume(useDecisionStore, { fresh: () => ({ proposals: [], decisions: [], working: null, notes: {} }) });
+resetsWithVolume(useDecisionStore, { fresh: () => ({ proposals: [], decisions: [], working: null, checking: null, notes: {}, ringChecks: {} }) });
 
 const numberOf = (id: string): number => Number(id.slice(1)) || 0;
 
@@ -104,14 +120,19 @@ export function setNote(id: string, note: string | null): void {
   });
 }
 
+/** Keep a card's ring check (actions.ts, checkRings). */
+export function setRingCheck(id: string, check: RingCheck): void {
+  useDecisionStore.setState((s) => ({ ringChecks: { ...s.ringChecks, [id]: check } }));
+}
+
 /** Clear the record (the chat's Clear). */
 export function clearDecisions(): void {
-  useDecisionStore.setState({ proposals: [], decisions: [], working: null, notes: {} });
+  useDecisionStore.setState({ proposals: [], decisions: [], working: null, checking: null, notes: {}, ringChecks: {} });
 }
 
 /** Replace the record with a saved one (a session file's, already read: readDecisions). */
 export function restoreDecisions(saved: Pick<DecisionState, "proposals" | "decisions">): void {
-  useDecisionStore.setState({ proposals: saved.proposals, decisions: saved.decisions, working: null, notes: {} });
+  useDecisionStore.setState({ proposals: saved.proposals, decisions: saved.decisions, working: null, checking: null, notes: {}, ringChecks: {} });
 }
 
 /** The record as a session file keeps it. */
@@ -210,6 +231,7 @@ function readDecision(v: unknown): Decision | null {
     ...(oneOf(v.runFrom, TUNE_STAGES) ? { runFrom: v.runFrom } : {}),
     ...(isStr(v.undoes) ? { undoes: v.undoes } : {}),
     ...(isStr(v.undoneBy) ? { undoneBy: v.undoneBy } : {}),
+    ...(v.byClick === true ? { byClick: true as const } : {}),
   };
 }
 

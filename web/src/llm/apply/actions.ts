@@ -6,13 +6,25 @@
 // never builds and that names no sample fact (userMessage ""), so the
 // sample-fact guard, the edge trim's, the symmetry average's and the ring
 // gate refuse here exactly as they refuse the model.
+//
+// The one way past them is the user's own click (§1.3): on a card the user
+// alone may act on (a sample fact, the edge trim, the symmetry average, the
+// |Q| band, the magnetic ion), and on "Apply anyway" for a ring change the
+// ring gate holds, the click's handler makes a click grant (llm/consent.ts)
+// for exactly the values applied (applyOnClick, applyAnyway). It rides on
+// this call's context alone, update_settings uses it up, and the apply
+// revokes it whatever happened. Undo of a change a click made needs a click
+// too. A card holding a ring change can check the rings in 3D itself
+// (checkRings): a verdict of a ring left opens the gate for that card, on
+// the outputs it judged, and the model's calls never read it.
 
 import { noteAgentEdit } from "../../state/agentEdits";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { toolStepsIn, type AgentStep } from "../agent";
 import { useChatStore } from "../chatStore";
-import { CHAT_TOOLS, type ToolContext } from "../tools";
-import { ringVerdictAllowsChange } from "../tools/shared/ringGate";
+import { grantForClick, grantIsFor, isTrustedClick, revokeGrant, type AppCallContext, type ClickEvent, type Grant } from "../consent";
+import { callTool, CHAT_TOOLS, type ToolContext } from "../tools";
+import { RING_SETTINGS, ringVerdictAllowsChange } from "../tools/shared/ringGate";
 import { TUNE_STAGES, type TuneStage } from "../tune/catalog";
 import { useTuneStore } from "../tune/tuner";
 import {
@@ -20,12 +32,15 @@ import {
   logDecision,
   nextProposalNumber,
   setNote,
+  setRingCheck,
   updateDecision,
   updateProposal,
   useDecisionStore,
   type Decision,
+  type RingCheck,
 } from "./decisions";
-import { buildProposals, runProposal, stageTitle, type Proposal } from "./proposals";
+import { changeOf } from "./edit";
+import { buildProposals, cardSetting, runProposal, stageTitle, type Proposal } from "./proposals";
 
 const tool = (name: string) => {
   const t = CHAT_TOOLS.find((x) => x.name === name);
@@ -79,19 +94,69 @@ export type CardState =
   | { can: true }
   | { can: false; why: string };
 
-/** Whether a card can be applied now, and why not. */
+// Why a card cannot be acted on at all now: decided, gone stale; then busy.
+const staleWhy = (p: Proposal, datasetId: string | undefined): string | null => {
+  if (p.status !== "open") return "";
+  if (datasetId !== p.dataset) return "Stale: another dataset is open.";
+  if (p.kind !== "run" && !holds(p.from)) return "Stale: the settings changed since.";
+  return null;
+};
+const busyWhy = (busy: boolean): string | null => {
+  if (busy) return "Wait for the reply to end.";
+  const { working, checking } = useDecisionStore.getState();
+  return working || checking ? "" : null;
+};
+
+/**
+ * Whether a card can be applied now without the user's own click, and why
+ * not: a card the user alone may act on never can (held), nor a ring change
+ * with no 3D verdict of a ring left standing for it (the conversation's, or
+ * its own check's).
+ */
 export function cardState(p: Proposal, datasetId: string | undefined, ctx: ToolContext | null, busy: boolean): CardState {
-  if (p.status !== "open") return { can: false, why: "" };
-  if (datasetId !== p.dataset) return { can: false, why: "Stale: another dataset is open." };
-  if (p.kind !== "run" && !holds(p.from)) return { can: false, why: "Stale: the settings changed since." };
+  const stale = staleWhy(p, datasetId);
+  if (stale !== null) return { can: false, why: stale };
   if (p.held === "ring") {
-    if (!ctx || !ringVerdictAllowsChange(cardContext(ctx))) return { can: false, why: "Held: no 3D verdict of a ring left yet." };
+    if (!ctx || !ringVerdictAllowsChange(ringContext(p, ctx))) return { can: false, why: "Held: no 3D verdict of a ring left yet." };
   } else if (p.held) {
     return { can: false, why: HELD_NOTE[p.held] };
   }
-  if (busy) return { can: false, why: "Wait for the reply to end." };
-  if (useDecisionStore.getState().working) return { can: false, why: "" };
-  return { can: true };
+  const wait = busyWhy(busy);
+  return wait === null ? { can: true } : { can: false, why: wait };
+}
+
+/** Whether the user's own click can apply a card now (under a click grant), and why not: only staleness and a reply or apply under way stop it. */
+export function clickState(p: Proposal, datasetId: string | undefined, busy: boolean): CardState {
+  const why = staleWhy(p, datasetId) ?? busyWhy(busy);
+  return why === null ? { can: true } : { can: false, why };
+}
+
+/** Whether a card is the user's alone to apply: only their own click does, under a click grant (a fact, the edge trim, the symmetry average, the |Q| band, the ion). */
+export const needsClick = (p: Proposal): boolean => !!p.held && p.held !== "ring";
+
+/**
+ * Whether a card changes the ring removal while no 3D verdict of a ring left
+ * stands for it: its main action is then "Check rings in 3D", and "Apply
+ * anyway" its click's.
+ */
+export function ringHeldNow(p: Proposal, ctx: ToolContext | null): boolean {
+  if (p.kind !== "setting" && p.kind !== "fact") return false;
+  if (!Object.keys(p.change).some((k) => RING_SETTINGS.includes(k))) return false;
+  return !ctx || !ringVerdictAllowsChange(ringContext(p, ctx));
+}
+
+/** A card's own ring check while it judges the outputs as they are: same dataset, no run started since, none running. */
+export function currentRingCheck(p: Proposal): RingCheck | undefined {
+  const check = useDecisionStore.getState().ringChecks[p.id];
+  const pipe = usePipelineStore.getState();
+  return check && check.dataset === p.dataset && !pipe.running && pipe.lastRun === check.lastRun ? check : undefined;
+}
+
+// The card's context, its own ring check, while it stands, as the reply's step the ring gate reads last.
+function ringContext(p: Proposal, ctx: ToolContext): ToolContext {
+  const base = cardContext(ctx);
+  const check = currentRingCheck(p);
+  return check ? { ...base, replySteps: [check.step] } : base;
 }
 
 export const HELD_NOTE: Record<NonNullable<Proposal["held"]>, string> = {
@@ -106,23 +171,74 @@ export const HELD_NOTE: Record<NonNullable<Proposal["held"]>, string> = {
 
 const message = (e: unknown): string => (e as Error).message.replace(/\.$/, "");
 
-/** Apply a setting or a trial card through update_settings (an edited value in place of the card's, with Edit). */
-export async function applyCard(p: Proposal, ctx: ToolContext, edited?: Record<string, unknown>): Promise<void> {
-  if (p.kind === "run") return runCard(p, ctx);
-  const state = cardState(p, ctx.dataset.id, ctx, false);
+/** What a click that is not the user's own says: a script's, or none. */
+export const NOT_YOUR_CLICK = "Not applied: only your own click applies this.";
+
+/**
+ * Apply a card on the user's click or key press (`event`, the DOM's own): a
+ * card the user alone may act on under a click grant for exactly the values
+ * applied (edited, or the card's), made here, in the handler; any other
+ * through applyCard as it stands.
+ */
+export function applyOnClick(p: Proposal, ctx: ToolContext, event: ClickEvent, edited?: Record<string, unknown>): Promise<void> {
+  if (p.kind === "run" || !needsClick(p)) return applyCard(p, ctx, edited);
+  return withGrant(p, ctx, event, edited);
+}
+
+/** "Apply anyway" on a ring change the ring gate holds: the user's click names the setting, under a click grant for exactly the values applied. */
+export function applyAnyway(p: Proposal, ctx: ToolContext, event: ClickEvent, edited?: Record<string, unknown>): Promise<void> {
+  if (p.kind === "run" || p.kind === "trial") return Promise.resolve();
+  return withGrant(p, ctx, event, edited);
+}
+
+function withGrant(p: Proposal, ctx: ToolContext, event: ClickEvent, edited: Record<string, unknown> | undefined): Promise<void> {
+  const grant = grantForClick(event, { card: p.id, dataset: p.dataset, changes: edited ?? changeOf(p) });
+  if (!grant) {
+    setNote(p.id, NOT_YOUR_CLICK);
+    return Promise.resolve();
+  }
+  return applyCard(p, ctx, edited, grant);
+}
+
+/**
+ * Apply a setting or a trial card through update_settings (an edited value in
+ * place of the card's, with Edit). With `grant`, the user's click's
+ * (applyOnClick, applyAnyway): only for the card it was made for, revoked
+ * once the call is made, whatever happened.
+ */
+export async function applyCard(p: Proposal, ctx: ToolContext, edited?: Record<string, unknown>, grant?: Grant | null): Promise<void> {
+  if (p.kind === "run") {
+    revokeGrant(grant);
+    return runCard(p, ctx);
+  }
+  try {
+    await applyChange(p, ctx, edited, grant ?? null);
+  } finally {
+    revokeGrant(grant);
+  }
+}
+
+async function applyChange(p: Proposal, ctx: ToolContext, edited: Record<string, unknown> | undefined, grant: Grant | null): Promise<void> {
+  const state = grant ? clickState(p, ctx.dataset.id, false) : cardState(p, ctx.dataset.id, ctx, false);
   if (!state.can) {
     setNote(p.id, state.why || "Not now.");
     return;
   }
-  const changes = edited ?? p.change;
+  if (grant && !grantIsFor(grant, p.id)) {
+    setNote(p.id, NOT_YOUR_CLICK);
+    return;
+  }
+  const changes = edited ?? changeOf(p);
   const keys = [...new Set([...Object.keys(p.fields), ...Object.keys(p.from)])];
   setNote(p.id, null);
   useDecisionStore.setState({ working: p.id });
   try {
     const before = pick(keys);
     let out: { result: unknown };
+    // The app's own call: the card's context, and the click's grant where there is one.
+    const call: AppCallContext = { ...ringContext(p, ctx), ...(grant ? { grant } : {}) };
     try {
-      out = await tool("update_settings").run({ changes }, cardContext(ctx), {});
+      out = await tool("update_settings").run({ changes }, call, {});
     } catch (e) {
       setNote(p.id, `Not applied: ${message(e)}.`);
       return;
@@ -137,7 +253,7 @@ export async function applyCard(p: Proposal, ctx: ToolContext, edited?: Record<s
     const changedKeys = keys.filter((k) => before[k as keyof PipelineConfig] !== after[k as keyof PipelineConfig]);
     const b = Object.fromEntries(changedKeys.map((k) => [k, before[k as keyof PipelineConfig]])) as Partial<PipelineConfig>;
     const a = Object.fromEntries(changedKeys.map((k) => [k, after[k as keyof PipelineConfig]])) as Partial<PipelineConfig>;
-    const shown = edited ? { from: p.shown.from, to: Object.values(edited).map(String).join(", ") } : p.shown;
+    const shown = edited ? { from: p.shown.from, to: shownTo(p, config()) } : p.shown;
     logDecision({
       proposal: p.id,
       kind: p.kind,
@@ -149,6 +265,7 @@ export async function applyCard(p: Proposal, ctx: ToolContext, edited?: Record<s
       before: b,
       after: a,
       ...(p.runFrom ? { runFrom: p.runFrom } : {}),
+      ...(grant ? { byClick: true as const } : {}),
     });
     updateProposal(p.id, { status: "applied", ...(edited ? { shown } : {}) });
     if (p.runFrom) offerRun(p.turn, p.dataset, p.runFrom, changeText(p.title, shown));
@@ -158,6 +275,61 @@ export async function applyCard(p: Proposal, ctx: ToolContext, edited?: Record<s
 }
 
 export const changeText = (title: string, shown: { from: string; to: string }): string => (shown.from ? `${title} ${shown.from} → ${shown.to}` : `${title}: ${shown.to}`);
+
+const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
+
+/** What a card's settings read now, as its line shows them: the |Q| band as one, else each setting's value. */
+function shownTo(p: Proposal, s: PipelineConfig): string {
+  const keys = Object.keys(p.change);
+  if (keys.includes("pdfQMin") && keys.includes("pdfQMax")) return s.pdfQMax ? `${s.pdfQMin ? Number(s.pdfQMin) : 0}–${Number(s.pdfQMax)} Å⁻¹` : "full";
+  return keys
+    .map((k) => {
+      const c = cardSetting(k);
+      return c ? asText(c.read(s)) : "";
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+// --------------------------------------------------------------- the ring check
+
+/**
+ * "Check rings in 3D" on a card holding a ring change: assess_stage's rings,
+ * run by the app on the card's context, kept with the card (setRingCheck) on
+ * the outputs as they now are. A verdict of a ring left opens the ring gate
+ * for this card's Apply; none, and "Apply anyway" is the user's. The model's
+ * calls never read it: it is no step of the conversation.
+ */
+export async function checkRings(p: Proposal, ctx: ToolContext): Promise<void> {
+  const state = clickState(p, ctx.dataset.id, false);
+  if (!state.can) {
+    setNote(p.id, state.why || "Not now.");
+    return;
+  }
+  setNote(p.id, null);
+  useDecisionStore.setState({ checking: p.id });
+  try {
+    const lastRun = usePipelineStore.getState().lastRun;
+    const run = await callTool(cardContext(ctx), "assess_stage", { stage: "rings" });
+    if (!run.ok) {
+      setNote(p.id, `The ring check did not run: ${run.summary.replace(/\.$/, "")}.`);
+      return;
+    }
+    const step: AgentStep = {
+      id: `${p.id}:rings`,
+      name: "assess_stage",
+      args: { stage: "rings" },
+      status: "done",
+      summary: run.summary,
+      result: run.text,
+      ...(run.full !== undefined ? { full: run.full } : {}),
+      ...(run.outcomes ? { outcomes: run.outcomes } : {}),
+    };
+    setRingCheck(p.id, { step, dataset: p.dataset, lastRun });
+  } finally {
+    useDecisionStore.setState({ checking: null });
+  }
+}
 
 /** The change a decision made, in one line ("punchMinSig 8 → 6"). */
 export const decisionText = (d: Pick<Decision, "title" | "shown" | "kind" | "runFrom">): string =>
@@ -218,10 +390,16 @@ export const undoable = (d: Decision): boolean => (d.action === "apply" || d.act
 
 /**
  * Undo a decision: put back `before` for exactly its fields, while they still
- * hold `after`; otherwise say so. A Run card follows, as after any change.
+ * hold `after`; otherwise say so. A change the user's click made (a fact, a
+ * setting only they set) is put back on their own click alone (`event`, the
+ * DOM's). A Run card follows, as after any change.
  */
-export function undoDecision(d: Decision): boolean {
+export function undoDecision(d: Decision, event?: ClickEvent): boolean {
   if (!undoable(d)) return false;
+  if (d.byClick && !isTrustedClick(event)) {
+    setNote(d.id, "Undo needs your own click.");
+    return false;
+  }
   if (!holds(d.after)) {
     setNote(d.id, "Changed since: undo on Configure.");
     return false;
@@ -241,6 +419,7 @@ export function undoDecision(d: Decision): boolean {
     after: d.before,
     ...(d.runFrom ? { runFrom: d.runFrom } : {}),
     undoes: d.id,
+    ...(d.byClick ? { byClick: true as const } : {}),
   });
   updateDecision(d.id, { undoneBy: undo.id });
   updateProposal(d.proposal, { status: "undone" });
@@ -262,15 +441,18 @@ export function undoDecision(d: Decision): boolean {
   return true;
 }
 
-/** Undo every change still standing, newest first. */
-export function undoAll(): void {
+/** Undo every change still standing, newest first (those a click made on the user's own click, `event`). */
+export function undoAll(event?: ClickEvent): void {
   const ds = [...useDecisionStore.getState().decisions].reverse();
-  for (const d of ds) if (undoable(d)) undoDecision(useDecisionStore.getState().decisions.find((x) => x.id === d.id)!);
+  for (const d of ds) if (undoable(d)) undoDecision(useDecisionStore.getState().decisions.find((x) => x.id === d.id)!, event);
 }
 
 // --------------------------------------------------------------- the report
 
 const ACTION_WORD: Record<Decision["action"], string> = { apply: "Applied", "edit-apply": "Edited and applied", dismiss: "Dismissed", undo: "Put back" };
+
+/** Who made a decision, as the record shows it: "you (click)" for a change only the user's own click makes. */
+export const byText = (d: Pick<Decision, "by" | "byClick">): string => (d.byClick ? `${d.by} (click)` : d.by);
 
 /** One decision as the report's Decisions section lists it. */
 export function decisionLine(d: Decision): string {
@@ -286,6 +468,6 @@ export function reportDecisions(datasetId: string): { time: string; by: string; 
     .filter((d) => mine.has(d.proposal))
     .map((d) => {
       const t = new Date(d.at);
-      return { time: `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`, by: d.by, decision: decisionLine(d) };
+      return { time: `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`, by: byText(d), decision: decisionLine(d) };
     });
 }

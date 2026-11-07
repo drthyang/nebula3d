@@ -9,6 +9,13 @@
 // model suggests a class to the user instead (SYMMETRY_AVERAGE_SETTINGS). The
 // raw edge trim, a data choice no fact about the sample, changes the same way a
 // fact does: only when the user's latest message names it (USER_CHOICE_PARAMS).
+//
+// The app's own call for an Apply card the user clicked carries a click grant
+// (llm/consent.ts) for the card's exact changes: it lifts the guards for
+// those changes alone, once, and also reaches the settings only the user sets
+// (tune/userSettings.ts: the symmetry average's, the |Q| band, the magnetic
+// ion). A model's call never carries one, so for the model nothing here
+// changes: the same refusals, in the same words.
 
 import { noteAgentEdit } from "../../../state/agentEdits";
 import { usePipelineStore, type PipelineConfig } from "../../../state/pipelineStore";
@@ -31,6 +38,8 @@ import {
   type ParamValue,
   type TuneStage,
 } from "../../tune/catalog";
+import { grantCovers, redeemGrant } from "../../consent";
+import { checkUserSettings, userSetting } from "../../tune/userSettings";
 import { keysOf } from "../facts";
 import { checkIdle, unique } from "../shared/pipeline";
 import { namesRingSetting, RING_SETTINGS, ringEvidenceRefusal, ringVerdictAllowsChange } from "../shared/ringGate";
@@ -62,6 +71,8 @@ const SETTABLE: Settable[] = [
 ];
 const findSettable = (key: string): Settable | undefined => SETTABLE.find((p) => p.key === key);
 const userSets = (key: string): boolean => (SYMMETRY_AVERAGE_SETTINGS as readonly string[]).includes(key);
+/** A setting update_settings writes: its own, or, under a click grant alone, one only the user sets (its stage null: the symmetry average's). */
+const settableOrUsers = (key: string): (Omit<Settable, "stage"> & { stage: TuneStage | null }) | undefined => findSettable(key) ?? userSetting(key);
 
 // The stage of each setting, for the skill gate (skills.ts).
 const SETTING_STAGE = new Map(SETTABLE.map((p) => [p.key, p.stage]));
@@ -122,13 +133,23 @@ export const update_settings: ChatTool = {
     required: ["changes"],
   },
   run: async (args, ctx) => {
+    // The click grant the app's own call for a card carries (llm/consent.ts),
+    // used up here whatever follows; none on a model's call.
+    const grant = redeemGrant(ctx);
     checkIdle();
     const changes = args.changes;
     if (!changes || typeof changes !== "object" || Array.isArray(changes) || !Object.keys(changes).length) {
       throw new ToolArgError("changes must be an object of setting → value");
     }
+    // A change the user's click approved, exactly: the key, at the value or its canonical fields.
+    const clicked = (key: string): boolean => {
+      const setting = settableOrUsers(key);
+      return grant !== null && setting !== undefined && grantCovers(grant, key, (changes as Record<string, unknown>)[key], setting.write);
+    };
     for (const key of Object.keys(changes)) {
-      if (!findSettable(key) && !userSets(key)) throw new ToolArgError(`${key} cannot be changed; these can: ${SETTABLE.map((q) => q.key).join(", ")}`);
+      if (!findSettable(key) && !userSets(key) && !(userSetting(key) && clicked(key))) {
+        throw new ToolArgError(`${key} cannot be changed; these can: ${SETTABLE.map((q) => q.key).join(", ")}`);
+      }
     }
     // A fact about the sample the user's latest message does not name is
     // refused, whatever its value, and the symmetry average's settings always;
@@ -138,8 +159,11 @@ export const update_settings: ChatTool = {
     // A change to the ring removal waits for the 3D ring verdict to find a ring
     // left or dented, unless the user names it (shared/ringGate.ts).
     const ringHeld = (key: string): boolean => RING_SETTINGS.includes(key) && !namesRingSetting(message) && !ringVerdictAllowsChange(ctx);
+    // A click grant lifts each guard for the change it approved, and for no other.
     const refused = Object.keys(changes).filter(
-      (key) => userSets(key) || (isSampleFact(key) && !namesSampleFact(message, key)) || (isUserChoice(key) && !namesUserChoice(message, key)) || ringHeld(key),
+      (key) =>
+        !clicked(key) &&
+        (userSets(key) || (isSampleFact(key) && !namesSampleFact(message, key)) || (isUserChoice(key) && !namesUserChoice(message, key)) || ringHeld(key)),
     );
     const why = (key: string): string =>
       userSets(key) ? symmetryAverageRefusal(key) : isUserChoice(key) ? userChoiceRefusal(key) : RING_SETTINGS.includes(key) ? ringEvidenceRefusal(key) : sampleFactRefusal(key);
@@ -149,7 +173,7 @@ export const update_settings: ChatTool = {
     const wanted = new Map<string, Partial<PipelineConfig>>();
     for (const [key, value] of asked) {
       try {
-        wanted.set(key, findSettable(key)!.write(value));
+        wanted.set(key, settableOrUsers(key)!.write(value));
       } catch (e) {
         throw new ToolArgError((e as Error).message);
       }
@@ -161,6 +185,14 @@ export const update_settings: ChatTool = {
       return (Object.keys(fields) as (keyof PipelineConfig)[]).every((f) => before[f] === fields[f]);
     });
     const patch = Object.assign({}, ...[...wanted].filter(([key]) => !unchanged.includes(key)).map(([, fields]) => fields)) as Partial<PipelineConfig>;
+    // The settings only the user sets, where a click changed one, checked together (the |Q| band's two edges).
+    if ([...wanted.keys()].some((key) => !findSettable(key))) {
+      try {
+        checkUserSettings({ ...before, ...patch });
+      } catch (e) {
+        throw new ToolArgError((e as Error).message);
+      }
+    }
     before.patch(patch);
     // The page shows the fields the agent changed (state/agentEdits.ts): UI only.
     noteAgentEdit(Object.keys(patch) as (keyof PipelineConfig)[]);
@@ -168,7 +200,7 @@ export const update_settings: ChatTool = {
     const changed = [...wanted.keys()]
       .filter((key) => !unchanged.includes(key))
       .map((key) => {
-        const p = findSettable(key)!;
+        const p = settableOrUsers(key)!;
         return {
           setting: key,
           from: p.read(before),
@@ -176,7 +208,7 @@ export const update_settings: ChatTool = {
           ...(p.appliesWhen && !p.appliesWhen(after) ? { note: "no effect with the current model" } : {}),
         };
       });
-    const rerunFrom = TUNE_STAGES.find((st) => changed.some((c) => findSettable(c.setting)!.stage === st));
+    const rerunFrom = TUNE_STAGES.find((st) => changed.some((c) => settableOrUsers(c.setting)!.stage === st));
     const done = changed.length
       ? changed.map((c) => `${c.setting} ${c.from} → ${c.to}`).join(", ")
       : `no change: ${unchanged.join(", ")} already set`;

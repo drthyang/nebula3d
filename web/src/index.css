@@ -5138,16 +5138,30 @@ body.ai-resizing iframe {
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
+/* Edit: the exact values the card applies, one row each (the modulation's four parts, the band's two edges) */
 .pc-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.pc-edit-row {
   display: flex;
   align-items: center;
   gap: 8px;
   font: 11.5px var(--font-mono);
   color: var(--text-2);
 }
-.pc-edit input {
+.pc-edit-row > span {
+  flex: none;
+  min-width: 72px;
+}
+.pc-edit-row :is(input, select) {
   flex: 1;
   min-width: 0;
+}
+/* the 3D ring verdict a card's own "Check rings in 3D" found */
+.pc-check-src {
+  color: var(--text-3);
 }
 .pc-actions {
   display: flex;
@@ -7668,5 +7682,16 @@ html.kb-open .ai-side {
   }
   .pc-actions .btn {
     flex: 1;
+  }
+  /* a held ring change: "Check rings in 3D" on its own row, the other three below */
+  .pc-actions--ring {
+    flex-wrap: wrap;
+  }
+  .pc-actions--ring .btn-primary {
+    flex-basis: 100%;
+  }
+  .pc-actions--ring .btn:not(.btn-primary) {
+    flex: 1 1 auto;
+    white-space: nowrap;
   }
 }
