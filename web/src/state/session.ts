@@ -28,6 +28,7 @@ import { version as APP_VERSION } from "../../package.json";
 import type { Dataset, JobEvent, StageParamsIn } from "../api/types";
 import { decisionsForFile, readDecisions, restoreDecisions } from "../llm/apply/decisions";
 import type { Decision } from "../llm/apply/decisions";
+import { autoForFile, readAutoRun, restoreAutoRun, type AutoRun } from "../llm/auto/store";
 import type { Proposal } from "../llm/apply/proposals";
 import { useChatStore } from "../llm/chatStore";
 import { CENTERINGS } from "../structure/symops";
@@ -83,6 +84,9 @@ export interface Session {
   // The Apply cards and the decisions on them (llm/apply/decisions.ts); none in a file from before them.
   // `told`: the newest decision a reply's context listed (absent before it: every one listed).
   decisions?: { proposals: Proposal[]; decisions: Decision[]; told?: number };
+  // The conversation's auto run (llm/auto/store.ts): its plan, steps and use; none in a file from before it.
+  // Brought back stopped, its steps never evidence.
+  auto?: AutoRun | null;
   structure: SessionStructure | null;
 }
 
@@ -125,6 +129,7 @@ export function captureSession(dataset: Dataset | undefined, now = new Date()): 
     chat: useChatStore.getState().turns,
     marks: dataset ? useMarkStore.getState().marks.filter((m) => m.datasetId === dataset.id) : [],
     decisions: decisionsForFile(),
+    auto: autoForFile(),
     structure: st.def ? { def: st.def, show: st.show, perm: st.perm, origin: st.origin, hidden: st.hidden, depth: st.depth } : null,
   };
 }
@@ -252,6 +257,7 @@ export function parseSession(text: string): Session {
     marks: readMarks(v.marks),
     // Each card and decision rebuilt from the keys it has, the same way.
     ...(own(v, "decisions") ? { decisions: readDecisions(v.decisions) } : {}),
+    ...(own(v, "auto") ? { auto: readAutoRun(v.auto, { fromFile: true }) } : {}),
     structure: readStructure(v.structure),
   };
 }
@@ -398,6 +404,7 @@ export function restoreSession(session: Session, datasets: readonly Dataset[], l
 
   // The Apply cards and their decisions go with the conversation too.
   restoreDecisions(session.decisions ?? { proposals: [], decisions: [] });
+  restoreAutoRun(session.auto ?? null);
 
   if (session.structure) {
     useStructureStore.setState(session.structure);

@@ -47,6 +47,19 @@ export interface ReportDecision {
   decision: string; // "Applied punchMinSig 8 → 6"
 }
 
+/** What an auto run adds to its report (auto/report.ts). */
+export interface ReportAuto {
+  plan: { row: string; outcome: string; evidence: string }[]; // each row, its outcome, the checks' own lines
+  facts: { fact: string; answer: string }[]; // the facts asked, and how you answered
+  held: string[]; // the ring changes the ring gate held
+  ended: string; // how the run ended
+  limit: string | null; // the limit that ended the fixes
+  replies: string; // "3 of 12 model replies"
+  tokens: string | null; // the replies' requests (usage.ts)
+  cost: string | null; // on a priced model: "$0.42 of $2.00"
+  time: string; // the run's clock: worked, paused, total
+}
+
 export interface ReportStep {
   tool: string;
   summary: string;
@@ -84,6 +97,8 @@ export interface Report {
   caveats: string[];
   // The decisions on the Apply cards, oldest first; none: left out.
   decisions?: ReportDecision[];
+  // The auto run the report closes (auto/report.ts); none: left out.
+  auto?: ReportAuto;
 }
 
 // ---------------------------------------------------------------- inputs
@@ -121,6 +136,7 @@ export interface ReportInput {
   measured: Measured;
   figures: ReportFigure[];
   decisions?: ReportDecision[];
+  auto?: ReportAuto;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -482,5 +498,6 @@ export function buildReport(input: ReportInput): Report {
     narrative: input.answer.trim(),
     caveats,
     ...(input.decisions?.length ? { decisions: input.decisions } : {}),
+    ...(input.auto ? { auto: input.auto } : {}),
   };
 }

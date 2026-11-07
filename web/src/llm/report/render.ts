@@ -24,6 +24,17 @@ const caveatsOf = (r: Report): { limits: string[]; standing: string[] } => ({
 export const DETAILS_TITLE = "Details and provenance";
 // The decisions on the Apply cards (apply/decisions.ts): what you applied, edited, dismissed and undid.
 export const DECISIONS_TITLE = "Decisions";
+// An auto run's plan, facts, limit and use (auto/report.ts).
+export const AUTO_TITLE = "Auto run";
+
+/** An auto run's lines after its plan: how it ended, the limit, the facts and held changes, the use. */
+const autoLines = (a: NonNullable<Report["auto"]>): string[] => [
+  a.ended,
+  ...(a.limit ? [a.limit] : []),
+  ...a.facts.map((f) => `Asked: ${f.fact} (${f.answer}).`),
+  ...a.held.map((h) => `${h}.`),
+  [a.replies, a.tokens, a.cost, a.time].filter(Boolean).join(" · "),
+];
 
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -60,6 +71,11 @@ export function reportMarkdown(r: Report): string {
   out.push(mdTable(["Check", "Verdict", "Numbers"], r.checks.map((c) => [c.title, WORDS.label[c.verdict], c.headline])), "");
 
   if (limits.length) out.push("## Limitations", "", ...limits.map((c) => `- ${c}`), "");
+
+  if (r.auto) {
+    out.push(`## ${AUTO_TITLE}`, "", mdTable(["Step", "Outcome", "Evidence"], r.auto.plan.map((p) => [p.row, p.outcome, p.evidence])), "");
+    out.push(...autoLines(r.auto).map((l) => `- ${l}`), "");
+  }
 
   if (r.narrative) out.push("## The model's summary", "", "*Written by the model; the numbers above are measured.*", "", r.narrative, "");
 
@@ -258,6 +274,13 @@ export function reportHtml(r: Report): string {
   );
 
   if (limits.length) parts.push(`<h2>Limitations</h2><ul class="limits">${limits.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`);
+  if (r.auto) {
+    parts.push(
+      `<h2>${esc(AUTO_TITLE)}</h2><table><thead><tr><th>Step</th><th>Outcome</th><th>Evidence</th></tr></thead><tbody>${r.auto.plan
+        .map((p) => `<tr><td>${esc(p.row)}</td><td>${esc(p.outcome)}</td><td>${esc(p.evidence)}</td></tr>`)
+        .join("")}</tbody></table><ul class="limits">${autoLines(r.auto).map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`,
+    );
+  }
 
   if (r.narrative) {
     parts.push(`<h2>The model's summary</h2><p class="note">Written by the model; the numbers above are measured.</p>`);
