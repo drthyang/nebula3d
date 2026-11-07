@@ -34,6 +34,7 @@ import { editedChange, editFields } from "../apply/edit";
 import type { Proposal } from "../apply/proposals";
 import { useChatStore } from "../chatStore";
 import type { ToolContext } from "../tools";
+import { goToStep } from "./goToStep";
 
 const KIND_LABEL = (p: Proposal): string =>
   p.kind === "run" ? "Run" : p.kind === "trial" ? "Trial" : p.held === "fact" ? "Sample fact" : needsClick(p) ? "Yours" : "Setting";
@@ -55,18 +56,6 @@ const watched = (s: object, p: Proposal): string =>
   Object.keys(p.from)
     .map((k) => String((s as Record<string, unknown>)[k]))
     .join("\u0000");
-
-/** Scroll the transcript to a step and pulse it. */
-function goToStep(turn: number, step: string): void {
-  const el = document.getElementById(`ai-step-${turn}-${step}`);
-  if (!el) return;
-  const list = el.closest("details");
-  if (list && !list.open) list.open = true;
-  el.scrollIntoView({ block: "center", behavior: "smooth" });
-  el.classList.remove("is-pulsed");
-  void el.offsetWidth;
-  el.classList.add("is-pulsed");
-}
 
 /** The stages a run from `stage` recomputes, as the Configure page has them switched on. */
 function stagesFrom(stage: string): number {
@@ -101,7 +90,7 @@ const YOURS_NOTE = "Apply counts as you stating this value.";
 const RING_NOTE = "No 3D verdict of a ring left yet.";
 const RING_CLEAN_NOTE = "The 3D check finds no ring left. Apply anyway counts as you naming this setting.";
 
-function OpenCard({ p, ctx }: { p: Proposal; ctx: ToolContext | null }) {
+function OpenCard({ p, ctx, pinned = false }: { p: Proposal; ctx: ToolContext | null; pinned?: boolean }) {
   const datasetId = useDatasetStore((s) => s.datasetId);
   const busy = useChatStore((s) => s.busy);
   const working = useDecisionStore((s) => s.working);
@@ -271,8 +260,14 @@ function OpenCard({ p, ctx }: { p: Proposal; ctx: ToolContext | null }) {
             Edit
           </button>
         )}
-        <button type="button" className="btn btn-ghost btn-quiet" disabled={running} onClick={() => dismissCard(p)}>
-          Dismiss
+        <button
+          type="button"
+          className="btn btn-ghost btn-quiet"
+          disabled={running}
+          onClick={() => dismissCard(p)}
+          title={pinned ? "Leave it as it is: the run goes on, and its report lists this as an open question" : undefined}
+        >
+          {pinned ? "Skip" : "Dismiss"}
         </button>
       </div>
     </div>
@@ -320,13 +315,13 @@ export function ProposalCards({ turn, ctx }: { turn: number; ctx: ToolContext | 
 
 /**
  * One card by its id, wherever it was made: the fact an auto run waits for,
- * pinned where the run shows (AutoHook; PR 7's panel). Its Apply is the
- * card's own, on the user's click; Dismiss declines it.
+ * pinned in the Auto panel (AutoPanel.tsx). Its Apply is the card's own, on
+ * the user's click; Skip (the card's Dismiss) declines it.
  */
 export function PinnedCard({ id, ctx }: { id: string; ctx: ToolContext | null }) {
   const p = useDecisionStore((s) => s.proposals.find((x) => x.id === id));
   if (!p || p.status !== "open") return null;
-  return <OpenCard p={p} ctx={ctx} />;
+  return <OpenCard p={p} ctx={ctx} pinned />;
 }
 
 /** A tuning trial's Apply, on its row (TuneProgress): its settings onto the Configure page. */

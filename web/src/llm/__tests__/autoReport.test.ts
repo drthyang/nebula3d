@@ -45,7 +45,7 @@ describe("the report of an auto run", () => {
     expect(a.facts).toEqual([{ fact: "Laue class: none → 4/mmm", answer: "declined by you: an open question" }]);
     expect(a.held).toEqual(["Ring model: held by the ring gate (no 3D verdict of a ring left), never asked"]);
     expect(a.limit).toBe("The fixes ended at the time limit.");
-    expect([a.replies, a.cost, a.time]).toEqual(["4 of 12 model replies", "$0.42 of $2.00", "Took · 9:00 of 30:00 · paused 5:00 · total 14:00"]);
+    expect([a.replies, a.cost, a.time]).toEqual(["4 of 12 model replies", "$0.42 of $2.00", "Took · 9:00 · paused 5:00 · total 14:00"]);
     expect(a.tokens).toMatch(/^52,000 tokens in \(30,000 read from the prompt cache\) · 2,100 out · 9 requests$/);
 
     const report = buildReport({

@@ -16,6 +16,13 @@ describe("the validation's time limits", () => {
     expect(p.runMinutes).toBeLessThan(p.wallMinutes);
   });
 
+  it("the quick-auto preset (B-auto) is the quick preset's plan and limits, through auto mode", () => {
+    const { mode, ...plain } = PRESETS["quick-auto"];
+    expect(mode).toBe("auto");
+    expect(plain).toEqual(PRESETS.quick);
+    expect(presetNamed("quick-auto")?.mode).toBe("auto");
+  });
+
   it("refuses a plan expected to pass the cap, before it starts, saying how to shrink it", () => {
     const model = MODELS.find((m) => m.key === "ollama-gemma4-26b")!;
     const full = plan(model, "dev", { arms: ["B", "C"], runs: 3 });

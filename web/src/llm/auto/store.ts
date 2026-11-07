@@ -2,7 +2,8 @@
 // each row's outcome, the clock, the limits and what was spent, the pause
 // and why, the facts asked and answered, the run's steps and replies, and
 // the settings snapshot Undo puts back. The controller (controller.ts)
-// writes it; the Auto panel (PR 7) and the report (report.ts) read it.
+// writes it; the Auto panel (components/AutoPanel.tsx) and the report
+// (report.ts) read it.
 // Kept in sessionStorage over a reload, in session files (state/session.ts),
 // and read back value by value (readAutoRun). A run that was under way when
 // the page reloaded comes back stopped, its row marked so, and Resume
@@ -12,6 +13,8 @@
 // `restored`, and never counts as evidence (agent.ts, toolStepsIn).
 
 import { create } from "zustand";
+
+import type { Dataset } from "../../api/types";
 
 import { resetsWithVolume } from "../../state/volumeReset";
 import type { PipelineConfig } from "../../state/pipelineStore";
@@ -35,6 +38,7 @@ export interface AutoFact {
   title: string;
   shown: string; // "1 → 2"
   status: "open" | "applied" | "declined";
+  at?: number; // how many of the run's steps came before it was asked: its place in the activity log
 }
 
 export interface AutoRun {
@@ -58,6 +62,7 @@ export interface AutoRun {
   held: { proposal: string; title: string }[]; // ring changes the ring gate held: logged, never paused for
   steps: AgentStep[]; // the run's steps in order: the app's own and its replies'
   turns: number[]; // the chat turns of its replies
+  turnAt: number[]; // for each of those turns, how many of the run's steps came before it: where the transcript shows the app's own steps
   reportTurn: number | null;
   pendingRun: RunStage | null; // a change applied whose run has not finished: Resume runs it first
   seedForm: SeedForm | null; // the form a transport took the seeded checks in, once found
@@ -65,6 +70,11 @@ export interface AutoRun {
 
 interface AutoStore {
   run: AutoRun | null;
+  // The app's own step under way, or the last one done, whole (its overlay
+  // data with it): what the Highlights follow (examine/store.ts). Never kept.
+  live: AgentStep | null;
+  // The dataset as the run's last call left it (a run rewrites its outputs): what the Highlights measure against.
+  work: Dataset | null;
 }
 
 const KEY = "nebula3d.pilot.auto.v1";
@@ -90,7 +100,7 @@ const restore = (): AutoRun | null => {
   }
 };
 
-export const useAutoStore = create<AutoStore>(() => ({ run: restore() }));
+export const useAutoStore = create<AutoStore>(() => ({ run: restore(), live: null, work: null }));
 
 useAutoStore.subscribe((s, prev) => {
   if (s.run === prev.run) return;
@@ -103,7 +113,7 @@ useAutoStore.subscribe((s, prev) => {
 });
 
 // Closing the volume ends the conversation, and the run with it.
-resetsWithVolume(useAutoStore, { fresh: () => ({ run: null }) });
+resetsWithVolume(useAutoStore, { fresh: () => ({ run: null, live: null, work: null }) });
 
 /** Change the run (none: nothing). */
 export function patchRun(patch: Partial<AutoRun> | ((r: AutoRun) => Partial<AutoRun>)): void {
@@ -156,6 +166,7 @@ export function newRun(fields: Pick<AutoRun, "id" | "dataset" | "clock" | "limit
     held: [],
     steps: [],
     turns: [],
+    turnAt: [],
     reportTurn: null,
     pendingRun: null,
     seedForm: null,
@@ -170,7 +181,7 @@ export const autoForFile = (): AutoRun | null => {
 
 /** Replace the record with a saved one (a session file's, read by readAutoRun). */
 export function restoreAutoRun(run: AutoRun | null): void {
-  useAutoStore.setState({ run: run && interrupted(run) });
+  useAutoStore.setState({ run: run && interrupted(run), live: null, work: null });
 }
 
 // --------------------------------------------------------------- reading back
@@ -273,11 +284,16 @@ export function readAutoRun(v: unknown, { fromFile }: { fromFile: boolean }): Au
     snapshot: settings as Partial<PipelineConfig>,
     decisions: strings(v.decisions).filter((d) => /^D\d+$/.test(d)),
     facts: Array.isArray(v.facts)
-      ? v.facts.flatMap((f) => (isObj(f) && isStr(f.proposal) && isStr(f.title) && isStr(f.shown) && oneOf(f.status, ["open", "applied", "declined"] as const) ? [{ proposal: f.proposal, title: f.title, shown: f.shown, status: f.status }] : []))
+      ? v.facts.flatMap((f) =>
+          isObj(f) && isStr(f.proposal) && isStr(f.title) && isStr(f.shown) && oneOf(f.status, ["open", "applied", "declined"] as const)
+            ? [{ proposal: f.proposal, title: f.title, shown: f.shown, status: f.status, ...(isNum(f.at) ? { at: f.at } : {}) }]
+            : [],
+        )
       : [],
     held: Array.isArray(v.held) ? v.held.flatMap((h) => (isObj(h) && isStr(h.proposal) && isStr(h.title) ? [{ proposal: h.proposal, title: h.title }] : [])) : [],
     steps: Array.isArray(v.steps) ? v.steps.map((s) => readStep(s, fromFile)).filter((s): s is AgentStep => !!s) : [],
     turns: numbers(v.turns),
+    turnAt: numbers(v.turnAt),
     reportTurn: isNum(v.reportTurn) ? v.reportTurn : null,
     pendingRun: oneOf(v.pendingRun, RUN_STAGES) ? v.pendingRun : null,
     seedForm: oneOf(v.seedForm, ["round", "message"] as const) ? v.seedForm : null,

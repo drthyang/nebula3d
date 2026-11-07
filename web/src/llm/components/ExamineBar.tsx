@@ -8,11 +8,11 @@
 
 import { TONE } from "../../components/highlightTones";
 import { HelpTip } from "../../components/ui";
-import { useNavStore } from "../../state/navStore";
 import type { ClassDef, ClassId } from "../examine/overlays";
 import { useExamineStore, type ShownSet } from "../examine/store";
 import { useLlmSettings } from "../settings";
 import { openView } from "../tools/openView";
+import { goToStep } from "./goToStep";
 
 
 // The classes counted on the cut; the bands, hatches and the coverage's lines are shown without a number.
@@ -84,21 +84,6 @@ function Swatch({ c }: { c: ClassDef }) {
   }
 }
 
-/** Scroll the chat to the step and pulse it: in its turn, or in the reply being written. */
-function goToStep(shown: { turn: number | null; stepId: string }): void {
-  useNavStore.getState().setDockOpen(true);
-  requestAnimationFrame(() => {
-    const el = document.getElementById(shown.turn === null ? `ai-step-live-${shown.stepId}` : `ai-step-${shown.turn}-${shown.stepId}`);
-    if (!el) return;
-    const list = el.closest("details");
-    if (list && !list.open) list.open = true;
-    el.scrollIntoView({ block: "center", behavior: "smooth" });
-    el.classList.remove("is-pulsed");
-    void el.offsetWidth;
-    el.classList.add("is-pulsed");
-  });
-}
-
 interface Props {
   shown: ShownSet | null;
   counts: Partial<Record<ClassId, number>>; // on this cut, per class (draw.ts legend)
@@ -132,7 +117,7 @@ export function ExamineBar({ shown, counts, notes = {}, stages }: Props) {
             Go there
           </button>
         )}
-        <button type="button" className="ex-step" onClick={() => goToStep(step)} title="Show this step in the chat">
+        <button type="button" className="ex-step" onClick={() => goToStep(step.turn, step.stepId)} title="Show this step in the chat">
           step {step.n} ↗
         </button>
         {shown && (

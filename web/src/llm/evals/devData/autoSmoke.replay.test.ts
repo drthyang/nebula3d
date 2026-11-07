@@ -1,8 +1,9 @@
 // Auto mode live on a local model (opt-in, never in CI): a whole auto run on
 // dev cases built where the tests run (devData: the pipeline in Python
 // through the CPython bridge), the model a real one on this machine. The
-// smoke the controller's PR states (THY-65 PR 6); PR 7's B-auto eval builds
-// on it. The harness skips every fact card (Skip), as that eval will.
+// smoke the controller's PR states (THY-65 PR 6). The B-auto eval
+// (evals/validationAuto.ts) runs the validation's dev cases the same way. The
+// harness skips every fact card (Skip), as that eval does.
 //
 //   NEBULA_AUTO_SMOKE=1 NEBULA_PYTHON=… npx vitest run --project replay src/llm/evals/devData/autoSmoke.replay.test.ts
 //

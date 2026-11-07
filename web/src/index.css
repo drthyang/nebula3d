@@ -7938,25 +7938,463 @@ html.kb-open .ai-side {
   }
 }
 
-/* Auto mode's minimal hook in the chat's dock (llm/components/AutoHook.tsx; PR 7 brings the panel). */
-.ai-auto {
+/* The Auto panel (llm/components/AutoPanel.tsx; docs/pilot-auto-mode-design.md §2.6):
+   above the chat while an auto run is open. In the sheet layout it folds to one line. */
+.auto-panel {
+  flex: none;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 10px 12px 9px;
+  border: 1px solid rgba(79, 143, 247, 0.45);
+  border-radius: var(--radius);
+  background: linear-gradient(var(--accent-soft), transparent 70%), var(--surface);
+  max-height: 62%;
+  overflow-y: auto;
+}
+/* the header, the Now line and the bar stay in view as the panel scrolls */
+.auto-top {
+  position: sticky;
+  top: -10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: -10px -12px 0;
+  padding: 10px 12px 6px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--surface);
+}
+.auto-panel--wait {
+  border-color: rgba(232, 180, 84, 0.6);
+  background: linear-gradient(var(--amber-soft), transparent 70%), var(--surface);
+}
+.auto-panel--bad {
+  border-color: rgba(239, 106, 106, 0.55);
+  background: linear-gradient(var(--red-soft), transparent 70%), var(--surface);
+}
+.auto-panel--done {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+.auto-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.auto-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auto-title {
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.auto-state {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+}
+.auto-panel--wait .auto-state {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+.auto-panel--bad .auto-state {
+  color: var(--red);
+  background: var(--red-soft);
+}
+.auto-panel--done .auto-state {
+  color: var(--green);
+  background: var(--green-soft);
+}
+.auto-clock {
+  margin-left: auto;
+  font: 500 11.5px var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.auto-actions {
+  display: inline-flex;
   gap: 6px;
 }
-.ai-auto.is-open {
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+.auto-btn {
+  padding: 3px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
 }
-.ai-auto-line {
+.auto-btn:hover:not(:disabled) {
+  border-color: rgba(79, 143, 247, 0.5);
+}
+.auto-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.auto-btn--stop {
+  border-color: rgba(239, 106, 106, 0.55);
+  background: var(--red-soft);
+  color: var(--red);
+}
+.auto-btn--go {
+  border-color: rgba(79, 143, 247, 0.55);
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+}
+.auto-btn--quiet {
+  padding: 1px 7px;
+  border-color: transparent;
+  background: none;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1;
+}
+.auto-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.auto-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+.auto-panel--wait .auto-bar > i {
+  background: var(--amber);
+}
+.auto-panel--done .auto-bar > i {
+  background: var(--green);
+}
+.auto-plan {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.auto-step-btn {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.auto-step-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.auto-step-btn:disabled {
+  cursor: default;
+}
+.auto-step-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.auto-step .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-3);
+}
+.auto-step .meta {
+  font: 11px var(--font-mono);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.auto-step .sub {
+  color: var(--text-3);
+}
+.auto-step.is-done .auto-step-btn {
+  color: var(--text);
+}
+.auto-step.is-done .dot {
+  background: var(--green);
+  border-color: var(--green);
+}
+.auto-step.is-now .auto-step-btn {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.auto-step.is-now .dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.auto-step.is-now .meta {
+  color: var(--accent-hi);
+}
+.auto-step.is-wait .auto-step-btn {
+  background: var(--amber-soft);
+  color: var(--text);
+}
+.auto-step.is-wait .dot {
+  border-color: var(--amber);
+  background: var(--amber);
+}
+.auto-step.is-wait .meta {
+  color: var(--amber);
+}
+.auto-step.is-bad .auto-step-btn {
+  color: var(--text);
+}
+.auto-step.is-bad .dot {
+  border-color: var(--red);
+  background: var(--red);
+}
+.auto-step.is-bad .meta {
+  color: var(--red);
+}
+.auto-step.is-muted .dot {
+  border-style: dashed;
+}
+.auto-step.is-pulsed .auto-step-btn {
+  animation: pc-pulse 1.2s ease-out;
+}
+.auto-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.auto-foot .helptip {
+  margin-left: auto;
+}
+.auto-msg-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px 8px;
 }
-.ai-auto-now {
-  flex: 1 1 auto;
+.auto-msg {
+  flex: 1 1 220px;
   min-width: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.auto-panel .pc {
+  margin: 0;
+}
+/* the Now line: what the run is doing at this moment */
+.auto-now {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.auto-now-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transform: translateY(-1px);
+}
+.auto-now.is-live .auto-now-dot {
+  background: var(--accent);
+  animation: auto-blink 1.2s ease-in-out infinite;
+}
+.auto-panel--wait .auto-now-dot {
+  background: var(--amber);
+}
+.auto-panel--bad .auto-now-dot {
+  background: var(--red);
+}
+@keyframes auto-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auto-now.is-live .auto-now-dot {
+    animation: none;
+  }
+}
+/* the activity log: a row a step, its detail behind a click */
+.auto-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.auto-all {
+  max-height: 170px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.auto-log-row summary {
+  display: grid;
+  grid-template-columns: 14px auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 7px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  list-style: none;
+}
+.auto-log-row summary::-webkit-details-marker {
+  display: none;
+}
+.auto-log-row summary:hover {
+  background: var(--surface-2);
+}
+.auto-log-mark {
+  font: 600 11px var(--font-mono);
+  text-align: center;
+  color: var(--text-3);
+}
+.auto-log-row.is-done .auto-log-mark {
+  color: var(--green);
+}
+.auto-log-row.is-needs-you .auto-log-mark,
+.auto-log-row.is-stopped .auto-log-mark {
+  color: var(--amber);
+}
+.auto-log-row.is-failed .auto-log-mark {
+  color: var(--red);
+}
+.auto-log-row.is-running .auto-log-mark::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  border-right-color: transparent;
+  animation: auto-spin 0.9s linear infinite;
+}
+@keyframes auto-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.auto-log-title {
+  white-space: nowrap;
+  color: var(--text);
+}
+.auto-log-line {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+}
+.auto-log-row details[open] .auto-log-line {
+  white-space: normal;
+}
+.auto-log-row.is-needs-you summary {
+  background: var(--amber-soft);
+}
+.auto-log-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 3px 6px 6px 27px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+/* the last three steps and the control that opens the rest: the sheet layout's */
+.auto-recent,
+.auto-more {
+  display: none;
+}
+.auto-more {
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent-hi);
+  cursor: pointer;
+}
+.ai-side[data-mode="sheet"] .auto-panel {
+  gap: 6px;
+  max-height: 70%;
+}
+.ai-side[data-mode="sheet"] .auto-recent,
+.ai-side[data-mode="sheet"] .auto-more {
+  display: flex;
+}
+.ai-side[data-mode="sheet"] .auto-panel.is-open .auto-recent {
+  display: none;
+}
+.ai-side[data-mode="sheet"] .auto-body {
+  display: none;
+}
+.ai-side[data-mode="sheet"] .auto-panel.is-open .auto-body {
+  display: flex;
+}
+.ai-side[data-mode="sheet"] .auto-head {
+  flex-wrap: wrap;
+}
+.auto-refused {
+  align-self: center;
+  font-size: 12px;
+  color: var(--amber);
+}
+/* a step auto mode ran itself (its own blocks, and the checks it seeded into a reply) */
+.auto-tag {
+  flex: none;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+  font: 600 9.5px/1.6 var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.ai-msg.is-pulsed {
+  animation: pc-pulse 1.2s ease-out;
+}
+/* a 44 px tap on a touch screen or a phone */
+@media (pointer: coarse), (max-width: 599px) {
+  .auto-btn,
+  .auto-step-btn,
+  .auto-more,
+  .auto-log-row summary {
+    min-height: 44px;
+  }
+  .auto-log-row summary {
+    align-items: center;
+  }
+  .auto-btn--quiet {
+    min-width: 44px;
+  }
 }

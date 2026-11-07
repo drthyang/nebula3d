@@ -33,7 +33,9 @@
 //    run under way; Resume restarts the row it stopped in, running first a
 //    change whose run had not finished.
 //
-// The record (store.ts) is what the Auto panel (PR 7) renders.
+// The record (store.ts) is what the Auto panel (components/AutoPanel.tsx)
+// renders; the app's own step under way is published whole (store.ts, `live`)
+// for the Highlights to follow.
 
 import { fetchDataset } from "../../api/client";
 import type { Dataset } from "../../api/types";
@@ -52,6 +54,9 @@ import type { PipelineContext } from "../context/pipelineContext";
 import { askAssistant, type ReplyOutcome } from "../session";
 import { loadSettings, type LlmSettings } from "../settings";
 import { callTool, CHAT_TOOLS, factsOf, type AgentTool, type ToolContext } from "../tools";
+import { openView } from "../tools/openView";
+import { BRAGG, DPDF, examining } from "../examine/overlays";
+import { useNavStore } from "../../state/navStore";
 import { useTuneStore } from "../tune/tuner";
 import { RUN_STAGES, type ParamValue, type RunStage } from "../tune/catalog";
 import { addUsage, measured, notCounted, type Usage } from "../usage";
@@ -449,7 +454,7 @@ function takeCards(ps: readonly Proposal[]): void {
   const held = ps.filter((p) => p.held === "ring");
   if (!facts.length && !held.length) return;
   patchRun((x) => ({
-    facts: [...x.facts, ...facts.filter((p) => !x.facts.some((f) => f.proposal === p.id)).map((p) => ({ proposal: p.id, title: p.title, shown: p.shown.from ? `${p.shown.from} → ${p.shown.to}` : p.shown.to, status: "open" as const }))],
+    facts: [...x.facts, ...facts.filter((p) => !x.facts.some((f) => f.proposal === p.id)).map((p) => ({ proposal: p.id, title: p.title, shown: p.shown.from ? `${p.shown.from} → ${p.shown.to}` : p.shown.to, status: "open" as const, at: x.steps.length }))],
     held: [...x.held, ...held.map((p) => ({ proposal: p.id, title: p.title }))],
   }));
 }
@@ -485,13 +490,23 @@ async function appStep(call: Call): Promise<AgentStep> {
   const s = session!;
   // The app's own call: no reply's steps, no user words naming anything.
   const ctx: ToolContext = { dataset: s.work.dataset, datasets: s.work.datasets, userMessage: "" };
+  stepNumber += 1;
+  const id = `auto:${run().id}:${stepNumber}`;
   patchRun({ now: `${factsOf(call.name).runningLabel}…` });
-  const out = await callTool(ctx, call.name, call.args, { signal: s.abort.signal });
+  useAutoStore.setState({ live: { id, name: call.name, args: call.args, status: "running" } });
+  // Follow: the console goes to the page the check examines as it starts, so the
+  // "Now examining" bar and the overlays follow the step under way.
+  if (s.settings.followViews) followTo(call);
+  let out: Awaited<ReturnType<typeof callTool>>;
+  try {
+    out = await callTool(ctx, call.name, call.args, { signal: s.abort.signal });
+  } finally {
+    if (useAutoStore.getState().live?.id === id && useAutoStore.getState().live?.status === "running") useAutoStore.setState({ live: null });
+  }
   if (ctx.dataset !== s.work.dataset) s.work.dataset = ctx.dataset;
   if (stopped()) halt();
-  stepNumber += 1;
   const step: AgentStep = {
-    id: `auto:${run().id}:${stepNumber}`,
+    id,
     name: call.name,
     args: out.args,
     status: out.ok ? "done" : "error",
@@ -502,7 +517,17 @@ async function appStep(call: Call): Promise<AgentStep> {
     ...(out.outcomes ? { outcomes: out.outcomes } : {}),
   };
   patchRun((x) => ({ steps: [...x.steps, keptStep(step)] }));
+  useAutoStore.setState({ live: out.overlay ? { ...step, overlay: out.overlay } : step, work: s.work.dataset });
+  // Follow, as a reply's steps do (agent.ts): the console goes to the figure the step looked at.
+  if (step.status === "done" && step.view && s.settings.followViews) openView(step.view);
   return step;
+}
+
+/** The page a check examines (examine/overlays.ts, examining): the Bragg page, the ΔPDF's, or the cleanup page; none for a run. */
+function followTo(call: Call): void {
+  const views = Object.keys(examining({ name: call.name, args: call.args })?.views ?? {});
+  if (!views.length) return;
+  useNavStore.getState().setTab(views.includes(BRAGG) ? "bragg" : views.includes(DPDF) ? "dpdf" : "reciprocal");
 }
 
 const evidenceOf = (steps: readonly AgentStep[]): PlanRow["evidence"] =>
@@ -798,7 +823,7 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
     stopAuto();
     halt();
   }
-  if (out.turn !== null) patchRun((x) => ({ turns: [...x.turns, out!.turn!] }));
+  if (out.turn !== null) patchRun((x) => ({ turns: [...x.turns, out!.turn!], turnAt: [...x.turnAt, x.steps.length] }));
   if (capped) {
     keepReplySteps(out);
     patchRun((x) => ({ limit: x.limit ?? "cost" }));

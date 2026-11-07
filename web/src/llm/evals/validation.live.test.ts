@@ -18,7 +18,10 @@
 //                           longer is refused before it starts, and a plan that reaches it stops,
 //                           keeping the runs that finished (validationLimits.ts)
 // NEBULA_VALIDATION_PRESET  quick: gemma4:26b, arm B, 1 run per dev case, 5 min a run (about 12 min);
+//                           quick-auto: the same, each run through auto mode (the B-auto arm,
+//                           validationAuto.ts), its record and transcripts named -auto;
 //                           the variables above still override it
+// NEBULA_VALIDATION_MODE    auto: run the plan through auto mode, whatever the preset
 // NEBULA_VALIDATION_OUT     where the record and the transcripts go (default ../docs/evals/validation)
 // NEBULA_VALIDATION_BASE_URL  the model server, where it is not the model's usual one
 // NEBULA_VALIDATION_ALLOW_SPEND  a paid model's cap in dollars, to approve spending up to it (12: $12 for NEBULA, within the $40 total)
@@ -46,6 +49,7 @@ import { candidateFindings, renderTranscript, type Finding } from "./findings";
 import { ARMS, caseNamed, PRE_68_RULE, regradeRecord, validationDatasets, type Arm, type RunRecord, type Split } from "./validation";
 import { DEFAULT_RUN_MINUTES, DEFAULT_WALL_MINUTES, expectedMinutes, nextRun, planRefusal, presetNamed } from "./validationLimits";
 import { modelNamed, paidRunGate, plan, runContext, SpendTracker } from "./validationModels";
+import { runAutoCase } from "./validationAuto";
 import { runCase } from "./validationRun";
 
 const live = env("NEBULA_VALIDATION") === "1";
@@ -72,6 +76,7 @@ describe.skipIf(!live)("validation, live", () => {
     const rounds = Number(env("NEBULA_VALIDATION_ROUNDS") ?? MAX_TOOL_ROUNDS);
     const minutes = Number(env("NEBULA_VALIDATION_TIMEOUT") ?? preset?.runMinutes ?? DEFAULT_RUN_MINUTES);
     const wall = Number(env("NEBULA_VALIDATION_WALL") ?? preset?.wallMinutes ?? DEFAULT_WALL_MINUTES);
+    const auto = (env("NEBULA_VALIDATION_MODE") ?? preset?.mode) === "auto";
     const planStarted = Date.now();
     const jobs = plan(model, split, { report: env("NEBULA_VALIDATION_REPORT") === "1", arms, only: list("NEBULA_VALIDATION_ONLY"), runs });
     // Fail at once, not after hours: a plan expected to pass the wall-clock cap does not start.
@@ -99,9 +104,10 @@ describe.skipIf(!live)("validation, live", () => {
 
     const out = env("NEBULA_VALIDATION_OUT") ?? "../docs/evals/validation";
     const dir = new URL(`${out.replace(/\/$/, "")}/`, here());
-    const transcripts = new URL(`${model.key}-${split}/`, dir);
+    const name = `${model.key}-${split}${auto ? "-auto" : ""}`;
+    const transcripts = new URL(`${name}/`, dir);
     await makeDir(transcripts);
-    const recordUrl = new URL(`${model.key}-${split}.json`, dir);
+    const recordUrl = new URL(`${name}.json`, dir);
     const ledgerUrl = new URL(`.spend-${model.key}.json`, dir);
     const tracker =
       model.spendCapUsd === null
@@ -113,6 +119,7 @@ describe.skipIf(!live)("validation, live", () => {
     const save = async (complete: boolean) => {
       const record = {
         schema: "nebula3d-validation/1",
+        ...(auto ? { mode: "auto" } : {}),
         model: {
           key: model.key,
           label: model.label,
@@ -163,7 +170,7 @@ describe.skipIf(!live)("validation, live", () => {
       // run's volume (or the control's) in compare_datasets would answer for it.
       let record: RunRecord;
       try {
-        record = await runCase({
+        record = await (auto ? runAutoCase : runCase)({
           job,
           dataset,
           model: { key: model.key, label: model.label, provider: model.provider, model: model.model, local: model.local },
@@ -193,8 +200,10 @@ describe.skipIf(!live)("validation, live", () => {
       await writeText(new URL(transcriptName(record), transcripts), renderTranscript(record, candidateFindings(record, job.case)));
       await save(false);
       const g = record.grades;
+      const a = "auto" in record ? (record as Awaited<ReturnType<typeof runAutoCase>>).auto : null;
       console.log(
-        `${job.case.id} ${job.arm}${job.run}: ${(record.latency_ms / 1000).toFixed(0)} s, ${record.decisions.length} steps, ` +
+        `${job.case.id} ${job.arm}${auto ? "-auto" : ""}${job.run}: ${(record.latency_ms / 1000).toFixed(0)} s, ${record.decisions.length} steps, ` +
+          `${a ? `${a.state}, ${a.replies} replies${a.limit ? `, limit ${a.limit}` : ""}${a.timed_out ? ", TIMED OUT" : ""}${a.facts_skipped.length ? `, ${a.facts_skipped.length} fact(s) skipped` : ""}${a.holds ? "" : ", SAFETY CHECK FAILED"}, ` : ""}` +
           `reported ${g.detected === null ? "n/a" : g.detected ? "yes" : "no"}, false alarms ${g.noFalseAlarm ? 0 : "yes"}, unsafe ${g.unsafe.length}` +
           `${g.disputes?.length ? `, disputed ${g.disputes.length}` : ""}` +
           `${record.truncated?.requests.length ? `, CUT at the output cap: ${record.truncated.loop} of the loop's requests, ${record.truncated.tuning} of the tuning's` : ""}` +
@@ -203,7 +212,7 @@ describe.skipIf(!live)("validation, live", () => {
       );
     }
     await save(true);
-    console.log(`${records.length} of ${jobs.length} runs. Score them: python -m nebula3d.validation score --root <data root> --record ${out}/${model.key}-${split}.json${split === "test" ? " --report" : ""}`);
+    console.log(`${records.length} of ${jobs.length} runs. Score them: python -m nebula3d.validation score --root <data root> --record ${out}/${name}.json${split === "test" ? " --report" : ""}`);
     // The test's own limit follows the cap: a run cut at the cap may take a few minutes to let go (startFresh).
   }, (Number(env("NEBULA_VALIDATION_WALL") ?? presetNamed(env("NEBULA_VALIDATION_PRESET"))?.wallMinutes ?? DEFAULT_WALL_MINUTES) + 10) * 60_000);
 });

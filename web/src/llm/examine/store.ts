@@ -11,6 +11,7 @@ import { create } from "zustand";
 import type { Dataset } from "../../api/types";
 import { resetsWithVolume } from "../../state/volumeReset";
 import type { AgentStep } from "../agent";
+import { useAutoStore } from "../auto/store";
 import { useChatStore } from "../chatStore";
 import { examining, overlaysOf, stepKey, type ClassId, type OverlaySet, type Tone } from "./overlays";
 
@@ -128,7 +129,7 @@ export function addSet(set: OverlaySet, dataset: Dataset | undefined, n: number,
  * from its result (without the data its result leaves out). A step brought
  * back from a session file draws nothing: the file could say anything.
  */
-export function showStep(step: AgentStep, turn: number, n: number, dataset: Dataset | undefined): boolean {
+export function showStep(step: AgentStep, turn: number | null, n: number, dataset: Dataset | undefined): boolean {
   if (step.restored) return false;
   const key = stepKey(step);
   const kept = useExamineStore.getState().sets.find((x) => x.set.key === key && x.dataset === dataset?.id);
@@ -149,9 +150,11 @@ export const useHasSet = (step: Pick<AgentStep, "name" | "args" | "result">): bo
 };
 
 /**
- * Keeps the Highlights in step with the chat: the running step named, each
- * finished step's set added (and shown), the reply's sets given their turn
- * once it ends, and the sets a run made stale dropped. Mount once.
+ * Keeps the Highlights in step with the chat and with an auto run: the
+ * running step named, each finished step's set added (and shown), the reply's
+ * sets given their turn once it ends, and the sets a run made stale dropped.
+ * An auto run's own checks (auto/store.ts, `live`) are followed as a reply's
+ * are, so the views show the row it is on. Mount once.
  */
 export function useExamine(dataset: Dataset | undefined): void {
   // The subscription reads the dataset as listed now.
@@ -184,7 +187,9 @@ export function useExamine(dataset: Dataset | undefined): void {
           liveSteps = [];
           seen.clear();
         }
-        if (useExamineStore.getState().running) useExamineStore.setState({ running: null });
+        // An auto run's own step under way is the auto run's to clear.
+        const running = useExamineStore.getState().running;
+        if (running && !running.stepId.startsWith("auto:")) useExamineStore.setState({ running: null });
         return;
       }
       if (steps === liveSteps) return;
@@ -204,6 +209,31 @@ export function useExamine(dataset: Dataset | undefined): void {
     update();
     return useChatStore.subscribe(update);
   }, []);
+
+  // An auto run's own steps: the one under way named, each one done drawn.
+  useEffect(
+    () =>
+      useAutoStore.subscribe((s, prev) => {
+        const step = s.live;
+        if (step === prev.live) return;
+        const n = (s.run?.steps.findIndex((x) => x.id === step?.id) ?? -1) + 1 || (s.run?.steps.length ?? 0) + 1;
+        if (!step || step.status !== "running") {
+          const running = useExamineStore.getState().running;
+          if (running?.stepId.startsWith("auto:")) useExamineStore.setState({ running: null });
+        }
+        if (!step) return;
+        if (step.status === "running") {
+          const what = examining(step);
+          useExamineStore.setState({ running: what ? { ...what, stepId: step.id, n } : null });
+          return;
+        }
+        if (step.status !== "done") return;
+        const set = overlaysOf(step);
+        // Measured against the dataset as the run left it: the listing may not have caught up with its run yet.
+        if (set) addSet(set, s.work ?? listed, n, null);
+      }),
+    [],
+  );
 }
 
 // The open dataset as the app lists it (useExamine keeps it).
