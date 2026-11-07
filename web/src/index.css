@@ -7545,6 +7545,11 @@ html.kb-open .ai-side {
   .bragg-sort button {
     min-width: 44px;
   }
+  /* a small button that is one glyph (the session note's ×, the structure
+     panel's close): 44 px wide too */
+  .btn.btn-sm[aria-label] {
+    min-width: 44px;
+  }
   .ws-head .ws-display-toggle {
     min-height: 44px;
   }
