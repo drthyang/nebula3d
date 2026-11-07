@@ -526,23 +526,28 @@ const stageIndex = (stage: string): number => (STAGES as readonly string[]).inde
  * recomputed. With no stage (null), the Run button's run: every enabled
  * stage, the outputs that still follow reused unless Force is on.
  *
- * With the symmetry average on, its output comes before every stage a run
- * starts from, and what it reads (the raw input's edge trim, the Laue class)
- * can have changed since it was made: a run of the stages from `from` alone
- * would hand the ring removal that average as it is on disk. So the run takes
- * every enabled stage and recomputes those from `from` on (forceFrom); the
- * stages before it the backend's resume rule decides by their records
- * (nebula3d.pipeline.resume_plan), as the Configure page's stage track marks
- * them: the average is made again, with every stage after it, when it no
- * longer follows from the raw input and its settings, or is missing, and
- * reused otherwise. With the average off, the run is the stages from `from`
- * on, forced, as it always was.
+ * What the stages before `from` read can have changed since their outputs
+ * were made (a ring setting, the raw input's edge trim, the Laue class), or
+ * an output can be missing: a run of the stages from `from` alone would hand
+ * the first of them that output as it is on disk, or skip past it. So the
+ * run takes every enabled stage and recomputes those from `from` on
+ * (forceFrom); the stages before it the backend's resume rule decides by
+ * their records (nebula3d.pipeline.resume_plan), as the Configure page's
+ * stage track marks them: one is made again, with every stage after it, when
+ * it no longer follows from its input and settings, or is missing, and
+ * reused otherwise. With the symmetry average on (THY-81) or off alike.
+ *
+ * With the average off and no enabled stage before `from`, there is none to
+ * decide: the run is the stages from `from` on, forced, asked for as it
+ * always was (the same run).
  */
 export function runFrom(s: PipelineConfig, from: string | null): RunFrom {
   if (from === null) return { stages: enabledStages(s), force: s.force };
   if (stageIndex(from) < 0) throw new Error(`no stage ${JSON.stringify(from)}; the stages are ${STAGES.join(", ")}`);
-  if (s.symmetryAverageEnabled) return { stages: enabledStages(s), force: false, forceFrom: from };
-  return { stages: enabledStages(s).filter((st) => stageIndex(st) >= stageIndex(from)), force: true };
+  const stages = enabledStages(s);
+  const onward = stages.filter((st) => stageIndex(st) >= stageIndex(from));
+  if (!s.symmetryAverageEnabled && onward.length === stages.length) return { stages: onward, force: true };
+  return { stages, force: false, forceFrom: from };
 }
 
 /** The raw coverage-edge trim the backend takes when none is sent: 1 voxel layer (PipelineParams.edge_trim). */
