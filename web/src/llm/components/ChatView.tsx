@@ -13,6 +13,8 @@ import { BrandGlyph } from "../../components/ui";
 import { useDatasetStore } from "../../state/datasetStore";
 import { useNavStore } from "../../state/navStore";
 import { toolsKnownUnsupported, type AgentStep } from "../agent";
+import { untoldDecisions, useDecisionStore } from "../apply/decisions";
+import { sinceLine } from "../apply/since";
 import { useChatStore, type ChatTurn } from "../chatStore";
 import { buildChatMessages } from "../prompts/templates";
 import { seen } from "../readings";
@@ -286,9 +288,15 @@ export function ChatView({
       if (!text || !assistant || busy) return;
       pinned.current = true;
       const history = turns.map(({ role, content }) => ({ role, content }));
+      // What the user's decisions on the cards changed since the last reply
+      // (apply/since.ts): in this reply's context alone, marked as told once
+      // the reply has come back (session.ts).
+      const untold = untoldDecisions();
+      const since = sinceLine(untold.decisions, useDecisionStore.getState().proposals);
       void askAssistant({
         label: text,
-        messages: buildChatMessages(assistant.context, history, text, null, { tools }),
+        messages: buildChatMessages(assistant.context, history, text, null, { tools, since }),
+        ...(since ? { told: untold.through } : {}),
         tools: settings.useTools ? CHAT_TOOLS : [],
         // The earlier turns go as their text: a skill read in one is not in
         // this reply, so it opens no gate here, and the refusal asks for it again.

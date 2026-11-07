@@ -20,6 +20,10 @@ export interface MessageOptions extends SkillsSwitch {
   // states as a limit: the run policy's maxRounds (MAX_TOOL_ROUNDS unless a
   // validation run gives its own).
   rounds?: number;
+  // The "since the last reply" line (apply/since.ts): what the user's
+  // decisions on the Apply cards changed since the model last replied, at the
+  // end of the context. Only the request after a decision carries it.
+  since?: string | null;
 }
 
 /** The system prompt's options: the messages' own, and whether a message carries an image. */
@@ -82,9 +86,16 @@ export function summaryBlock(context: PipelineContext): string {
   return ["Context: the dataset as this request found it. Nothing here is measured: the tools measure.", ...lines].join("\n");
 }
 
-/** The first user message: the cut's metrics without tools, the dataset's summary with them. */
-const openingContext = (context: PipelineContext, { tools = false, skills }: MessageOptions): string =>
-  tools ? summaryBlock(context) : contextBlock(context, skills);
+/**
+ * The first user message: the cut's metrics without tools, the dataset's
+ * summary with them; then, after a decision on an Apply card, the "since the
+ * last reply" line. It sits here, not in the latest message, so what the
+ * sample-fact guard reads as the user's words (userMessage) is theirs alone.
+ */
+const openingContext = (context: PipelineContext, { tools = false, skills, since }: MessageOptions): string => {
+  const block = tools ? summaryBlock(context) : contextBlock(context, skills);
+  return since ? `${block}\n${since}` : block;
+};
 
 // Attach an optional image to a text prompt, producing either a plain string or
 // the multimodal content-parts array the vision path needs.
@@ -110,10 +121,10 @@ export const buildChatMessages = (
   history: HistoryTurn[],
   userText: string,
   imageDataUrl?: string | null,
-  { tools = false, skills, rounds }: MessageOptions = {},
+  { tools = false, skills, rounds, since }: MessageOptions = {},
 ): ChatMessage[] => [
   systemMessage({ tools, skills, rounds, image: Boolean(imageDataUrl) }),
-  { role: "user", content: openingContext(context, { tools, skills }) },
+  { role: "user", content: openingContext(context, { tools, skills, since }) },
   {
     role: "assistant",
     content: tools

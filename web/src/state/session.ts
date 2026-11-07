@@ -81,7 +81,8 @@ export interface Session {
   chat: unknown[]; // the conversation's turns, as the chat keeps them
   marks: Mark[]; // the Pilot's marked regions on the dataset (state/markStore.ts); none in a file from before them
   // The Apply cards and the decisions on them (llm/apply/decisions.ts); none in a file from before them.
-  decisions?: { proposals: Proposal[]; decisions: Decision[] };
+  // `told`: the newest decision a reply's context listed (absent before it: every one listed).
+  decisions?: { proposals: Proposal[]; decisions: Decision[]; told?: number };
   structure: SessionStructure | null;
 }
 

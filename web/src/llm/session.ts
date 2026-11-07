@@ -5,7 +5,7 @@
 
 import { runAgent, toolStepsIn, type AgentStep } from "./agent";
 import { proposeFromReply } from "./apply/actions";
-import { clearDecisions } from "./apply/decisions";
+import { clearDecisions, markTold } from "./apply/decisions";
 import { elapsedMs, startClock, stopClock } from "./clock";
 import { marksMade } from "./answerChecks";
 import { beginReply, endReply, recordUsage, type Usage } from "./usage";
@@ -45,11 +45,16 @@ export async function askAssistant({
   messages,
   tools,
   ctx,
+  told,
 }: {
   label: string; // the user turn shown in the transcript
   messages: ChatMessage[];
   tools: AgentTool[];
   ctx: ToolContext | null;
+  // The newest decision the messages' "since the last reply" line lists
+  // (apply/since.ts): marked as told once the reply has come back with a turn;
+  // a reply that ended with nothing lists them again in the next one.
+  told?: number;
 }): Promise<void> {
   const chat = useChatStore.getState();
   if (chat.busy) return;
@@ -98,6 +103,7 @@ export async function askAssistant({
     // The Apply cards the reply leads to, built from its steps' whole results
     // (the transcript keeps what was read): UI only, the model reads none of them.
     proposeFromReply(lastTurnId(), result.steps, result.content, ctx?.dataset.id);
+    if (told !== undefined) markTold(told);
   } catch (e) {
     const counted = endReply();
     const tokens = counted.requests || counted.uncounted ? { tokens: counted } : {};
@@ -107,6 +113,7 @@ export async function askAssistant({
     // as stopped, not as a step that runs on.
     const live = ended && { ...ended, steps: endSteps(ended.steps, stopped ? "you stopped the reply" : "the reply ended with an error") };
     const kept = live && (live.content || live.reasoning || live.steps.length);
+    if (kept && told !== undefined) markTold(told);
     if (stopped) {
       if (kept) useChatStore.getState().addTurn({ role: "assistant", ...live, ...tokens, ...took(), note: "Stopped." });
       else withQuestion(tokens);
