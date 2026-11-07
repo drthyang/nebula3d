@@ -203,6 +203,9 @@ export function activityRows(a: ActivityInput): ActivityRow[] {
     const r = run.plan.find((x) => x.id === id)!;
     if (r.status === "skipped") rows.push({ key: `skipped:${id}`, status: "skipped", title: `Not checked: ${r.title}`, line: r.detail ?? "skipped", detail: [] });
   }
+  // The report the app wrote alone (store.ts, appReport): no reply, no cost.
+  if (run.appReport === "stopped") rows.push({ key: "app-report", status: "done", title: "The app's report", line: `${(run.ended ?? "Stopped by you").split(":")[0]}: written from what the run checked, with no model reply and no cost`, detail: [] });
+  if (run.appReport === "limit") rows.push({ key: "app-report", status: "done", title: "The app's report", line: `Written without the model${run.limit ? `: ${LIMIT_WORDS[run.limit]}` : ""}`, detail: [] });
   if (run.state === "stopped") {
     const at = run.plan.find((r) => r.id === run.at);
     rows.push({ key: "stopped", status: "stopped", title: "Paused by you", line: at ? `In ${rowName(at.id)}; Resume restarts it` : "Resume goes on", detail: [] });

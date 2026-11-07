@@ -27,6 +27,13 @@ import { AUTO_LIMITS, freshPlan, ROW_IDS, type AutoLimits, type LimitHit, type P
 
 export type AutoState = "running" | "paused" | "stopped" | "done";
 
+/**
+ * Why the run's report is the app's alone, with no model reply (auto/report.ts,
+ * appReportTurn): Stop ended the run ("stopped"), or a limit left no reply for
+ * it ("limit"). Null: the model wrote it, or there is none yet.
+ */
+export type AppReport = "stopped" | "limit";
+
 /** Why a run waits for you. */
 export type AutoPause =
   | { kind: "fact"; proposal: string; before: RowId } // a sample fact, before the row it holds back
@@ -64,6 +71,7 @@ export interface AutoRun {
   turns: number[]; // the chat turns of its replies
   turnAt: number[]; // for each of those turns, how many of the run's steps came before it: where the transcript shows the app's own steps
   reportTurn: number | null;
+  appReport: AppReport | null; // the report is the app's alone: Stop ended the run, or a limit left no reply
   pendingRun: RunStage | null; // a change applied whose run has not finished: Resume runs it first
   seedForm: SeedForm | null; // the form a transport took the seeded checks in, once found
 }
@@ -168,6 +176,7 @@ export function newRun(fields: Pick<AutoRun, "id" | "dataset" | "clock" | "limit
     turns: [],
     turnAt: [],
     reportTurn: null,
+    appReport: null,
     pendingRun: null,
     seedForm: null,
   };
@@ -295,6 +304,7 @@ export function readAutoRun(v: unknown, { fromFile }: { fromFile: boolean }): Au
     turns: numbers(v.turns),
     turnAt: numbers(v.turnAt),
     reportTurn: isNum(v.reportTurn) ? v.reportTurn : null,
+    appReport: oneOf(v.appReport, ["stopped", "limit"] as const) ? v.appReport : null,
     pendingRun: oneOf(v.pendingRun, RUN_STAGES) ? v.pendingRun : null,
     seedForm: oneOf(v.seedForm, ["round", "message"] as const) ? v.seedForm : null,
   };

@@ -6,7 +6,13 @@
 // the figures, the settings and the decision log, auto mode's decisions in
 // it as auto mode's. Pure: the run's record in, the section out. The model
 // reads none of it.
+//
+// A run whose report is the app's alone (store.ts, appReport: Stop ended it,
+// or a limit left no reply) has no reply to hang it on: appReportTurn stands
+// in for one, with the run's steps and no words, so the report has no
+// model's summary and costs nothing; its question says why.
 
+import type { ChatTurn } from "../chatStore";
 import { clockLine } from "../clock";
 import type { ReportAuto } from "../report/report";
 import { usageText } from "../usage";
@@ -34,3 +40,19 @@ export function autoReportSection(r: AutoRun, now: number): ReportAuto {
     time: clockLine(r.clock, now),
   };
 }
+
+/** The turn id the app's own report stands on: no chat turn has it. */
+export const APP_REPORT_TURN = -1;
+
+/** The stand-in for a report reply, where the run's report is the app's alone: its steps, no words. */
+export const appReportTurn = (r: AutoRun): ChatTurn => ({ id: APP_REPORT_TURN, role: "assistant", content: "", steps: r.steps });
+
+/** The request line of the app's own report: why no model wrote it. */
+export const appReportQuestion = (r: AutoRun): string =>
+  r.appReport === "stopped"
+    ? `Auto analysis, ${(r.ended ?? "Stopped by you").split(":")[0].replace(/^S/, "s")}: the app's report from what the run checked, with no model reply.`
+    : `Auto analysis: the app's report, with no model reply${r.limit ? ` (${LIMIT_WORDS[r.limit]})` : ""}.`;
+
+/** Whether `turn` is the one the run's report hangs on: its report reply, or the app's stand-in. */
+export const isAutoReportTurn = (r: AutoRun | null, turn: Pick<ChatTurn, "id">): r is AutoRun =>
+  !!r && (r.reportTurn === turn.id || (turn.id === APP_REPORT_TURN && r.appReport !== null));

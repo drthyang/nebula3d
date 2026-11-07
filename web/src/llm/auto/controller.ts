@@ -29,9 +29,10 @@
 //    says so; Undo of auto changes (undoAutoRun) puts back the run's changes,
 //    a click-made one only on your own click.
 //  - Limits (plan.ts, AUTO_LIMITS) end the fixes and send the run to its
-//    report, which names the limit. Stop aborts the reply or the pipeline
-//    run under way; Resume restarts the row it stopped in, running first a
-//    change whose run had not finished.
+//    report, which names the limit. Pause (stopAuto) aborts the reply or the
+//    pipeline run under way; Resume restarts the row it stopped in, running
+//    first a change whose run had not finished. Stop (endAuto) ends the run
+//    there with the app's report from what exists: no model reply, no cost.
 //
 // The record (store.ts) is what the Auto panel (components/AutoPanel.tsx)
 // renders; the app's own step under way is published whole (store.ts, `live`)
@@ -213,13 +214,42 @@ export function stopAuto(): void {
   session?.abort.abort();
 }
 
-/** End a paused or stopped run where it is, without its report. */
-export function endAuto(): void {
+/**
+ * Stop the run for good (the panel's Stop; Pause is stopAuto): the step under
+ * way is aborted and unwinds first (what a fix reply changed is logged, its
+ * run owed), then the run ends with the app's report from what exists (its
+ * plan, its checks' own lines, the facts, the decisions; the report measures
+ * the outputs afresh when opened, report/collect.ts): no model reply, no
+ * cost. The rows it did not reach are marked not checked. `by`: who stopped
+ * it, as the report says ("you"; the eval's run limit).
+ */
+export async function endAuto(by = "you"): Promise<void> {
   const r = useAutoStore.getState().run;
   if (!r || r.state === "done") return;
   if (r.state === "running") stopAuto();
   session?.unwatch?.();
-  patchRun((x) => ({ state: "done", pause: null, ended: "Ended by you before its report.", now: "Ended.", clock: stopClock(x.clock, now()) }));
+  if (session) session.unwatch = null;
+  // One loop at a time: the one the stop ended unwinds before the run ends.
+  if (loop) await loop;
+  const x = useAutoStore.getState().run;
+  if (!x || x.id !== r.id || x.state === "done") return;
+  const owed = x.pendingRun ? ` A change's run had not finished (${x.pendingRun} on): the outputs are those from before it.` : "";
+  const ended = `Stopped by ${by}: the app's report, from what the run checked, with no model reply.${owed}`;
+  const at = x.at;
+  patchRun((y) => ({
+    state: "done",
+    pause: null,
+    appReport: "stopped",
+    ended,
+    now: `Stopped by ${by}.`,
+    clock: stopClock(y.clock, now()),
+    plan: y.plan.map((row): PlanRow => {
+      if (row.id === "report") return { ...row, status: "done", detail: `the app's alone: stopped by ${by}, no model reply` };
+      if (finished(row.status)) return row;
+      if (row.id === at) return { ...row, status: "stopped" };
+      return { ...row, status: "skipped", detail: `not checked: stopped by ${by}` };
+    }),
+  }));
   session = null;
 }
 
@@ -885,12 +915,13 @@ async function reportRow(): Promise<void> {
   // The report is the model's while a reply and the spend allow it; else the app's alone, which names the limit.
   const noModel: LimitHit | null = r.replies + 1 > r.limits.replies ? "replies" : r.costUsd !== null && r.costUsd >= r.limits.costUsd ? "cost" : null;
   if (noModel) {
-    patchRun((x) => ({ limit: x.limit ?? noModel }));
+    patchRun((x) => ({ limit: x.limit ?? noModel, appReport: "limit" }));
     patchRow("report", { status: "done", detail: `written without the model: ${LIMIT_WORDS[noModel]}`, evidence: evidenceOf(checks) });
     return;
   }
   const reply = await modelReply({ label: REPORT_LABEL, prompt: REPORT_PROMPT, seed: checks, rounds: r.limits.reportRounds });
-  patchRun({ reportTurn: reply?.turn ?? null });
+  // Cut short by the spend limit with no turn kept: the report is the app's alone.
+  patchRun({ reportTurn: reply?.turn ?? null, ...(reply?.turn == null ? { appReport: "limit" as const } : {}) });
   patchRow("report", { status: "done", detail: reply ? "written" : `cut short: ${LIMIT_WORDS.cost}`, evidence: evidenceOf(checks) });
 }
 

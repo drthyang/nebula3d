@@ -24,7 +24,7 @@ import { UNSUPPORTED_MARK } from "../answerChecks";
 import { VALIDATION_MAX_TOKENS } from "../evals/validationModels";
 import { STREAM_MAX_TOKENS } from "../provider/anthropic";
 import { CLAUDE_URL } from "./scriptedTransports";
-import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
+import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, phaseOf, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
 import { installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
@@ -319,6 +319,8 @@ describe("limits", () => {
     expect(model.sent).toHaveLength(1);
     expect(status()).toMatchObject({ rings: "attention", punch: "skipped", report: "done" });
     expect(run().plan.find((r) => r.id === "report")!.detail).toBe("written without the model: the spend limit");
+    // The report is the app's alone, opened from the panel (no reply to hang it on).
+    expect(run()).toMatchObject({ appReport: "limit", reportTurn: null });
   });
 
   it("2 fixes a stage, 12 replies, 30 minutes and $2 by default", async () => {
@@ -402,15 +404,74 @@ describe("Stop and Resume", () => {
     expect(status()).toMatchObject({ punch: "passed" });
   });
 
-  it("End closes a stopped run without its report", async () => {
+  it("Stop on a paused run ends it with the app's report: no model reply, no cost, the rows it left not checked", async () => {
     model.respond = (_phase, round) => {
       stopAuto();
       return fixWith("reduction-qc", null)(round);
     };
     await start();
-    endAuto();
-    expect(run()).toMatchObject({ state: "done", ended: "Ended by you before its report." });
+    expect(run().state).toBe("stopped");
+    const sent = model.sent.length;
+    await endAuto();
+    expect(run()).toMatchObject({ state: "done", appReport: "stopped", reportTurn: null, ended: "Stopped by you: the app's report, from what the run checked, with no model reply.", now: "Stopped by you." });
+    expect(model.sent).toHaveLength(sent); // no reply for the report
+    expect(status()).toMatchObject({ preflight: "done", run: "done", rings: "stopped", punch: "skipped", pdf: "skipped", report: "done" });
+    expect(run().plan.find((r) => r.id === "punch")!.detail).toBe("not checked: stopped by you");
+    expect(run().plan.find((r) => r.id === "report")!.detail).toBe("the app's alone: stopped by you, no model reply");
     expect(run().clock.endedAt).not.toBeNull();
+    // The activity log says so, and the record is a finished run's: Resume does nothing.
+    expect(activityNow()!.rows.find((r) => r.key === "app-report")).toMatchObject({ title: "The app's report", line: "Stopped by you: written from what the run checked, with no model reply and no cost" });
+    await resumeAuto();
+    expect(run().state).toBe("done");
+  });
+
+  it("Stop while a fix reply runs: it is aborted and unwinds first, then the run ends with the app's report, at no cost", async () => {
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : e);
+    model.usage = { input: 1000, output: 100 };
+    let ending: Promise<void> | null = null;
+    model.respond = (phase, round) => {
+      if (phase.kind === "fix" && round === 1 && !ending) ending = endAuto();
+      return phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done.");
+    };
+    await startAuto({ ctx: CTX, settings: { ...SCRIPTED, baseUrl: CLAUDE_URL, model: "claude-opus-5-5", apiKey: "k" }, now: clock.now });
+    await ending;
+    const spent = run().costUsd;
+    expect(run()).toMatchObject({ state: "done", appReport: "stopped", reportTurn: null });
+    expect(status()).toMatchObject({ punch: "stopped", backfill: "skipped", report: "done" });
+    // The fix's own requests only: none for the report, and nothing spent after the stop.
+    expect(model.sent.every((r) => phaseOf(r.messages).kind === "fix")).toBe(true);
+    await (autoLoop() ?? Promise.resolve());
+    expect(run().costUsd).toBe(spent);
+    expect(usePipelineStore.getState().punchMinSig).toBe("");
+  });
+
+  it("Stop after a fix's change, before its run: the report says the outputs are from before it", async () => {
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : e);
+    let stopOnce = true;
+    model.respond = (phase, round) => {
+      if (phase.kind === "fix" && round === 2 && stopOnce) {
+        stopOnce = false;
+        stopAuto();
+      }
+      return phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done.");
+    };
+    await start();
+    expect(run().pendingRun).toBe("punch");
+    await endAuto();
+    expect(run().ended).toBe("Stopped by you: the app's report, from what the run checked, with no model reply. A change's run had not finished (punch on): the outputs are those from before it.");
+    expect(decisions().map((d) => [d.kind, d.by, d.after])).toEqual([
+      ["run", "auto", {}],
+      ["setting", "auto", { punchMinSig: "6" }],
+    ]);
+  });
+
+  it("Pause is still the stop Resume goes on from", async () => {
+    model.respond = (_phase, round) => {
+      stopAuto();
+      return fixWith("reduction-qc", null)(round);
+    };
+    await start();
+    expect(run()).toMatchObject({ state: "stopped", appReport: null });
   });
 });
 

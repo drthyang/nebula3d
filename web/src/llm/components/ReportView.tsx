@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 
 import type { Dataset } from "../../api/types";
 import { reportDecisions } from "../apply/actions";
-import { autoReportSection } from "../auto/report";
+import { autoReportSection, isAutoReportTurn } from "../auto/report";
 import { useAutoStore } from "../auto/store";
 import type { ChatTurn } from "../chatStore";
 import { collectReport } from "../report/collect";
@@ -49,9 +49,10 @@ export function ReportView({
 
   useEffect(() => {
     let live = true;
-    // The report of an auto run's report reply carries the run's plan and use (auto/report.ts).
+    // The report of an auto run's report reply, or the app's own (auto/report.ts,
+    // appReportTurn), carries the run's plan and use.
     const run = useAutoStore.getState().run;
-    const auto = run && run.reportTurn === turn.id ? autoReportSection(run, Date.now()) : undefined;
+    const auto = isAutoReportTurn(run, turn) ? autoReportSection(run, Date.now()) : undefined;
     collectReport({ dataset, datasets, turn, question, llm: settings, decisions: reportDecisions(dataset.id), ...(auto ? { auto } : {}) })
       .then((r) => live && setReport(r))
       .catch((e: unknown) => live && setError((e as Error).message || "the report could not be built"));

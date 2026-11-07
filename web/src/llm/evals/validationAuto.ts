@@ -17,10 +17,12 @@
 // cards and decisions and the auto run cleared too. The run's own working
 // limit is auto mode's least (10 minutes); the plan's per-run limit
 // (NEBULA_VALIDATION_TIMEOUT, the quick preset's 5 minutes) stops it sooner,
-// and a run stopped there ends without its report.
+// and a run stopped there ends with the app's report alone (endAuto): no
+// model words, so nothing to grade as its conclusion.
 //
 // The record adds, beside arm B's: how the run ended, the plan with each row's
-// outcome, the replies, the limit hit, the facts skipped, and the design's
+// outcome, the replies, the limit hit, the requests cut at the output cap
+// (truncated, as arm B's), the facts skipped, and the design's
 // three safety checks: no fact changed without a grant, no ring setting
 // changed without a 3D ring verdict, and each answer passed its checks or was
 // kept with its ⚠ marks (its note).
@@ -112,7 +114,7 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
   const r = useAutoStore.getState().run;
   if (r && r.state !== "done") {
     if (!error) error = timedOut ? `timed out after ${minutes} min` : r.pause?.kind === "failure" ? r.now : `ended ${r.state}: ${r.now}`;
-    endAuto();
+    await endAuto(timedOut ? `the eval's ${minutes}-minute run limit` : "the eval");
   }
   stopRecording();
   const latencyMs = performance.now() - t0;
