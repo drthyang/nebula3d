@@ -270,25 +270,27 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
   const canUndo = run.state !== "running" && run.decisions.length > 0;
   return (
     <section className={`auto-panel auto-panel--${tone}${open ? " is-open" : ""}`} aria-label="Auto analysis">
-      <div className="auto-head">
-        <span className="auto-title">Auto analysis</span>
-        <span className="auto-state">{stateWord(run)}</span>
-        <span className="auto-clock" role="timer" aria-live="off" title="Time worked; the time waiting for you is not counted">
-          {clockText(run.clock, now)}
-        </span>
-        <Controls run={run} ctx={ctx} />
-        {run.state === "done" && (
-          <button type="button" className="auto-btn auto-btn--quiet" onClick={() => setHidden(run.id)} aria-label="Put the panel away" title="Put the panel away">
-            ×
-          </button>
-        )}
-      </div>
-      <div className={`auto-now${run.state === "running" ? " is-live" : ""}`} role="status" aria-live="polite">
-        <span className="auto-now-dot" aria-hidden="true" />
-        <span className="auto-now-text">{act.now}</span>
-      </div>
-      <div className="auto-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressOf(run) * 100)}>
-        <i style={{ width: `${Math.round(progressOf(run) * 100)}%` }} />
+      <div className="auto-top">
+        <div className="auto-head">
+          <span className="auto-title">Auto analysis</span>
+          <span className="auto-state">{stateWord(run)}</span>
+          <span className="auto-clock" role="timer" aria-live="off" title="Time worked; the time waiting for you is not counted">
+            {clockText(run.clock, now)}
+          </span>
+          <Controls run={run} ctx={ctx} />
+          {run.state === "done" && (
+            <button type="button" className="auto-btn auto-btn--quiet" onClick={() => setHidden(run.id)} aria-label="Put the panel away" title="Put the panel away">
+              ×
+            </button>
+          )}
+        </div>
+        <div className={`auto-now${run.state === "running" ? " is-live" : ""}`} role="status" aria-live="polite">
+          <span className="auto-now-dot" aria-hidden="true" />
+          <span className="auto-now-text">{act.now}</span>
+        </div>
+        <div className="auto-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressOf(run) * 100)}>
+          <i style={{ width: `${Math.round(progressOf(run) * 100)}%` }} />
+        </div>
       </div>
       <Log rows={act.rows.slice(-3)} run={run} className="auto-recent" />
       <button type="button" className="auto-more" aria-expanded={open} onClick={() => setOpen((o) => !o)}>

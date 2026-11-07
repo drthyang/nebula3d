@@ -7953,6 +7953,19 @@ html.kb-open .ai-side {
   max-height: 62%;
   overflow-y: auto;
 }
+/* the header, the Now line and the bar stay in view as the panel scrolls */
+.auto-top {
+  position: sticky;
+  top: -10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: -10px -12px 0;
+  padding: 10px 12px 6px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--surface);
+}
 .auto-panel--wait {
   border-color: rgba(232, 180, 84, 0.6);
   background: linear-gradient(var(--amber-soft), transparent 70%), var(--surface);
@@ -8236,7 +8249,7 @@ html.kb-open .ai-side {
   gap: 1px;
 }
 .auto-all {
-  max-height: 220px;
+  max-height: 170px;
   overflow-y: auto;
   border-top: 1px solid var(--border);
   padding-top: 6px;
