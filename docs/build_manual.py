@@ -622,10 +622,11 @@ def build_manual(output_path: str) -> None:
     ))
     story.append(info_box(
         "Key Reference",
-        "Weber & Simonov, Z. Kristallogr. 227, 238–247 (2012). "
-        "Simonov, Weber & Steurer, J. Appl. Cryst. 47, 2011–2018 (2014). "
-        "These two papers establish the 3D-ΔPDF formalism and the punch-and-fill "
-        "data-reduction strategy implemented in this package."
+        "Weber & Simonov, Z. Kristallogr. 227, 238–247 (2012), establish the "
+        "3D-ΔPDF formalism; Kobas, Weber & Steurer, Phys. Rev. B 71, 224205 "
+        "(2005), introduced the punch-and-fill reduction; Simonov, Weber & "
+        "Steurer, J. Appl. Cryst. 47, 2011–2018 (2014), quantify its "
+        "experimental uncertainties."
     ))
 
     story.append(H2("2.3  Coordinate Systems and Conventions"))
@@ -1893,11 +1894,12 @@ def build_manual(output_path: str) -> None:
          "<b>Establishes the 3D-ΔPDF formalism.</b>"),
         ("[2]",
          "A. Simonov, T. Weber, and W. Steurer, "
-         "&ldquo;Diffuse scattering from the disordered intermetallic compound "
-         "TbFe<sub>2</sub>(Si<sub>1-x</sub>Al<sub>x</sub>)<sub>4</sub> (0 ≤ x ≤ 0.67),&rdquo; "
+         "&ldquo;Experimental uncertainties of three-dimensional pair distribution "
+         "function investigations exemplified on the diffuse scattering from a "
+         "tris-<i>tert</i>-butyl-1,3,5-benzene tricarboxamide single crystal,&rdquo; "
          "<i>J. Appl. Cryst.</i> <b>47</b>, 2011–2018 (2014). "
          "DOI: 10.1107/S1600576714023668. "
-         "<b>3D-ΔPDF punch-and-fill strategy.</b>"),
+         "<b>Uncertainties of the 3D-ΔPDF reduction.</b>"),
         ("[3]",
          "A. Chambolle and T. Pock, "
          "&ldquo;A First-Order Primal-Dual Algorithm for Convex Problems with "
@@ -1923,11 +1925,26 @@ def build_manual(output_path: str) -> None:
          "www.mantidproject.org. "
          "<b>Data reduction and MDHistoWorkspace I/O.</b>"),
         ("[7]",
-         "M. Ryan and D. Giannakis, "
-         "&ldquo;Sensitive nonlinear iterative peak-clipping algorithm (SNIP) for "
-         "background estimation in spectrometry,&rdquo; "
+         "C. G. Ryan, E. Clayton, W. L. Griffin, S. H. Sie, and D. R. Cousens, "
+         "&ldquo;SNIP, a statistics-sensitive background treatment for the "
+         "quantitative analysis of PIXE spectra in geoscience applications,&rdquo; "
          "<i>Nucl. Instrum. Methods Phys. Res. B</i> <b>34</b>, 396–402 (1988). "
+         "DOI: 10.1016/0168-583X(88)90063-8. "
          "<b>SNIP baseline algorithm used in radial profile processing.</b>"),
+        ("[8]",
+         "M. Kobas, T. Weber, and W. Steurer, "
+         "&ldquo;Structural disorder in the decagonal Al–Co–Ni. I. Patterson "
+         "analysis of diffuse x-ray scattering data,&rdquo; "
+         "<i>Phys. Rev. B</i> <b>71</b>, 224205 (2005). "
+         "DOI: 10.1103/PhysRevB.71.224205. "
+         "<b>Origin of the punch-and-fill reduction.</b>"),
+        ("[9]",
+         "A. Simonov, T. Weber, and W. Steurer, "
+         "&ldquo;<i>Yell</i>: a computer program for diffuse scattering analysis via "
+         "three-dimensional delta pair distribution function refinement,&rdquo; "
+         "<i>J. Appl. Cryst.</i> <b>47</b>, 1146–1152 (2014). "
+         "DOI: 10.1107/S1600576714008668. "
+         "<b>3D-ΔPDF model refinement.</b>"),
     ]
 
     for ref_id, ref_text in refs:

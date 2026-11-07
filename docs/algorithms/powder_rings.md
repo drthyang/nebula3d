@@ -548,5 +548,6 @@ The factored model assumes all rings share one T(φ). Check this after fitting:
 ## References
 
 - Weber & Simonov, *Z. Kristallogr.* 227, 238–247 (2012) — 3D-ΔPDF.
+- Kobas, Weber & Steurer, *Phys. Rev. B* 71, 224205 (2005) — punch-and-fill.
 - Simonov, Weber & Steurer, *J. Appl. Cryst.* 47, 2011–2018 (2014) —
-  3D-ΔPDF and punch-and-fill.
+  experimental uncertainties of 3D-ΔPDF investigations.
