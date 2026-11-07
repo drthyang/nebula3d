@@ -14,6 +14,7 @@ import { useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
 import { applyFact, autoLoop, endAuto, resumeAuto, skipFact, startAuto, stopAuto, undoAutoRun } from "../auto/controller";
 import { useAutoStore, type AutoRun } from "../auto/store";
+import { autoTranscript, isAppStep, isSeeded } from "../auto/transcript";
 import { useChatStore } from "../chatStore";
 import { CLAUDE_URL } from "./scriptedTransports";
 import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
@@ -139,6 +140,34 @@ describe("a run with a fixable stage", () => {
     expect(report.messages[1].content).toContain("the Bragg punch passed after its first fix");
     expect(report.messages[1].content).toMatch(/- in this auto run, auto mode ran the pipeline from the start; applied punchMinSig .* → 6; ran the pipeline from punch/);
     expect(appChanges()).toEqual([]);
+  });
+
+  it("places the app's own steps in the chat: each before the reply it led to, a seeded check in its reply, every step once", async () => {
+    outputs.tweak = (stage, e, ranWith) => (stage === "rings" ? cleanRings(e) : stage === "punch" && ranWith.punchMinSig === "6" ? cleanPunch(e) : e);
+    model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("The punch passed after a fix."));
+    await start();
+    const turns = useChatStore.getState().turns;
+    const r = run();
+    expect(r.turnAt).toHaveLength(r.turns.length);
+    const { blocks, where } = autoTranscript(r, turns);
+    const fixLabel = turns.find((t) => t.role === "user" && t.content.startsWith("Auto · fix"))!;
+    const reportLabel = turns.find((t) => t.content === "Auto · the report")!;
+    // The checks before the fix, above its line; those after it, above the report's; none after the report.
+    expect(blocks.map((b) => b.before)).toEqual([fixLabel.id, reportLabel.id]);
+    expect(blocks[0].steps.map((s) => s.name)).toEqual(expect.arrayContaining(["run_pipeline", "assess_stage"]));
+    // The punch's check seeded into the fix is shown there, as its first step.
+    const fixTurn = turns[turns.indexOf(fixLabel) + 1];
+    const inFix = [...where.values()].filter((p) => p.turn === fixTurn.id).map((p) => p.stepId);
+    expect(inFix).toEqual((fixTurn.steps ?? []).filter(isSeeded).map((s) => s.id));
+    expect(inFix.length).toBeGreaterThan(0);
+    // Every step of the app's has one place, and the blocks show none twice.
+    const app = r.steps.filter(isAppStep);
+    expect(app.every((s) => where.has(s.id))).toBe(true);
+    const shown = blocks.flatMap((b) => b.steps.map((s) => s.id));
+    expect(new Set(shown).size).toBe(shown.length);
+    expect(shown.length + [...where.values()].filter((p) => p.turn !== null).length).toBe(app.length);
+    // The Highlights follow the last step the app made, whole.
+    expect(useAutoStore.getState().live).toMatchObject({ id: last(app).id, status: "done" });
   });
 
   it("stops a stage's fixes after two, and moves on with it needing attention", async () => {

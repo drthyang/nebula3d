@@ -6,7 +6,7 @@
 // rendered slice image when the vision opt-in is on.
 // The reply itself is driven by session.ts, so it outlives this component.
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDatasets } from "../../api/hooks";
 import { BrandGlyph } from "../../components/ui";
@@ -28,7 +28,8 @@ import type { AssistantContext } from "../useAssistant";
 import { reportable } from "../report/collect";
 import { formatDuration } from "../clock";
 import { useAutoStore } from "../auto/store";
-import { AutoHook } from "./AutoHook";
+import { autoTranscript, isSeeded, type AutoBlock } from "../auto/transcript";
+import { AutoChip, AutoPanel } from "./AutoPanel";
 import { Markdown } from "./Markdown";
 import { ProposalCards } from "./ProposalCards";
 import { ReportView } from "./ReportView";
@@ -74,12 +75,17 @@ const stepLabel = (s: AgentStep): string => {
 // result (often kilobytes of JSON) is put on the page only while it is open: a
 // long conversation would otherwise carry megabytes of hidden text that every
 // layout of the transcript walks.
-function StepDetail({ step: s }: { step: AgentStep }) {
+function StepDetail({ step: s, auto = false }: { step: AgentStep; auto?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <details onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
         <span className="ai-step-dot" aria-hidden="true" />
+        {auto && (
+          <span className="auto-tag" title="Auto mode ran this itself">
+            auto
+          </span>
+        )}
         <span className="ai-step-name">{stepLabel(s)}</span>
         {(s.progress ?? s.summary) && <span className="ai-step-summary">{s.progress ?? s.summary}</span>}
       </summary>
@@ -102,14 +108,17 @@ function HighlightSwatch({ step }: { step: AgentStep }) {
 // The tool calls of one reply: a compact list, each row opening to the
 // arguments and the JSON the model read.  A viewer step can be reopened (with
 // its highlights, examine/); a run or a tuning run opens the Execution page,
-// live while it goes.
-function Steps({ steps, live, turn }: { steps: AgentStep[]; live?: boolean; turn?: number }) {
+// live while it goes. A block of an auto run's own steps (`block`, with each
+// step's number in the run) lists them the same way, tagged auto, as are the
+// checks an auto run seeded into a reply.
+function Steps({ steps, live, turn, block }: { steps: AgentStep[]; live?: boolean; turn?: number; block?: { numberOf: (s: AgentStep) => number } }) {
   const datasets = useDatasets().data;
   const datasetId = useDatasetStore((s) => s.datasetId);
   if (!steps.length) return null;
   const show = (s: AgentStep, i: number) => {
     openView(s.view!);
-    if (turn !== undefined && drawsOverlays(s.name)) showStep(s, turn, i + 1, datasets?.find((d) => d.id === datasetId));
+    if (block && drawsOverlays(s.name)) showStep(s, null, block.numberOf(s), datasets?.find((d) => d.id === datasetId));
+    else if (turn !== undefined && drawsOverlays(s.name)) showStep(s, turn, i + 1, datasets?.find((d) => d.id === datasetId));
     else if (live) {
       const kept = useExamineStore.getState().sets.find((x) => x.set.stepId === s.id && x.turn === null);
       if (kept) useExamineStore.setState({ current: kept.set.key, off: [] });
@@ -119,16 +128,16 @@ function Steps({ steps, live, turn }: { steps: AgentStep[]; live?: boolean; turn
   return (
     <details className="ai-steps" open={live}>
       <summary>
-        {running ? `${stepLabel(running)}…` : `Used ${steps.length} tool${steps.length > 1 ? "s" : ""}`}
+        {running ? `${stepLabel(running)}…` : block ? `Auto analysis · ${steps.length} step${steps.length > 1 ? "s" : ""}` : `Used ${steps.length} tool${steps.length > 1 ? "s" : ""}`}
       </summary>
       <ol className="ai-step-list">
         {steps.map((s, i) => (
           <li
             key={s.id}
-            id={turn !== undefined ? `ai-step-${turn}-${s.id}` : live ? `ai-step-live-${s.id}` : undefined}
+            id={block ? `ai-step-auto-${s.id}` : turn !== undefined ? `ai-step-${turn}-${s.id}` : live ? `ai-step-live-${s.id}` : undefined}
             className={`ai-step ai-step-${s.status}`}
           >
-            <StepDetail step={s} />
+            <StepDetail step={s} auto={Boolean(block) || isSeeded(s)} />
             <HighlightSwatch step={s} />
             {s.view && (
               <button type="button" className="ai-step-open" onClick={() => show(s, i)}>
@@ -150,6 +159,40 @@ function Steps({ steps, live, turn }: { steps: AgentStep[]; live?: boolean; turn
       </ol>
     </details>
   );
+}
+
+// A block of an auto run's own checks and runs, where the transcript shows
+// them (auto/transcript.ts): before the reply they led to, or after the last.
+function AutoSteps({ block, live }: { block: AutoBlock; live: boolean }) {
+  const steps = useAutoStore((s) => s.run?.steps);
+  const numberOf = (x: AgentStep) => (steps?.findIndex((y) => y.id === x.id) ?? -1) + 1 || (steps?.length ?? 0) + 1;
+  return (
+    <div className="ai-msg ai-msg-assistant ai-msg-auto">
+      <span className={`ai-avatar${live ? " ai-avatar-spin" : ""}`} aria-hidden="true">
+        <BrandGlyph size={22} />
+      </span>
+      <div className="ai-msg-main">
+        <Steps steps={block.steps} live={live} block={{ numberOf }} />
+      </div>
+    </div>
+  );
+}
+
+/** An auto run's blocks among the turns, with the app's step under way at the end while it runs. */
+function useAutoBlocks(turns: readonly ChatTurn[]) {
+  const run = useAutoStore((s) => s.run);
+  const live = useAutoStore((s) => s.live);
+  return useMemo(() => {
+    if (!run) return { blocks: [] as AutoBlock[], running: false };
+    const { blocks } = autoTranscript(run, turns);
+    const running = run.state === "running" && live?.status === "running" && live.id.startsWith(`auto:${run.id}:`);
+    if (running) {
+      const end = blocks.find((b) => b.before === null);
+      if (end) end.steps = [...end.steps, live!];
+      else blocks.push({ key: `${run.id}:end`, before: null, after: [...run.turns].reverse().find((t) => turns.some((x) => x.id === t)) ?? null, steps: [live!] });
+    }
+    return { blocks, running };
+  }, [run, live, turns]);
 }
 
 // The Highlights switch: off hides the overlays on the views, keeps the "Now examining" bar.
@@ -202,7 +245,7 @@ const PastTurn = memo(function PastTurn({
     );
   }
   return (
-    <div className="ai-msg ai-msg-assistant">
+    <div className="ai-msg ai-msg-assistant" id={`ai-turn-${t.id}`}>
       <span className="ai-avatar" aria-hidden="true">
         <BrandGlyph size={22} />
       </span>
@@ -270,6 +313,7 @@ export function ChatView({
   const usage = useChatStore((s) => s.usage);
   // An auto run under way owns the conversation: the composer waits (auto/controller.ts).
   const autoRunning = useAutoStore((s) => s.run?.state === "running");
+  const auto = useAutoBlocks(turns);
   const scrollRef = useRef<HTMLDivElement>(null);
   // The reply whose analysis report is open (its turn id).
   const [reportFor, setReportFor] = useState<number | null>(null);
@@ -279,7 +323,7 @@ export function ChatView({
   useEffect(() => {
     const el = scrollRef.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [turns, live]);
+  }, [turns, live, auto]);
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -343,6 +387,7 @@ export function ChatView({
           />
         );
       })()}
+      {tools && <AutoPanel ctx={toolContext} />}
       <div className="ai-transcript" ref={scrollRef} onScroll={onScroll}>
         {empty && (
           <div className="ai-placeholder">
@@ -369,14 +414,24 @@ export function ChatView({
           </div>
         )}
         {turns.map((t) => (
-          <PastTurn
-            key={t.id}
-            turn={t}
-            tuning={t.id === tuneTurn}
-            canReport={reportable(t) && Boolean(toolContext) && !busy}
-            onReport={setReportFor}
-            ctx={toolContext}
-          />
+          <Fragment key={t.id}>
+            {auto.blocks.filter((b) => b.before === t.id).map((b) => (
+              <AutoSteps key={b.key} block={b} live={false} />
+            ))}
+            <PastTurn
+              turn={t}
+              tuning={t.id === tuneTurn}
+              canReport={reportable(t) && Boolean(toolContext) && !busy}
+              onReport={setReportFor}
+              ctx={toolContext}
+            />
+            {auto.blocks.filter((b) => b.before === null && b.after === t.id).map((b) => (
+              <AutoSteps key={b.key} block={b} live={auto.running} />
+            ))}
+          </Fragment>
+        ))}
+        {auto.blocks.filter((b) => b.before === null && (b.after === null || !turns.some((t) => t.id === b.after))).map((b) => (
+          <AutoSteps key={b.key} block={b} live={auto.running} />
         ))}
         {busy && live && (
           <div className="ai-msg ai-msg-assistant">
@@ -405,7 +460,7 @@ export function ChatView({
 
       <div className="ai-dock">
         {connected && contextNote && <div className="ai-conn-warn">{contextNote}</div>}
-        {tools && <AutoHook ctx={toolContext} canStart={connected && Boolean(assistant) && !busy} />}
+        {tools && <AutoChip ctx={toolContext} canStart={connected && Boolean(assistant) && !busy} />}
         <div className="ai-toggles">
           <button
             type="button"
@@ -494,7 +549,7 @@ export function ChatView({
         <div className={`ai-composer${disabled ? " is-disabled" : ""}`}>
           <textarea
             value={draft}
-            placeholder={autoRunning ? "The auto run is under way: Stop it to ask…" : disabled ? "Connect a model to chat…" : "Ask about this reduction…"}
+            placeholder={autoRunning ? "Auto analysis is running…" : disabled ? "Connect a model to chat…" : "Ask about this reduction…"}
             disabled={disabled}
             rows={1}
             onChange={(e) => setDraft(e.target.value)}

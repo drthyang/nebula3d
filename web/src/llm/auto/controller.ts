@@ -33,7 +33,9 @@
 //    run under way; Resume restarts the row it stopped in, running first a
 //    change whose run had not finished.
 //
-// The record (store.ts) is what the Auto panel (PR 7) renders.
+// The record (store.ts) is what the Auto panel (components/AutoPanel.tsx)
+// renders; the app's own step under way is published whole (store.ts, `live`)
+// for the Highlights to follow.
 
 import { fetchDataset } from "../../api/client";
 import type { Dataset } from "../../api/types";
@@ -485,13 +487,20 @@ async function appStep(call: Call): Promise<AgentStep> {
   const s = session!;
   // The app's own call: no reply's steps, no user words naming anything.
   const ctx: ToolContext = { dataset: s.work.dataset, datasets: s.work.datasets, userMessage: "" };
+  stepNumber += 1;
+  const id = `auto:${run().id}:${stepNumber}`;
   patchRun({ now: `${factsOf(call.name).runningLabel}…` });
-  const out = await callTool(ctx, call.name, call.args, { signal: s.abort.signal });
+  useAutoStore.setState({ live: { id, name: call.name, args: call.args, status: "running" } });
+  let out: Awaited<ReturnType<typeof callTool>>;
+  try {
+    out = await callTool(ctx, call.name, call.args, { signal: s.abort.signal });
+  } finally {
+    if (useAutoStore.getState().live?.id === id && useAutoStore.getState().live?.status === "running") useAutoStore.setState({ live: null });
+  }
   if (ctx.dataset !== s.work.dataset) s.work.dataset = ctx.dataset;
   if (stopped()) halt();
-  stepNumber += 1;
   const step: AgentStep = {
-    id: `auto:${run().id}:${stepNumber}`,
+    id,
     name: call.name,
     args: out.args,
     status: out.ok ? "done" : "error",
@@ -502,6 +511,7 @@ async function appStep(call: Call): Promise<AgentStep> {
     ...(out.outcomes ? { outcomes: out.outcomes } : {}),
   };
   patchRun((x) => ({ steps: [...x.steps, keptStep(step)] }));
+  useAutoStore.setState({ live: out.overlay ? { ...step, overlay: out.overlay } : step });
   return step;
 }
 
@@ -798,7 +808,7 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
     stopAuto();
     halt();
   }
-  if (out.turn !== null) patchRun((x) => ({ turns: [...x.turns, out!.turn!] }));
+  if (out.turn !== null) patchRun((x) => ({ turns: [...x.turns, out!.turn!], turnAt: [...x.turnAt, x.steps.length] }));
   if (capped) {
     keepReplySteps(out);
     patchRun((x) => ({ limit: x.limit ?? "cost" }));
