@@ -32,7 +32,7 @@ import { AUTO_LIMITS, MINUTES_RANGE } from "../auto/plan";
 import { useAutoStore } from "../auto/store";
 import { useChatStore } from "../chatStore";
 import { tokenCalibration } from "../provider/tokens";
-import { runPolicyOf } from "../runPolicy";
+import { autoPolicyOf } from "../runPolicy";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { isSampleFact } from "../tune/catalog";
 import { RING_SETTINGS } from "../tools/shared/ringGate";
@@ -41,7 +41,7 @@ import type { EvalRun } from "./harness";
 import { OfferRecorder } from "./offers";
 import { buildRecord, changedElsewhere, WhyTracker, type RunRecord } from "./validation";
 import { costOf } from "./validationModels";
-import { startFresh, type RunSpec } from "./validationRun";
+import { startFresh, TruncationTracker, type RunSpec } from "./validationRun";
 
 /** What the record keeps of an auto run, beside arm B's. */
 export interface AutoRunRecord {
@@ -78,6 +78,9 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
   const settings: LlmSettings = { ...DEFAULT_SETTINGS, ...spec.settings, attachImages: false, useTools: true, followViews: false };
   const before = await fetchDatasets();
   const calibration = tokenCalibration(`${settings.baseUrl}|${settings.model}`);
+  // Auto mode's replies under their own policy: the validation's output cap where the transport ships none.
+  const policy = { ...autoPolicyOf(settings), maxRounds: AUTO_LIMITS.fixRounds };
+  const cut = new TruncationTracker(policy.transport);
   const recorder = new OfferRecorder(() => useTuneStore.getState().active);
   const stopRecording = recorder.install();
   const t0 = performance.now();
@@ -90,7 +93,7 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
   const facts: string[] = [];
   let error: string | null = null;
   try {
-    await startAuto({ ctx: { dataset, datasets: [dataset] }, settings, limits: { minutes: MINUTES_RANGE[0] } });
+    await startAuto({ ctx: { dataset, datasets: [dataset] }, settings, limits: { minutes: MINUTES_RANGE[0] }, truncations: cut });
     for (;;) {
       await (autoLoop() ?? Promise.resolve());
       const r = useAutoStore.getState().run;
@@ -147,7 +150,8 @@ export async function runAutoCase(spec: RunSpec): Promise<AutoRecord> {
     offers: recorder.offers,
     context: spec.context ?? null,
     tokensAtStart: { scale: calibration.scale, ollama_num_ctx: calibration.ollamaNumCtx },
-    policy: { ...runPolicyOf(settings), maxRounds: AUTO_LIMITS.fixRounds },
+    policy,
+    truncated: cut.toRecord(),
   });
   return { ...record, task: AUTO_TASK, mode: "auto", auto: autoRecord(timedOut, facts) };
 }

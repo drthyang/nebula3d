@@ -52,6 +52,8 @@ import type { ClickEvent } from "../consent";
 import { hklVolumeId, loadPipelineContext, safe, stageVolumeId } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { askAssistant, type ReplyOutcome } from "../session";
+import type { UsageReport } from "../provider/client";
+import { autoPolicyOf, type RunPolicy } from "../runPolicy";
 import { loadSettings, type LlmSettings } from "../settings";
 import { callTool, CHAT_TOOLS, factsOf, type AgentTool, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
@@ -95,12 +97,23 @@ export interface AutoStart {
   // The dataset's summary for each reply's context (loadContext.ts unless given).
   loadContext?: (dataset: Dataset) => Promise<PipelineContext>;
   now?: () => number; // the clock (tests give a fake one)
+  // Each request cut at the output cap (autoPolicyOf): a reply's (agent.ts,
+  // onTruncated) and a tuning run's in it (its stop reason); the eval records them.
+  truncations?: Truncations;
+}
+
+/** Where the requests cut at the output cap are told (evals/validationRun.ts, TruncationTracker, takes these). */
+export interface Truncations {
+  loop: (cut: { request: number; reason: string }) => void;
+  tuning: UsageReport;
 }
 
 interface Session {
   abort: AbortController;
   reply: AbortController | null; // the reply under way: the spend limit stops it alone
   settings: LlmSettings;
+  policy: RunPolicy; // the replies' (autoPolicyOf): the output cap where the transport ships none
+  truncations: Truncations | null;
   price: Price | null;
   loadContext: (dataset: Dataset) => Promise<PipelineContext>;
   now: () => number;
@@ -261,6 +274,8 @@ function openSession(start: AutoStart): Session {
     abort: new AbortController(),
     reply: null,
     settings,
+    policy: autoPolicyOf(settings),
+    truncations: start.truncations ?? null,
     price: priceOf(settings),
     loadContext: start.loadContext ?? (async (d) => (await loadPipelineContext(d)).context),
     now: start.now ?? Date.now,
@@ -791,7 +806,14 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
     skillsReadEarlier: new Set(),
     earlierSteps: toolStepsIn([{ steps: earlier }]),
     marksEarlier: new Set(marksMade(earlier)),
-    model: { settings: s.settings, usage: (u) => onUsage(u ? measured(u) : notCounted()) },
+    model: {
+      settings: s.settings,
+      usage: (u, stopReason) => {
+        onUsage(u ? measured(u) : notCounted());
+        s.truncations?.tuning(u, stopReason);
+      },
+      ...(s.policy.outputCap.tuning != null ? { maxTokens: s.policy.outputCap.tuning } : {}),
+    },
   };
   let out: ReplyOutcome | null;
   try {
@@ -807,6 +829,8 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
         seed: { steps: seed, form: seedFormFor(s.settings, r.seedForm) },
         userMessage: "",
         maxRounds: rounds,
+        policy: { ...s.policy, maxRounds: rounds },
+        ...(s.truncations ? { onTruncated: s.truncations.loop } : {}),
         onSeedForm: (form) => patchRun({ seedForm: form }),
       },
     });

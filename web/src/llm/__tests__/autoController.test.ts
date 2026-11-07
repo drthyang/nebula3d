@@ -13,11 +13,16 @@ import { usePipelineStore } from "../../state/pipelineStore";
 import { useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
 import { applyFact, autoLoop, endAuto, resumeAuto, skipFact, startAuto, stopAuto, undoAutoRun } from "../auto/controller";
+import { REPORT_PROMPT } from "../auto/prompts";
 import { useAutoStore, type AutoRun } from "../auto/store";
 import { autoTranscript, isAppStep, isSeeded } from "../auto/transcript";
 import { activityNow, type Activity } from "../auto/activity";
 import { useTuneStore } from "../tune/tuner";
 import { useChatStore } from "../chatStore";
+import { CUT_OFF_NOTE } from "../agent";
+import { UNSUPPORTED_MARK } from "../answerChecks";
+import { VALIDATION_MAX_TOKENS } from "../evals/validationModels";
+import { STREAM_MAX_TOKENS } from "../provider/anthropic";
 import { CLAUDE_URL } from "./scriptedTransports";
 import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
 import { installBackend } from "./syntheticCrystal";
@@ -138,7 +143,7 @@ describe("a run with a fixable stage", () => {
       ["run", "auto", "Run from Bragg punch", expect.any(String)],
     ]);
     // The report's digest carries the change, as auto mode's.
-    const report = model.sent.find((r) => String(r.messages[3].content).startsWith("Report on this auto run"))!;
+    const report = model.sent.find((r) => String(r.messages[3].content).startsWith(REPORT_PROMPT))!;
     expect(report.messages[1].content).toContain("the Bragg punch passed after its first fix");
     expect(report.messages[1].content).toMatch(/- in this auto run, auto mode ran the pipeline from the start; applied punchMinSig .* → 6; ran the pipeline from punch/);
     expect(appChanges()).toEqual([]);
@@ -406,6 +411,54 @@ describe("Stop and Resume", () => {
     endAuto();
     expect(run()).toMatchObject({ state: "done", ended: "Ended by you before its report." });
     expect(run().clock.endedAt).not.toBeNull();
+  });
+});
+
+describe("the output cap (the validation's, where the transport ships none)", () => {
+  beforeEach(() => {
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? cleanPunch(e) : e);
+  });
+
+  it("asks every reply of a run on an uncapped transport for 16,000 tokens at most, as arm B's validation does", async () => {
+    model.respond = () => say("Every stage meets its goal by its checks above.");
+    await start();
+    expect(model.sent.length).toBeGreaterThan(0);
+    expect(model.sent.every((r) => r.maxTokens === VALIDATION_MAX_TOKENS)).toBe(true);
+    expect(VALIDATION_MAX_TOKENS).toBe(16_000);
+  });
+
+  it("leaves Claude's own cap as the app ships it", async () => {
+    model.respond = () => say("Every stage meets its goal by its checks above.");
+    await start({}, { ...SCRIPTED, baseUrl: CLAUDE_URL, model: "claude-opus-5-5", apiKey: "k" });
+    expect(model.sent.map((r) => r.maxTokens)).toEqual([STREAM_MAX_TOKENS]);
+  });
+
+  it("a report reply cut off at the cap: its text kept with the cut-off note, the cut told, and the run ends with its report", async () => {
+    const cuts: { request: number; reason: string }[] = [];
+    model.respond = () => [{ content: "Every stage meets its goal, and" }, { truncated: true, stopReason: "length" }];
+    await startAuto({ ctx: CTX, settings: SCRIPTED, now: clock.now, truncations: { loop: (c) => cuts.push(c), tuning: () => {} } });
+    await (autoLoop() ?? Promise.resolve());
+    expect(run()).toMatchObject({ state: "done", ended: "Done, with its report." });
+    expect(status()).toMatchObject({ report: "done" });
+    expect(run().plan.find((r) => r.id === "report")!.detail).toBe("written");
+    const turn = useChatStore.getState().turns.find((t) => t.id === run().reportTurn)!;
+    expect(turn.content).toBe("Every stage meets its goal, and");
+    expect(turn.note).toBe(CUT_OFF_NOTE);
+    expect(cuts).toEqual([{ request: 1, reason: "length" }]);
+  });
+
+  it("a report whose revision is cut off at the cap: the answer it revised kept with its ⚠ marks, and the run ends with its report", async () => {
+    let n = 0;
+    model.respond = () => {
+      n += 1;
+      // An answer against the UB's verdict, with a number no check returned, is sent back; its revision runs out of room.
+      return n === 1 ? say("The UB is turned by 12.5° and the HKL origin is shifted by 0.37 r.l.u.") : [{ content: "The ring" }, { truncated: true, stopReason: "length" }];
+    };
+    await start();
+    expect(run()).toMatchObject({ state: "done", ended: "Done, with its report." });
+    const turn = useChatStore.getState().turns.find((t) => t.id === run().reportTurn)!;
+    expect(turn.content).toBe(`${UNSUPPORTED_MARK} The UB is turned by 12.5° and the HKL origin is shifted by 0.37 r.l.u.`);
+    expect(turn.note).toMatch(/^This answer failed its checks, and its revision did not replace it\. The lines marked ⚠ hold what no tool result in this reply supports: .*The reply was cut off: /);
   });
 });
 

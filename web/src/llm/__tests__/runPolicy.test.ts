@@ -12,7 +12,7 @@ import { toolsFor } from "../localTools";
 import { COMPLETE_MAX_TOKENS, STREAM_MAX_TOKENS } from "../provider/anthropic";
 import { completeChat, type ChatMessage } from "../provider/client";
 import { MIN_REPLY, REPLY_RESERVE, resetTokenState } from "../provider/tokens";
-import { RUN_POLICIES, runPolicyOf, transportOf, type RunPolicy } from "../runPolicy";
+import { autoPolicyOf, CAPPED_OUTPUT_TOKENS, RUN_POLICIES, runPolicyOf, transportOf, type RunPolicy } from "../runPolicy";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { CHAT_TOOLS, type AgentTool } from "../tools";
 import { claudeServer, CLAUDE_URL, LM_STUDIO_URL, localServer, OLLAMA_URL, SDK, type Body, type Script } from "./scriptedTransports";
@@ -85,6 +85,18 @@ describe("each transport's policy", () => {
     // An Ollama server off this machine is sized as Ollama, and offered every tool, unpruned, as a cloud model is.
     expect(on("http://gpu-box:11434/v1")).toEqual({ ...RUN_POLICIES.ollama, local: false, toolScoping: "all", pruning: null });
     expect([CLAUDE_URL, LM_STUDIO_URL, OLLAMA_URL, OPENAI_URL].map(transportOf)).toEqual(["anthropic", "openai-compatible", "ollama", "openai-compatible"]);
+  });
+});
+
+describe("an auto-mode reply's policy (autoPolicyOf)", () => {
+  it("is its transport's, with the validation's output cap where the transport ships none, and Claude's own caps kept", () => {
+    const auto = (baseUrl: string) => autoPolicyOf({ baseUrl, temperature: DEFAULT_SETTINGS.temperature });
+    const capped = { loop: CAPPED_OUTPUT_TOKENS, tuning: CAPPED_OUTPUT_TOKENS };
+    expect(CAPPED_OUTPUT_TOKENS).toBe(16_000);
+    expect(auto(LM_STUDIO_URL)).toEqual({ ...RUN_POLICIES.lmStudio, outputCap: capped });
+    expect(auto(OLLAMA_URL)).toEqual({ ...RUN_POLICIES.ollama, outputCap: capped });
+    expect(auto(OPENAI_URL)).toEqual({ ...RUN_POLICIES.openAiCloud, outputCap: capped });
+    expect(auto(CLAUDE_URL)).toEqual(RUN_POLICIES.claude);
   });
 });
 
