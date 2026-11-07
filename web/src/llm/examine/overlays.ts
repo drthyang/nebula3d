@@ -45,8 +45,9 @@ export type ClassId =
   | "reach" // the forward transform's reach
   | "band" // the |Q| band the coverage suggests
   | "RM" // a confirmed ring removed that sat on no Al line
-  | "fpRes" // a fitted Bragg peak, resolution-limited on every axis: its footprint solid
-  | "fpBroad" // one broadened on some axis: dashed
+  | "fpRes" // a fitted Bragg peak, resolution-limited on an axis (as the Bragg page flags it): its footprint solid
+  | "fpBroad" // one measured wider than the resolution on every axis: dashed
+  | "fpNone" // one whose width could not be measured: dotted
   | "dpos" // a ΔPDF candidate: more pairs than the average structure (+)
   | "dneg" // fewer (−)
   | "turn" // the UB turn: the shift at each Bragg node, scaled up
@@ -143,6 +144,7 @@ const CLASSES: Record<ClassId, ClassDef> = {
   RM: { id: "RM", code: "RM", label: "removed (not Al)", tone: "accent", views: { [RAW]: "full", [RINGS]: "faint" } },
   fpRes: { id: "fpRes", label: "resolution-limited", tone: "accent", views: { [BRAGG]: "full", [RAW]: "full" } },
   fpBroad: { id: "fpBroad", label: "broadened", tone: "amber", views: { [BRAGG]: "full", [RAW]: "full" } },
+  fpNone: { id: "fpNone", label: "width not measured", tone: "grey", views: { [BRAGG]: "full", [RAW]: "full" } },
   dpos: { id: "dpos", label: "+ more pairs", tone: "red", views: { [DPDF]: "full" } },
   dneg: { id: "dneg", label: "− fewer pairs", tone: "blue", views: { [DPDF]: "full" } },
   turn: { id: "turn", label: "UB turn", tone: "amber", views: { [RAW]: "full", [BRAGG]: "full" } },
@@ -509,30 +511,36 @@ export function ubOmega(ub: M3, fitted: M3): V3 | null {
 
 // ---------------------------------------------------------------- v2: the mappers
 
-const BRAGG_HELP = "Each listed peak's fitted footprint, as the Bragg page draws its fit: solid where resolution-limited on every axis, dashed where broadened; the first 8 named.";
+const BRAGG_HELP = "Each listed peak's fitted footprint, as the Bragg page draws its fit, and the peak ringed on its scatter: solid where resolution-limited on an axis (the page's res-limited), dashed where wider than the resolution, dotted where its width could not be measured; the first 8 named.";
 
 const braggPeaks: Mapper = (r, _args, data) => {
   const rows = isTable(r.peaks) ? tableRows(r.peaks) : Array.isArray(r.peaks) ? r.peaks.filter(isObj) : [];
   if (!rows.length) return null;
   const items: OverlayItem[] = [];
-  let res = 0;
+  const n: Partial<Record<ClassId, number>> = {};
   rows.forEach((row, i) => {
     const hkl = v3(row.hkl);
     if (!hkl) return;
     const flags = Array.isArray(row.resolution_limited) ? row.resolution_limited : null;
-    const broad = flags ? flags.some((f) => f === false) : false;
-    if (!broad) res += 1;
-    const cls: ClassId = broad ? "fpBroad" : "fpRes";
+    const cls: ClassId = !flags ? "fpNone" : flags.some((f) => f === true) ? "fpRes" : "fpBroad";
+    n[cls] = (n[cls] ?? 0) + 1;
     const label = i < 8 ? hklLabel(hkl) : undefined;
     const fp = data?.braggPeaks?.find((p) => p.hkl.every((x, k) => Math.abs(x - hkl[k]) <= 1e-3 * Math.max(1, Math.abs(x))));
     if (fp) items.push({ kind: "footprint", cls, at: fp.hkl, widths: fp.widths, dirs: fp.dirs, principal: fp.principal, ...(label ? { label } : {}) });
     else items.push({ kind: "spot", cls, at: hkl, size: rows.length - i, ...(label ? { label } : {}) });
   });
-  const n = num(r.n_peaks);
+  const total = num(r.n_peaks);
   const by = typeof r.sorted_by === "string" ? r.sorted_by : null;
   return {
     title: "Bragg peaks",
-    where: [`${rows.length}${n != null ? ` of ${n}` : ""} peaks${by ? ` by ${by}` : ""}`, `${res} resolution-limited`, `${rows.length - res} broadened`].join(" · "),
+    where: [
+      `${rows.length}${total != null ? ` of ${total}` : ""} peaks${by ? ` by ${by}` : ""}`,
+      n.fpRes && `${n.fpRes} resolution-limited`,
+      n.fpBroad && `${n.fpBroad} broadened`,
+      n.fpNone && `${n.fpNone} not measured`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
     help: [BRAGG_HELP],
     measured: [PUNCHED],
     views: { [BRAGG]: "primary", [RAW]: "reading" },
@@ -598,7 +606,7 @@ const ubCheck: Mapper = (r, _args, data) => {
       .filter(Boolean)
       .join(" · "),
     help: [
-      "Arrows at the Bragg nodes on the cut: where the fitted UB puts each peak against the volume's (ω × Q, the turn alone, without the cell's change), scaled up by the factor on the chip. The shift is across Q and grows with |Q|.",
+      "Arrows at the Bragg nodes on the cut: where the fitted UB puts each peak against the volume's (ω × Q, the turn alone, without the cell's change), scaled up by the factor on the chip. The shift is across Q and grows with |Q|; ⊙ where it points mostly out of the cut, ⊗ into it.",
     ],
     measured: [RAW],
     views: { [RAW]: "primary", [BRAGG]: "reading" },

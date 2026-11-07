@@ -68,6 +68,7 @@ export interface DrawnArrow {
   Y: number;
   dX: number; // to, less from, scaled up (ViewDraw.notes says by how much)
   dY: number;
+  dZ: number; // the part along the cut's axis, scaled as much (+: out of the view)
 }
 export interface DrawnLine {
   cls: ClassId;
@@ -342,7 +343,9 @@ function computeDraw(set: OverlaySet, v: ViewContext): ViewDraw {
         const i0 = Math.ceil(lim.x0 / cx), i1 = Math.floor(lim.x1 / cx);
         const j0 = Math.ceil(lim.y0 / cy), j1 = Math.floor(lim.y1 / cy);
         if ((i1 - i0 + 1) * (j1 - j0 + 1) > MAX_NODES) break;
-        const raw: { X: number; Y: number; dx: number; dy: number; key: string }[] = [];
+        const raw: { X: number; Y: number; dx: number; dy: number; dz: number; key: string }[] = [];
+        // The cut's axis in display units per its own unit: the in-plane axes' mean scale.
+        const sz = (v.sx + v.sy) / 2;
         for (let i = i0; i <= i1; i++)
           for (let j = j0; j <= j1; j++) {
             const h = [0, 0, 0];
@@ -354,16 +357,19 @@ function computeDraw(set: OverlaySet, v: ViewContext): ViewDraw {
             const dh = mv(inv, cross(item.omega, mv(item.ub, h)));
             const [X, Y] = sliceToDisplay(h[ix], h[iy], g);
             const [dX, dY] = sliceToDisplay(dh[ix], dh[iy], { ...g });
-            raw.push({ X, Y, dx: dX, dy: dY, key: h.join(",") });
+            raw.push({ X, Y, dx: dX, dy: dY, dz: dh[ic] * sz, key: h.join(",") });
           }
-        const longest = Math.max(0, ...raw.map((a) => Math.hypot(a.dx, a.dy)));
+        // Scaled by the whole shift, in the plane and across it: a turn about
+        // an axis in the plane moves its nodes out of it, and is drawn so.
+        const len = (a: (typeof raw)[number]) => Math.hypot(a.dx, a.dy, a.dz);
+        const longest = Math.max(0, ...raw.map(len));
         if (!(longest > 0)) break;
         // Scaled so the longest is about a third of the node spacing, by a round factor.
         const spacing = Math.min(Math.hypot(...sliceToDisplay(cx, 0, g)), Math.hypot(...sliceToDisplay(0, cy, g)));
         const k = niceFloor((0.35 * spacing) / longest);
-        raw.sort((a, b) => Math.hypot(b.dx, b.dy) - Math.hypot(a.dx, a.dy));
+        raw.sort((a, b) => len(b) - len(a));
         for (const a of raw) {
-          arrows.push({ cls: item.cls, style, X: a.X, Y: a.Y, dX: a.dx * k, dY: a.dy * k });
+          arrows.push({ cls: item.cls, style, X: a.X, Y: a.Y, dX: a.dx * k, dY: a.dy * k, dZ: a.dz * k });
           keyed(item.cls, a.key);
         }
         out.notes = { ...out.notes, [item.cls]: `×${k >= 1 ? Math.round(k) : Number(k.toPrecision(1))}` };

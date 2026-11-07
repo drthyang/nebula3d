@@ -188,6 +188,20 @@ describe("v2 on a view", () => {
     expect(viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0.1, slice: slice(11) })).arrows).toBeUndefined();
   });
 
+  it("a turn about an axis in the plane moves its nodes across it: the part along the cut's axis", () => {
+    const ub = [[1.6, 0, 0], [0, 1.6, 0], [0, 0, 1.6]];
+    const t = 0.002;
+    // About x: a node on K moves along L, out of the H–K plane.
+    const fitted = mm([[1, 0, 0], [0, Math.cos(t), -Math.sin(t)], [0, Math.sin(t), Math.cos(t)]], ub);
+    const set = setOf("ub_check", {}, {}, { ubTurn: { ub, fitted, cell: [0.2, 0.2, 0.2] } });
+    const d = viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0, slice: slice(11) }));
+    const north = d.arrows!.find((a) => Math.abs(a.X) < 1e-9 && Math.abs(a.Y - 0.4) < 1e-9)!;
+    expect(Math.hypot(north.dX, north.dY)).toBeLessThan(1e-9);
+    expect(north.dZ).toBeGreaterThan(0);
+    // Scaled by the whole shift: the longest is about a third of the node spacing.
+    expect(Math.max(...d.arrows!.map((a) => Math.hypot(a.dX, a.dY, a.dZ)))).toBeGreaterThan(0.35 * 0.2 / 2.5);
+  });
+
   it("the rotated copy's nodes within a voxel of the cut", () => {
     const map = [[0.2, 0, 0], [0, 0.2, 0], [0, 0, 0.2]]; // its nodes every 0.2 r.l.u. (no turn, for the count)
     const set = setOf("grain_check", {}, { far: [] }, { grains: { far: [], rotated: map } });

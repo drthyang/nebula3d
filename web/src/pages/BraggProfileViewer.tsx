@@ -207,9 +207,11 @@ interface ScatterMark {
   hkl: number[];
   cls: ClassId;
   color: string;
-  dashed: boolean;
+  dash: "solid" | "dashed" | "dotted";
   label?: string;
 }
+// The Bragg peaks' classes (examine/overlays.ts): counted on the scatter.
+const FOOTPRINTS: ClassId[] = ["fpRes", "fpBroad", "fpNone"];
 
 // The page's peak for a listed hkl (bragg_peaks gives it to 4 significant figures).
 const sameHkl = (a: readonly number[], b: readonly number[]) => a.every((x, i) => Math.abs(x - b[i]) <= 1e-3 * Math.max(1, Math.abs(x)));
@@ -301,7 +303,7 @@ function Scatter({
           return (
             <span key={`m${mi}`} data-hl={m.cls}>
               {ws.map((w, k) => (
-                <span key={k} className="bragg-hl-ring" style={{ left: `${X(p.q_abs)}%`, top: `${Y(w)}%`, borderColor: m.color, borderStyle: m.dashed ? "dashed" : "solid" }} />
+                <span key={k} className="bragg-hl-ring" style={{ left: `${X(p.q_abs)}%`, top: `${Y(w)}%`, borderColor: m.color, borderStyle: m.dash }} />
               ))}
               {m.label && ws.length > 0 && (
                 <span className="bragg-hl-label" style={{ left: `${X(p.q_abs)}%`, top: `${Y(Math.max(...ws))}%`, color: m.color }}>
@@ -787,14 +789,14 @@ export function BraggProfileViewer() {
     });
   });
   const scatterMarks: ScatterMark[] = (hl.shown?.set.items ?? []).flatMap((it) =>
-    (it.kind === "footprint" || it.kind === "spot") && (it.cls === "fpRes" || it.cls === "fpBroad") && !hl.off.includes(it.cls)
-      ? [{ hkl: it.at, cls: it.cls, color: TONE[it.cls === "fpRes" ? "accent" : "amber"], dashed: it.cls === "fpBroad", ...(it.label ? { label: it.label } : {}) }]
+    (it.kind === "footprint" || it.kind === "spot") && FOOTPRINTS.includes(it.cls) && !hl.off.includes(it.cls)
+      ? [{ hkl: it.at, cls: it.cls, color: TONE[hl.tones[it.cls] ?? "accent"], dash: it.cls === "fpBroad" ? "dashed" : it.cls === "fpNone" ? "dotted" : "solid", ...(it.label ? { label: it.label } : {}) }]
       : [],
   );
   const hlLegend = hl.shown ? legend(hl.shown.set, tileDraws.map((draw) => ({ stage: BRAGG, draw }))) : { counts: {}, notes: {} };
   // The listed peaks are counted on the scatter, where every one of them is.
   const listedOn = (cls: ClassId) => (hl.shown?.set.items ?? []).filter((it) => (it.kind === "footprint" || it.kind === "spot") && it.cls === cls && peaks.some((p) => sameHkl(it.at, p.center_hkl))).length;
-  const hlCounts = { ...hlLegend.counts, fpRes: listedOn("fpRes"), fpBroad: listedOn("fpBroad") };
+  const hlCounts = { ...hlLegend.counts, ...Object.fromEntries(FOOTPRINTS.map((c) => [c, listedOn(c)])) };
 
   const empty = (() => {
     if (datasetsQ.isLoading) return <EmptyState title="Loading datasets…" />;

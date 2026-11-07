@@ -18,7 +18,7 @@ import { openView } from "../tools/openView";
 // The classes counted on the cut; the bands, hatches and the coverage's lines are shown without a number.
 const COUNTED = new Set<ClassId>([
   "node", "sharp", "broad", "protected", "holes", "r2", "AL", "LEFT", "GRID", "XTAL", "NJ", "RM",
-  "fpRes", "fpBroad", "dpos", "dneg", "fillUp", "fillDown", "far", "rotated",
+  "fpRes", "fpBroad", "fpNone", "dpos", "dneg", "fillUp", "fillDown", "far", "rotated",
 ]);
 // Classes with no chip where they draw nothing, beside the counted ones: the UB turn's arrows, a profile's line.
 const HIDDEN_WHEN_NONE = new Set<ClassId>([...COUNTED, "turn", "line"]);
@@ -47,7 +47,8 @@ function Swatch({ c }: { c: ClassDef }) {
       );
     case "fpRes":
     case "fpBroad":
-      return <svg width="14" height="12" aria-hidden="true"><ellipse cx="7" cy="6" rx="5.5" ry="3.6" transform="rotate(-25 7 6)" fill="none" stroke={col} strokeWidth="1.6" strokeDasharray={c.id === "fpBroad" ? "2.5 1.8" : undefined} /></svg>;
+    case "fpNone":
+      return <svg width="14" height="12" aria-hidden="true"><ellipse cx="7" cy="6" rx="5.5" ry="3.6" transform="rotate(-25 7 6)" fill="none" stroke={col} strokeWidth="1.6" strokeDasharray={c.id === "fpBroad" ? "2.5 1.8" : c.id === "fpNone" ? "1 2" : undefined} /></svg>;
     case "dpos":
     case "dneg":
       return (

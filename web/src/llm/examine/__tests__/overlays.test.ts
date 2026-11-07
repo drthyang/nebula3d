@@ -296,22 +296,22 @@ describe("v2: the Bragg peaks", () => {
     peaks: {
       cols: ["hkl", "q", "significance", "resolution_limited"],
       rows: [
-        [[2, 0, 0], 3.2, 40, [true, true, true]],
-        [[1, 1, 1], 2.8, 30, [true, false, true]],
+        [[2, 0, 0], 3.2, 40, [true, false, false]],
+        [[1, 1, 1], 2.8, 30, [false, false, false]],
         [[0, 0, 2], 3.2, 20, null],
       ],
     },
   };
   const fp = (hkl: [number, number, number]) => ({ hkl, widths: [0.02, 0.03, 0.04] as [number, number, number], principal: null, dirs: null });
 
-  it("draws each listed peak's footprint: solid resolution-limited, dashed broadened; the first 8 named", () => {
+  it("draws each listed peak's footprint: resolution-limited on an axis, broadened, not measured; the first 8 named", () => {
     const set = overlaysOf(step("bragg_peaks", {}, result, { braggPeaks: [fp([2, 0, 0]), fp([1, 1, 1]), fp([0, 0, 2])] }))!;
     expect(set.title).toBe("Bragg peaks");
-    expect(set.where).toBe("3 of 120 peaks by significance · 2 resolution-limited · 1 broadened");
+    expect(set.where).toBe("3 of 120 peaks by significance · 1 resolution-limited · 1 broadened · 1 not measured");
     expect(set.items.map((i) => [i.kind, i.cls, "label" in i ? i.label : null])).toEqual([
       ["footprint", "fpRes", "2 0 0"],
       ["footprint", "fpBroad", "1 1 1"],
-      ["footprint", "fpRes", "0 0 2"],
+      ["footprint", "fpNone", "0 0 2"],
     ]);
     expect(set.views).toEqual({ bragg: "primary", raw: "reading" });
     expect(set.measured).toEqual(["braggpunched"]);

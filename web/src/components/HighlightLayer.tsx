@@ -50,7 +50,11 @@ function onEllipse(p: DisplayEllipse, a: number): [number, number] {
   return [p.cx + u * Math.cos(t) - v * Math.sin(t), p.cy + u * Math.sin(t) + v * Math.cos(t)];
 }
 
+// The classes whose strongest mark carries its σ: the punch's leftovers.
+const SIGMA_CHIP = new Set<ClassId>(["node", "sharp", "broad", "protected"]);
+
 const DASH: Partial<Record<ClassId, string>> = {
+  fpNone: "1 2.5",
   broad: "4 3",
   AL: "5 3",
   RM: "2 2",
@@ -90,7 +94,7 @@ function label(x: number, y: number, text: string, color: string, key: string) {
 
 // A spot's radius (px): fixed by its class, or growing with its size (a ΔPDF feature's |σ|).
 function spotRadius(cls: ClassId, sigma: number): number {
-  if (cls === "dpos" || cls === "dneg") return Math.min(14, Math.max(5, 5 + 3 * Math.log10(Math.max(1, sigma / 5))));
+  if (cls === "dpos" || cls === "dneg") return Math.min(10, Math.max(4.5, 4.5 + 2 * Math.log10(Math.max(1, sigma / 5))));
   if (cls === "rotated") return 4;
   return cls === "broad" ? 9 : 7;
 }
@@ -133,7 +137,7 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
   // The slice's units to pixels: through its geometry (the angle between its axes), y up.
   const t = (angle * Math.PI) / 180;
   const pathMatrix = `matrix(${k * sx} 0 ${k * sy * Math.cos(t)} ${-k * sy * Math.sin(t)} ${tx} ${ty})`;
-  const strongest = primary && !small ? peaks.find((p) => p.style === "full") : undefined;
+  const strongest = primary && !small ? peaks.find((p) => p.style === "full" && SIGMA_CHIP.has(p.cls)) : undefined;
 
   const shellShape = (s: DrawnShell, i: number) => {
     const p = px(s.e);
@@ -166,6 +170,13 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
   // A code chip on each full shell of the view the check reads, spread around it, none over another.
   const placed: { x: number; y: number; w: number }[] = [];
   const free = (x: number, y: number, cw: number) => placed.every((b) => Math.abs(b.x - x) > (b.w + cw) / 2 + 2 || Math.abs(b.y - y) > 16);
+  // A mark's name, above it, where it sits clear of the view's labels and of every name placed before it.
+  const nameAt = (x: number, y: number, text: string, color: string) => {
+    const cw = 6 * text.length + 6;
+    if (small || !clear(x, y) || !free(x, y, cw)) return null;
+    placed.push({ x, y, w: cw });
+    return label(x, y, text, color, "l");
+  };
   const shellChips =
     primary && !small
       ? shells
@@ -266,7 +277,7 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
             <g key={`f${i}`} data-hl={f.cls} opacity={f.style === "faint" ? 0.6 : 1}>
               {ring(HALO, 3.4)}
               {ring(c, 1.5)}
-              {f.label && !small && label(p.cx, p.cy - Math.max(rx, ry) - 9, f.label, c, "l")}
+              {f.label && nameAt(p.cx, p.cy - Math.max(rx, ry) - 9, f.label, c)}
             </g>
           );
         })}
@@ -276,6 +287,20 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
               const [x0, y0] = displayToPixel(viewport, a.X, a.Y, w, h);
               const [x1, y1] = displayToPixel(viewport, a.X + a.dX, a.Y + a.dY, w, h);
               const len = Math.hypot(x1 - x0, y1 - y0);
+              const across = Math.abs(a.dZ) * k; // px, along the cut's axis
+              if (across > len && across >= 2) {
+                // Mostly out of the cut (⊙) or into it (⊗), its size the shift's.
+                if (x0 < -10 || x0 > w + 10 || y0 < -10 || y0 > h + 10) return null;
+                const r = Math.min(9, Math.max(3, across / 2));
+                const mark = a.dZ > 0 ? <circle cx={x0} cy={y0} r={1.4} fill={color(a.cls)} /> : <path d={`M${x0 - r * 0.6} ${y0 - r * 0.6}L${x0 + r * 0.6} ${y0 + r * 0.6}M${x0 + r * 0.6} ${y0 - r * 0.6}L${x0 - r * 0.6} ${y0 + r * 0.6}`} stroke={color(a.cls)} strokeWidth={1.3} />;
+                return (
+                  <g key={i}>
+                    <circle cx={x0} cy={y0} r={r} fill="none" stroke={HALO} strokeWidth={3.2} />
+                    <circle cx={x0} cy={y0} r={r} fill="none" stroke={color(a.cls)} strokeWidth={1.4} />
+                    {mark}
+                  </g>
+                );
+              }
               if (len < 2 || Math.max(x0, x1) < -10 || Math.min(x0, x1) > w + 10 || Math.max(y0, y1) < -10 || Math.min(y0, y1) > h + 10) return null;
               const ux = (x1 - x0) / len, uy = (y1 - y0) / len;
               const head = Math.min(6, len / 2);
@@ -295,7 +320,7 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
           if (x < -12 || x > w + 12 || y < -12 || y > h + 12) return null;
           const c = color(p.cls);
           const faint = p.style === "faint";
-          const dash = faint || p.cls === "broad" || p.cls === "fpBroad" ? "3 2" : undefined;
+          const dash = faint || p.cls === "broad" || p.cls === "fpBroad" ? "3 2" : p.cls === "fpNone" ? "1 2.5" : undefined;
           const sw = faint ? 1.2 : p.cls === "broad" ? 1.3 : 1.8;
           const r = spotRadius(p.cls, p.sigma);
           const shape = (stroke: string, width: number) => {
@@ -320,7 +345,7 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
               {(p.cls === "dpos" || p.cls === "dneg") && r >= 6 && (
                 <path d={p.cls === "dpos" ? `M${x - 3} ${y}h6M${x} ${y - 3}v6` : `M${x - 3} ${y}h6`} stroke={c} strokeWidth={1.4} />
               )}
-              {p.label && label(x, y - r - 9, p.label, c, "l")}
+              {p.label && nameAt(x, y - r - 9, p.label, c)}
             </g>
           );
         })}
