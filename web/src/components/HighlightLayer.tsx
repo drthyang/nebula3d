@@ -133,16 +133,25 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, exte
     );
   };
 
-  // A code chip on each full shell of the view the check reads, spread around it.
+  // Where a chip may sit: inside the view, off its axis labels, field of view and zoom buttons.
+  const clear = (x: number, y: number) => x > 30 && x < w - 30 && y > 30 && y < h - 34 && !(x > w - 110 && y < 100);
+  // A code chip on each full shell of the view the check reads, spread around it, none over another.
+  const placed: { x: number; y: number; w: number }[] = [];
+  const free = (x: number, y: number, cw: number) => placed.every((b) => Math.abs(b.x - x) > (b.w + cw) / 2 + 2 || Math.abs(b.y - y) > 16);
   const shellChips =
     primary && !small
       ? shells
           .filter((s) => s.style === "full" && codes[s.cls])
           .flatMap((s, i) => {
             const p = px(s.e);
-            for (let k2 = 0; k2 < 8; k2++) {
-              const [x, y] = onEllipse(p, ((-90 + (i * 47 + k2 * 45)) * Math.PI) / 180);
-              if (x > 16 && x < w - 16 && y > 10 && y < h - 10) return [chip(x, y, codes[s.cls]!, color(s.cls), `c${i}`)];
+            const text = codes[s.cls]!;
+            const cw = 6.2 * text.length + 8;
+            for (let k2 = 0; k2 < 16; k2++) {
+              const [x, y] = onEllipse(p, ((-90 + i * 47 + k2 * 22.5) * Math.PI) / 180);
+              if (clear(x, y) && free(x, y, cw)) {
+                placed.push({ x, y, w: cw });
+                return [chip(x, y, text, color(s.cls), `c${i}`)];
+              }
             }
             return [];
           })

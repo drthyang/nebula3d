@@ -317,16 +317,17 @@ function punchMapped(r: Found, data: OverlayData | undefined): Mapped | null {
   const n = (k: string) => num(r[k]);
   const sharp = n("leftover_off_lattice_sharp");
   const kept = n("leftover_on_protected_planes_sharp") ?? 0;
-  const where = [
-    n("leftover_at_nodes") != null && `${n("leftover_at_nodes")} missed at nodes`,
-    sharp != null && `${sharp - kept} sharp off-lattice`,
-    n("leftover_off_lattice_broad") != null && `${n("leftover_off_lattice_broad")} broad kept`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // The result first: what is left, the zeros left out.
+  const parts: [number | null, string][] = [
+    [n("leftover_at_nodes"), "missed at nodes"],
+    [sharp != null ? sharp - kept : null, "sharp off-lattice"],
+    [n("leftover_off_lattice_broad"), "broad kept"],
+  ];
+  const counted = parts.filter(([v]) => v != null);
+  const where = counted.filter(([v]) => v! > 0).map(([v, what]) => `${v} ${what}`).join(" · ");
   return {
     title: "Bragg punch",
-    where: where ? `${where}, over the three planes` : "leftover peaks",
+    where: where ? `${where}, on the three planes` : counted.length ? "no leftover peaks on the three planes" : "leftover peaks",
     help: PUNCH_HELP,
     measured: [PUNCHED],
     views: { [PUNCHED]: "primary", [RAW]: "reading" },

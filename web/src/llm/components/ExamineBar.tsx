@@ -115,7 +115,7 @@ export function ExamineBar({ shown, counts }: Props) {
                 {line}
               </span>
             ))}
-            <span className="ex-help-line">Counts are on this cut. Each chip turns its class on or off.</span>
+            <span className="ex-help-line">Counts are on this cut; a class with none here has no chip. Each chip turns its class on or off.</span>
           </HelpTip>
         )}
         {shown && !running && (
@@ -128,6 +128,8 @@ export function ExamineBar({ shown, counts }: Props) {
         <div className="ex-legend" role="group" aria-label="Highlights legend">
           {shown.set.classes.map((c) => {
             const on = !off.includes(c.id);
+            // A class with nothing on this cut has no chip (one turned off keeps its chip, to turn it on).
+            if (on && COUNTED.has(c.id) && !counts[c.id]) return null;
             return (
               <button
                 key={c.id}

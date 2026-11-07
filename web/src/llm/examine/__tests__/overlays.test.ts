@@ -69,7 +69,7 @@ describe("the Bragg punch", () => {
   it("draws every leftover the stage's data holds, the holes and round 2", () => {
     const set = overlaysOf(step("assess_stage", { stage: "punch" }, result, { leftovers, round2: [0, 0.1, 2, 0, -0.1, 2] }))!;
     expect(set.title).toBe("Bragg punch");
-    expect(set.where).toBe("1 missed at nodes · 2 sharp off-lattice · 1 broad kept, over the three planes");
+    expect(set.where).toBe("1 missed at nodes · 2 sharp off-lattice · 1 broad kept, on the three planes");
     expect(set.items.filter((i) => i.kind === "peak")).toHaveLength(5);
     expect([count(set.items, "node"), count(set.items, "sharp"), count(set.items, "broad"), count(set.items, "protected")]).toEqual([1, 2, 1, 1]);
     expect(count(set.items, "holes")).toBe(1);
@@ -77,6 +77,13 @@ describe("the Bragg punch", () => {
     expect(set.classes.map((c) => c.id)).toEqual(["node", "sharp", "broad", "protected", "holes", "r2"]);
     expect(set.views).toEqual({ braggpunched: "primary", raw: "reading" });
     expect(set.measured).toEqual(["braggpunched"]);
+  });
+
+  it("leaves the zeros out of its line", () => {
+    const zero = { punch: { leftover_at_nodes: 3, leftover_off_lattice_sharp: 0, leftover_on_protected_planes_sharp: 0, leftover_off_lattice_broad: 0 } };
+    expect(overlaysOf(step("assess_stage", { stage: "punch" }, zero))!.where).toBe("3 missed at nodes, on the three planes");
+    const none = { punch: { leftover_at_nodes: 0, leftover_off_lattice_sharp: 0, leftover_off_lattice_broad: 0 } };
+    expect(overlaysOf(step("assess_stage", { stage: "punch" }, none))!.where).toBe("no leftover peaks on the three planes");
   });
 
   it("without the stage's data, draws the holes alone", () => {
