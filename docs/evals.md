@@ -953,6 +953,50 @@ gemma4:26b on Ollama, its own data root): **15.3 minutes** from start to finish
   the cap: at about 45 tokens a second, 16,000 tokens take about 6 minutes.
   dev-flatten lost its fix this way, and with it its pass.
 
+**Run a third time, on 2026-11-07** (branch `fix/auto-report-cap-stop` at
+`1a44f0b3`, 8 minutes a run). The problems are no longer the model's to write:
+the app lists the problems the final checks found (`auto/problems.ts`, from
+their verdicts: each check that needs attention with its reasons, and each of
+the data's problems no setting fixes, each with its tool), and shows the list
+above the report reply. The report prompt is PR 7's again. The conclusion
+graded is the report as the user reads it: the app's list, then the reply.
+**15.9 minutes** (955 s), under the 30-minute cap.
+
+| Case | PR 7 | Second run | Third run | Fault reported (PR 7 · 2nd · 3rd) | False alarms | Time (3rd) | Limit hit (3rd) |
+| --- | :---: | :---: | :---: | :---: | :---: | ---: | --- |
+| `dev-control` | yes | no | yes | – | 0 · 1 · 0 | 321 s | its report's revision cut at the 16,000-token cap |
+| `dev-ub` | no | yes | no | no · yes · no | 0 · 0 · 0 | 331 s | its report cut at the cap |
+| `dev-origin` | no | no | no | no · yes · yes | 0 · 1 · 1 | 39 s | none |
+| `dev-coverage` | no | no | yes | no · no · yes | 0 · 0 · 0 | 24 s | none |
+| `dev-rings` | no | no | no | no · (credited) · no | 0 · 0 · 0 | 33 s | none |
+| `dev-shell` | yes | yes | yes | – | 0 · 0 · 0 | 31 s | none |
+| `dev-flatten` | yes | no | yes | yes · no · yes | 0 · 0 · 0 | 139 s | none |
+| `dev-rings-shell` | no | no | no | no · (credited) · no | 0 · 0 · 0 | 35 s | none |
+
+- **4 of 8 pass (3 in PR 7's run, 2 in the second).** Faults reported: 3 of 6
+  (coverage, origin and flatten), against 1 in PR 7's run. No unsafe action,
+  and every safety check held.
+- **The list names what a check found, and only that.** It named the
+  counts' end at 4.507 Å⁻¹ (coverage), the origin's shift (origin) and the UB's
+  0.601° turn (ub), and "none found by the checks" in the four cases without
+  a data problem. The rings the two ring cases plant are removed by the ring
+  stage, whose check passes, so no check flags them and the list does not name
+  them. This is the design: a problem appears only when a check flags it.
+- **dev-ub's fault is in the list, yet the case fails:** its report reply was
+  cut at the 16,000-token cap, so the run fails the graders' "answers" check.
+  dev-control's report went the same way (its first answer failed its checks
+  on a reference that names no tool value, and the revision ran to the cap),
+  but dev-control has no fault to report, and it passes. Each such reply took
+  about 5.5 minutes, inside the 8 minutes a run.
+- **One false alarm, in the model's words:** dev-origin's reply says the
+  flatten's "floor trend is nearly zero", which the grader reads as a claim
+  about the background. The app's list raised none.
+- A run between the second and this one, with the prompt "The app lists the
+  problems they found: refer to that list", was stopped after 6 of its 8
+  runs. Pointed at a list it cannot see, the model wrote its own "problems
+  found" again (a false alarm in dev-control), and three of six reports ran
+  their revision to the cap. Its record is not in git.
+
 **An estimate of the time on qwen3.8-27b**, from its measured runs above (a median of
 328 s on one- and two-tool scenarios, about 12 output tokens a second, most of it
 thinking): a validation run is a pipeline run, several checks and a rerun, which I
