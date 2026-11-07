@@ -47,6 +47,7 @@ const VIA_DETAIL: Record<Proposal["source"]["via"], string> = {
   trial: "A trial of the tuning run.",
   apply: "A change you applied: the outputs predate it.",
   undo: "A change you undid: the outputs predate it.",
+  auto: "Auto mode made this, through the model's own update_settings or tune_pipeline call under every guard, or ran it.",
 };
 
 /** The card's fields as the settings hold them, as one string a store selector can compare. */
@@ -283,7 +284,7 @@ function DoneCard({ p, decision }: { p: Proposal; decision: Decision | undefined
   const busy = useChatStore((s) => s.busy);
   const text = p.kind === "run" ? p.title : changeText(p.title, decision?.shown ?? p.shown);
   const what =
-    p.status === "dismissed" ? "dismissed" : p.status === "undone" ? "undone" : p.kind === "run" ? "run by you" : `applied by ${decision ? byText(decision) : "you"}`;
+    p.status === "dismissed" ? "dismissed" : p.status === "undone" ? "undone" : p.kind === "run" ? `run by ${decision ? byText(decision) : "you"}` : `applied by ${decision ? byText(decision) : "you"}`;
   return (
     <div className={`pc-done pc-done--${p.status}`} data-proposal={p.id}>
       <span className="ok" aria-hidden="true">
@@ -315,6 +316,17 @@ export function ProposalCards({ turn, ctx }: { turn: number; ctx: ToolContext | 
       {mine.map((p) => (p.status === "open" ? <OpenCard key={p.id} p={p} ctx={ctx} /> : <DoneCard key={p.id} p={p} decision={applied(p)} />))}
     </section>
   );
+}
+
+/**
+ * One card by its id, wherever it was made: the fact an auto run waits for,
+ * pinned where the run shows (AutoHook; PR 7's panel). Its Apply is the
+ * card's own, on the user's click; Dismiss declines it.
+ */
+export function PinnedCard({ id, ctx }: { id: string; ctx: ToolContext | null }) {
+  const p = useDecisionStore((s) => s.proposals.find((x) => x.id === id));
+  if (!p || p.status !== "open") return null;
+  return <OpenCard p={p} ctx={ctx} />;
 }
 
 /** A tuning trial's Apply, on its row (TuneProgress): its settings onto the Configure page. */

@@ -182,7 +182,7 @@ const oneOf = <T extends string>(v: unknown, xs: readonly T[]): v is T => isStr(
 
 const KINDS: readonly ProposalKind[] = ["setting", "fact", "run", "trial"];
 const STATUSES: readonly ProposalStatus[] = ["open", "applied", "dismissed", "undone"];
-const VIAS: readonly ProposalVia[] = ["refused", "rerun", "ask_user", "suggestion", "answer", "trial", "apply", "undo"];
+const VIAS: readonly ProposalVia[] = ["refused", "rerun", "ask_user", "suggestion", "answer", "trial", "apply", "undo", "auto"];
 const HELD: readonly Held[] = ["fact", "choice", "symmetry", "ring", "user-only"];
 const ACTIONS: readonly DecisionAction[] = ["apply", "edit-apply", "dismiss", "undo"];
 

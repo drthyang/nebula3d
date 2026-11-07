@@ -59,6 +59,10 @@ import { BUNCHING_REMEDY, offLatticeBunching } from "../metrics/bunching";
 import { BUNCHED_AT_THIRDS, recordOf } from "./helpers";
 import { namedInOwnWords, quotations } from "./methodText";
 import { budgetSince, everyKind } from "./sinceSamples";
+import { longestDigest } from "./autoSamples";
+import { FIX_TOOLS, REPORT_TOOLS } from "../auto/controller";
+import { AUTO_LIMITS } from "../auto/plan";
+import { autoMessages, fixLabel, fixPrompt, REPORT_LABEL, REPORT_PROMPT } from "../auto/prompts";
 import { DATASET, DATASETS, freshConsole, installBackend, regridAnswer } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
@@ -1095,5 +1099,77 @@ describe("5. the text sent back to the model", () => {
         c.body,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/5-agent-loop-arm-c.md`);
+  });
+});
+
+// ---------------------------------------------------------------- 7. auto mode
+
+// Auto mode's replies (auto/controller.ts, auto/prompts.ts): each one in place
+// of the question, with no chat history: the run's digest at the end of the
+// context, a fixed phase prompt, and the phase's checks seeded as a round of
+// the app's calls (agent.ts), or in the prompt's message on a transport that
+// refuses that (prompts/seeded.ts, auto/transport.ts).
+describe("7. auto mode's replies", () => {
+  it("the phase prompts, the digest, the offer, and a fix reply's first request in both seed forms", async () => {
+    freshConsole();
+    const ctx: ToolContext = { dataset: DATASET, datasets: DATASETS, userMessage: "" };
+    // The punch's check, as the app runs it and keeps it.
+    const checked = await runToolCall({ id: "x", type: "function", function: { name: "assess_stage", arguments: '{"stage":"punch"}' } }, CHAT_TOOLS, ctx);
+    const seed: AgentStep[] = [{ id: "auto:1", name: "assess_stage", args: checked.args, status: "done", summary: checked.summary, result: checked.text, ...(checked.outcomes ? { outcomes: checked.outcomes } : {}) }];
+    const digestText = longestDigest("punch");
+    const messages = autoMessages(context, digestText, fixPrompt("punch"), AUTO_LIMITS.fixRounds);
+    // The digest ends the context, as the since line does; no measured number is in it.
+    expect(messages[1].content).toBe(`${buildChatMessages(context, [], "", null, { tools: true })[1].content as string}\n${digestText}`);
+    const sentFirst = async (form: "round" | "message"): Promise<ChatMessage[]> => {
+      let first: ChatMessage[] = [];
+      model.streamChat.mockImplementationOnce((args: { messages: ChatMessage[] }) => {
+        first = [...args.messages];
+        return (async function* () {
+          yield { content: "No change would help." } as StreamDelta;
+        })();
+      });
+      await runAgent({ messages, tools: FIX_TOOLS, ctx, settings: { ...DEFAULT_SETTINGS, followViews: false }, signal: new AbortController().signal, checkAnswers: false, userMessage: "", maxRounds: AUTO_LIMITS.fixRounds, seed: { steps: seed, form } });
+      return first;
+    };
+    const round = await sentFirst("round");
+    const inMessage = await sentFirst("message");
+    expect(round.slice(0, 4)).toEqual(messages);
+    expect(inMessage.length).toBe(4);
+    const offered = (prompt: string, tools: readonly AgentTool[]) => toolsFor(prompt, tools).map((t) => t.name).join(", ");
+    const body = [
+      "## The phase prompts",
+      "",
+      ...(["rings", "punch", "backfill", "flatten", "pdf"] as const).flatMap((s) => [`### Fix: ${s}`, "", fence(fixPrompt(s)), ""]),
+      "### Report",
+      "",
+      fence(REPORT_PROMPT),
+      "",
+      "The transcript's line before each (the user turn the chat keeps; later chat history, never the guard's user words): " +
+        `${["rings", "punch"].map((s) => `\`${fixLabel(s as "rings", 1, AUTO_LIMITS.fixesPerStage)}\``).join(", ")}, \`${REPORT_LABEL}\`.`,
+      "",
+      "## What a local model is offered (localTools.ts, of the tools each reply holds)",
+      "",
+      `- a fix (${FIX_TOOLS.length} held; all but run_pipeline and regrid_refined_ub): ${offered(fixPrompt("punch"), FIX_TOOLS)}`,
+      `- the report (${REPORT_TOOLS.length} held; the reading ones): ${offered(REPORT_PROMPT, REPORT_TOOLS)}`,
+      "",
+      "## The report's digest at its longest",
+      "",
+      fence(longestDigest(null)),
+      "",
+      "## A fix of the punch, its first request: the checks as a round of calls (Ollama, LM Studio, OpenAI)",
+      "",
+      renderMessages(round, 1),
+      "",
+      "## The same, the checks in the message (Claude with adaptive thinking, Gemini)",
+      "",
+      renderMessages(inMessage, 3),
+    ].join("\n");
+    await expect(
+      doc(
+        "Auto mode's replies",
+        "What an auto-mode reply reads (auto/prompts.ts): the system prompt with the reply's own round limit, the dataset's summary with the run's digest after it (the plan's outcomes in words and the run's decisions as the since line words them, at their longest: autoSamples.ts), a fixed phase prompt, and the phase's checks seeded (agent.ts) as a round of the app's calls or in the phase message (prompts/seeded.ts). The fix sampled is the Bragg punch's, its check the synthetic crystal's.",
+        body,
+      ),
+    ).toMatchFileSnapshot(`${SNAPSHOTS}/7-auto-mode.md`);
   });
 });

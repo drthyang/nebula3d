@@ -11,7 +11,7 @@ import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
 import type { ChatMessage } from "../provider/client";
 import { readSkill } from "../skills";
-import { BARREN_ROUNDS, callKey, CHAT_TOOLS, forget, runRound, startReply, type AgentTool, type Args } from "../tools";
+import { BARREN_ROUNDS, callKey, CHAT_TOOLS, forget, runRound, seedRound, startReply, type AgentTool, type Args } from "../tools";
 import { makeSlice } from "./helpers";
 
 // The reads dpdf_contrast and run_pipeline make.
@@ -364,6 +364,53 @@ describe("runRound", () => {
       expect(shown).toEqual([optimised, optimised, null, optimised]);
       expect(JSON.parse(String(second.results[2].message.content)).applied).toMatchObject({ limit: 100, from: expect.stringMatching(/^optimised/) });
     });
+  });
+});
+
+// An auto-mode phase's checks, already run by the app, as a reply's first
+// steps (auto/controller.ts, agent.ts's seed).
+describe("seedRound", () => {
+  const ran = (name: string, args: Args, id = name): AgentStep => ({ id, name, args, status: "done", summary: `${name} ran`, result: JSON.stringify({ [name]: "ok" }) });
+
+  it("makes the app's steps the reply's first, numbered as the reply's own, in its history and replySteps", () => {
+    const start = startReply(ctx, CHAT_TOOLS);
+    const seeded = seedRound([ran("assess_stage", { stage: "punch" }, "auto:1"), ran("texture_check", {}, "auto:2")], start);
+    expect(seeded.results.map((r) => r.step.id)).toEqual(["0:seed_1", "1:seed_2"]);
+    expect(seeded.replay.map((c) => [c.id, c.function.name, c.function.arguments])).toEqual([
+      ["seed_1", "assess_stage", '{"stage":"punch"}'],
+      ["seed_2", "texture_check", "{}"],
+    ]);
+    expect(seeded.results.map((r) => r.message)).toEqual([
+      { role: "tool", tool_call_id: "seed_1", content: '{"assess_stage":"ok"}' },
+      { role: "tool", tool_call_id: "seed_2", content: '{"texture_check":"ok"}' },
+    ]);
+    expect(seeded.history.steps).toBe(2);
+    expect(seeded.history.ctx.replySteps?.map((s) => s.id)).toEqual(["0:seed_1", "1:seed_2"]);
+    // The history it was given stands.
+    expect(start.steps).toBe(0);
+    expect(start.ctx.replySteps).toEqual([]);
+  });
+
+  it("holds a call with the same arguments to the seeded step, and the next round numbers on after it", async () => {
+    const { tool: measure, runs } = counting("measure");
+    const seeded = seedRound([ran("assess_stage", { stage: "rings" })], startReply(ctx, [measure, ...CHAT_TOOLS]));
+    const next = await runRound([call("c1", "assess_stage", { stage: "rings" }), call("c2", "measure", {})], seeded.history);
+    expect(next.results[0].repeatOf).toBe(1);
+    expect(next.results[0].step.summary).toBe("same call as step 1: not run again");
+    expect(next.results[1].step.id).toBe("2:c2");
+    expect(runs).toHaveLength(1);
+    expect(next.history.ctx.replySteps?.map((s) => s.id)).toEqual(["0:seed_1", "1:c1", "2:c2"]);
+  });
+
+  it("seeds only steps that read and have ended: never a change, a run, a skill read, or one still running", () => {
+    const start = startReply(ctx, CHAT_TOOLS);
+    for (const name of ["update_settings", "run_pipeline", "tune_pipeline", "regrid_refined_ub", "read_skill"]) {
+      expect(() => seedRound([ran(name, {})], start), name).toThrow(/cannot be seeded/);
+    }
+    expect(() => seedRound([{ ...ran("assess_stage", {}), status: "running" }], start)).toThrow(/must have ended/);
+    // An error is a step the reply reads, but no result the repeat guard keeps.
+    const failed = seedRound([{ ...ran("assess_stage", { stage: "pdf" }), status: "error", result: "Error: no output" }], start);
+    expect(failed.history.ran).toEqual([]);
   });
 });
 

@@ -7937,3 +7937,26 @@ html.kb-open .ai-side {
     font-size: 11px;
   }
 }
+
+/* Auto mode's minimal hook in the chat's dock (llm/components/AutoHook.tsx; PR 7 brings the panel). */
+.ai-auto {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-auto.is-open {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.ai-auto-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.ai-auto-now {
+  flex: 1 1 auto;
+  min-width: 0;
+}

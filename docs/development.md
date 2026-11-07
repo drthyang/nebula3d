@@ -310,6 +310,15 @@ drives the worst turn with the line for three decisions all the same: the line
 has its own ceiling (`SINCE_CEILING`), and the turn with it must fit 32k with
 `POLICY_SPARE` free; its size against the 20 % target is printed, not held.
 
+Auto mode's replies (`web/src/llm/auto/`) are never the worst turn either: each
+is asked in place of the question, with no chat history. Two cases drive them
+on a local model with their checks seeded and their longest digest: "auto:
+worst fix" (the largest of the five stages' fixes, its skill's core read and
+one change) and "auto: report" (every final check seeded, `dpdf_peaks` read).
+Each has its own ceiling (`AUTO_FIX_CEILING`, `AUTO_REPORT_CEILING`) and must
+fit the 20 % target with the reply reserve. Their phase prompts are in the
+model-visible snapshot `7-auto-mode.md`.
+
 `scripts/measure_pilot_context.sh` counts the same turn by the same estimator,
 by component and in more detail (every prompt section, tool definition, skill
 and result); its totals equal the test's.

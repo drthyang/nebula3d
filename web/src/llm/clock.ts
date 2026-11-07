@@ -44,6 +44,12 @@ export const pausedMs = (c: RunClock, now: number): number =>
 /** The time it worked: from the start to now (or the stop), less the pauses. */
 export const elapsedMs = (c: RunClock, now: number): number => Math.max(0, until(c, now) - c.startedAt - pausedMs(c, now));
 
+/** The run's whole time: from the start to now (or the stop), the pauses included. */
+export const totalMs = (c: RunClock, now: number): number => Math.max(0, until(c, now) - c.startedAt);
+
+/** The working time left before the limit (never below 0); null without one. */
+export const leftMs = (c: RunClock, now: number): number | null => (c.limitMs === undefined ? null : Math.max(0, c.limitMs - elapsedMs(c, now)));
+
 /** Whether the working time has reached the limit (never, without one). */
 export const overLimit = (c: RunClock, now: number): boolean => c.limitMs !== undefined && elapsedMs(c, now) >= c.limitMs;
 
@@ -60,12 +66,13 @@ export function formatDuration(ms: number): string {
 /**
  * The clock as one plain line, result first: "Working · 1:23" for a reply;
  * with a limit, "6:12 of 30:00"; in a pause, "Paused · …"; the paused time,
- * when there is any, after it ("· paused 2:05").
+ * when there is any, after it, with the run's whole time ("· paused 2:05 ·
+ * total 8:17"): the limit counts the working time alone.
  */
 export function clockLine(c: RunClock, now: number): string {
   const worked = formatDuration(elapsedMs(c, now));
   const state = c.endedAt !== null ? "Took" : c.pausedAt !== null ? "Paused" : "Working";
   const main = c.limitMs !== undefined ? `${worked} of ${formatDuration(c.limitMs)}` : worked;
   const paused = pausedMs(c, now);
-  return `${state} · ${main}${paused >= 1000 ? ` · paused ${formatDuration(paused)}` : ""}`;
+  return `${state} · ${main}${paused >= 1000 ? ` · paused ${formatDuration(paused)} · total ${formatDuration(totalMs(c, now))}` : ""}`;
 }
