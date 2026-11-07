@@ -26,6 +26,8 @@ import { Field, HelpTip, RangeSlider, Switch } from "../components/ui";
 import { ubTurnText } from "../components/ubTurn";
 import { useDatasetStore, useInitializeDataset } from "../state/datasetStore";
 import { declaresNone, modulationRequest } from "../state/modulation";
+import { FLATTEN_IONS } from "../state/flattenIons";
+import { pdfQBandPatch } from "../state/pdfBand";
 import { formatOp, gridProblem, LAUE_PRESETS, laueGroup, laueSpecOf, METRIC_TOLERANCE, metricChange, presetNamed, ubUnknown, type LaueGroup } from "../state/laue";
 import { useAgentEdits, type AgentEdit } from "../state/agentEdits";
 import { advancedShown, useConfigViewStore, type AdvancedStage } from "../state/configViewStore";
@@ -60,14 +62,6 @@ const DATASET_STAGE_BADGES = [
   { key: "flattened", label: "Background corrected", group: "Cleanup" },
   { key: "delta_pdf", label: "3D-ΔPDF", group: "Output" },
 ] as const;
-
-// Ions with a tabulated form factor for the flatten model (the default is none:
-// a constant only) — mirrors nebula3d.preprocessing.form_factor.IONS.
-const FLATTEN_IONS = [
-  "Tb3+", "Ti3+", "V3+", "V4+", "Cr3+", "Mn2+", "Mn3+", "Mn4+", "Fe2+", "Fe3+",
-  "Co2+", "Co3+", "Ni2+", "Ni3+", "Cu2+",
-  "Pr3+", "Nd3+", "Gd3+", "Dy3+", "Ho3+", "Er3+", "Tm3+", "Yb3+",
-];
 
 // One stage's section, the same for every stage: its head (number, title, one
 // plain line, the details behind "?", the Enable stage switch), its settings,
@@ -587,13 +581,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
 
   const updatePdfQBand = (lo: number, hi: number) => {
     if (!pdfQSpanMax) return;
-    const nextLo = Math.max(0, Math.min(lo, pdfQSpanMax));
-    const nextHi = Math.max(nextLo, Math.min(hi, pdfQSpanMax));
-    const isFull = nextLo <= 0 && Math.abs(nextHi - pdfQSpanMax) < 0.025;
-    patch({
-      pdfQMin: isFull ? "" : nextLo.toFixed(2),
-      pdfQMax: isFull ? "" : nextHi.toFixed(2),
-    });
+    patch(pdfQBandPatch(lo, hi, pdfQSpanMax));
   };
 
   const onRun = async () => {
