@@ -607,8 +607,11 @@ describe("the Now line and the activity log", () => {
     const a = activityNow()!;
     expect(a.now).toBe("Paused by you in the Bragg punch. Resume restarts it.");
     expect(a.rows.slice(-1)[0]).toMatchObject({ status: "stopped", title: "Paused by you", line: "In the Bragg punch; Resume restarts it" });
+    clock.t += 5_000; // paused five seconds
     await resumeAuto();
     expect(activityNow()!.rows.some((r) => r.status === "stopped")).toBe(false);
+    // The pause is kept apart from the time worked.
+    expect(run().clock.pausedMs).toBeGreaterThanOrEqual(5_000);
   });
 
   it("a limit: logs it and the stages it left unchecked", async () => {

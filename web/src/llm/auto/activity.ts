@@ -56,6 +56,19 @@ const stageNumber = (s: Stage): string => `stage ${STAGES.indexOf(s) + 1} of ${S
 const rowStage = (id: RowId | null): Stage | null => (id && isStage(id) ? id : null);
 const rowName = (id: RowId): string => (isStage(id) ? STAGE_NAMES[id] : id === "preflight" ? "the preflight" : id === "run" ? "the run" : "the report");
 
+// What the app's own calls are doing, in the present tense (a tool's label is the past tense of the transcript).
+const DOING: Readonly<Record<string, string>> = {
+  qmax_coverage: "checking Qmax against the coverage",
+  ub_check: "checking the UB",
+  grain_check: "checking for a second grain",
+  compare_laue_classes: "comparing the Laue classes",
+  run_pipeline: "running the pipeline",
+  assess_stage: "assessing a stage",
+  texture_check: "checking for texture",
+  symmetry_check: "checking the ΔPDF's symmetry",
+};
+const doing = (name: string): string => DOING[name] ?? lower(factsOf(name).runningLabel);
+
 /** A tuning under way, in words: "trial 2 of 3", or what it is doing between trials. */
 function tuningWords(tune: ActivityInput["tune"]): string | null {
   if (!tune.active) return null;
@@ -85,12 +98,14 @@ export function nowLine(a: ActivityInput): string {
   const appRunning = live?.status === "running" && live.id.startsWith(`auto:${run.id}:`) ? live : null;
   if (appRunning) {
     const name = appRunning.name;
-    if (at.id === "preflight") return `Preflight: ${lower(factsOf(name).runningLabel)}…`;
+    if (at.id === "preflight") return `Preflight: ${doing(name)}…`;
     if (at.id === "run") return "Running the pipeline…";
     if (at.id === "report") return name === "run_pipeline" ? "Running the pipeline before the report…" : "Running the final checks for the report…";
     if (stage && name === "run_pipeline") return at.tries ? `Running the pipeline from ${STAGE_NAMES[stage]} after fix ${at.tries}…` : `Running the pipeline before ${STAGE_NAMES[stage]}…`;
     if (stage) return at.tries ? `Checking ${STAGE_NAMES[stage]} again after fix ${at.tries}…` : `Checking ${STAGE_NAMES[stage]} (${stageNumber(stage)})…`;
   }
+  if (at.id === "preflight") return "Preflight: checking the raw volume…";
+  if (at.id === "run") return "Running the pipeline…";
   if (at.id === "report") return "Writing the report";
   if (stage && at.status === "fixing") return tuningWords(a.tune) ?? `Fixing ${STAGE_NAMES[stage]}, try ${at.tries} of ${run.limits.fixesPerStage}`;
   if (stage) return `Checking ${STAGE_NAMES[stage]} (${stageNumber(stage)})…`;
@@ -171,7 +186,7 @@ export function activityRows(a: ActivityInput): ActivityRow[] {
   // Under way: the app's step, or a reply of the run's.
   if (run.state === "running") {
     const live = a.live?.status === "running" && a.live.id.startsWith(`auto:${run.id}:`) ? a.live : null;
-    if (live) rows.push({ key: live.id, status: "running", title: factsOf(live.name).runningLabel, line: "…", detail: [], step: live.id });
+    if (live) rows.push({ key: live.id, status: "running", title: cap(doing(live.name)), line: "…", detail: [], step: live.id });
     else if (a.replying) {
       const last = [...a.turns].reverse().find((t) => t.role === "user");
       const doing = a.replySteps.find((s) => s.status === "running");

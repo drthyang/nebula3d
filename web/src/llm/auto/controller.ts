@@ -54,6 +54,7 @@ import type { PipelineContext } from "../context/pipelineContext";
 import { askAssistant, type ReplyOutcome } from "../session";
 import { loadSettings, type LlmSettings } from "../settings";
 import { callTool, CHAT_TOOLS, factsOf, type AgentTool, type ToolContext } from "../tools";
+import { openView } from "../tools/openView";
 import { useTuneStore } from "../tune/tuner";
 import { RUN_STAGES, type ParamValue, type RunStage } from "../tune/catalog";
 import { addUsage, measured, notCounted, type Usage } from "../usage";
@@ -512,6 +513,8 @@ async function appStep(call: Call): Promise<AgentStep> {
   };
   patchRun((x) => ({ steps: [...x.steps, keptStep(step)] }));
   useAutoStore.setState({ live: out.overlay ? { ...step, overlay: out.overlay } : step });
+  // Follow, as a reply's steps do (agent.ts): the console goes to the figure the step looked at.
+  if (step.status === "done" && step.view && s.settings.followViews) openView(step.view);
   return step;
 }
 
