@@ -38,6 +38,7 @@ import {
   type TuneStage,
 } from "../tune/catalog";
 import type { StageRun } from "../tune/tuner";
+import { settingLabel } from "../../pages/configSections";
 import type { PipelineConfig } from "../../state/pipelineStore";
 
 export type ProposalKind = "setting" | "fact" | "run" | "trial";
@@ -83,27 +84,30 @@ interface CardSetting {
   write: (value: unknown) => Partial<PipelineConfig>;
 }
 
-const AXIS_TITLE: Record<string, string> = {
-  punchSupercellH: "Supercell along H",
-  punchSupercellK: "Supercell along K",
-  punchSupercellL: "Supercell along L",
-  modulation: "Modulation",
-  edgeTrim: "Edge trim",
-};
+// A stage's word before a setting's label on a card: "Punch min σ" (the
+// Configure page shows the label inside its stage's section).
+const STAGE_WORD: Record<TuneStage, string> = { rings: "Ring", punch: "Punch", backfill: "Backfill", flatten: "Background", pdf: "ΔPDF" };
+const lowerFirst = (s: string): string => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
+
+/** A method setting's name on a card: its stage's word and its Configure label (pages/configSections.ts). */
+export const methodTitle = (key: string, stage: TuneStage): string => `${STAGE_WORD[stage]} ${lowerFirst(settingLabel(key))}`;
+
+/** A fact's or a user-only setting's name on a card: its Configure label; the modulation, four fields there, as one. */
+const factTitle = (key: string): string => (key === "modulation" ? "Modulation" : settingLabel(key));
 
 // The same table update_settings checks its changes by (tools/defs/update_settings.ts, SETTABLE).
 const SETTINGS: CardSetting[] = [
   ...TUNE_PARAMS.map((p): CardSetting => ({
     key: p.key,
     stage: p.stage,
-    title: p.key,
+    title: methodTitle(p.key, p.stage),
     read: (s) => displayValue(p, s[p.key]),
     write: (value) => ({ [p.key]: toFormValue(p.key, value, p.stage) }),
   })),
   ...[...SAMPLE_PARAMS, ...USER_CHOICE_PARAMS].map((p): CardSetting => ({
     key: p.key,
     stage: p.stage,
-    title: AXIS_TITLE[p.key] ?? p.key,
+    title: factTitle(p.key),
     read: p.read,
     write: p.write,
   })),
@@ -116,14 +120,15 @@ export const cardSetting = (key: string): CardSetting | undefined => SETTINGS.fi
 export const SETTING_KEYS: readonly string[] = SETTINGS.map((s) => s.key);
 
 const isSymmetry = (key: string): boolean => (SYMMETRY_AVERAGE_SETTINGS as readonly string[]).includes(key);
-const USER_ONLY: Record<string, string> = { flattenIon: "Magnetic ion", pdfQMin: "|Q| band from", pdfQMax: "|Q| band to" };
+// The user-only settings update_settings has no write for, beside the symmetry average's.
+const USER_ONLY = new Set(["flattenIon", "pdfQMin", "pdfQMax"]);
 
 /** Why a card for `key` cannot be applied in this build, or undefined. */
 export function heldFor(key: string): Held | undefined {
   if (isSampleFact(key)) return "fact";
   if (isUserChoice(key)) return "choice";
   if (isSymmetry(key)) return "symmetry";
-  if (key in USER_ONLY) return "user-only";
+  if (USER_ONLY.has(key)) return "user-only";
   return undefined;
 }
 
@@ -181,13 +186,13 @@ export function buildProposals(input: BuildInput): Proposal[] {
   const settingDraft = (key: string, value: unknown, via: ProposalVia, step: AgentStep | null): Draft | null => {
     const setting = cardSetting(key);
     if (!setting) {
-      if (!isSymmetry(key) && !(key in USER_ONLY)) return null;
+      if (!isSymmetry(key) && !(USER_ONLY.has(key))) return null;
       // A setting update_settings has no write for: shown as asked, the user's to set.
       const field = key as keyof PipelineConfig;
       if (!(field in config)) return null;
       return {
         kind: "fact",
-        title: USER_ONLY[key] ?? key,
+        title: factTitle(key),
         change: { [key]: value as ParamValue },
         fields: {},
         from: pick(config, [key]),
@@ -244,7 +249,7 @@ export function buildProposals(input: BuildInput): Proposal[] {
         const changed = Array.isArray(r.changed) ? (r.changed as { setting?: unknown; from?: unknown; to?: unknown }[]) : [];
         const ranAfter = steps.slice(steps.indexOf(s) + 1).some((x) => x.name === "run_pipeline" && x.status === "done");
         if (rerun && changed.length && !ranAfter) {
-          drafts.push(runDraft(rerun, changed.map((c) => `${String(c.setting)} ${text(c.from)} → ${text(c.to)}`).join(", "), "rerun", s.id));
+          drafts.push(runDraft(rerun, changed.map((c) => `${cardSetting(String(c.setting))?.title ?? String(c.setting)} ${text(c.from)} → ${text(c.to)}`).join(", "), "rerun", s.id));
         }
       } else if (s.status === "error") {
         // Every change refused (the call fails then), or a key it cannot set at all.
@@ -272,7 +277,7 @@ export function buildProposals(input: BuildInput): Proposal[] {
     if (s.name === "compare_laue_classes" && typeof r.suggestion === "string" && r.suggestion && r.suggestion !== config.symmetryLaue) {
       drafts.push({
         kind: "fact",
-        title: "Laue class",
+        title: settingLabel("symmetryLaue"),
         change: { symmetryLaue: r.suggestion },
         fields: { symmetryLaue: r.suggestion },
         from: pick(config, ["symmetryLaue"]),

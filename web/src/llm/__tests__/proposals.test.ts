@@ -39,7 +39,7 @@ describe("the proposals a reply's tools lead to", () => {
       turn: 4,
       kind: "fact",
       held: "fact",
-      title: "Supercell along L",
+      title: "Supercell L",
       change: { punchSupercellL: 2 },
       fields: { punchSupercellL: "2" },
       from: { punchSupercellL: "" },
@@ -55,7 +55,7 @@ describe("the proposals a reply's tools lead to", () => {
   it("a change and no run after it: a Run card from its rerun_from; a run after it: none", () => {
     const set = step("update_settings", { changes: { punchMinSig: 6 } }, { changed: [{ setting: "punchMinSig", from: 5, to: 6 }], rerun_from: "punch" }, "u1");
     const [run] = build({ steps: [set] });
-    expect(run).toMatchObject({ kind: "run", title: "Run from Bragg punch", runFrom: "punch", shown: { from: "", to: "punchMinSig 5 → 6" }, source: { via: "rerun" } });
+    expect(run).toMatchObject({ kind: "run", title: "Run from Bragg punch", runFrom: "punch", shown: { from: "", to: "Punch min σ 5 → 6" }, source: { via: "rerun" } });
     const ran = step("run_pipeline", { from_stage: "punch" }, { ended: "done" }, "r1");
     expect(build({ steps: [set, ran] })).toEqual([]);
   });
@@ -83,7 +83,7 @@ describe("the proposals a reply's tools lead to", () => {
     );
     expect(build({ steps: [refused] }).map((p) => [p.title, p.held])).toEqual([
       ["Edge trim", "choice"],
-      ["symmetryLaue", "symmetry"],
+      ["Laue class", "symmetry"],
     ]);
   });
 
@@ -114,7 +114,7 @@ describe("the proposals a reply's tools lead to", () => {
 
   it("a setting the answer names with a value no call set: a card marked as the answer's", () => {
     const [p] = build({ answer: "The leftovers are faint; I suggest punchMinSig 6 and another run." });
-    expect(p).toMatchObject({ kind: "setting", title: "punchMinSig", source: { via: "answer" }, fields: { punchMinSig: "6" }, shown: { from: "5", to: "6" }, evidence: [] });
+    expect(p).toMatchObject({ kind: "setting", title: "Punch min σ", source: { via: "answer" }, fields: { punchMinSig: "6" }, shown: { from: "5", to: "6" }, evidence: [] });
     // A call set it: the call's card (or none), not the answer's.
     const set = step("update_settings", { changes: { punchMinSig: 6 } }, { changed: [{ setting: "punchMinSig", from: 5, to: 6 }], rerun_from: "punch" });
     expect(build({ steps: [set], answer: "I set punchMinSig to 6." }).map((x) => x.source.via)).toEqual(["rerun"]);
@@ -149,11 +149,18 @@ describe("the proposals a reply's tools lead to", () => {
     expect(build({ tune: [run] })).toEqual([]);
   });
 
+  it("names a method setting by its stage and its Configure label, the key behind it", () => {
+    const [p] = build({ answer: "punchMinSig 6" });
+    expect(p.title).toBe("Punch min σ");
+    expect(Object.keys(p.change)).toEqual(["punchMinSig"]);
+    expect(build({ answer: "punchHGuard 0.2" })[0].title).toBe("Punch H guard (r.l.u.)"); // a capital that is no word's start stays
+  });
+
   it("numbers on from firstId, and the same change twice is one card", () => {
     const ps = build({ answer: "punchMinSig 6. Again: punchMinSig → 6, and ringPooledSectors 32.", firstId: 7 });
     expect(ps.map((p) => [p.id, p.title])).toEqual([
-      ["P7", "ringPooledSectors"],
-      ["P8", "punchMinSig"],
+      ["P7", "Ring sectors (n)"],
+      ["P8", "Punch min σ"],
     ]);
   });
 });

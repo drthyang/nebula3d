@@ -47,7 +47,7 @@ import { useChatStore } from "../llm/chatStore";
 import { useMarkStore } from "../state/markStore";
 import { CLOSE_CONFIRM, closeNeedsConfirm, closeVolume } from "../state/closeVolume";
 import { captureSession, noteSessionSaved, parseSession, restoreSession, sessionFileName, useSessionNote, type SessionNote } from "../state/session";
-import { advancedFields, changedFields, foldsHolding, SECTION_SUMMARY, type SectionStage } from "./configSections";
+import { advancedFields, changedFields, foldsHolding, SECTION_SUMMARY, SETTING_LABEL, type SectionStage } from "./configSections";
 
 // The outputs on disk, in pipeline order. The symmetrized volume is the
 // optional stage 0's: shown when the stage is on, or its output exists.
@@ -1097,7 +1097,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                 }
               />
               <div className="cfg-fields">
-                <Field className={flash("edgeTrim")} label="Edge trim">
+                <Field className={flash("edgeTrim")} label={SETTING_LABEL.edgeTrim}>
                   <select
                     aria-label="Edge trim"
                     value={String(edgeTrimLayers(s))}
@@ -1118,7 +1118,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             <div className="cfg-box">
               <BoxHead title="Laue class" />
               <div className="cfg-fields">
-                <Field className={focusFlash ? `cfg-flash cfg-flash-${focusFlash % 2}` : flash("symmetryLaue")} label="Laue class">
+                <Field className={focusFlash ? `cfg-flash cfg-flash-${focusFlash % 2}` : flash("symmetryLaue")} label={SETTING_LABEL.symmetryLaue}>
                   <select
                     value={lauePreset ? lauePreset[0] : s.symmetryLaue.trim() ? "custom" : ""}
                     title="The sample's Laue class: trigonal and hexagonal classes are on hexagonal axes"
@@ -1218,7 +1218,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   )}
                   {s.ringModel === "pooled" && (
                     <>
-                      <Field className={flash("ringPooledSectors")} label="Sectors (n)">
+                      <Field className={flash("ringPooledSectors")} label={SETTING_LABEL.ringPooledSectors}>
                         <input
                           type="number"
                           min="8"
@@ -1229,7 +1229,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                           onChange={(e) => patch({ ringPooledSectors: e.target.value })}
                         />
                       </Field>
-                      <Field className={flash("ringPooledWindow")} label="Stack window (°)">
+                      <Field className={flash("ringPooledWindow")} label={SETTING_LABEL.ringPooledWindow}>
                         <input
                           type="number"
                           min="0.5"
@@ -1319,7 +1319,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     </Field>
                   )}
                   {(s.ringModel === "patched" || s.ringModel === "parametric") && (
-                    <Field className={flash("ringNFourier")} label="Fourier order">
+                    <Field className={flash("ringNFourier")} label={SETTING_LABEL.ringNFourier}>
                       <input
                         type="number"
                         min="0"
@@ -1337,7 +1337,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
           >
             <div className="cfg-box">
               <div className="cfg-fields">
-                <Field className={flash("ringModel")} label="Model">
+                <Field className={flash("ringModel")} label={SETTING_LABEL.ringModel}>
                   <select
                     value={s.ringModel}
                     title="Pooled: per-sector radial profiles pooled across neighbouring planes (follows rings whose radius wanders with direction). Global 3D: sample-only spherical-shell inference with uncertainty. Patched/parametric: legacy plane-by-plane models."
@@ -1362,7 +1362,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                         <option value="generic">Material agnostic</option>
                       </select>
                     </Field>
-                    <Field className={flash("ringGlobalSubtraction")} label="Subtraction">
+                    <Field className={flash("ringGlobalSubtraction")} label={SETTING_LABEL.ringGlobalSubtraction}>
                       <select
                         value={s.ringGlobalSubtraction}
                         title="Conservative subtracts the lower confidence bound; Mean subtracts the fitted mean; Diagnose only leaves intensity unchanged."
@@ -1406,7 +1406,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             advanced={
               <AdvancedFold stage="punch" changed={changed("punch")}>
                 <div className="cfg-fields">
-                  <Field className={flash("punchProfileNSigma")} label="Profile reach ×σ">
+                  <Field className={flash("punchProfileNSigma")} label={SETTING_LABEL.punchProfileNSigma}>
                     <input
                       type="number"
                       step="0.1"
@@ -1418,7 +1418,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchProfileNSigma: e.target.value })}
                     />
                   </Field>
-                  <Field className={flash("punchHGuard")} label="H guard (r.l.u.)">
+                  <Field className={flash("punchHGuard")} label={SETTING_LABEL.punchHGuard}>
                     <input
                       type="number"
                       step="0.01"
@@ -1429,7 +1429,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchHGuard: e.target.value })}
                     />
                   </Field>
-                  <Field className={flash("punchSearchFloor")} label="Search floor ×σ">
+                  <Field className={flash("punchSearchFloor")} label={SETTING_LABEL.punchSearchFloor}>
                     <input
                       type="number"
                       step="1"
@@ -1440,7 +1440,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSearchFloor: e.target.value })}
                     />
                   </Field>
-                  <Field className={flash("punchSearchMaxWidth")} label="Search width ×Bragg">
+                  <Field className={flash("punchSearchMaxWidth")} label={SETTING_LABEL.punchSearchMaxWidth}>
                     <input
                       type="number"
                       step="0.1"
@@ -1484,7 +1484,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   )}
                   <div className={cls("switch-row", flash("punchFitUnconstrained"))}>
                     <Switch
-                      label="Drop fit constraints"
+                      label={SETTING_LABEL.punchFitUnconstrained}
                       checked={s.punchFitUnconstrained}
                       onChange={(v) => patch({ punchFitUnconstrained: v })}
                     />
@@ -1516,7 +1516,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               <div className="cfg-box">
                 <BoxHead title="Detection" />
                 <div className="cfg-fields">
-                  <Field className={flash("punchFootprint")} label="Footprint">
+                  <Field className={flash("punchFootprint")} label={SETTING_LABEL.punchFootprint}>
                     <select
                       value={s.punchFootprint}
                       title="How far each peak is punched. Own width (default): each peak to its own measured width, as far as that peak stays above the noise, so a sharp spike on a broad maximum takes a small punch. Profile-matched: every peak shares the dataset's learned Bragg profile (a consistent width), punched as far as it stays above the noise. Ellipsoid: the fixed resolution ellipsoid below, scaled with intensity."
@@ -1527,7 +1527,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       <option value="ellipsoid">Ellipsoid</option>
                     </select>
                   </Field>
-                  <Field className={flash("punchMinSig")} label="Min σ">
+                  <Field className={flash("punchMinSig")} label={SETTING_LABEL.punchMinSig}>
                     <input
                       type="number"
                       step="0.5"
@@ -1543,7 +1543,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchMinSig: e.target.value })}
                     />
                   </Field>
-                  <Field className={flash("punchMode")} label="Mode">
+                  <Field className={flash("punchMode")} label={SETTING_LABEL.punchMode}>
                     <select
                       value={s.punchMode}
                       title="Which peaks to punch: integer (the lattice nodes), search (off-lattice peaks found in |Q| shells) or both"
@@ -1570,7 +1570,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   }
                 />
                 <div className="config-grid-3">
-                  <Field className={flash("punchSupercellH")} label="Supercell H">
+                  <Field className={flash("punchSupercellH")} label={SETTING_LABEL.punchSupercellH}>
                     <input
                       type="number"
                       step="1"
@@ -1581,7 +1581,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSupercellH: e.target.value })}
                     />
                   </Field>
-                  <Field className={flash("punchSupercellK")} label="Supercell K">
+                  <Field className={flash("punchSupercellK")} label={SETTING_LABEL.punchSupercellK}>
                     <input
                       type="number"
                       step="1"
@@ -1592,7 +1592,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(e) => patch({ punchSupercellK: e.target.value })}
                     />
                   </Field>
-                  <Field className={flash("punchSupercellL")} label="Supercell L">
+                  <Field className={flash("punchSupercellL")} label={SETTING_LABEL.punchSupercellL}>
                     <input
                       type="number"
                       step="1"
@@ -1752,7 +1752,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                   </div>
                 )}
                 <div className="config-grid-3">
-                  <Field className={flash("punchMargin")} label="Margin">
+                  <Field className={flash("punchMargin")} label={SETTING_LABEL.punchMargin}>
                     <input
                       type="number"
                       step="0.005"
@@ -1847,7 +1847,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             >
               <div className="cfg-box">
                 <div className="cfg-fields">
-                  <Field className={flash("backfillMethod")} label="Method">
+                  <Field className={flash("backfillMethod")} label={SETTING_LABEL.backfillMethod}>
                     <select value={s.backfillMethod} onChange={(e) => patch({ backfillMethod: e.target.value })}>
                       <option value="">laplace (default)</option>
                       <option value="local">local</option>
@@ -1875,7 +1875,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               advanced={
                 <AdvancedFold stage="flatten" changed={changed("flatten")}>
                   <div className="cfg-fields">
-                    <Field className={flash("flattenFitQMax")} label="Fit to |Q| (Å⁻¹)">
+                    <Field className={flash("flattenFitQMax")} label={SETTING_LABEL.flattenFitQMax}>
                       <input
                         type="number"
                         step="0.5"
@@ -1888,7 +1888,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       />
                     </Field>
                     <div className={cls("switch-row", flash("flattenQ2"))}>
-                      <Switch label="+ b·Q² term" checked={s.flattenQ2} onChange={(v) => patch({ flattenQ2: v })} />
+                      <Switch label={SETTING_LABEL.flattenQ2} checked={s.flattenQ2} onChange={(v) => patch({ flattenQ2: v })} />
                       <HelpTip>
                         Adds b·Q² to the model: the smooth rise of the inelastic background (thermal diffuse scattering,
                         Debye–Waller exponent 2W ∝ Q²; with X-rays also Compton scattering). Like the other two terms it
@@ -1902,7 +1902,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             >
               <div className="cfg-box">
                 <div className="cfg-fields">
-                  <Field className={flash("flattenEstimator")} label="Estimator">
+                  <Field className={flash("flattenEstimator")} label={SETTING_LABEL.flattenEstimator}>
                     <select
                       value={s.flattenEstimator}
                       disabled={!s.flatten}
@@ -1913,7 +1913,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       <option value="snip">snip</option>
                     </select>
                   </Field>
-                  <Field className={flash("flattenIon")} label="Magnetic ion">
+                  <Field className={flash("flattenIon")} label={SETTING_LABEL.flattenIon}>
                     <select
                       value={s.flattenIon}
                       disabled={!s.flatten || !flattenIsModel}
@@ -1946,7 +1946,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
               advanced={
                 <AdvancedFold stage="pdf" changed={changed("pdf")}>
                   <div className="cfg-fields">
-                    <Field className={flash("pdfWindowShape")} label="Window shape">
+                    <Field className={flash("pdfWindowShape")} label={SETTING_LABEL.pdfWindowShape}>
                       <select
                         value={s.pdfWindowShape}
                         title="auto: an ellipsoid that respects the lattice symmetry where a per-axis window would break it (hexagonal cells), else per-axis"
@@ -1959,7 +1959,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                     </Field>
                     <div className={cls("switch-row", flash("pdfWindowSupport"))}>
                       <Switch
-                        label="Taper to the measured coverage"
+                        label={SETTING_LABEL.pdfWindowSupport}
                         checked={s.pdfWindowSupport}
                         onChange={(v) => patch({ pdfWindowSupport: v })}
                       />
@@ -1976,7 +1976,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             >
               <div className="cfg-box">
                 <div className="cfg-fields">
-                  <Field className={flash("pdfApod")} label="Apodization">
+                  <Field className={flash("pdfApod")} label={SETTING_LABEL.pdfApod}>
                     <select
                       value={s.pdfApod}
                       title="Q-space window applied before the FFT to suppress termination ripples"

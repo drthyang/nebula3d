@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import { configOf } from "../../state/configMemory";
 import { STAGES, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
-import { advancedFields, basicFields, changedFields, foldsHolding, SECTION_ORDER, SECTION_SWITCH, type SectionStage } from "../configSections";
+import { SAMPLE_PARAMS, TUNE_PARAMS, USER_CHOICE_PARAMS } from "../../llm/tune/catalog";
+import { advancedFields, basicFields, changedFields, foldsHolding, SECTION_ORDER, SECTION_SWITCH, SETTING_LABEL, settingLabel, type SectionStage } from "../configSections";
 
 const defaults = usePipelineStore.getInitialState() as PipelineConfig;
 const MODELS = ["pooled", "global_v2", "patched", "parametric"];
@@ -92,5 +93,28 @@ describe("the folds an agent's change opens", () => {
 
   it("are none for settings shown up front", () => {
     expect(foldsHolding(["punchMinSig", "backfillMethod", "pdfApod", "ringModel"], defaults)).toEqual([]);
+  });
+});
+
+describe("the settings' labels (SETTING_LABEL)", () => {
+  // The Configure page's source, as text: it must read each label from the table, not repeat it.
+  const PAGE = Object.values(import.meta.glob<string>("../PipelineConfig.tsx", { query: "?raw", import: "default", eager: true }))[0];
+  // Every setting NEBULA Pilot's update_settings changes, by the field that holds it (the modulation's four fields have their own).
+  const PILOT_FIELDS = [...TUNE_PARAMS.map((p) => p.key), ...SAMPLE_PARAMS.filter((p) => p.key !== "modulation").flatMap((p) => p.fields), ...USER_CHOICE_PARAMS.flatMap((p) => p.fields)];
+
+  it("name every setting the Pilot can change, and the Configure page reads each from the table", () => {
+    for (const key of PILOT_FIELDS) {
+      expect(SETTING_LABEL[key], `${key} has no label`).toBeTruthy();
+      expect(PAGE, `the Configure page does not read ${key}'s label from SETTING_LABEL`).toContain(`SETTING_LABEL.${key}}`);
+    }
+  });
+
+  it("name settings of the form only, each once on the page", () => {
+    for (const key of Object.keys(SETTING_LABEL)) {
+      expect(key in defaults, key).toBe(true);
+      expect(PAGE.split(`SETTING_LABEL.${key}}`).length - 1, key).toBe(1);
+    }
+    expect(settingLabel("punchMinSig")).toBe("Min σ");
+    expect(settingLabel("noSuchField")).toBe("noSuchField");
   });
 });

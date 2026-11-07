@@ -47,7 +47,7 @@ describe("Apply on a setting card", () => {
     const [d] = state().decisions;
     expect(d).toMatchObject({ proposal: p.id, action: "apply", by: "you", before: { punchMinSig: "" }, after: { punchMinSig: "6" }, runFrom: "punch" });
     const run = state().proposals.find((x) => x.kind === "run")!;
-    expect(run).toMatchObject({ status: "open", runFrom: "punch", title: "Run from Bragg punch", shown: { to: "punchMinSig 5 → 6" }, turn: 2 });
+    expect(run).toMatchObject({ status: "open", runFrom: "punch", title: "Run from Bragg punch", shown: { to: "Punch min σ 5 → 6" }, turn: 2 });
   });
 
   it("with Edit, sets the edited value, still checked by the catalog", async () => {
@@ -61,11 +61,11 @@ describe("Apply on a setting card", () => {
   });
 
   it("keeps one Run card per dataset, from the earliest stage a change calls for", () => {
-    offerRun(2, "demo", "punch", "punchMinSig 5 → 6");
+    offerRun(2, "demo", "punch", "Punch min σ 5 → 6");
     offerRun(3, "demo", "rings", "ringPooledSectors 24 → 32");
     const runs = state().proposals.filter((p) => p.kind === "run");
     expect(runs).toHaveLength(1);
-    expect(runs[0]).toMatchObject({ runFrom: "rings", title: "Run from Ring removal", turn: 3, shown: { to: "punchMinSig 5 → 6; ringPooledSectors 24 → 32" } });
+    expect(runs[0]).toMatchObject({ runFrom: "rings", title: "Run from Ring removal", turn: 3, shown: { to: "Punch min σ 5 → 6; ringPooledSectors 24 → 32" } });
   });
 
   it("is off on a card gone stale: the settings moved, or another dataset is open", async () => {
@@ -129,7 +129,7 @@ describe("the Run card", () => {
   it("runs from its stage through run_pipeline, on a context naming nothing, and logs it", async () => {
     const tool = CHAT_TOOLS.find((t) => t.name === "run_pipeline")!;
     const spy = vi.spyOn(tool, "run").mockResolvedValue({ result: { ended: "done" }, summary: "done" });
-    offerRun(2, "demo", "punch", "punchMinSig 5 → 6");
+    offerRun(2, "demo", "punch", "Punch min σ 5 → 6");
     const run = state().proposals[0];
     await applyCard(run, ctx);
     expect(spy).toHaveBeenCalledTimes(1);
@@ -182,7 +182,7 @@ describe("Dismiss and Undo", () => {
     undoDecision(state().decisions[0]);
     const open = state().proposals.filter((x) => x.kind === "run" && x.status === "open");
     expect(open).toHaveLength(1);
-    expect(open[0].shown.to).toBe("undid punchMinSig 5 → 6");
+    expect(open[0].shown.to).toBe("undid Punch min σ 5 → 6");
   });
 
   it("Undo after the field changed since: says so, and changes nothing", async () => {
@@ -213,9 +213,9 @@ describe("the record", () => {
     dismissCard(q);
     undoDecision(state().decisions[0]);
     expect(reportDecisions("demo").map((d) => [d.by, d.decision])).toEqual([
-      ["you", "Applied punchMinSig 5 → 6"],
-      ["you", "Dismissed punchSearchFloor " + q.shown.from + " → 30"],
-      ["you", "Put back punchMinSig 6 → 5"],
+      ["you", "Applied Punch min σ 5 → 6"],
+      ["you", "Dismissed Punch search floor ×σ " + q.shown.from + " → 30"],
+      ["you", "Put back Punch min σ 6 → 5"],
     ]);
     expect(reportDecisions("other")).toEqual([]);
   });
