@@ -34,6 +34,7 @@ import {
   evalRunOf,
   FAMILIES,
   falseAlarmChecks,
+  flattenFine,
   gradeRun,
   numberSources,
   PRE_68_RULE,
@@ -373,6 +374,94 @@ describe("grading what a run reported", () => {
     expect(g.detected).toBeNull();
     expect(g.noFalseAlarm).toBe(true);
     expect(gradeRun(control, run("The UB is turned by 1°.")).noFalseAlarm).toBe(false);
+  });
+});
+
+// The deliberate grader change of 2026-11-07 (docs/evals.md, "Grader changes"):
+// two artefacts the free B-auto eval found, each fixed narrowly. Synthetic
+// answers only.
+describe("the grader change of 2026-11-07", () => {
+  const pass = (checks: ReturnType<typeof detectionChecks>, r: EvalRun) => checks.every((k) => k.grade(r).pass);
+
+  it("takes a check's numbers 'within limits' for fine, not for a fault, and keeps 'out of limits' a fault", () => {
+    const origin = caseNamed("dev-origin")!; // no flatten fault: a floor trend claimed is a false alarm
+    for (const said of [
+      "The floor trend and span are within limits.",
+      "Flatten: the floor trend and span are within limits $\\text{assess\\_stage.flatten.headline}$.",
+      "The background's floor trend is within its limit.",
+      "The floor trend (0.0384) is within the limits.",
+    ]) {
+      expect(pass(falseAlarmChecks(origin), run(said)), said).toBe(true);
+    }
+    for (const said of [
+      "The floor trend and span are out of limits.",
+      "The floor trend is outside the limits.",
+      "The background rises with |Q|, beyond its limits.",
+      "The floor trend and span are within limits; the floor trend grows with |Q|.",
+    ]) {
+      expect(pass(falseAlarmChecks(origin), run(said)), said).toBe(false);
+    }
+  });
+
+  it("does not take a quoted headline's 'left ≤ 0' for a ring that is left, and keeps a ring that is left a claim", () => {
+    const rings = caseNamed("dev-rings")!;
+    const saysRings = detectionChecks(rings).find((k) => k.name === "says the fault (rings)")!;
+    for (const said of [
+      "Ring Removal: meets its goal (ring ratio 0.799 · over-sub ≤ 0.000193 · ring dent ≤ 0 · left ≤ 0).",
+      "The ring stage reads ring dent ≤ 0 · left ≤ 0.",
+      "The ring removal headline reads left <= 0.000 and ring dent = 0.",
+      "Ring removal: ring ratio 0.8, left = 0",
+    ]) {
+      expect(saysRings.grade(run(said)).pass, said).toBe(false);
+    }
+    for (const said of [
+      "A ring is left at 2.2 Å⁻¹.",
+      "A ring is left at 2.2 Å⁻¹ (left ≤ 0.41).",
+      // A bound above zero is a leftover the stage measured: still a claim, as before.
+      "Ring removal: ring dent ≤ 0 · left ≤ 0.5 (0kl, 2.2 Å⁻¹).",
+      "The ring removal reads left ≤ 0.05 on 0kl.",
+    ]) {
+      expect(saysRings.grade(run(said)).pass, said).toBe(true);
+    }
+    // The same rule on the alarm side: a control quoting the headline raises no ring.
+    const control = caseNamed("dev-control")!;
+    expect(pass(falseAlarmChecks(control), run("Powder ring removal: ring dent ≤ 0 · left ≤ 0."))).toBe(true);
+    expect(pass(falseAlarmChecks(control), run("Powder rings are left at 2.2 Å⁻¹."))).toBe(false);
+    expect(pass(falseAlarmChecks(control), run("Powder ring removal: left ≤ 0.5 (hk0, 2.2 Å⁻¹)."))).toBe(false);
+  });
+
+  it("takes a background 'well below the threshold for a pedestal' or a pedestal 'removed effectively' for fine, unless a problem stands beside it", () => {
+    const origin = caseNamed("dev-origin")!; // no flatten fault: a pedestal claimed is a false alarm
+    for (const said of [
+      "The floor trend ($0.0166$) and span ($0.271$) are well below the threshold for a pedestal ($0.8$).",
+      "The floor trend and span ($0.0366$ and $0.62$, respectively) are well below the threshold for a leftover pedestal (which requires both $\\ge 0.8$).",
+      "The backfill is seamless and the flattening removed the pedestal effectively ($\\text{floor trend } 0.158$, $\\text{span } 0.192$).",
+      "The floor trend is below the pedestal threshold.",
+      "The background's pedestal was effectively removed (floor trend 0.04).",
+    ]) {
+      expect(pass(falseAlarmChecks(origin), run(said)), said).toBe(true);
+    }
+    for (const said of [
+      // Real alarms: no fine phrase.
+      "The pedestal remains: the floor trend is 0.9.",
+      "The floor trend (0.9) is above the threshold for a pedestal.",
+      "The background rises with |Q|.",
+      // A fine phrase with a problem beside it in the same clause.
+      "The floor trend is well below the threshold for a pedestal, but the background rises with |Q|.",
+      "The flattening removed the pedestal effectively, yet the floor trend grows at high |Q|.",
+      "The background rises with |Q|, though the floor trend is well below the threshold.",
+      "The flatten removed the pedestal effectively, but a pedestal remains above 8 Å⁻¹ (floor trend 0.9).",
+      "The floor trend is above the threshold, well below the threshold for a pedestal elsewhere.",
+    ]) {
+      expect(pass(falseAlarmChecks(origin), run(said)), said).toBe(false);
+    }
+    // A negated "removed" is no fine phrase. (The clause it is in negates, and a
+    // negating clause is charged with nothing, before and after this change.)
+    expect(flattenFine("the flatten removed the pedestal effectively")).toBe(true);
+    expect(flattenFine("the flatten has not removed the pedestal effectively")).toBe(false);
+    expect(flattenFine("the flatten never removed the pedestal effectively")).toBe(false);
+    expect(flattenFine("the pedestal was not removed effectively")).toBe(false);
+    expect(flattenFine("the pedestal was not effectively removed")).toBe(false);
   });
 });
 
