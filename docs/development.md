@@ -304,6 +304,12 @@ turn within 32,768 without compaction) were tracked with `it.fails` until met,
 and are plain tests now (THY-63 R3 to R5): a change that takes the worst turn
 past either fails, and the test prints the room left.
 
+The "since the last reply" line (`apply/since.ts`) is never on the worst turn:
+only the reply after a decision on a change card carries it. Its own case
+drives the worst turn with the line for three decisions all the same: the line
+has its own ceiling (`SINCE_CEILING`), and the turn with it must fit 32k with
+`POLICY_SPARE` free; its size against the 20 % target is printed, not held.
+
 `scripts/measure_pilot_context.sh` counts the same turn by the same estimator,
 by component and in more detail (every prompt section, tool definition, skill
 and result); its totals equal the test's.

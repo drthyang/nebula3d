@@ -51,6 +51,7 @@ import { allSkills, DETAILS, headingsOf, readSkill, REFERENCE_MAX_CHARS, skillsP
 import { CHAT_TOOLS, toolSpecs, toolsWithSkills } from "../../web/src/llm/tools";
 import { WORDS } from "../../web/src/llm/verdicts";
 import devControlPeaks from "../../web/src/llm/__tests__/__fixtures__/dpdf-peaks-dev-control.json";
+import { budgetSince } from "../../web/src/llm/__tests__/sinceSamples";
 import { DATASET, DATASETS, freshConsole, installBackend } from "../../web/src/llm/__tests__/syntheticCrystal";
 
 const DEV_CONTROL_PEAKS = devControlPeaks as unknown as { response: DpdfFeatures };
@@ -290,6 +291,13 @@ describe("3. the opening messages", () => {
     const off = buildChatMessages(context, [], TASK, null, { tools: false })[1];
     add({ group: "whatif.context", name: "tools off: context block (indent 1)", arm: "B", rate: "message", est: msgTokens(off), text: String(off.content) });
     rows.push(["tools off: context block, the cut's metrics (JSON indent 1)", n(String(off.content).length), n(msgTokens(off))]);
+    // After a decision on an Apply card: the context with the "since the last
+    // reply" line (apply/since.ts), the budget's three decisions. Only the
+    // reply after a decision carries it; the worst turn never does.
+    const since = budgetSince();
+    const told = buildChatMessages(context, [], TASK, null, { tools: true, since })[1];
+    add({ group: "whatif.since", name: "context after three decisions (since line)", arm: "B", rate: "message", est: msgTokens(told), text: String(told.content) });
+    rows.push(["after three decisions: context with the since line (both arms)", n(String(told.content).length), n(msgTokens(told))]);
     table(["message", "chars", "est. tokens"], rows);
 
     // The tools-off context's top-level groups, arm B, compact.

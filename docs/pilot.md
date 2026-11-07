@@ -47,7 +47,13 @@ in the skills. The first user message, the context, is a summary of the
 dataset as the request found it: its name, cell, grid and H/K/L ranges,
 whether the raw volume is symmetrised, and the outputs on disk. Nothing in it
 is measured, so the model measures with the tools; earlier, models that
-answered from one cut's metrics without a tool call failed. With *Tools* off,
+answered from one cut's metrics without a tool call failed. After you
+apply, edit, dismiss or undo a change card, the next reply's context ends
+with one line saying what changed since the last reply, before and after, by
+the setting's name ("- since the last reply, you applied punchMinSig 5 → 6;
+declined punchSupercellH 1 → 2 (kept 1)"). Only that reply gets it, so a
+change you turned down is not proposed again as new, and the model knows the
+settings in force (`apply/since.ts`). With *Tools* off,
 the model reads one fixed cut's metrics (H–K at L=0 and the ΔPDF's z=0
 section) and a glossary of what each means, as before; with tools, that
 glossary, tersely, comes with `measure_reciprocal_cut`'s and

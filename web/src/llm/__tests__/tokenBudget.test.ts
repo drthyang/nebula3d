@@ -106,6 +106,7 @@ import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, DETAILS, headingsOf, readsCore, readSkill, REFERENCE_MAX_CHARS } from "../skills";
 import { callTool, CHAT_TOOLS } from "../tools";
 import devControlPeaks from "./__fixtures__/dpdf-peaks-dev-control.json";
+import { budgetSince } from "./sinceSamples";
 import { DATASET, DATASETS, freshConsole, installBackend } from "./syntheticCrystal";
 
 // The dev control's dpdf_peaks list at the tool's defaults, on its own grid,
@@ -346,7 +347,7 @@ interface Sent {
 }
 
 /** The reply through runAgent, the model calling `calls` one a round and then answering: every request it sent. */
-async function drive(baseUrl: string, calls: Call[], softBudget?: number) {
+async function drive(baseUrl: string, calls: Call[], softBudget?: number, messages?: ChatMessage[]) {
   resetTokenState();
   freshConsole();
   const sent: Sent[] = [];
@@ -365,6 +366,7 @@ async function drive(baseUrl: string, calls: Call[], softBudget?: number) {
   });
   const b = armSetup("B", context);
   expect(b.messages).toEqual(opening);
+  if (messages) b.messages = messages;
   const settings: LlmSettings = { ...DEFAULT_SETTINGS, baseUrl, model: "scripted", followViews: false };
   const result = await runAgent({
     messages: b.messages,
@@ -676,6 +678,49 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): every request fits with MIN_REPLY free, and nothing is shortened. ` +
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
         `Both skills' cores at the cap (${n(SKILL_CORE_MAX)} characters each) leave ${n(WINDOW - bothAtCap)} to spare past MIN_REPLY.`,
+    );
+  }, TURN_TIMEOUT);
+});
+
+// The "since the last reply" line (apply/since.ts, docs/pilot-auto-mode-design.md
+// §4): the request after a decision on an Apply card ends its context with
+// one line, so the worst turn never carries it (the validation's TASK opens a
+// conversation, before any card). Measured on the worst turn all the same,
+// with the budget's three decisions (sinceSamples.ts), as the bound of a
+// full-method reply that follows a decision. The line has a ceiling of its
+// own (measured 2026-11-07: 176 characters and its newline, 50.6 est. tokens, rounded up),
+// and the turn with it the 32k window with POLICY_SPARE free. The 20 % target
+// is the worst turn's, which never carries the line: this case's size
+// against it is printed, not held (the turn is 44 over it, the line needing
+// 51 of the 7 to spare).
+const SINCE = budgetSince();
+const SINCE_CEILING = 51;
+const withSince = (): ChatMessage[] => buildChatMessages(context, [], TASK, null, { tools: true, since: SINCE });
+
+describe("after a decision: the worst turn with the \"since the last reply\" line (three decisions)", () => {
+  it("adds the line's own tokens alone, to the context, and the turn still fits 32k with the spare", async () => {
+    const { before, after } = await localTurn();
+    const run = await drive(OLLAMA, ORDERS.method, Infinity, withSince());
+    const b = breakdown(before.sent[before.peak], before.key);
+    const s = breakdown(run.sent[run.peak], run.key);
+    // The line, and the newline before it, at the prose rate: the context grows by that, nothing else does.
+    const line = baseTokens([{ role: "user", content: `\n${SINCE}` }]) - baseTokens([{ role: "user", content: "" }]);
+    expect(s.context - b.context).toBeCloseTo(line, 6);
+    room.push({ what: "the \"since\" line (three decisions)", measured: line, ceiling: SINCE_CEILING });
+    expectWithin("the \"since the last reply\" line, the budget's three decisions", line, SINCE_CEILING);
+    for (const r of ROWS) if (r !== "context") expect(s[r], r).toBe(b[r]);
+    const worst = s.prompt + REPLY_RESERVE;
+    expect(worst, `the worst turn with the line, ${n(worst)}, does not fit ${n(WINDOW)}`).toBeLessThanOrEqual(WINDOW);
+    expect(POLICY_MIN - worst, `the worst turn with the line leaves ${n(POLICY_MIN - worst)} under ${n(POLICY_MIN)}`).toBeGreaterThanOrEqual(POLICY_SPARE);
+    // After the loop's compaction, as the headroom target measures it.
+    const runs = { method: await drive(OLLAMA, ORDERS.method, undefined, withSince()), skillsLast: await drive(OLLAMA, ORDERS.skillsLast, undefined, withSince()) };
+    const compacted = Math.max(...Object.values(runs).map((r) => r.prompts[r.peak])) + REPLY_RESERVE;
+    const plain = Math.max(after.method.prompts[after.method.peak], after.skillsLast.prompts[after.skillsLast.peak]) + REPLY_RESERVE;
+    target.push(
+      `After a decision (the "since the last reply" line, ${SINCE.length} characters, three decisions: ${n(s.context - b.context)} est. tokens, ` +
+        `about ${n((s.context - b.context) / 3)} a decision): the worst turn with it, ${n(compacted)} with the reply reserve after compaction ` +
+        `(${n(plain)} without the line) against the 20 % target's ${n(HEADROOM_TARGET)}: ${compacted > HEADROOM_TARGET ? `over by ${n(compacted - HEADROOM_TARGET)}` : `met, ${n(HEADROOM_TARGET - compacted)} to spare`}; ` +
+        `without compaction ${n(worst)} against ${n(WINDOW)}, ${n(WINDOW - worst)} left.`,
     );
   }, TURN_TIMEOUT);
 });
