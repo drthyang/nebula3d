@@ -36,6 +36,7 @@ export interface AutoFact {
   title: string;
   shown: string; // "1 → 2"
   status: "open" | "applied" | "declined";
+  at?: number; // how many of the run's steps came before it was asked: its place in the activity log
 }
 
 export interface AutoRun {
@@ -279,7 +280,11 @@ export function readAutoRun(v: unknown, { fromFile }: { fromFile: boolean }): Au
     snapshot: settings as Partial<PipelineConfig>,
     decisions: strings(v.decisions).filter((d) => /^D\d+$/.test(d)),
     facts: Array.isArray(v.facts)
-      ? v.facts.flatMap((f) => (isObj(f) && isStr(f.proposal) && isStr(f.title) && isStr(f.shown) && oneOf(f.status, ["open", "applied", "declined"] as const) ? [{ proposal: f.proposal, title: f.title, shown: f.shown, status: f.status }] : []))
+      ? v.facts.flatMap((f) =>
+          isObj(f) && isStr(f.proposal) && isStr(f.title) && isStr(f.shown) && oneOf(f.status, ["open", "applied", "declined"] as const)
+            ? [{ proposal: f.proposal, title: f.title, shown: f.shown, status: f.status, ...(isNum(f.at) ? { at: f.at } : {}) }]
+            : [],
+        )
       : [],
     held: Array.isArray(v.held) ? v.held.flatMap((h) => (isObj(h) && isStr(h.proposal) && isStr(h.title) ? [{ proposal: h.proposal, title: h.title }] : [])) : [],
     steps: Array.isArray(v.steps) ? v.steps.map((s) => readStep(s, fromFile)).filter((s): s is AgentStep => !!s) : [],

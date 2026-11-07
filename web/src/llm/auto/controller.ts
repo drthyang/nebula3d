@@ -451,7 +451,7 @@ function takeCards(ps: readonly Proposal[]): void {
   const held = ps.filter((p) => p.held === "ring");
   if (!facts.length && !held.length) return;
   patchRun((x) => ({
-    facts: [...x.facts, ...facts.filter((p) => !x.facts.some((f) => f.proposal === p.id)).map((p) => ({ proposal: p.id, title: p.title, shown: p.shown.from ? `${p.shown.from} → ${p.shown.to}` : p.shown.to, status: "open" as const }))],
+    facts: [...x.facts, ...facts.filter((p) => !x.facts.some((f) => f.proposal === p.id)).map((p) => ({ proposal: p.id, title: p.title, shown: p.shown.from ? `${p.shown.from} → ${p.shown.to}` : p.shown.to, status: "open" as const, at: x.steps.length }))],
     held: [...x.held, ...held.map((p) => ({ proposal: p.id, title: p.title }))],
   }));
 }

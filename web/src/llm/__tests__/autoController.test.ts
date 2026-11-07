@@ -15,6 +15,8 @@ import { sinceLine } from "../apply/since";
 import { applyFact, autoLoop, endAuto, resumeAuto, skipFact, startAuto, stopAuto, undoAutoRun } from "../auto/controller";
 import { useAutoStore, type AutoRun } from "../auto/store";
 import { autoTranscript, isAppStep, isSeeded } from "../auto/transcript";
+import { activityNow, type Activity } from "../auto/activity";
+import { useTuneStore } from "../tune/tuner";
 import { useChatStore } from "../chatStore";
 import { CLAUDE_URL } from "./scriptedTransports";
 import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
@@ -237,7 +239,7 @@ describe("a run that pauses for a sample fact", () => {
     expect(usePipelineStore.getState().symmetryLaue).toBe("4/mmm");
     expect(run().state).toBe("done");
     expect(run().limit).toBeNull();
-    expect(run().facts).toEqual([{ proposal: expect.any(String), title: "Laue class", shown: "none → 4/mmm", status: "applied" }]);
+    expect(run().facts).toEqual([{ proposal: expect.any(String), title: "Laue class", shown: "none → 4/mmm", status: "applied", at: expect.any(Number) }]);
     const fact = decisions().find((d) => d.kind === "fact")!;
     expect([fact.by, fact.byClick, fact.action]).toEqual(["you", true, "apply"]);
     expect(pipeline.runs[0].with.symmetryLaue).toBe("4/mmm");
@@ -486,5 +488,138 @@ describe("the calls it makes itself", () => {
     await start();
     const own = run().steps.filter((s) => s.id.startsWith("auto:")).map((s) => s.name);
     expect(new Set(own)).toEqual(new Set(["qmax_coverage", "ub_check", "grain_check", "run_pipeline", "assess_stage", "texture_check", "symmetry_check"]));
+  });
+});
+
+// The Now line and the activity log (auto/activity.ts), as a run's record and
+// the stores change under the controller: built from its steps, outcomes,
+// decisions and the tuning's trials, nothing asked of the model.
+describe("the Now line and the activity log", () => {
+  /** Every Now line the run showed, in order, and every state of the activity on the way. */
+  function watch() {
+    const nows: string[] = [];
+    const all: Activity[] = [];
+    const look = () => {
+      const a = activityNow();
+      if (!a) return;
+      all.push(a);
+      if (nows[nows.length - 1] !== a.now) nows.push(a.now);
+    };
+    const stops = [useAutoStore.subscribe(look), useChatStore.subscribe(look), useTuneStore.subscribe(look)];
+    return { nows, all, stop: () => stops.forEach((f) => f()) };
+  }
+  /** `want` appear in `nows`, in this order. */
+  const inOrder = (nows: string[], want: string[]) => {
+    let i = 0;
+    for (const n of nows) if (n === want[i]) i += 1;
+    expect(want.slice(i), `missing, in order, from: ${nows.join(" | ")}`).toEqual([]);
+  };
+
+  it("a fix: says what it checks, which fix it is on, the run and the check after it, then the report; logs the change", async () => {
+    outputs.tweak = (stage, e, ranWith) => (stage === "rings" ? cleanRings(e) : stage === "punch" && ranWith.punchMinSig === "6" ? cleanPunch(e) : e);
+    model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("The punch passed after a fix."));
+    const w = watch();
+    await start();
+    w.stop();
+    inOrder(w.nows, [
+      "Running the pipeline…",
+      "Checking the ring removal (stage 1 of 5)…",
+      "Checking the Bragg punch (stage 2 of 5)…",
+      "Fixing the Bragg punch, try 1 of 2",
+      "Running the pipeline from the Bragg punch after fix 1…",
+      "Checking the Bragg punch again after fix 1…",
+      "Checking the backfill (stage 3 of 5)…",
+      "Writing the report",
+      "Done, with its report.",
+    ]);
+    // While the fix replied, its row was the one under way.
+    const replying = w.all.filter((a) => a.now === "Fixing the Bragg punch, try 1 of 2").map((a) => a.rows.slice(-1)[0]!);
+    expect(replying).toContainEqual(expect.objectContaining({ status: "running", title: "Fix the Bragg punch, first of two" }));
+    // Its line follows the reply's own steps as they run.
+    expect(replying.map((r) => r.line)).toEqual(expect.arrayContaining(["The model is replying…", "Read a skill…", "Changed settings…"]));
+    const rows = activityNow()!.rows;
+    expect(rows.every((r) => r.status === "done")).toBe(true);
+    const fix = rows.find((r) => r.title === "Fix the Bragg punch, first of two")!;
+    expect(fix.line).toMatch(/^Changed Punch min σ .* → 6$/);
+    expect(fix.detail.some((d) => d.startsWith("Read a skill"))).toBe(true);
+    expect(rows.filter((r) => r.title === "Checked the Bragg punch").length).toBe(2);
+    expect(rows.slice(-1)[0]).toMatchObject({ title: "Wrote the report", line: "Written" });
+    // A row of the app's own step links to it: its place in the chat and its highlights.
+    expect(rows.find((r) => r.title === "Checked the ring removal")!.step).toMatch(/^auto:/);
+  });
+
+  it("a tuning in progress: names the trial under way", async () => {
+    const tune = (await import("../tools")).CHAT_TOOLS.find((t) => t.name === "tune_pipeline")!;
+    const run0 = tune.run;
+    let during: Activity | null = null;
+    tune.run = async () => {
+      const trial = (n: number, status: "done" | "running" | "pending") => ({ n, changes: {}, settings: {}, status });
+      useTuneStore.setState({ active: true, stages: [{ stage: "punch", tuned: true, status: "running", trials: [trial(1, "done"), trial(2, "running"), trial(3, "pending")] }] });
+      during = activityNow();
+      useTuneStore.setState({ active: false, stages: [] });
+      return { result: { tuned: [] }, summary: "tuned nothing" };
+    };
+    try {
+      outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : e);
+      model.respond = (phase, round) =>
+        phase.kind === "fix" ? (round === 0 ? fixWith("bragg-node-audit", null)(0) : round === 1 ? call("tune_pipeline", { stages: ["punch"] }) : say("Tuned.")) : say("Done.");
+      await start({ fixesPerStage: 1 });
+    } finally {
+      tune.run = run0;
+    }
+    expect(during!.now).toBe("Tuning the Bragg punch, trial 2 of 3");
+    expect(during!.rows.slice(-1)[0]).toMatchObject({ status: "running", line: "Tuning the Bragg punch, trial 2 of 3" });
+    expect(activityNow()!.rows.find((r) => r.title === "Fix the Bragg punch, first of one")!.line).toBe("Tuned the stage");
+  });
+
+  it("a fact: waits for your answer, the row needs you; Skip logs it skipped and the run goes on", async () => {
+    unsymmetrisedRaw();
+    usePipelineStore.getState().patch({ symmetryLaue: "" });
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? cleanPunch(e) : e);
+    model.respond = () => say("Done.");
+    await start();
+    let a = activityNow()!;
+    expect(a.now).toBe("Waiting for your answer: Laue class");
+    expect(a.rows.slice(-1)[0]).toMatchObject({ status: "needs you", title: "Asked you: Laue class none → 4/mmm", line: expect.stringMatching(/^Waiting for your answer/) });
+    skipFact();
+    await new Promise((r) => setTimeout(r, 0));
+    await (autoLoop() ?? Promise.resolve());
+    a = activityNow()!;
+    expect(a.now).toBe("Done, with its report.");
+    expect(a.rows.find((r) => r.title.startsWith("Asked you: Laue class"))).toMatchObject({ status: "skipped", line: expect.stringMatching(/^Skipped by you/) });
+    // Asked after the preflight's checks, before the run.
+    const i = a.rows.findIndex((r) => r.title.startsWith("Asked you"));
+    expect(a.rows.slice(0, i).some((r) => r.title === "Checked Qmax against coverage")).toBe(true);
+    expect(a.rows.slice(i).some((r) => r.title === "Ran the pipeline")).toBe(true);
+  });
+
+  it("a stop: paused by you in the row it stopped, and Resume goes on", async () => {
+    outputs.tweak = (stage, e, ranWith) => (stage === "rings" ? cleanRings(e) : stage === "punch" && ranWith.punchMinSig === "6" ? cleanPunch(e) : e);
+    let stopOnce = true;
+    model.respond = (phase, round) => {
+      if (phase.kind === "fix" && round === 1 && stopOnce) {
+        stopOnce = false;
+        stopAuto();
+      }
+      return phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done.");
+    };
+    await start();
+    const a = activityNow()!;
+    expect(a.now).toBe("Paused by you in the Bragg punch. Resume restarts it.");
+    expect(a.rows.slice(-1)[0]).toMatchObject({ status: "stopped", title: "Paused by you", line: "In the Bragg punch; Resume restarts it" });
+    await resumeAuto();
+    expect(activityNow()!.rows.some((r) => r.status === "stopped")).toBe(false);
+  });
+
+  it("a limit: logs it and the stages it left unchecked", async () => {
+    outputs.tweak = (_stage, e) => e;
+    model.respond = (phase, round) => {
+      clock.t += 11 * 60_000;
+      return phase.kind === "fix" ? fixWith("reduction-qc", null, "No change would help.")(round) : say("The run ended early.");
+    };
+    await start({ minutes: 10 });
+    const rows = activityNow()!.rows;
+    expect(rows.find((r) => r.key === "limit")).toMatchObject({ status: "skipped", line: "The fixes ended at the time limit; the run went to its report" });
+    expect(rows.filter((r) => r.title.startsWith("Not checked:")).map((r) => r.title)).toEqual(["Not checked: Bragg punch", "Not checked: Backfill", "Not checked: Background correction", "Not checked: 3D-ΔPDF"]);
   });
 });

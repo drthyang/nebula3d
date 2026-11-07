@@ -1,17 +1,28 @@
 // The Auto panel (docs/pilot-auto-mode-design.md §2.6; THY-65 PR 7), above
-// the chat while an auto run is open: its title, state and clock against the
-// limit, with Stop, Resume and End; a thin progress bar; the plan, one row a
-// phase in the NeXus Viewer's Processing style (a status dot, the name, the
-// state right-aligned in mono), each row a link to its latest step in the chat
-// and the highlights that step drew; the replies, tokens and spend, and the
-// time paused apart from the working time; the fact the run waits for, pinned
-// with its Apply and Skip; and once it ends, how it ended, a link to its
-// report and Undo of its changes. In the sheet layout (a phone or a narrow
-// window) the panel folds to one line that opens into the plan; the fact and
-// the actions stay out of the fold. Result first, the details behind "?".
-// The dock's chip (AutoChip) starts a run, and stops one under way.
+// the chat while an auto run is open. Its header holds the title, the state,
+// the time worked (never against the limit: the user's own bound) and the
+// controls, there the whole time: Pause or Resume (Retry after a failure),
+// and Stop, which ends the run without its report. Under it:
+//  - the Now line: what the run is doing at this moment, in plain words
+//    ("Checking the Bragg punch (stage 2 of 5)…", "Fixing the ring removal,
+//    try 1 of 2", "Waiting for your answer: Laue class");
+//  - a thin progress bar;
+//  - the plan, one row a phase in the NeXus Viewer's Processing style (a
+//    status dot, the name, the state right-aligned in mono), each row a link
+//    to its latest step in the chat and the highlights that step drew;
+//  - the activity log, one row a step with its status and one line of what
+//    was decided, its detail (the evidence, the settings changed, the reply)
+//    behind a click;
+//  - the replies, fixes, tokens and spend, and the time waiting for you apart;
+//  - the fact the run waits for, pinned with Apply, Edit and Skip; once it
+//    ends, a link to its report and Undo auto changes.
+// The Now line and the log are built from the run's own record, results and
+// decisions (auto/activity.ts): nothing is asked of the model. In the sheet
+// layout (a phone, a narrow window) the panel shows the header, the Now line
+// and the last three steps, and opens to the plan and the whole log.
+// The dock's chip (AutoChip) starts a run, and pauses one under way.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useDatasets } from "../../api/hooks";
 import { HelpTip } from "../../components/ui";
@@ -20,10 +31,14 @@ import { useNavStore } from "../../state/navStore";
 import type { AgentStep } from "../agent";
 import { endAuto, resumeAuto, startAuto, stopAuto, undoAutoRun } from "../auto/controller";
 import { usd } from "../auto/cost";
-import { clockText, compact, currentRow, pausedText, progressOf, rowMeta, rowSub, rowTone, STATE_WORD, TITLES } from "../auto/panel";
+import { activity, type Activity, type ActivityRow } from "../auto/activity";
+import { clockText, compact, pausedText, progressOf, rowMeta, rowSub, rowTone, STATE_WORD, TITLES } from "../auto/panel";
 import { AUTO_LIMITS, LIMIT_WORDS, type PlanRow } from "../auto/plan";
 import { useAutoStore, type AutoRun } from "../auto/store";
-import { elapsedMs, formatDuration, type RunClock } from "../clock";
+import { useDecisionStore } from "../apply/decisions";
+import { useChatStore } from "../chatStore";
+import { type RunClock } from "../clock";
+import { useTuneStore } from "../tune/tuner";
 import { drawsOverlays } from "../examine/overlays";
 import { showStep } from "../examine/store";
 import type { ToolContext } from "../tools";
@@ -89,48 +104,47 @@ function Row({ run, row, onLink }: { run: AutoRun; row: PlanRow; onLink: (run: A
   );
 }
 
-/** Stop while it runs or waits for you; Resume (Retry after a failure) and End once stopped or failed. */
-function Actions({ run, ctx, className }: { run: AutoRun; ctx: ToolContext | null; className: string }) {
+/** The run's state, as the panel names it: a stop by you is a pause (Resume goes on). */
+const stateWord = (run: AutoRun): string =>
+  run.state === "paused" ? (run.pause?.kind === "failure" ? "Failed" : "Needs you") : run.state === "stopped" ? "Paused" : STATE_WORD[run.state];
+
+/**
+ * The controls, there while the run is open: Pause (the step under way
+ * stops; Resume restarts it), or Resume (Retry after a failure); and Stop,
+ * which ends the run where it is, without its report.
+ */
+function Controls({ run, ctx }: { run: AutoRun; ctx: ToolContext | null }) {
   if (run.state === "done") return null;
   const failure = run.pause?.kind === "failure";
   const fact = run.pause?.kind === "fact";
   return (
-    <span className={`auto-actions ${className}`}>
+    <span className="auto-actions">
       {run.state === "running" || fact ? (
-        <button type="button" className="auto-btn auto-btn--stop" onClick={stopAuto} title="Stop the step under way; Resume restarts it">
-          Stop
+        <button
+          type="button"
+          className="auto-btn"
+          disabled={fact}
+          onClick={stopAuto}
+          title={fact ? "It is waiting for your answer: the clock is stopped already" : "Pause after stopping the step under way; Resume restarts it"}
+        >
+          Pause
         </button>
       ) : (
-        <>
-          <button
-            type="button"
-            className="auto-btn auto-btn--go"
-            disabled={!ctx}
-            onClick={() => ctx && void resumeAuto({ ctx }).catch(() => {})}
-            title={failure ? "Try the step again" : "Restart the step it stopped in"}
-          >
-            {failure ? "Retry" : "Resume"}
-          </button>
-          <button type="button" className="auto-btn" onClick={endAuto} title="End the run here, without its report">
-            End
-          </button>
-        </>
+        <button
+          type="button"
+          className="auto-btn auto-btn--go"
+          disabled={!ctx}
+          onClick={() => ctx && void resumeAuto({ ctx }).catch(() => {})}
+          title={failure ? "Try the step again" : "Restart the step it paused in"}
+        >
+          {failure ? "Retry" : "Resume"}
+        </button>
       )}
+      <button type="button" className="auto-btn auto-btn--stop" onClick={endAuto} title="End the run where it is, without its report">
+        Stop
+      </button>
     </span>
   );
-}
-
-/** The line under the plan: why it waits, how it stopped or ended. */
-function message(run: AutoRun): ReactNode {
-  const p = run.pause;
-  if (run.state === "paused" && p?.kind === "fact") return "Paused for a sample fact. The clock is stopped; the run goes on when you apply or skip.";
-  if (run.state === "paused" && p?.kind === "failure") return p.what === "model" ? `The model server failed: ${p.message}` : `The pipeline run failed: ${p.message}`;
-  if (run.state === "stopped") {
-    const at = run.plan.find((r) => r.id === run.at);
-    return `${run.now.replace(/\.$/, "")}.${at ? ` Resume restarts ${TITLES[at.id]}.` : ""}`;
-  }
-  if (run.state === "done") return run.ended ?? "Done.";
-  return null;
 }
 
 function Help({ run }: { run: AutoRun }) {
@@ -142,64 +156,151 @@ function Help({ run }: { run: AutoRun }) {
         app runs from each change and checks again. A model reply then writes the report.
       </span>
       <span className="ex-help-line">
-        Limits: {l.minutes} minutes of working time (time waiting for you is not counted), {l.replies} model replies
-        {run.costUsd !== null ? `, ${usd(l.costUsd)} of spend` : ""}. A limit sends the run to its report.
+        It uses at most {l.replies} model replies{run.costUsd !== null ? ` and ${usd(l.costUsd)}` : ""}, and has a time limit; the time waiting for you is not
+        counted. A limit sends the run to its report.
       </span>
-      <span className="ex-help-line">A sample fact pauses the run until you apply or skip it. Each row links to its latest step in the chat.</span>
+      <span className="ex-help-line">
+        A sample fact pauses the run until you apply or skip it. The log builds on the checks' own results: nothing in it is asked of the model. Each row opens to
+        its detail; each plan row links to its latest step in the chat.
+      </span>
     </HelpTip>
+  );
+}
+
+/** The run's activity as the stores hold it, again whenever one changes. */
+function useActivity(): Activity | null {
+  const run = useAutoStore((s) => s.run);
+  const live = useAutoStore((s) => s.live);
+  const turns = useChatStore((s) => s.turns);
+  const replying = useChatStore((s) => s.busy);
+  const reply = useChatStore((s) => s.live);
+  const decisions = useDecisionStore((s) => s.decisions);
+  const proposals = useDecisionStore((s) => s.proposals);
+  const tuneActive = useTuneStore((s) => s.active);
+  const tuneStages = useTuneStore((s) => s.stages);
+  return useMemo(
+    () => (run ? activity({ run, live, turns, replying, replySteps: reply?.steps ?? [], decisions, proposals, tune: { active: tuneActive, stages: tuneStages } }) : null),
+    [run, live, turns, replying, reply, decisions, proposals, tuneActive, tuneStages],
+  );
+}
+
+const MARK: Record<ActivityRow["status"], string> = { done: "✓", running: "", "needs you": "!", skipped: "–", stopped: "‖", failed: "×" };
+
+function LogRow({ row, run }: { row: ActivityRow; run: AutoRun }) {
+  const datasets = useDatasets().data;
+  const datasetId = useDatasetStore((s) => s.datasetId);
+  const show = () => {
+    if (row.turn !== undefined) return goToTurn(row.turn);
+    if (!row.step) return;
+    const step = run.steps.find((s) => s.id === row.step);
+    if (step && drawsOverlays(step.name) && !step.restored) {
+      if (step.view) openView(step.view);
+      showStep(step, null, run.steps.indexOf(step) + 1, datasets?.find((d) => d.id === datasetId));
+    }
+    goToStep(null, row.step);
+  };
+  const linked = row.turn !== undefined || (row.step !== undefined && row.status !== "running");
+  return (
+    <li className={`auto-log-row is-${row.status.replace(" ", "-")}`} data-key={row.key}>
+      <details>
+        <summary>
+          <span className="auto-log-mark" aria-label={row.status}>
+            {MARK[row.status]}
+          </span>
+          <span className="auto-log-title">{row.title}</span>
+          {row.line && <span className="auto-log-line">{row.line}</span>}
+        </summary>
+        <div className="auto-log-detail">
+          {row.detail.map((d, i) => (
+            <span key={i} className="auto-log-detail-line">
+              {d}
+            </span>
+          ))}
+          {linked && (
+            <button type="button" className="pc-link" onClick={show}>
+              {row.turn !== undefined ? "Show the reply in the chat ↗" : "Show in the chat and on the views ↗"}
+            </button>
+          )}
+        </div>
+      </details>
+    </li>
+  );
+}
+
+/** The activity log, newest last; it keeps to its end as rows come, unless you scrolled up. */
+function Log({ rows, run, className }: { rows: ActivityRow[]; run: AutoRun; className: string }) {
+  const ref = useRef<HTMLOListElement>(null);
+  const pinned = useRef(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [rows]);
+  if (!rows.length) return null;
+  return (
+    <ol
+      ref={ref}
+      className={`auto-log ${className}`}
+      aria-label="What the run did"
+      onScroll={() => {
+        const el = ref.current;
+        if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      }}
+    >
+      {rows.map((r) => (
+        <LogRow key={r.key} row={r} run={run} />
+      ))}
+    </ol>
   );
 }
 
 export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
   const run = useAutoStore((s) => s.run);
+  const act = useActivity();
   const now = useNow(run?.clock);
   const link = useRowLink();
-  const [open, setOpen] = useState(false); // the plan, unfolded in the sheet layout
+  const [open, setOpen] = useState(false); // the plan and the whole log, unfolded in the sheet layout
   const [hidden, setHidden] = useState<string | null>(null); // a finished run's panel, put away
   const [undone, setUndone] = useState<{ run: string; n: number } | null>(null);
-  if (!run || hidden === run.id) return null;
+  if (!run || !act || hidden === run.id) return null;
   const fact = run.state === "paused" && run.pause?.kind === "fact" ? run.pause.proposal : null;
   const tone = run.state === "running" ? "run" : run.state === "done" ? "done" : run.pause?.kind === "failure" ? "bad" : "wait";
-  const row = currentRow(run);
   const fixes = run.plan.reduce((n, r) => n + r.tries, 0);
   const tokens = run.usage.input + run.usage.output;
   const paused = pausedText(run.clock, now);
-  const msg = message(run);
-  const lineState = run.state === "running" ? "Auto" : STATE_WORD[run.state];
-  const lineWhat = row ? `${TITLES[row.id]}${fact ? " · needs you" : rowSub(row, run.limits.fixesPerStage) ? ` · ${rowSub(row, run.limits.fixesPerStage)}` : rowMeta(row) ? ` · ${rowMeta(row)}` : ""}` : "Starting";
   const canUndo = run.state !== "running" && run.decisions.length > 0;
   return (
     <section className={`auto-panel auto-panel--${tone}${open ? " is-open" : ""}`} aria-label="Auto analysis">
-      <button type="button" className="auto-line" aria-expanded={open} onClick={() => setOpen((o) => !o)} title={open ? "Fold the plan" : "Open the plan"}>
-        <span className="auto-state">{lineState}</span>
-        <span className="auto-line-what">{lineWhat}</span>
-        <span className="auto-clock">{formatDuration(elapsedMs(run.clock, now))}</span>
-        <span className="chev" aria-hidden="true">
-          {open ? "▴" : "▾"}
+      <div className="auto-head">
+        <span className="auto-title">Auto analysis</span>
+        <span className="auto-state">{stateWord(run)}</span>
+        <span className="auto-clock" role="timer" aria-live="off" title="Time worked; the time waiting for you is not counted">
+          {clockText(run.clock, now)}
         </span>
+        <Controls run={run} ctx={ctx} />
+        {run.state === "done" && (
+          <button type="button" className="auto-btn auto-btn--quiet" onClick={() => setHidden(run.id)} aria-label="Put the panel away" title="Put the panel away">
+            ×
+          </button>
+        )}
+      </div>
+      <div className={`auto-now${run.state === "running" ? " is-live" : ""}`} role="status" aria-live="polite">
+        <span className="auto-now-dot" aria-hidden="true" />
+        <span className="auto-now-text">{act.now}</span>
+      </div>
+      <div className="auto-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressOf(run) * 100)}>
+        <i style={{ width: `${Math.round(progressOf(run) * 100)}%` }} />
+      </div>
+      <Log rows={act.rows.slice(-3)} run={run} className="auto-recent" />
+      <button type="button" className="auto-more" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {open ? "Fewer steps ▴" : `The plan and all ${act.rows.length} steps ▾`}
       </button>
       <div className="auto-body">
-        <div className="auto-head">
-          <span className="auto-title">Auto analysis</span>
-          <span className="auto-state">{STATE_WORD[run.state]}</span>
-          <span className="auto-clock" role="timer" aria-live="off" title="Working time against the limit; the time waiting for you is not counted">
-            {clockText(run.clock, now)}
-          </span>
-          <Actions run={run} ctx={ctx} className="auto-actions--head" />
-          {run.state === "done" && (
-            <button type="button" className="auto-btn auto-btn--quiet" onClick={() => setHidden(run.id)} aria-label="Put the panel away" title="Put the panel away">
-              ×
-            </button>
-          )}
-        </div>
-        <div className="auto-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressOf(run) * 100)}>
-          <i style={{ width: `${Math.round(progressOf(run) * 100)}%` }} />
-        </div>
         <ol className="auto-plan">
           {run.plan.map((r) => (
             <Row key={r.id} run={run} row={r} onLink={link} />
           ))}
         </ol>
+        <Log rows={act.rows} run={run} className="auto-all" />
         <div className="auto-foot">
           <span>
             Model replies {run.replies} of {run.limits.replies} · {fixes} fix{fixes === 1 ? "" : "es"} · {run.usage.estimated ? "≈ " : ""}
@@ -211,10 +312,9 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
           <Help run={run} />
         </div>
       </div>
-      {(msg || run.state !== "running") && (
+      {(run.state === "done" || canUndo || run.pause?.kind === "failure" || undone?.run === run.id) && (
         <div className="auto-msg-row">
-          {msg && <span className="auto-msg">{msg}</span>}
-          <Actions run={run} ctx={ctx} className="auto-actions--line" />
+          {run.pause?.kind === "failure" && <span className="auto-msg">{run.pause.message}</span>}
           {run.pause?.kind === "failure" && run.pause.what === "run" && (
             <button type="button" className="auto-btn" onClick={() => useNavStore.getState().setTab("execution")} title="Open the Execution page and its log">
               Log
@@ -258,19 +358,20 @@ function goToTurn(turn: number): void {
 
 /**
  * The dock's chip: "Run auto analysis" leads the requests while no run is
- * open; while one runs, "Stop auto analysis". A run paused or stopped is the
- * panel's to resume or end.
+ * open; while one runs, "Pause auto analysis". A run paused or waiting is
+ * the panel's to resume or stop.
  */
 export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart: boolean }) {
   const state = useAutoStore((s) => s.run?.state);
   if (state === "running") {
     return (
       <div className="ai-reviews">
-        <button type="button" className="ai-chip ai-chip-stop" onClick={stopAuto} title="Stop the step under way; Resume restarts it">
+        <button type="button" className="ai-chip ai-chip-stop" onClick={stopAuto} title="Pause after stopping the step under way; Resume restarts it">
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <rect x="2" y="2" width="8" height="8" rx="1.5" fill="currentColor" />
+            <rect x="2.2" y="2" width="2.6" height="8" rx="0.8" fill="currentColor" />
+            <rect x="7.2" y="2" width="2.6" height="8" rx="0.8" fill="currentColor" />
           </svg>
-          Stop auto analysis
+          Pause auto analysis
         </button>
       </div>
     );
@@ -283,7 +384,7 @@ export function AutoChip({ ctx, canStart }: { ctx: ToolContext | null; canStart:
         className="ai-chip ai-chip-act"
         disabled={!canStart || !ctx}
         onClick={() => ctx && void startAuto({ ctx }).catch(() => {})}
-        title={`Preflight, a run, check and fix each stage, then a report. It pauses for a sample fact; ${AUTO_LIMITS.minutes} minutes, ${AUTO_LIMITS.fixesPerStage} fixes a stage, ${AUTO_LIMITS.replies} model replies at most.`}
+        title={`Preflight, a run, check and fix each stage, then a report. It pauses for a sample fact; ${AUTO_LIMITS.fixesPerStage} fixes a stage and ${AUTO_LIMITS.replies} model replies at most.`}
       >
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
           <path d="M3 1.8v8.4L10.2 6Z" fill="currentColor" />
