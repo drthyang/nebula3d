@@ -35,9 +35,11 @@ import { runPolicyOf, type RunPolicy } from "./runPolicy";
 import { estimated, measured, notCounted, ranNothing, type Usage } from "./usage";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
+import { seededMessage } from "./prompts/seeded";
 import {
   forget,
   runRound,
+  seedRound,
   startReply,
   toolSpecs,
   type AgentTool,
@@ -193,6 +195,23 @@ export const toolStepsIn = (turns: readonly { steps?: readonly AgentStep[] }[]):
 
 const joinText = (a: string, b: string): string => (a && b ? `${a}\n\n${b}` : a || b);
 
+/** How the app's steps go to the model before its first request (runAgent's `seed`): as a round of calls, or in the last message. */
+export type SeedForm = "round" | "message";
+
+/** The steps an auto-mode phase ran for a reply, and the form they go in. */
+export interface Seed {
+  steps: readonly AgentStep[];
+  form: SeedForm;
+}
+
+// A request the server refused as malformed (400, 422): what a transport
+// answers to a round of calls it will not take, a turn that called tools
+// without the model's own thinking block before it (Claude).
+const refusedRequest = (e: unknown): boolean => {
+  const status = (e as { status?: number })?.status;
+  return status === 400 || status === 422;
+};
+
 export async function runAgent({
   messages,
   tools: given,
@@ -209,6 +228,9 @@ export async function runAgent({
   softBudget = policy.pruning?.softBudget,
   onTruncated,
   onUsage,
+  userMessage,
+  seed,
+  onSeedForm,
 }: {
   messages: ChatMessage[];
   tools: AgentTool[];
@@ -231,6 +253,22 @@ export async function runAgent({
   // record keeps them, validationRun.ts).
   onTruncated?: (cut: { request: number; reason: string }) => void;
   onUsage?: (u: Usage) => void; // each completed request's tokens, measured or estimated, and each one sent that did not complete (usage.ts)
+  // The user's words the reply answers, which update_settings reads for a
+  // fact the user named (ToolContext.userMessage): the conversation's last
+  // user message unless given. An auto-mode reply gives "" (auto/controller.ts):
+  // its phase message is the app's, never the user's, so it names no fact,
+  // whatever its checks' results say.
+  userMessage?: string;
+  // The steps the app ran for the reply before its first request (an
+  // auto-mode phase's checks, seedRound): the reply's first steps, which the
+  // model reads as a round of calls, or, with form "message", in its last
+  // message (prompts/seeded.ts) for a transport that refuses a round the
+  // model did not make. Either way they are the reply's own steps.
+  seed?: Seed;
+  // The form the seed went in, once a transport refused the round form and
+  // the request was sent again with the message form (the caller keeps it
+  // for the next replies).
+  onSeedForm?: (form: SeedForm) => void;
 }): Promise<AgentResult> {
   // The reply's history, which the executor runs each round of calls over
   // (tools/round.ts): the tools the reply offers, runs and checks answers
@@ -243,7 +281,7 @@ export async function runAgent({
   // user (a send-back, the note to answer now) is not the user's, and names
   // no fact about the sample to update_settings. Without a context no tool
   // runs, and the tools are the given ones.
-  let history: History | null = ctx && startReply({ ...ctx, userMessage: lastQuestion(messages) }, given, messages);
+  let history: History | null = ctx && startReply({ ...ctx, userMessage: userMessage ?? lastQuestion(messages) }, given, messages);
   const tools = history ? history.tools : given;
   const convo = [...messages];
   const arrived = convo.length;
@@ -296,6 +334,37 @@ export async function runAgent({
     const tool = tools.find((t) => t.name === name);
     if (tool && !offered.includes(tool)) offered = tools.filter((t) => offered.includes(t) || t === tool);
   };
+  // The app's steps the reply starts from (an auto-mode phase's checks): the
+  // reply's first steps, as a round of calls after the last message, or in
+  // it. A transport that refuses the round (a client error on the first
+  // request, before any reply arrived) gets the same request again with
+  // them in the message, once.
+  let seedForm = null as SeedForm | null;
+  const seeded = seed?.steps.length && history ? seedRound(seed.steps, history) : null;
+  const putSeed = (form: SeedForm) => {
+    if (!seeded) return;
+    seedForm = form;
+    convo.splice(arrived);
+    results.length = 0;
+    if (form === "round") {
+      convo.push({ role: "assistant", content: "", tool_calls: seeded.replay });
+      for (const r of seeded.results) {
+        results.push({ index: convo.length, key: r.key, id: r.step.id });
+        convo.push(r.message);
+      }
+    } else {
+      const lastUser = arrived - 1 - [...convo].reverse().findIndex((m) => m.role === "user");
+      const m = convo[lastUser];
+      const prompt = typeof m.content === "string" ? m.content : lastQuestion([m]);
+      convo[lastUser] = { ...m, content: seededMessage(seeded.results.map((r) => r.step), prompt) };
+    }
+  };
+  if (seeded) {
+    history = seeded.history;
+    steps = seeded.results.map((r) => r.step);
+    for (const s of steps) if (s.status === "done") offer(s.name);
+    putSeed(seed!.form);
+  }
   let answerNow = false; // asked to answer without calling more tools
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, requests: 0 }; // over the requests that reported them
   let requests = 0;
@@ -398,6 +467,15 @@ export async function runAgent({
       // A request sent that did not complete has no counts: said apart (usage.ts).
       if (dispatched && (heard || !ranNothing(e))) onUsage?.(notCounted());
       if (signal.aborted) throw e; // the reply was stopped
+      // A transport that refuses the seeded round (a round of calls the model
+      // did not make): the same request, the steps in the message instead.
+      if (seedForm === "round" && round === 0 && !heard && refusedRequest(e) && !isToolsUnsupported(e)) {
+        putSeed("message");
+        onSeedForm?.("message");
+        reasoning = reasoningBefore;
+        round = -1;
+        continue;
+      }
       if (useTools && round === 0 && !roundText && isToolsUnsupported(e)) {
         noTools.add(`${settings.baseUrl}|${settings.model}`);
         useTools = false;
@@ -567,3 +645,6 @@ export async function runAgent({
     ...(verdict ? { verdict } : {}),
   };
 }
+
+/** What runAgent takes. */
+export type RunAgentOptions = Parameters<typeof runAgent>[0];

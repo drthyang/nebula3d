@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clockLine, elapsedMs, formatDuration, overLimit, pausedMs, pauseClock, resumeClock, startClock, stopClock } from "../clock";
+import { clockLine, elapsedMs, formatDuration, leftMs, overLimit, pausedMs, pauseClock, resumeClock, startClock, stopClock, totalMs } from "../clock";
 
 const S = 1000;
 const M = 60 * S;
@@ -26,15 +26,21 @@ describe("the working clock", () => {
     expect(pauseClock(c, 6 * M)).toBe(c); // already paused
     expect(elapsedMs(c, 7 * M)).toBe(5 * M);
     expect(pausedMs(c, 7 * M)).toBe(2 * M);
-    expect(clockLine(c, 7 * M)).toBe("Paused · 5:00 of 30:00 · paused 2:00");
+    expect(clockLine(c, 7 * M)).toBe("Paused · 5:00 of 30:00 · paused 2:00 · total 7:00");
     c = resumeClock(c, 8 * M);
     expect(resumeClock(c, 9 * M)).toBe(c); // not paused
     expect(elapsedMs(c, 10 * M)).toBe(7 * M);
-    expect(clockLine(c, 10 * M)).toBe("Working · 7:00 of 30:00 · paused 3:00");
+    expect(clockLine(c, 10 * M)).toBe("Working · 7:00 of 30:00 · paused 3:00 · total 10:00");
+    expect(totalMs(c, 10 * M)).toBe(10 * M);
+    expect(leftMs(c, 10 * M)).toBe(23 * M);
     // Stopped in a pause: the pause ends there.
     const stopped = stopClock(pauseClock(c, 12 * M), 14 * M);
     expect(elapsedMs(stopped, 99 * M)).toBe(9 * M);
     expect(pausedMs(stopped, 99 * M)).toBe(5 * M);
+    // The run's whole time stands at the stop: the working time and the pauses.
+    expect(totalMs(stopped, 99 * M)).toBe(14 * M);
+    expect(clockLine(stopped, 99 * M)).toBe("Took · 9:00 of 30:00 · paused 5:00 · total 14:00");
+    expect(leftMs(startClock(0), 5 * M)).toBeNull();
   });
 
   it("reaches its limit on working time only", () => {

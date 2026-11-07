@@ -3,7 +3,7 @@
 // or closes the panel.  One reply at a time; stopAssistant() aborts it and
 // keeps whatever was written so far.
 
-import { runAgent, toolStepsIn, type AgentStep } from "./agent";
+import { runAgent, toolStepsIn, type AgentResult, type AgentStep, type RunAgentOptions } from "./agent";
 import { proposeFromReply } from "./apply/actions";
 import { clearDecisions, markTold } from "./apply/decisions";
 import { elapsedMs, startClock, stopClock } from "./clock";
@@ -12,7 +12,7 @@ import { beginReply, endReply, recordUsage, type Usage } from "./usage";
 import { useMarkStore } from "../state/markStore";
 import { useChatStore } from "./chatStore";
 import type { ChatMessage } from "./provider/client";
-import { loadSettings } from "./settings";
+import { loadSettings, type LlmSettings } from "./settings";
 import { skillsReadIn } from "./skills";
 import type { AgentTool, ToolContext } from "./tools";
 
@@ -40,12 +40,38 @@ export function replyContext(ctx: ToolContext, turns: readonly { steps?: readonl
   };
 }
 
+/** How a reply ended, for a caller that drives replies itself (auto/controller.ts). */
+export interface ReplyOutcome {
+  turn: number | null; // the assistant turn it added; null: none (it ended with nothing to keep)
+  result: AgentResult | null; // null: it was stopped, or ended with an error
+  stopped: boolean;
+  error: string | null;
+  tokens: Usage;
+}
+
+/**
+ * The options an auto-mode reply adds (auto/controller.ts): its settings, its
+ * run's Stop (`signal`, besides stopAssistant), and what runAgent takes for it
+ * (the seeded checks, the user's words as "", its round limit); each
+ * request's tokens go to `onUsage` as well.
+ */
+export interface ReplyOptions {
+  settings?: LlmSettings;
+  signal?: AbortSignal;
+  agent?: Pick<RunAgentOptions, "seed" | "userMessage" | "maxRounds" | "onSeedForm">;
+  onUsage?: (u: Usage) => void;
+}
+
 export async function askAssistant({
   label,
   messages,
   tools,
   ctx,
   told,
+  settings,
+  signal,
+  agent,
+  onUsage,
 }: {
   label: string; // the user turn shown in the transcript
   messages: ChatMessage[];
@@ -55,11 +81,15 @@ export async function askAssistant({
   // (apply/since.ts): marked as told once the reply has come back with a turn;
   // a reply that ended with nothing lists them again in the next one.
   told?: number;
-}): Promise<void> {
+} & ReplyOptions): Promise<ReplyOutcome | null> {
   const chat = useChatStore.getState();
-  if (chat.busy) return;
+  if (chat.busy) return null;
   const abort = new AbortController();
   controller = abort;
+  // The caller's Stop ends the reply too.
+  const stopReply = () => abort.abort();
+  if (signal?.aborted) abort.abort();
+  signal?.addEventListener("abort", stopReply, { once: true });
   chat.addTurn({ role: "user", content: label });
   // The reply's clock (clock.ts): the panel shows it while the reply runs, and the turn keeps it.
   useChatStore.setState({ busy: true, live: { content: "", reasoning: "", steps: [] }, error: null, clock: startClock(Date.now()) });
@@ -74,10 +104,14 @@ export async function askAssistant({
       messages,
       tools,
       ctx,
-      settings: loadSettings(),
+      settings: settings ?? loadSettings(),
       signal: abort.signal,
       onProgress: (live) => useChatStore.setState({ live }),
-      onUsage: recordUsage,
+      onUsage: (u) => {
+        recordUsage(u);
+        onUsage?.(u);
+      },
+      ...agent,
     });
     const tokens = endReply();
     // A reply without an answer still gets a turn — its thinking, or a note that
@@ -104,6 +138,7 @@ export async function askAssistant({
     // (the transcript keeps what was read): UI only, the model reads none of them.
     proposeFromReply(lastTurnId(), result.steps, result.content, ctx?.dataset.id);
     if (told !== undefined) markTold(told);
+    return { turn: lastTurnId(), result, stopped: false, error: null, tokens };
   } catch (e) {
     const counted = endReply();
     const tokens = counted.requests || counted.uncounted ? { tokens: counted } : {};
@@ -114,9 +149,11 @@ export async function askAssistant({
     const live = ended && { ...ended, steps: endSteps(ended.steps, stopped ? "you stopped the reply" : "the reply ended with an error") };
     const kept = live && (live.content || live.reasoning || live.steps.length);
     if (kept && told !== undefined) markTold(told);
+    const outcome = (turn: number | null): ReplyOutcome => ({ turn, result: null, stopped, error: stopped ? null : (e as Error).message, tokens: counted });
     if (stopped) {
       if (kept) useChatStore.getState().addTurn({ role: "assistant", ...live, ...tokens, ...took(), note: "Stopped." });
       else withQuestion(tokens);
+      return outcome(kept ? lastTurnId() : null);
     } else if (kept) {
       // The steps already ran (a tuning run, a pipeline run): keep them, and
       // what was written, with the error that ended the reply.
@@ -127,11 +164,14 @@ export async function askAssistant({
         ...took(),
         note: `The reply ended with an error: ${(e as Error).message.replace(/\.$/, "")}. The steps above ran; ask again to continue from them.`,
       });
+      return outcome(lastTurnId());
     } else {
       withQuestion(tokens);
       useChatStore.setState({ error: (e as Error).message });
+      return outcome(null);
     }
   } finally {
+    signal?.removeEventListener("abort", stopReply);
     if (controller === abort) controller = null;
     useChatStore.setState({ busy: false, live: null, clock: null });
   }

@@ -125,6 +125,47 @@ export interface Round {
 }
 
 /**
+ * A round the app ran for the reply before the model's first request: the
+ * checks an auto-mode phase already ran (auto/controller.ts), each a step
+ * with its result as the executor made it, as the reply's first steps. They
+ * count as this reply's own, as a round the model called does: the history's
+ * steps and replySteps hold them, so the answer checks read them as called,
+ * the ring gate reads their 3D ring verdict and assess_stage sends the terse
+ * criterion after them; and the repeat guard holds a call with the same
+ * arguments to them. Only steps of tools that only read (their facts' `acts`
+ * null), and no read_skill (a skill counts as read only when its text is
+ * read, startReply): a seeded step can never pass for a change, a run, or a
+ * skill read. Each step takes the reply's own id for its place
+ * (`${n - 1}:seed_${n}`), and its call the id the replayed round names it by.
+ */
+export function seedRound(seeded: readonly AgentStep[], history: History): Round {
+  for (const s of seeded) {
+    if (factsOf(s.name).acts !== null || s.name === "read_skill") throw new Error(`${s.name} cannot be seeded: only a reading step can`);
+    if (s.status !== "done" && s.status !== "error") throw new Error(`a seeded step must have ended (${s.name} is ${s.status})`);
+  }
+  let ran = history.ran;
+  const results: Round["results"] = [];
+  const replay: ToolCall[] = [];
+  const replySteps = [...(history.ctx.replySteps ?? [])];
+  seeded.forEach((s, i) => {
+    const n = history.steps + i + 1;
+    const callId = `seed_${n}`;
+    const step: AgentStep = { ...s, id: `${n - 1}:${callId}` };
+    const key = callKey(s.name, s.args);
+    replay.push({ id: callId, type: "function", function: { name: s.name, arguments: JSON.stringify(s.args) } });
+    results.push({ step, message: { role: "tool", tool_call_id: callId, content: s.result ?? "" }, key, repeatOf: null });
+    replySteps.push(step);
+    if (s.status === "done") ran = [...ran.filter((r) => !factsOf(toolOf(r.key)).readsReply), { key, step: n }];
+  });
+  return {
+    replay,
+    results,
+    history: sealed({ tools: history.tools, ctx: { ...history.ctx, replySteps }, steps: history.steps + seeded.length, ran, barren: history.barren }),
+    stuck: false,
+  };
+}
+
+/**
  * Run a round's calls, one at a time and in order, over `history`. Each
  * call's arguments are parsed once. `onStep` sees each step as it changes
  * (started, its live line, ended), synchronously, so what the loop does with

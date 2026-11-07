@@ -22,4 +22,4 @@ export { ToolArgError } from "./types";
 export type { ViewTarget } from "./openView";
 export { CHAT_TOOLS, factsOf, toolSpecs, toolsWhere, toolsWithSkills, unreadSkillRefusal } from "./registry";
 export { callTool, MAX_RESULT_CHARS, runToolCall, type ToolRun } from "./call";
-export { BARREN_ROUNDS, callKey, forget, runRound, startReply, type CallKey, type History, type Round } from "./round";
+export { BARREN_ROUNDS, callKey, forget, runRound, seedRound, startReply, type CallKey, type History, type Round } from "./round";
