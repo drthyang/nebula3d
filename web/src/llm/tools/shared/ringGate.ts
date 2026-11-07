@@ -12,12 +12,19 @@
 // name, "ring model", or a tuning of the rings). The app's own calls, which
 // carry no reply's steps, are not held. The refusal is the tool's own, the
 // same in both arms: it names no skill, tool or stage, and holds no inference.
+//
+// A verdict counts on the outputs as they now are: a run that recomputed the
+// rings since makes it stale. A run of the conversation is one of its steps
+// (run_pipeline); any other run (a Run card, the Configure or Execution page,
+// one outside the console) is none, and the output the verdict judged says it
+// (its mark, state/ringOutput.ts): recomputed since, it is another output.
 
+import { ringOutputChanged } from "../../../state/ringOutput";
 import type { AgentStep } from "../../agent";
 import { found } from "../../readings";
 import { TUNE_PARAMS } from "../../tune/catalog";
 import { outcomesOf } from "../../verdicts/recorded";
-import type { Kind } from "../../verdicts/rules";
+import type { Kind, Outcome } from "../../verdicts/rules";
 import type { ToolContext } from "../types";
 
 /** The settings of the ring removal. */
@@ -49,12 +56,17 @@ export const namesRingTuning = (message: string | undefined): boolean => !!messa
 /**
  * Whether a change to the ring removal may go ahead on the evidence: the 3D
  * ring verdict on the outputs as they now are (this reply's steps after the
- * conversation's earlier ones, a run's recomputing making older ones stale)
- * finds a ring left or dented. True for the app's own calls (no reply's steps).
+ * conversation's earlier ones, a run's recomputing making older ones stale,
+ * the conversation's own or any other: its ring output's mark) finds a ring
+ * left or dented. `dataset`: the dataset as it is listed now, whose ring
+ * output's date the mark is held to. True for the app's own calls (no reply's
+ * steps).
  */
-export function ringVerdictAllowsChange(ctx: Pick<ToolContext, "replySteps" | "earlierSteps">): boolean {
+export function ringVerdictAllowsChange(ctx: Pick<ToolContext, "replySteps" | "earlierSteps"> & { dataset?: ToolContext["dataset"] }): boolean {
   if (!ctx.replySteps) return true;
-  return ringVerdict([...(ctx.earlierSteps ?? []), ...ctx.replySteps]) === "attention";
+  const standing = standingVerdict([...(ctx.earlierSteps ?? []), ...ctx.replySteps]);
+  if (standing?.kind !== "attention") return false;
+  return !(standing.ringOutput && ringOutputChanged(standing.ringOutput, ctx.dataset));
 }
 
 /**
@@ -70,12 +82,17 @@ const recomputesRings = (s: AgentStep): boolean => {
   return !stages || stages.rings === "computed";
 };
 
-/** The newest 3D ring verdict on the outputs as they now are: its kind, or undefined where none stands. */
-export function ringVerdict(steps: readonly AgentStep[]): Kind | undefined {
-  let kind: Kind | undefined;
+// The newest 3D ring verdict that no run among `steps` recomputed the rings after.
+function standingVerdict(steps: readonly AgentStep[]): Outcome | undefined {
+  let standing: Outcome | undefined;
   for (const s of steps) {
-    if (recomputesRings(s)) kind = undefined;
-    for (const o of outcomesOf(s)) if (o.check === "rings") kind = o.kind;
+    if (recomputesRings(s)) standing = undefined;
+    for (const o of outcomesOf(s)) if (o.check === "rings") standing = o;
   }
-  return kind;
+  return standing;
+}
+
+/** The newest 3D ring verdict on the outputs as `steps` leave them: its kind, or undefined where none stands. */
+export function ringVerdict(steps: readonly AgentStep[]): Kind | undefined {
+  return standingVerdict(steps)?.kind;
 }

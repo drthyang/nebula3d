@@ -11,6 +11,7 @@
 // holes than its rule needs, "info" with the reason "too few holes". An
 // "attention" outcome always carries a reason.
 
+import type { RingOutputMark } from "../../state/ringOutput";
 import { built, evidence, inference, inferred, joined, quotedInference, reading, remedy, written, type Span, type Tagged } from "../inference";
 import { isTooCoarse } from "../metrics/coarse";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
@@ -82,6 +83,10 @@ export interface Outcome {
   dataProblems: readonly string[]; // what the data hold that no setting fixes, in {{achieved}}'s words
   words: string | null; // the verdict text the tool writes
   criterion?: string; // what the verdict is judged by, in words
+  // The ring check alone: the ring removal's output it judged, as it stood
+  // (state/ringOutput.ts); the ring gate takes the verdict while that output
+  // is the one there. A verdict read back from a result alone has none.
+  ringOutput?: RingOutputMark;
 }
 
 /**

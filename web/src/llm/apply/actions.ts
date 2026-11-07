@@ -24,6 +24,7 @@
 
 import { noteAgentEdit } from "../../state/agentEdits";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { ringOutputChanged, ringOutputMark } from "../../state/ringOutput";
 import { toolStepsIn, type AgentStep } from "../agent";
 import { useChatStore } from "../chatStore";
 import { grantForClick, grantIsFor, isTrustedClick, revokeGrant, type AppCallContext, type ClickEvent, type Grant } from "../consent";
@@ -150,17 +151,24 @@ export function ringHeldNow(p: Proposal, ctx: ToolContext | null): boolean {
   return !ctx || !ringVerdictAllowsChange(ringContext(p, ctx));
 }
 
-/** A card's own ring check while it judges the outputs as they are: same dataset, no run started since, none running. */
-export function currentRingCheck(p: Proposal): RingCheck | undefined {
+/**
+ * A card's own ring check while it judges the outputs as they are: same
+ * dataset, no run started since, none running, and the ring output it judged
+ * still the one there (state/ringOutput.ts, the ring gate's own test of a
+ * verdict: recomputed since by any run, or dated otherwise in `dataset`, the
+ * dataset as it is listed now).
+ */
+export function currentRingCheck(p: Proposal, dataset?: ToolContext["dataset"]): RingCheck | undefined {
   const check = useDecisionStore.getState().ringChecks[p.id];
   const pipe = usePipelineStore.getState();
-  return check && check.dataset === p.dataset && !pipe.running && pipe.lastRun === check.lastRun ? check : undefined;
+  if (!check || check.dataset !== p.dataset || pipe.running || pipe.lastRun !== check.lastRun) return undefined;
+  return ringOutputChanged(check.ringOutput, dataset) ? undefined : check;
 }
 
 // The card's context, its own ring check, while it stands, as the reply's step the ring gate reads last.
 function ringContext(p: Proposal, ctx: ToolContext): ToolContext {
   const base = cardContext(ctx);
-  const check = currentRingCheck(p);
+  const check = currentRingCheck(p, ctx.dataset);
   return check ? { ...base, replySteps: [check.step] } : base;
 }
 
@@ -328,6 +336,8 @@ export async function checkRings(p: Proposal, ctx: ToolContext): Promise<void> {
   useDecisionStore.setState({ checking: p.id });
   try {
     const lastRun = usePipelineStore.getState().lastRun;
+    // The ring output as it stands before the check reads it.
+    const ringOutput = ringOutputMark(ctx.dataset);
     const run = await callTool(cardContext(ctx), "assess_stage", { stage: "rings" });
     if (!run.ok) {
       setNote(p.id, `The ring check did not run: ${run.summary.replace(/\.$/, "")}.`);
@@ -343,7 +353,7 @@ export async function checkRings(p: Proposal, ctx: ToolContext): Promise<void> {
       ...(run.full !== undefined ? { full: run.full } : {}),
       ...(run.outcomes ? { outcomes: run.outcomes } : {}),
     };
-    setRingCheck(p.id, { step, dataset: p.dataset, lastRun });
+    setRingCheck(p.id, { step, dataset: p.dataset, lastRun, ringOutput });
   } finally {
     useDecisionStore.setState({ checking: null });
   }

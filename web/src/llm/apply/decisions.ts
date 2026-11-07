@@ -13,6 +13,7 @@ import { create } from "zustand";
 
 import { resetsWithVolume } from "../../state/volumeReset";
 import type { PipelineConfig, RunRecord } from "../../state/pipelineStore";
+import type { RingOutputMark } from "../../state/ringOutput";
 import type { AgentStep } from "../agent";
 import { RUN_STAGES, TUNE_STAGES, type ParamValue, type RunStage } from "../tune/catalog";
 import type { Held, Proposal, ProposalKind, ProposalStatus, ProposalVia } from "./proposals";
@@ -41,6 +42,7 @@ export interface RingCheck {
   step: AgentStep;
   dataset: string;
   lastRun: RunRecord | null; // the run whose outputs it judged: another run since makes it stale
+  ringOutput: RingOutputMark; // the ring output it judged: recomputed since, by any run, it is stale (state/ringOutput.ts)
 }
 
 interface DecisionState {
