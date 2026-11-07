@@ -31,10 +31,10 @@ import { openView } from "../tools/openView";
 import { goToStep } from "./goToStep";
 import { PinnedCard } from "./ProposalCards";
 
-/** The time now, each second while the clock runs. */
+/** The time now, each second until the clock stops (while it waits for you too: the paused time grows). */
 function useNow(clock: RunClock | undefined): number {
   const [now, setNow] = useState(() => Date.now());
-  const ticking = !!clock && clock.endedAt === null && clock.pausedAt === null;
+  const ticking = !!clock && clock.endedAt === null;
   useEffect(() => {
     if (!ticking) return;
     const t = window.setInterval(() => setNow(Date.now()), 1000);
@@ -62,8 +62,12 @@ function useRowLink() {
 }
 
 function Row({ run, row, onLink }: { run: AutoRun; row: PlanRow; onLink: (run: AutoRun, row: PlanRow) => void }) {
-  const tone = run.at === row.id && run.state === "paused" && run.pause?.kind === "fact" ? "wait" : rowTone(row.status);
-  const sub = run.at === row.id && run.pause?.kind === "fact" ? "needs you" : rowSub(row, run.limits.fixesPerStage);
+  // The row a fact holds back: "needs you", and the fact on the right.
+  const pause = run.state === "paused" && run.pause?.kind === "fact" && run.pause.before === row.id ? run.pause : null;
+  const fact = pause ? run.facts.find((f) => f.proposal === pause.proposal) : undefined;
+  const tone = pause ? "wait" : rowTone(row.status);
+  const sub = pause ? "needs you" : rowSub(row, run.limits.fixesPerStage);
+  const meta = pause ? (fact?.title.toLowerCase() ?? "") : rowMeta(row);
   const linked = (row.evidence ?? []).length > 0;
   return (
     <li id={`ai-auto-row-${row.id}`} className={`auto-step is-${tone}`}>
@@ -79,7 +83,7 @@ function Row({ run, row, onLink }: { run: AutoRun; row: PlanRow; onLink: (run: A
           {TITLES[row.id]}
           {sub && <span className="sub"> · {sub}</span>}
         </span>
-        <span className="meta">{rowMeta(row)}</span>
+        <span className="meta">{meta}</span>
       </button>
     </li>
   );
