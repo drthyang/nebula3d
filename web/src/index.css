@@ -2848,6 +2848,7 @@ input[type="range"]::-moz-range-track {
 /* A saved session restored (or refused): what came back, and what is missing. */
 .session-note {
   display: flex;
+  flex-wrap: wrap; /* a phone: the text on its own row, its buttons under it */
   align-items: center;
   gap: 10px;
   margin: 10px 0 2px;
@@ -2859,7 +2860,7 @@ input[type="range"]::-moz-range-track {
   background: var(--green-soft);
 }
 .session-note > span {
-  flex: 1;
+  flex: 1 1 260px;
 }
 .session-note.warn {
   background: var(--amber-soft);
