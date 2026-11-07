@@ -12,6 +12,9 @@
 //   one run.
 // - The quick preset (NEBULA_VALIDATION_PRESET=quick): gemma4:26b, arm B, one
 //   run per dev case, 5 minutes a run, inside the 30-minute cap.
+// - The quick-auto preset (NEBULA_VALIDATION_PRESET=quick-auto): the B-auto
+//   arm, the quick preset's plan with each run through auto mode's controller
+//   (validationAuto.ts), under the same cap and per-run limit.
 
 import type { Arm } from "./validation";
 
@@ -39,12 +42,15 @@ export interface Preset {
   runs: number;
   runMinutes: number;
   wallMinutes: number;
+  mode?: "auto"; // each run through auto mode (validationAuto.ts), on arm B's datasets
 }
 
 /** The presets NEBULA_VALIDATION_PRESET names. */
 export const PRESETS: Readonly<Record<string, Preset>> = {
   // 8 dev cases × 1 run × 90 s ≈ 12 minutes, inside the 30-minute cap.
   quick: { model: "ollama-gemma4-26b", arms: ["B"], runs: 1, runMinutes: 5, wallMinutes: DEFAULT_WALL_MINUTES },
+  // B-auto: the same plan and limits, each run through auto mode; measured on 2026-11-07 (docs/evals.md).
+  "quick-auto": { model: "ollama-gemma4-26b", arms: ["B"], runs: 1, runMinutes: 5, wallMinutes: DEFAULT_WALL_MINUTES, mode: "auto" },
 };
 
 export function presetNamed(name: string | undefined): Preset | null {
