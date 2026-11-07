@@ -33,6 +33,7 @@ import { runPipelineFrom } from "../tools/shared/runPipeline";
 import { RING_SETTINGS, ringVerdictAllowsChange } from "../tools/shared/ringGate";
 import { RUN_STAGES, TUNE_STAGES, type RunStage } from "../tune/catalog";
 import { useTuneStore } from "../tune/tuner";
+import { autoBusy } from "../auto/store";
 import {
   addProposals,
   logDecision,
@@ -109,6 +110,9 @@ const staleWhy = (p: Proposal, datasetId: string | undefined): string | null => 
 };
 const busyWhy = (busy: boolean): string | null => {
   if (busy) return "Wait for the reply to end.";
+  // An auto run under way owns the settings and the runs (auto/controller.ts): a
+  // card waits for it to pause, stop or end. A fact it paused for applies then.
+  if (autoBusy()) return "Wait for the auto run to pause.";
   const { working, checking } = useDecisionStore.getState();
   return working || checking ? "" : null;
 };
@@ -425,11 +429,14 @@ export const undoable = (d: Decision): boolean => (d.action === "apply" || d.act
  * Undo a decision: put back `before` for exactly its fields, while they still
  * hold `after`; otherwise say so. A change the user's click made (a fact, a
  * setting only they set) is put back on their own click alone (`event`, the
- * DOM's). A Run card follows, as after any change.
+ * DOM's); a change auto mode made is not one. A Run card follows, as after
+ * any change. `by`: who undoes it, the user unless auto mode puts back a fix
+ * that made a check worse (auto/controller.ts), which it never does to a
+ * change a click made.
  */
-export function undoDecision(d: Decision, event?: ClickEvent): boolean {
+export function undoDecision(d: Decision, event?: ClickEvent, by: Decision["by"] = "you"): boolean {
   if (!undoable(d)) return false;
-  if (d.byClick && !isTrustedClick(event)) {
+  if (d.byClick && (by !== "you" || !isTrustedClick(event))) {
     setNote(d.id, "Undo needs your own click.");
     return false;
   }
@@ -446,7 +453,7 @@ export function undoDecision(d: Decision, event?: ClickEvent): boolean {
     title: d.title,
     shown: { from: d.shown.to, to: d.shown.from || "before" },
     action: "undo",
-    by: "you",
+    by,
     at: Date.now(),
     before: d.after,
     after: d.before,
@@ -484,8 +491,8 @@ export function undoAll(event?: ClickEvent): void {
 
 const ACTION_WORD: Record<Decision["action"], string> = { apply: "Applied", "edit-apply": "Edited and applied", dismiss: "Dismissed", undo: "Put back" };
 
-/** Who made a decision, as the record shows it: "you (click)" for a change only the user's own click makes. */
-export const byText = (d: Pick<Decision, "by" | "byClick">): string => (d.byClick ? `${d.by} (click)` : d.by);
+/** Who made a decision, as the record shows it: "you (click)" for a change only the user's own click makes; "auto mode" for auto mode's. */
+export const byText = (d: Pick<Decision, "by" | "byClick">): string => (d.by === "auto" ? "auto mode" : d.byClick ? `${d.by} (click)` : d.by);
 
 /** One decision as the report's Decisions section lists it. */
 export function decisionLine(d: Decision): string {

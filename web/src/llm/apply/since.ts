@@ -75,9 +75,11 @@ const WHO: Record<Decision["by"], string> = { you: "you", auto: "auto mode" };
 /**
  * The line for `decisions` (those since the last reply, oldest first), or null
  * when there are none. Who made each is named where it changes: "you applied
- * A; declined B; auto mode applied C".
+ * A; declined B; auto mode applied C". `lead`: the words before them, "since
+ * the last reply" unless given (an auto run's digest: "in this auto run",
+ * auto/prompts.ts).
  */
-export function sinceLine(decisions: readonly Decision[], proposals: readonly Proposal[]): string | null {
+export function sinceLine(decisions: readonly Decision[], proposals: readonly Proposal[], lead = "since the last reply"): string | null {
   if (!decisions.length) return null;
   const listed = decisions.slice(-SINCE_MAX);
   const earlier = decisions.length - listed.length;
@@ -88,5 +90,5 @@ export function sinceLine(decisions: readonly Decision[], proposals: readonly Pr
     by = d.by;
     return who + item;
   });
-  return `- since the last reply, ${items.join("; ")}${earlier ? ` (and ${earlier} earlier)` : ""}`;
+  return `- ${lead}, ${items.join("; ")}${earlier ? ` (and ${earlier} earlier)` : ""}`;
 }

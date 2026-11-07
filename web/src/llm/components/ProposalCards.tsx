@@ -47,6 +47,7 @@ const VIA_DETAIL: Record<Proposal["source"]["via"], string> = {
   trial: "A trial of the tuning run.",
   apply: "A change you applied: the outputs predate it.",
   undo: "A change you undid: the outputs predate it.",
+  auto: "Auto mode made this, through the model's own update_settings or tune_pipeline call under every guard, or ran it.",
 };
 
 /** The card's fields as the settings hold them, as one string a store selector can compare. */
@@ -283,7 +284,7 @@ function DoneCard({ p, decision }: { p: Proposal; decision: Decision | undefined
   const busy = useChatStore((s) => s.busy);
   const text = p.kind === "run" ? p.title : changeText(p.title, decision?.shown ?? p.shown);
   const what =
-    p.status === "dismissed" ? "dismissed" : p.status === "undone" ? "undone" : p.kind === "run" ? "run by you" : `applied by ${decision ? byText(decision) : "you"}`;
+    p.status === "dismissed" ? "dismissed" : p.status === "undone" ? "undone" : p.kind === "run" ? `run by ${decision ? byText(decision) : "you"}` : `applied by ${decision ? byText(decision) : "you"}`;
   return (
     <div className={`pc-done pc-done--${p.status}`} data-proposal={p.id}>
       <span className="ok" aria-hidden="true">
