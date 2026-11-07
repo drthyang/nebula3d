@@ -117,6 +117,19 @@ export const requestTokens = (
 
 export type MeterLevel = "ok" | "amber" | "red";
 
+/** The meter's one action from amber (ChatView): Summarize and continue, or Start fresh. */
+export type MeterAction = "summarize" | "fresh";
+
+/**
+ * The action the meter offers: none below amber, with no conversation, or
+ * while a reply runs; Summarize and continue where the summary makes the
+ * request shorter (summaryShortens, summarize.ts); else Start fresh.
+ */
+export function meterAction({ level, turns, busy, summaryHelps }: { level: MeterLevel; turns: number; busy: boolean; summaryHelps: boolean }): MeterAction | null {
+  if (level === "ok" || turns === 0 || busy) return null;
+  return summaryHelps ? "summarize" : "fresh";
+}
+
 export interface MeterReading {
   prompt: number; // the request's estimated tokens
   used: number; // with the reply's room

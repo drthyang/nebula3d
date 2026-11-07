@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
 import type { ChatTurn } from "../chatStore";
 import { buildChatMessages } from "../prompts/templates";
 import { baseTokens } from "../provider/tokens";
-import { QUESTION_CHARS, SUMMARY_QUESTIONS, summarizeTurns, unsummarized, verdictWords } from "../summarize";
+import { meterAction } from "../contextMeter";
+import { QUESTION_CHARS, SUMMARY_QUESTIONS, summarizeTurns, summaryShortens, unsummarized, verdictWords, type ChatSummary } from "../summarize";
 import { SUMMARY_TURNS, summaryDecided } from "./summarySamples";
 import type { PipelineContext } from "../context/pipelineContext";
 
@@ -115,5 +116,41 @@ describe("the next request after a summary", () => {
 
   it("without a summary, every turn", () => {
     expect(unsummarized(later, null)).toEqual(later);
+  });
+});
+
+describe("the meter's one action (meterAction, summaryShortens)", () => {
+  const long = (t: ChatTurn): ChatTurn => (t.role === "assistant" && t.content ? { ...t, content: `${t.content} ${"The evidence above supports it. ".repeat(40)}` } : t);
+  const pick = (turns: ChatTurn[], current: ChatSummary | null = null) =>
+    meterAction({ level: "amber", turns: turns.length, busy: false, summaryHelps: summaryShortens(unsummarized(turns, current), current, summarizeTurns(turns, null)) });
+
+  it("Summarize and continue when the summary makes the request shorter (answers of a paragraph)", () => {
+    const turns = SUMMARY_TURNS.map(long);
+    expect(summaryShortens(turns, null, summarizeTurns(turns, null))).toBe(true);
+    expect(pick(turns)).toBe("summarize");
+  });
+
+  it("Start fresh when it does not (answers of a line: the summary is the longer)", () => {
+    expect(summaryShortens(SUMMARY_TURNS, null, summarizeTurns(SUMMARY_TURNS, null))).toBe(false);
+    expect(pick(SUMMARY_TURNS)).toBe("fresh");
+  });
+
+  it("counts the summary already in place against the new one, and only the turns still sent as text", () => {
+    const turns = SUMMARY_TURNS.map(long);
+    const current = summarizeTurns(turns, null)!;
+    // Everything is summarized already: nothing left to take off.
+    expect(summaryShortens(unsummarized(turns, current), current, summarizeTurns(turns, null))).toBe(false);
+    expect(pick(turns, current)).toBe("fresh");
+    // Only the newest CHAT_HISTORY_TURNS count: the turns already dropped take nothing off the request.
+    const many = Array.from({ length: 40 }, (_, i): ChatTurn => ({ id: i + 1, role: i % 2 ? "assistant" : "user", content: i % 2 ? "Fine." : "?" }));
+    expect(summaryShortens(many, null, summarizeTurns(many, null))).toBe(false);
+  });
+
+  it("no action below amber, with no conversation, or while a reply runs", () => {
+    expect(meterAction({ level: "ok", turns: 8, busy: false, summaryHelps: true })).toBeNull();
+    expect(meterAction({ level: "red", turns: 0, busy: false, summaryHelps: true })).toBeNull();
+    expect(meterAction({ level: "red", turns: 8, busy: true, summaryHelps: true })).toBeNull();
+    expect(meterAction({ level: "red", turns: 8, busy: false, summaryHelps: false })).toBe("fresh");
+    expect(meterAction({ level: "red", turns: 8, busy: false, summaryHelps: true })).toBe("summarize");
   });
 });

@@ -21,6 +21,8 @@
 // the summary took their place. The turns after it are sent as before.
 
 import type { ChatTurn } from "./chatStore";
+import { CHAT_HISTORY_TURNS } from "./prompts/templates";
+import { baseTokens } from "./provider/tokens";
 import type { ComputedVerdict } from "./verdicts";
 
 /** What the model reads in place of the turns up to `through` (a turn id). */
@@ -105,6 +107,22 @@ export function summarizeTurns(turns: readonly ChatTurn[], decided: string | nul
     ...(decided ? [decided] : []),
   ].join("\n");
   return { through: turns[turns.length - 1].id, turns: n, text };
+}
+
+/**
+ * Whether summary `next` makes the request shorter: fewer tokens than what it
+ * takes off it, the turns still sent as text (the newest CHAT_HISTORY_TURNS of
+ * `sent`) and the summary in place before it (`current`).
+ */
+export function summaryShortens(
+  sent: readonly Pick<ChatTurn, "role" | "content">[],
+  current: Pick<ChatSummary, "text"> | null,
+  next: Pick<ChatSummary, "text"> | null,
+): boolean {
+  if (!next || !sent.length) return false;
+  const off = sent.slice(-CHAT_HISTORY_TURNS).map(({ role, content }) => ({ role, content }));
+  const before = baseTokens([...off, ...(current ? [{ role: "user" as const, content: current.text }] : [])]);
+  return baseTokens([{ role: "user", content: next.text }]) < before;
 }
 
 /** The turns the model still reads as text: those after the summary, or all of them. */

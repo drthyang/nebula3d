@@ -7,7 +7,7 @@
 // phone it stays out of the toggles row until amber, and the action takes the
 // bar's place there, so the dock grows by no row. UI only: nothing here is sent.
 
-import { meterDetail, type ContextWindow, type MeterReading } from "../contextMeter";
+import { meterDetail, type ContextWindow, type MeterAction, type MeterReading } from "../contextMeter";
 
 const compact = (n: number): string => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}k`);
 
@@ -49,9 +49,6 @@ export function ContextMeterChip({
     </span>
   );
 }
-
-/** The meter's one action from amber: Summarize and continue where it shortens the request, else Start fresh. */
-export type MeterAction = "summarize" | "fresh";
 
 const ACTION: Record<MeterAction, { label: string; short: string; title: string }> = {
   summarize: {

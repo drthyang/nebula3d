@@ -16,11 +16,10 @@ import { toolsKnownUnsupported, type AgentStep } from "../agent";
 import { untoldDecisions, useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
 import { TRANSCRIPT_BYTES, useChatStore, type ChatTurn } from "../chatStore";
-import { contextWindow, conversationCost, meterReading, openingSpecs, requestTokens } from "../contextMeter";
+import { contextWindow, conversationCost, meterAction, meterReading, openingSpecs, requestTokens, type MeterAction } from "../contextMeter";
 import { buildChatMessages, CHAT_HISTORY_TURNS } from "../prompts/templates";
 import type { ModelContext } from "../provider/client";
-import { baseTokens } from "../provider/tokens";
-import { summarizeTurns, unsummarized, type ChatSummary } from "../summarize";
+import { summarizeTurns, summaryShortens, unsummarized, type ChatSummary } from "../summarize";
 import { seen } from "../readings";
 import { askAssistant, clearConversation, replyContext, stopAssistant } from "../session";
 import { saveSettings, type LlmSettings } from "../settings";
@@ -38,7 +37,7 @@ import { Markdown } from "./Markdown";
 import { ProposalCards } from "./ProposalCards";
 import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
-import { ContextMeterAction, ContextMeterChip, ContextMeterDetail, type MeterAction } from "./ContextMeter";
+import { ContextMeterAction, ContextMeterChip, ContextMeterDetail } from "./ContextMeter";
 import { useOllamaMax } from "../useOllamaMax";
 import { usageText } from "../usage";
 import { verdictLine } from "../verdict";
@@ -410,14 +409,10 @@ export function ChatView({
   const summaryHelps = useMemo(() => {
     void decisionsAt;
     if (!meter || meter.reading.level === "ok" || !sent.length) return false;
-    const next = summarizeTurns(turns, decidedLine());
-    const off = sent.slice(-CHAT_HISTORY_TURNS).map(({ role, content }) => ({ role, content }));
-    const before = baseTokens([...off, ...(summary ? [{ role: "user" as const, content: summary.text }] : [])]);
-    return next !== null && baseTokens([{ role: "user", content: next.text }]) < before;
+    return summaryShortens(sent, summary, summarizeTurns(turns, decidedLine()));
   }, [meter, turns, sent, summary, decisionsAt]);
-  // The one action from amber (none while a reply runs, or with no conversation).
-  const action: MeterAction | null =
-    meter && meter.reading.level !== "ok" && turns.length > 0 && !busy ? (summaryHelps ? "summarize" : "fresh") : null;
+  // The one action from amber (contextMeter.ts).
+  const action = meter ? meterAction({ level: meter.reading.level, turns: turns.length, busy, summaryHelps }) : null;
   const act = (a: MeterAction) => (a === "summarize" ? summarize : clearConversation);
 
   const sendChat = useCallback(() => {
