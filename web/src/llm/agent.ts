@@ -468,8 +468,11 @@ export async function runAgent({
       if (dispatched && (heard || !ranNothing(e))) onUsage?.(notCounted());
       if (signal.aborted) throw e; // the reply was stopped
       // A transport that refuses the seeded round (a round of calls the model
-      // did not make): the same request, the steps in the message instead.
-      if (seedForm === "round" && round === 0 && !heard && refusedRequest(e) && !isToolsUnsupported(e)) {
+      // did not make): the same request, the steps in the message instead,
+      // before any other reading of the refusal (one that names tools may be
+      // about those calls): a server that takes no tools refuses that too,
+      // and is found so then.
+      if (seedForm === "round" && round === 0 && !heard && refusedRequest(e)) {
         putSeed("message");
         onSeedForm?.("message");
         reasoning = reasoningBefore;
