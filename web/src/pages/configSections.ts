@@ -123,3 +123,42 @@ export function foldsHolding(fields: readonly Key[], s: ModelOf): AdvancedStage[
 export function changedFields(s: Readonly<Partial<PipelineConfig>>, defaults: PipelineConfig, keys: readonly Key[]): Key[] {
   return keys.filter((k) => s[k] !== defaults[k]);
 }
+
+/**
+ * The labels the Configure page gives its settings: the page reads them from
+ * here, and so do NEBULA Pilot's Apply cards and Changes list
+ * (llm/apply/proposals.ts), so a setting has one name in both. Every setting
+ * the Pilot can change has one (the test checks it).
+ */
+export const SETTING_LABEL: Readonly<Partial<Record<Key, string>>> = {
+  edgeTrim: "Edge trim",
+  symmetryLaue: "Laue class",
+  ringPooledSectors: "Sectors (n)",
+  ringPooledWindow: "Stack window (°)",
+  ringNFourier: "Fourier order",
+  ringModel: "Model",
+  ringGlobalSubtraction: "Subtraction",
+  punchProfileNSigma: "Profile reach ×σ",
+  punchHGuard: "H guard (r.l.u.)",
+  punchSearchFloor: "Search floor ×σ",
+  punchSearchMaxWidth: "Search width ×Bragg",
+  punchFitUnconstrained: "Drop fit constraints",
+  punchFootprint: "Footprint",
+  punchMinSig: "Min σ",
+  punchMode: "Mode",
+  punchSupercellH: "Supercell H",
+  punchSupercellK: "Supercell K",
+  punchSupercellL: "Supercell L",
+  punchMargin: "Margin",
+  backfillMethod: "Method",
+  flattenFitQMax: "Fit to |Q| (Å⁻¹)",
+  flattenQ2: "+ b·Q² term",
+  flattenEstimator: "Estimator",
+  flattenIon: "Magnetic ion",
+  pdfWindowShape: "Window shape",
+  pdfWindowSupport: "Taper to the measured coverage",
+  pdfApod: "Apodization",
+};
+
+/** A setting's label, by the field it is held in (SETTING_LABEL); the field's name where it has none. */
+export const settingLabel = (key: string): string => SETTING_LABEL[key as Key] ?? key;

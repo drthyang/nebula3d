@@ -5,6 +5,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
+import { clearDecisions, useDecisionStore, type Decision } from "../../llm/apply/decisions";
+import type { Proposal } from "../../llm/apply/proposals";
 import { useChatStore } from "../../llm/chatStore";
 import { rememberConfig } from "../configMemory";
 import { useDatasetStore } from "../datasetStore";
@@ -192,6 +194,43 @@ describe("the Pilot's marked regions in a session", () => {
     expect(useMarkStore.getState().marks.map((m) => m.id)).toEqual(["M1"]);
     restoreSession(old, [dataset("S-60K", ["raw"])]);
     expect(useMarkStore.getState().marks).toEqual([]);
+  });
+});
+
+describe("the Apply cards' record", () => {
+  beforeEach(() => clearDecisions());
+  const card: Proposal = {
+    id: "P1",
+    turn: 2,
+    kind: "setting",
+    title: "punchMinSig",
+    change: { punchMinSig: 6 },
+    fields: { punchMinSig: "6" },
+    from: { punchMinSig: "" },
+    shown: { from: "5", to: "6" },
+    runFrom: "punch",
+    source: { via: "answer" },
+    evidence: [],
+    dataset: "S-60K",
+    status: "applied",
+  };
+  const decision: Decision = { id: "D1", proposal: "P1", kind: "setting", title: "punchMinSig", shown: { from: "5", to: "6" }, action: "apply", by: "you", at: 1, before: { punchMinSig: "" }, after: { punchMinSig: "6" }, runFrom: "punch" };
+
+  it("is saved with the conversation and brought back with it", () => {
+    useDecisionStore.setState({ proposals: [card], decisions: [decision] });
+    const saved = JSON.stringify(captureSession(dataset("S-60K", OUTPUTS)));
+    clearDecisions();
+    restoreSession(parseSession(saved), [dataset("S-60K", OUTPUTS)]);
+    expect(useDecisionStore.getState().proposals).toEqual([card]);
+    expect(useDecisionStore.getState().decisions).toEqual([decision]);
+  });
+
+  it("reads only well-formed cards and decisions from a file, and none from a file saved before them", () => {
+    const file = { format: "nebula3d-session", version: 2, dataset: { id: "S-60K" }, decisions: { proposals: [card, { ...card, id: "P2", kind: "grant" }], decisions: [decision, { ...decision, id: "D2", by: "model" }] } };
+    expect(parseSession(JSON.stringify(file)).decisions).toEqual({ proposals: [card], decisions: [decision] });
+    useDecisionStore.setState({ proposals: [card], decisions: [decision] });
+    restoreSession(parseSession(JSON.stringify({ format: "nebula3d-session", version: 2, dataset: { id: "S-60K" } })), [dataset("S-60K", ["raw"])]);
+    expect(useDecisionStore.getState().proposals).toEqual([]);
   });
 });
 

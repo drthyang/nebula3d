@@ -19,7 +19,7 @@ import { headline } from "../tune/evaluate";
 import { useTuneStore } from "../tune/tuner";
 import type { Outcome } from "../verdicts";
 import { fullHalf, pngDataUrl, rasterize } from "./figures";
-import { buildReport, type Measured, type Report, type ReportFigure, type ReportTuningStage } from "./report";
+import { buildReport, type Measured, type Report, type ReportDecision, type ReportFigure, type ReportTuningStage } from "./report";
 
 // The tools whose replies make a reply an analysis worth a report: those whose
 // facts say it (`reportable`, in the registry).
@@ -162,9 +162,10 @@ export interface ReportRequest {
   turn: ChatTurn;
   question: string;
   llm: LlmSettings;
+  decisions?: ReportDecision[]; // the Apply cards' decisions on the dataset (apply/decisions.ts)
 }
 
-export async function collectReport({ dataset, datasets, turn, question, llm }: ReportRequest): Promise<Report> {
+export async function collectReport({ dataset, datasets, turn, question, llm, decisions }: ReportRequest): Promise<Report> {
   const ctx: ToolContext = { dataset, datasets };
   const [measured, figs] = await Promise.all([measure(ctx), figures(dataset)]);
   const s = usePipelineStore.getState();
@@ -186,5 +187,6 @@ export async function collectReport({ dataset, datasets, turn, question, llm }: 
     tuning: tuningRecord(turn),
     measured,
     figures: figs,
+    ...(decisions?.length ? { decisions } : {}),
   });
 }

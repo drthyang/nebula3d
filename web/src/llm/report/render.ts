@@ -22,6 +22,8 @@ const caveatsOf = (r: Report): { limits: string[]; standing: string[] } => ({
 });
 
 export const DETAILS_TITLE = "Details and provenance";
+// The decisions on the Apply cards (apply/decisions.ts): what you applied, edited, dismissed and undid.
+export const DECISIONS_TITLE = "Decisions";
 
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -89,6 +91,11 @@ export function reportMarkdown(r: Report): string {
   if (r.steps.length) {
     out.push("### What the agent did", "");
     out.push(mdTable(["Tool", "Result"], r.steps.map((s) => [s.tool, (s.ok ? "" : "failed: ") + s.summary])), "");
+  }
+
+  if (r.decisions?.length) {
+    out.push(`### ${DECISIONS_TITLE}`, "");
+    out.push(mdTable(["Time", "By", "Decision"], r.decisions.map((d) => [d.time, d.by, d.decision])), "");
   }
 
   out.push("### Settings used", "");
@@ -286,6 +293,14 @@ export function reportHtml(r: Report): string {
     parts.push(
       `<h3 class="sub">What the agent did</h3><table><thead><tr><th>Tool</th><th>Result</th></tr></thead><tbody>${r.steps
         .map((s) => `<tr><td><code>${esc(s.tool)}</code></td><td>${s.ok ? "" : "<b>failed:</b> "}${esc(s.summary)}</td></tr>`)
+        .join("")}</tbody></table>`,
+    );
+  }
+
+  if (r.decisions?.length) {
+    parts.push(
+      `<h3 class="sub">${esc(DECISIONS_TITLE)}</h3><table><thead><tr><th>Time</th><th>By</th><th>Decision</th></tr></thead><tbody>${r.decisions
+        .map((d) => `<tr><td>${esc(d.time)}</td><td>${esc(d.by)}</td><td>${esc(d.decision)}</td></tr>`)
         .join("")}</tbody></table>`,
     );
   }

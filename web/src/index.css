@@ -4988,6 +4988,257 @@ body.ai-resizing iframe {
   opacity: 0.5;
 }
 
+/* — the Changes list: the changes applied from the Apply cards (ChangesList), MarksList's frame — */
+.ch-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 5px 4px 8px;
+  font-size: 12px;
+}
+.ch-row .who {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font: 600 10px/1.6 var(--font-mono);
+}
+.ch-row .who.auto {
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+}
+.ch-row .what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.ch-row.is-undone .what {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.ch-row .ch-note {
+  color: var(--amber);
+  text-decoration: none;
+}
+.ch-row .when {
+  margin-left: auto;
+  color: var(--text-3);
+  font: 11px var(--font-mono);
+}
+.ch-row .ch-state {
+  padding: 3px 8px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+/* — the Apply cards under a reply (ProposalCards) — */
+.pc-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pc-group-head {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.pc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.pc--fact {
+  border-color: rgba(232, 180, 84, 0.45);
+}
+.pc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pc-kind {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.pc-kind--fact {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+.pc-kind--run {
+  color: var(--accent-hi);
+  background: var(--accent-soft);
+}
+.pc-line {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.pc-line .from {
+  color: var(--text-2);
+  font-weight: 500;
+}
+.pc-line .arrow {
+  color: var(--text-3);
+  margin: 0 3px;
+}
+.pc-ev {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.pc-src {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-hi);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pc-src:hover {
+  text-decoration: underline;
+}
+.pc-note {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.pc-count {
+  flex: none;
+}
+.pc-q {
+  flex: none;
+}
+.pc-details {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.pc-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 11.5px var(--font-mono);
+  color: var(--text-2);
+}
+.pc-edit input {
+  flex: 1;
+  min-width: 0;
+}
+.pc-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pc-actions .btn {
+  padding: 4px 13px;
+  font-size: 12px;
+}
+.pc-actions .btn-quiet {
+  background: none;
+  border-color: transparent;
+  color: var(--text-3);
+}
+.pc-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 11px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.pc-done .ok {
+  color: var(--green);
+  font-weight: 700;
+}
+.pc-done--dismissed .ok,
+.pc-done--undone .ok {
+  color: var(--text-3);
+}
+.pc-done-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pc-done b {
+  color: var(--text);
+  font-weight: 600;
+}
+.pc-done--dismissed b,
+.pc-done--undone b {
+  color: var(--text-2);
+}
+.pc-link {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-hi);
+  font-size: 12px;
+  cursor: pointer;
+}
+.pc-link:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+/* a tuning trial's Apply, on its row (TuneProgress) */
+.tune-apply {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.tune-apply-btn.btn {
+  padding: 1px 9px;
+  font-size: 11px;
+}
+/* a step the evidence links to, pulsed once when shown */
+.ai-step.is-pulsed {
+  animation: pc-pulse 1.2s ease-out;
+}
+@keyframes pc-pulse {
+  0% {
+    background: var(--accent-soft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+/* the reply's working time, in the panel's title row (ReplyClock) */
+.ai-clock {
+  margin-left: auto;
+  font: 500 11.5px var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
 /* — tool steps: what the model looked up, one line each — */
 .ai-steps {
   border: 1px solid var(--border);
@@ -5181,8 +5432,10 @@ body.ai-resizing iframe {
 }
 .ai-toggles {
   display: flex;
+  flex-wrap: wrap; /* a narrow panel: the token count and Clear go to a second line, not out of view */
+  justify-content: flex-end; /* there, at the right, as on one line (the auto margins hold the one-line layout) */
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
 }
 .ai-toggles .ai-clear {
   margin-left: auto;
@@ -7382,5 +7635,38 @@ html.kb-open .ai-side {
   .handoff-details summary,
   .exec-banner-details summary {
     padding: 10px 0;
+  }
+}
+
+/* The Apply cards and the Changes list on a touch screen: 44 px targets, and
+   on a phone the card's buttons share one row. */
+@media (pointer: coarse) {
+  .pc-actions .btn,
+  .tune-apply-btn.btn {
+    min-height: 44px;
+  }
+  .ai-changes .ai-marks-act,
+  .ai-changes .ai-marks-toggle {
+    min-height: 44px;
+  }
+  :is(.pc-link, .pc-src) {
+    position: relative;
+  }
+  :is(.pc-link, .pc-src)::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+}
+@media (max-width: 599px) {
+  .pc-actions {
+    flex-wrap: nowrap;
+  }
+  .pc-actions .btn {
+    flex: 1;
   }
 }

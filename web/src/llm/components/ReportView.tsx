@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { Dataset } from "../../api/types";
+import { reportDecisions } from "../apply/actions";
 import type { ChatTurn } from "../chatStore";
 import { collectReport } from "../report/collect";
 import { reportHtml, reportMarkdown } from "../report/render";
@@ -46,7 +47,7 @@ export function ReportView({
 
   useEffect(() => {
     let live = true;
-    collectReport({ dataset, datasets, turn, question, llm: settings })
+    collectReport({ dataset, datasets, turn, question, llm: settings, decisions: reportDecisions(dataset.id) })
       .then((r) => live && setReport(r))
       .catch((e: unknown) => live && setError((e as Error).message || "the report could not be built"));
     return () => {

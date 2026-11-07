@@ -8,7 +8,8 @@
 //    when each was written), and the last run's record (its stages, the
 //    settings it ran with, its log);
 //  - the analysis on top: the NEBULA Pilot conversation, the regions it
-//    marked on the slice views and the structure drawn over the ΔPDF;
+//    marked on the slice views, its Apply cards and the decisions on them,
+//    and the structure drawn over the ΔPDF;
 //  - the NEBULA3D version that saved it.
 //
 // The outputs themselves are not in the file (a volume is hundreds of MB):
@@ -25,6 +26,9 @@ import { create } from "zustand";
 import { clearsWithVolume, resetsWithVolume } from "./volumeReset";
 import { version as APP_VERSION } from "../../package.json";
 import type { Dataset, JobEvent, StageParamsIn } from "../api/types";
+import { decisionsForFile, readDecisions, restoreDecisions } from "../llm/apply/decisions";
+import type { Decision } from "../llm/apply/decisions";
+import type { Proposal } from "../llm/apply/proposals";
 import { useChatStore } from "../llm/chatStore";
 import { CENTERINGS } from "../structure/symops";
 import { PERMUTATIONS } from "../structure/pairs";
@@ -76,6 +80,8 @@ export interface Session {
   run: SessionRun | null;
   chat: unknown[]; // the conversation's turns, as the chat keeps them
   marks: Mark[]; // the Pilot's marked regions on the dataset (state/markStore.ts); none in a file from before them
+  // The Apply cards and the decisions on them (llm/apply/decisions.ts); none in a file from before them.
+  decisions?: { proposals: Proposal[]; decisions: Decision[] };
   structure: SessionStructure | null;
 }
 
@@ -117,6 +123,7 @@ export function captureSession(dataset: Dataset | undefined, now = new Date()): 
     run: p.events.length || p.terminal ? { record: p.lastRun, terminal: p.terminal, events: p.events, times: p.times } : null,
     chat: useChatStore.getState().turns,
     marks: dataset ? useMarkStore.getState().marks.filter((m) => m.datasetId === dataset.id) : [],
+    decisions: decisionsForFile(),
     structure: st.def ? { def: st.def, show: st.show, perm: st.perm, origin: st.origin, hidden: st.hidden, depth: st.depth } : null,
   };
 }
@@ -242,6 +249,8 @@ export function parseSession(text: string): Session {
     chat: Array.isArray(v.chat) ? v.chat : [],
     // Each mark rebuilt from the keys it has, and kept only when every part has its type.
     marks: readMarks(v.marks),
+    // Each card and decision rebuilt from the keys it has, the same way.
+    ...(own(v, "decisions") ? { decisions: readDecisions(v.decisions) } : {}),
     structure: readStructure(v.structure),
   };
 }
@@ -385,6 +394,9 @@ export function restoreSession(session: Session, datasets: readonly Dataset[], l
   const marks = dataset ? session.marks.filter((m) => m.datasetId === dataset.id) : [];
   useMarkStore.getState().restore(marks);
   if (marks.length) restored.push(`${marks.length} marked region${marks.length === 1 ? "" : "s"}`);
+
+  // The Apply cards and their decisions go with the conversation too.
+  restoreDecisions(session.decisions ?? { proposals: [], decisions: [] });
 
   if (session.structure) {
     useStructureStore.setState(session.structure);

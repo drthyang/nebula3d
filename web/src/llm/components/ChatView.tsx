@@ -20,7 +20,9 @@ import { CHAT_TOOLS, factsOf, type ToolContext } from "../tools";
 import { openView } from "../tools/openView";
 import type { AssistantContext } from "../useAssistant";
 import { reportable } from "../report/collect";
+import { formatDuration } from "../clock";
 import { Markdown } from "./Markdown";
+import { ProposalCards } from "./ProposalCards";
 import { ReportView } from "./ReportView";
 import { TuneProgress } from "./TuneProgress";
 import { uncountedText, usageText } from "../usage";
@@ -86,7 +88,7 @@ function StepDetail({ step: s }: { step: AgentStep }) {
 // The tool calls of one reply: a compact list, each row opening to the
 // arguments and the JSON the model read.  A viewer step can be reopened; a
 // run or a tuning run opens the Execution page, live while it goes.
-function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
+function Steps({ steps, live, turn }: { steps: AgentStep[]; live?: boolean; turn?: number }) {
   if (!steps.length) return null;
   const running = steps.find((s) => s.status === "running");
   return (
@@ -96,7 +98,7 @@ function Steps({ steps, live }: { steps: AgentStep[]; live?: boolean }) {
       </summary>
       <ol className="ai-step-list">
         {steps.map((s) => (
-          <li key={s.id} className={`ai-step ai-step-${s.status}`}>
+          <li key={s.id} id={turn !== undefined ? `ai-step-${turn}-${s.id}` : undefined} className={`ai-step ai-step-${s.status}`}>
             <StepDetail step={s} />
             {s.view && (
               <button type="button" className="ai-step-open" onClick={() => openView(s.view!)}>
@@ -129,11 +131,13 @@ const PastTurn = memo(function PastTurn({
   tuning,
   canReport,
   onReport,
+  ctx,
 }: {
   turn: ChatTurn;
   tuning: boolean; // the tuning run's card goes under this turn
   canReport: boolean;
   onReport: (id: number) => void;
+  ctx: ToolContext | null; // what the Apply cards act on
 }) {
   if (t.role === "user") {
     return (
@@ -149,13 +153,14 @@ const PastTurn = memo(function PastTurn({
       </span>
       <div className="ai-msg-main">
         {t.reasoning ? <Thinking text={t.reasoning} /> : null}
-        {t.steps?.length ? <Steps steps={t.steps} /> : null}
-        {tuning && <TuneProgress />}
+        {t.steps?.length ? <Steps steps={t.steps} turn={t.id} /> : null}
+        {tuning && <TuneProgress turn={t.id} ctx={ctx} />}
         {t.content && (
           <div className="ai-answer">
             <Markdown text={t.content} />
           </div>
         )}
+        <ProposalCards turn={t.id} ctx={ctx} />
         {verdictLine(t.verdict) && (
           <div
             className={`ai-verdict ai-verdict-${t.verdict!.achieved === true ? "met" : t.verdict!.achieved === false ? "not-met" : "open"}`}
@@ -165,7 +170,11 @@ const PastTurn = memo(function PastTurn({
           </div>
         )}
         {t.note && <div className="ai-note">{t.note}</div>}
-        {usageText(t.tokens) && <div className="ai-usage">{usageText(t.tokens)}</div>}
+        {(t.ms !== undefined || usageText(t.tokens)) && (
+          <div className="ai-usage">
+            {[t.ms !== undefined ? `Took ${formatDuration(t.ms)}` : null, usageText(t.tokens)].filter(Boolean).join(" · ")}
+          </div>
+        )}
         {canReport && (
           <button
             type="button"
@@ -303,6 +312,7 @@ export function ChatView({
             tuning={t.id === tuneTurn}
             canReport={reportable(t) && Boolean(toolContext) && !busy}
             onReport={setReportFor}
+            ctx={toolContext}
           />
         ))}
         {busy && live && (
@@ -313,7 +323,7 @@ export function ChatView({
             <div className="ai-msg-main">
               <Thinking text={live.reasoning} live />
               <Steps steps={live.steps} live />
-              {liveTunes && <TuneProgress />}
+              {liveTunes && <TuneProgress turn={null} ctx={toolContext} />}
               {live.content ? (
                 <div className="ai-answer">
                   <Markdown text={live.content} />

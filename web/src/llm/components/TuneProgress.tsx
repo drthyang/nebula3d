@@ -1,7 +1,8 @@
 // A tuning run in the chat, under the reply whose tune_pipeline call started
 // it: one card per stage with its trials — the settings each changed, the
-// headline metrics, the model's reason — and the trial it chose; at the end, a
-// link to the tuned result, which opens as a dataset of its own.
+// headline metrics, the model's reason — and the trial it chose, each other
+// trial with Apply once the reply ends; at the end, a link to the tuned
+// result, which opens as a dataset of its own.
 
 import { queryClient } from "../../api/queryClient";
 import { useDatasetStore } from "../../state/datasetStore";
@@ -9,6 +10,8 @@ import { useNavStore } from "../../state/navStore";
 import { TUNE_STAGE_TITLES } from "../tune/catalog";
 import { headline } from "../tune/evaluate";
 import { useTuneStore, type StageRun } from "../tune/tuner";
+import type { ToolContext } from "../tools";
+import { TrialApply } from "./ProposalCards";
 
 const STATUS_LABEL: Record<StageRun["status"], string> = {
   waiting: "waiting",
@@ -21,7 +24,7 @@ const STATUS_LABEL: Record<StageRun["status"], string> = {
   failed: "stopped",
 };
 
-function StageCard({ run }: { run: StageRun }) {
+function StageCard({ run, turn, ctx }: { run: StageRun; turn: number | null; ctx: ToolContext | null }) {
   const busy = !["waiting", "done", "skipped", "failed"].includes(run.status);
   return (
     <div className={`tune-stage tune-${run.status}`}>
@@ -46,6 +49,7 @@ function StageCard({ run }: { run: StageRun }) {
                       ))}
                 </span>
                 {run.best === t.n && <span className="tune-chosen">chosen</span>}
+                {run.best !== t.n && <TrialApply turn={turn} stage={run.stage} n={t.n} ctx={ctx} />}
               </div>
               <div className="tune-trial-metrics">
                 {t.status === "pending"
@@ -77,7 +81,9 @@ function StageCard({ run }: { run: StageRun }) {
   );
 }
 
-export function TuneProgress() {
+// `turn`: the reply the run is under, whose trial cards (apply/proposals.ts)
+// give each trial row its Apply; null while the reply runs.
+export function TuneProgress({ turn = null, ctx = null }: { turn?: number | null; ctx?: ToolContext | null } = {}) {
   const { active, stages, error, finishedNote, datasetLabel, run } = useTuneStore();
   const setTab = useNavStore((s) => s.setTab);
   if (!stages.length) return null;
@@ -96,7 +102,7 @@ export function TuneProgress() {
         </span>
       </div>
       {stages.map((r) => (
-        <StageCard key={r.stage} run={r} />
+        <StageCard key={r.stage} run={r} turn={turn} ctx={ctx} />
       ))}
       {error && <div className="ai-conn-alert">{error}</div>}
       {finishedNote && <div className="tune-msg">{finishedNote}</div>}

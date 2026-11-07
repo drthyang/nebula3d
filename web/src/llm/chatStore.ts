@@ -13,6 +13,7 @@ import { create } from "zustand";
 
 import { resetsWithVolume } from "../state/volumeReset";
 import type { AgentProgress, AgentStep } from "./agent";
+import type { RunClock } from "./clock";
 import type { Usage } from "./usage";
 import type { ComputedVerdict } from "./verdicts";
 
@@ -27,6 +28,8 @@ export interface ChatTurn {
   // The reply's model requests, measured or estimated (usage.ts); on a user
   // turn, those of a reply that ended with nothing to keep (session.ts).
   tokens?: Usage;
+  // How long the reply took, its clock's working time (clock.ts): shown, never sent.
+  ms?: number;
 }
 
 interface ChatState {
@@ -34,6 +37,7 @@ interface ChatState {
   draft: string;
   busy: boolean;
   live: AgentProgress | null; // the reply being written
+  clock: RunClock | null; // the reply's clock while it runs (clock.ts)
   error: string | null;
   usage: Usage | null; // the conversation's model requests so far (usage.ts); null before the first
   addUsage: (u: Usage) => void;
@@ -151,6 +155,7 @@ export const useChatStore = create<ChatState>((set) => ({
   draft: restored.draft,
   busy: false,
   live: null,
+  clock: null,
   error: null,
   usage: restoreUsage(),
   addUsage: (u) =>
