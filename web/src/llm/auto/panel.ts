@@ -74,10 +74,9 @@ export const currentRow = (run: AutoRun): PlanRow | null =>
 // A token count in a few characters: 950, 12.3k, 1.2M.
 export const compact = (n: number): string => (n < 1000 ? String(n) : n < 1e6 ? `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}k` : `${(n / 1e6).toFixed(1)}M`);
 
-/** The run's clock: its working time against the limit, result first. */
+/** The run's clock: the time it has worked, alone (the limit is enforced, not shown: the user, 2026-11-07). */
 export function clockText(clock: RunClock, now: number): string {
-  const worked = formatDuration(elapsedMs(clock, now));
-  return clock.limitMs !== undefined ? `${worked} of ${formatDuration(clock.limitMs)}` : worked;
+  return formatDuration(elapsedMs(clock, now));
 }
 
 /** The time it waited for you, kept apart, and the whole time: null while it has not waited. */

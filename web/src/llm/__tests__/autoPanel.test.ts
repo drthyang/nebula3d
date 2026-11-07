@@ -54,17 +54,17 @@ describe("the run's progress and clock", () => {
     expect(currentRow(runWith({ plan, at: null }))?.id).toBe("run");
   });
 
-  it("reads the working time against the limit, and the time waiting for you apart with the whole time", () => {
+  it("reads the working time alone, never against the limit, and the time waiting for you apart with the whole time", () => {
     let c = startClock(1_000, 30 * 60_000);
-    expect(clockText(c, 1_000 + 372_000)).toBe("6:12 of 30:00");
+    expect(clockText(c, 1_000 + 372_000)).toBe("6:12");
     expect(pausedText(c, 1_000 + 372_000)).toBeNull();
     c = pauseClock(c, 1_000 + 372_000);
     // Paused 88 s: the working time stands, the paused time and the whole time grow.
-    expect(clockText(c, 1_000 + 460_000)).toBe("6:12 of 30:00");
+    expect(clockText(c, 1_000 + 460_000)).toBe("6:12");
     expect(pausedText(c, 1_000 + 460_000)).toBe("paused 1:28 · total 7:40");
     c = resumeClock(c, 1_000 + 460_000);
     c = stopClock(c, 1_000 + 520_000);
-    expect(clockText(c, 9e9)).toBe("7:12 of 30:00");
+    expect(clockText(c, 9e9)).toBe("7:12");
     expect(pausedText(c, 9e9)).toBe("paused 1:28 · total 8:40");
   });
 });

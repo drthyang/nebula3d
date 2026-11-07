@@ -64,15 +64,16 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * The clock as one plain line, result first: "Working · 1:23" for a reply;
- * with a limit, "6:12 of 30:00"; in a pause, "Paused · …"; the paused time,
- * when there is any, after it, with the run's whole time ("· paused 2:05 ·
- * total 8:17"): the limit counts the working time alone.
+ * The clock as one plain line, result first: "Working · 1:23"; in a pause,
+ * "Paused · …"; the paused time, when there is any, after it, with the run's
+ * whole time ("· paused 2:05 · total 8:17"). The time worked alone, never
+ * against a limit: an auto run's limit is the user's own bound, enforced
+ * (overLimit) and named when it stops a run, not shown as a count-down (the
+ * user, 2026-11-07).
  */
 export function clockLine(c: RunClock, now: number): string {
-  const worked = formatDuration(elapsedMs(c, now));
+  const main = formatDuration(elapsedMs(c, now));
   const state = c.endedAt !== null ? "Took" : c.pausedAt !== null ? "Paused" : "Working";
-  const main = c.limitMs !== undefined ? `${worked} of ${formatDuration(c.limitMs)}` : worked;
   const paused = pausedMs(c, now);
   return `${state} · ${main}${paused >= 1000 ? ` · paused ${formatDuration(paused)} · total ${formatDuration(totalMs(c, now))}` : ""}`;
 }
