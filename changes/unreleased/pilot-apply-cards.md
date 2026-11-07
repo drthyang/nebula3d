@@ -9,3 +9,7 @@
   is saved with the conversation and in session files, and is listed in the
   report's Decisions section. While a reply runs, the panel's title row shows
   how long it has worked, and each reply keeps its time.
+
+- **Fixed: Clear was cut off in NEBULA Pilot's toggles row** when the panel
+  was narrow (at 1440 px with the token count shown). The row now wraps, with
+  the token count and Clear on the right.

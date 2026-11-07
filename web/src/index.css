@@ -5432,8 +5432,10 @@ body.ai-resizing iframe {
 }
 .ai-toggles {
   display: flex;
+  flex-wrap: wrap; /* a narrow panel: the token count and Clear go to a second line, not out of view */
+  justify-content: flex-end; /* there, at the right, as on one line (the auto margins hold the one-line layout) */
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
 }
 .ai-toggles .ai-clear {
   margin-left: auto;
