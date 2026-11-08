@@ -8,7 +8,8 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { Dataset, RingSurvey } from "../../api/types";
-import { runAgent } from "../agent";
+import { runAgent, type AgentStep } from "../agent";
+import { evidenceGaps } from "../answerChecks";
 import { examining, overlaysOf, surveyShellsFromResult } from "../examine/overlays";
 import { offeredOn, ranOn, toolsFor } from "../localTools";
 import type { StreamDelta, ToolSpec } from "../provider/client";
@@ -154,6 +155,16 @@ describe("the offer: before a run only", () => {
     expect(after.steps.map((s) => [s.name, s.status])).toEqual([["ring_survey", "done"]]);
     // Called by name, it joins the offer for the rest of the reply.
     expect(names(1)).toContain("ring_survey");
+  });
+});
+
+describe("an answer about the rings, before a run and after it", () => {
+  const ANSWER = "The survey found the Al rings and possibly Bi flux; one ring at {{ring_survey.unrecognized}} no line explains.";
+  const surveyed: AgentStep = { id: "0:c1", name: "ring_survey", args: {}, status: "done", result: JSON.stringify(THREE.lines) };
+  const ran: AgentStep = { id: "0:c2", name: "run_pipeline", args: {}, status: "done", result: JSON.stringify({ stages: { rings: "computed", punch: "computed" } }) };
+  it("stands on the survey before a run, and needs the ring stage's check after one", () => {
+    expect(evidenceGaps(ANSWER, [surveyed])).toEqual({ missing: [], stale: [] });
+    expect(evidenceGaps(ANSWER, [surveyed, ran]).stale.map((t) => t.id)).toEqual(["rings"]);
   });
 });
 

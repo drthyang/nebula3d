@@ -54,6 +54,11 @@ export const ring_survey: ChatTool = {
     acts: null,
     offeredFor: ["rings", "general"],
     preRun: true,
+    // Evidence for what an answer says of the rings before a run (the answer
+    // checks' rings topic: "the survey found the Al rings"); a run that
+    // recomputes the ring stage makes it stale, and assess_stage settles
+    // them after it (evidence.ts).
+    settles: ["rings"],
     highlights: ["raw"],
   },
   description:
