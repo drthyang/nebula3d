@@ -907,8 +907,8 @@ cd web && NEBULA_VALIDATION=1 NEBULA_VALIDATION_PRESET=quick NEBULA_EVAL_API=htt
   npx vitest run src/llm/evals/validation.live.test.ts
 ```
 
-**The B-auto arm** (`NEBULA_VALIDATION_PRESET=quick-auto`; THY-65 PR 7,
-[pilot-auto-mode-design.md](pilot-auto-mode-design.md) §6) runs the quick
+**The B-auto arm** (`NEBULA_VALIDATION_PRESET=quick-auto`; THY-65 PR 7;
+[auto mode](pilot.md#using-it)) runs the quick
 preset's plan through auto mode instead of one agent loop: gemma4:26b, one run per
 dev case, 8 minutes a run (5 until the second run below), the 30-minute cap. It
 uses the same data root, arm B's

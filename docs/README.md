@@ -43,7 +43,9 @@ viewers, and reproducible command recipes in more detail.
 | --- | --- |
 | [../QUICKSTART.md](../QUICKSTART.md) | Get the app running (native or in-browser). |
 | [web.md](web.md) | Launch, use, or develop the browser console (both run modes + consistency check). |
-| [pilot.md](pilot.md) | Use or understand NEBULA Pilot, the console's agent: tools, guardrails, tuning, local models. |
+| [pilot.md](pilot.md) | Use or understand NEBULA Pilot, the console's agent: Apply cards, auto mode, highlights, the context meter, tools, guardrails, tuning, local models. |
+| [demo-script.md](demo-script.md) | Rehearse a 5–10 minute live demo on the synthetic volume: the click path, timings, fallbacks and a checklist. |
+| [demo-qa.md](demo-qa.md) | Read the demo QA pass on both builds: what was tested, the timings, the fixes and the known issues. |
 | [evals.md](evals.md) | Read how the agent is graded, its results per model, and the validation on synthetic cases with a planted truth. |
 | [pilot-review.md](pilot-review.md) | Read what each of the agent's tools computes, which are tested against a known answer, and what its skills lack. |
 | [pilot-context-design.md](pilot-context-design.md) | Read what each part of the agent's context costs in tokens (measured), and the proposed leaner design and token budget for new features. |
