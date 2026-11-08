@@ -214,3 +214,17 @@ def test_the_browser_bridge_surveys_as_the_server_does(tmp_path, monkeypatch):
         k: v for k, v in served["lines"].items() if k != "al"}
     with pytest.raises(KeyError):
         webbridge.volume_ring_survey_json("nope.raw")
+
+
+def test_the_slab_threads_keep_to_their_memory_budget(monkeypatch):
+    # One thread in low-memory mode (the browser); natively as many as the
+    # CPUs, the cap and the budget allow: a big slab gets fewer.
+    monkeypatch.delenv("NEBULA3D_RING_THREADS", raising=False)
+    assert ring_isotropy._slab_workers(40, True, 1000) == 1
+    assert ring_isotropy._slab_workers(1, False, 1000) == 1
+    cpus = ring_isotropy.os.cpu_count() or 1
+    assert ring_isotropy._slab_workers(40, False, 1000) == min(8, cpus)
+    big = ring_isotropy._SLAB_BUDGET // ring_isotropy._SLAB_BYTES_PER_VOXEL // 2
+    assert ring_isotropy._slab_workers(40, False, big) == min(2, cpus)
+    monkeypatch.setenv("NEBULA3D_RING_THREADS", "3")
+    assert ring_isotropy._slab_workers(40, False, 1000) == min(3, cpus)

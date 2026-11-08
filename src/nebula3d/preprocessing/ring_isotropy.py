@@ -387,20 +387,27 @@ class _CellMedians:
 
 
 #: The most threads :func:`_cell_medians` reads slabs on, natively
-#: (``NEBULA3D_RING_THREADS`` sets it; 1 reads them in turn). Each holds a
-#: slab's float64 |Q| arrays, a small share of the volume.
+#: (``NEBULA3D_RING_THREADS`` sets it; 1 reads them in turn).
 _MAX_SLAB_THREADS = 8
+#: What a slab in flight holds, per voxel of it: its float64 |Q| arrays and
+#: the window's (measured: about 190 MB a thread on a 12-plane slab of 401²).
+_SLAB_BYTES_PER_VOXEL = 100
+#: The threads' slabs together stay within this (the ring workers' budget is
+#: 8 GB: pipeline._resolve_ring_workers).
+_SLAB_BUDGET = 2_000_000_000
 
 
-def _slab_workers(n_slabs: int, lean: bool) -> int:
+def _slab_workers(n_slabs: int, lean: bool, slab_voxels: int = 0) -> int:
     """How many threads read the slabs: one in low-memory mode (the browser,
     where Pyodide has no threads and the heap is the limit), else up to
-    :data:`_MAX_SLAB_THREADS` and the CPUs."""
+    :data:`_MAX_SLAB_THREADS`, the CPUs, and as many slabs of ``slab_voxels``
+    as :data:`_SLAB_BUDGET` holds."""
     if lean or n_slabs < 2:
         return 1
     env = os.environ.get("NEBULA3D_RING_THREADS", "").strip()
     cap = int(env) if env.isdigit() and int(env) > 0 else _MAX_SLAB_THREADS
-    return max(1, min(cap, os.cpu_count() or 1, n_slabs))
+    budget = _SLAB_BUDGET // max(1, slab_voxels * _SLAB_BYTES_PER_VOXEL)
+    return max(1, min(cap, budget, os.cpu_count() or 1, n_slabs))
 
 
 def _sorted_by_key(key: NDArray[np.int32], val: NDArray[np.float32], count: NDArray[np.int64],
@@ -526,7 +533,7 @@ def _cell_medians(vol: HKLVolume, windows: Sequence[tuple[float, int, bool]],
     keys: list[NDArray[np.int32]] = []
     vals: list[NDArray[np.float32]] = []
     starts_h = list(range(0, h.size, slab))
-    workers = _slab_workers(len(starts_h), lean)
+    workers = _slab_workers(len(starts_h), lean, slab * int(k.size) * int(l_.size))
     # A batch of slabs at a time (one in turn), each added as it ends, so no
     # more than a batch's grid counts wait: the serial loop's memory.
     pool = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
