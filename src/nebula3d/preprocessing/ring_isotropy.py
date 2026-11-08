@@ -122,7 +122,9 @@ risen 6 σ above the across-stack profile's noise to be detected.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -384,6 +386,43 @@ class _CellMedians:
     offsets: NDArray[np.int_]     # each window's first bin
 
 
+#: The most threads :func:`_cell_medians` reads slabs on, natively
+#: (``NEBULA3D_RING_THREADS`` sets it; 1 reads them in turn). Each holds a
+#: slab's float64 |Q| arrays, a small share of the volume.
+_MAX_SLAB_THREADS = 8
+
+
+def _slab_workers(n_slabs: int, lean: bool) -> int:
+    """How many threads read the slabs: one in low-memory mode (the browser,
+    where Pyodide has no threads and the heap is the limit), else up to
+    :data:`_MAX_SLAB_THREADS` and the CPUs."""
+    if lean or n_slabs < 2:
+        return 1
+    env = os.environ.get("NEBULA3D_RING_THREADS", "").strip()
+    cap = int(env) if env.isdigit() and int(env) > 0 else _MAX_SLAB_THREADS
+    return max(1, min(cap, os.cpu_count() or 1, n_slabs))
+
+
+def _sorted_by_key(key: NDArray[np.int32], val: NDArray[np.float32], count: NDArray[np.int64],
+                   workers: int) -> NDArray[np.float32]:
+    """``val`` sorted by ``key``, then by value: ``val[np.lexsort((val, key))]``.
+    With threads, by contiguous ranges of keys holding about as many values
+    each, each sorted on its own and joined in key order: the same values in
+    the same order."""
+    if workers <= 1 or val.size < 1_000_000:
+        return val[np.lexsort((val, key))]
+    bounds = np.searchsorted(np.cumsum(count), np.linspace(0, val.size, workers + 1)[1:-1])
+    edges = [0, *sorted({int(b) + 1 for b in bounds if 0 <= int(b) + 1 < count.size}), count.size]
+
+    def part(r: int) -> NDArray[np.float32]:
+        sel = (key >= edges[r]) & (key < edges[r + 1])
+        vv = val[sel]
+        return vv[np.lexsort((vv, key[sel]))]
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return np.concatenate(list(pool.map(part, range(len(edges) - 1))))
+
+
 def _cell_medians(vol: HKLVolume, windows: Sequence[tuple[float, int, bool]],
                   cfg: IsotropyConfig, *, slab: int | None = None,
                   cell_scale: NDArray[np.float64] | None = None) -> _CellMedians | None:
@@ -430,12 +469,15 @@ def _cell_medians(vol: HKLVolume, windows: Sequence[tuple[float, int, bool]],
     h = np.asarray(vol.h_axis, dtype=np.float64)
     k = np.asarray(vol.k_axis, dtype=np.float64)[None, :, None]
     l_ = np.asarray(vol.l_axis, dtype=np.float64)[None, None, :]
-    keys: list[NDArray[np.int32]] = []
-    vals: list[NDArray[np.float32]] = []
     # The grid's own voxels in each cell and bin, measured or not: what the
     # grid can give a cell, apart from what the coverage leaves (Resolution).
     grid = np.zeros(n_cells * total_bins, dtype=np.int64)
-    for i0 in range(0, h.size, slab):
+
+    def one_slab(i0: int) -> tuple[list[NDArray[np.int32]], list[NDArray[np.float32]],
+                                   NDArray[np.int64] | None]:
+        """The keys and values a slab gives every window, and its grid counts."""
+        out_keys: list[NDArray[np.int32]] = []
+        out_vals: list[NDArray[np.float32]] = []
         hh = h[i0:i0 + slab][:, None, None]
         qx = ub[0, 0] * hh + ub[0, 1] * k + ub[0, 2] * l_
         qy = ub[1, 0] * hh + ub[1, 1] * k + ub[1, 2] * l_
@@ -443,7 +485,7 @@ def _cell_medians(vol: HKLVolume, windows: Sequence[tuple[float, int, bool]],
         q = np.sqrt(qx * qx + qy * qy + qz * qz)
         window = (q >= q_lo) & (q < q_hi)
         if not window.any():
-            continue
+            return out_keys, out_vals, None
         data = vol.data[i0:i0 + slab]
         ok = vol.mask[i0:i0 + slab] & np.isfinite(data) & window
         q_w, qz_w = q[window], qz[window]
@@ -473,17 +515,36 @@ def _cell_medians(vol: HKLVolume, windows: Sequence[tuple[float, int, bool]],
             if draw is not None and keeps[s] < 1.0:
                 inside &= draw < keeps[s]
             if inside.any():
-                keys.append(cell[inside] * np.int32(total_bins) + np.int32(offsets[s]) + b[inside])
-                vals.append(v[inside])
-        grid += bincount(np.concatenate(grid_keys), minlength=grid.size)
+                out_keys.append(cell[inside] * np.int32(total_bins) + np.int32(offsets[s])
+                                + b[inside])
+                out_vals.append(v[inside])
+        return out_keys, out_vals, bincount(np.concatenate(grid_keys), minlength=grid.size)
+
+    # Each slab is independent of the others (its random draws are seeded by
+    # its first plane): natively they run on threads, numpy releasing the GIL,
+    # and are gathered in slab order, so the result is the serial loop's.
+    keys: list[NDArray[np.int32]] = []
+    vals: list[NDArray[np.float32]] = []
+    starts_h = range(0, h.size, slab)
+    workers = _slab_workers(len(starts_h), lean)
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            parts = list(pool.map(one_slab, starts_h))
+    else:
+        parts = [one_slab(i0) for i0 in starts_h]
+    for part_keys, part_vals, part_grid in parts:
+        keys.extend(part_keys)
+        vals.extend(part_vals)
+        if part_grid is not None:
+            grid += part_grid
+    del parts
     if not keys:
         return None
     key = np.concatenate(keys)
     val = np.concatenate(vals)
     del keys, vals
     count = bincount(key, minlength=n_cells * total_bins)
-    order = np.lexsort((val, key))
-    sorted_vals = val[order]
+    sorted_vals = _sorted_by_key(key, val, count, workers)
     starts = np.zeros_like(count)
     np.cumsum(count[:-1], out=starts[1:])
     median_flat = np.full(count.size, np.nan)

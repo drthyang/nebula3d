@@ -185,6 +185,44 @@ class RingIsotropyOut(BaseModel):
     not_judged: str | None = None   # why the grid is too coarse to judge any ring
 
 
+class SurveyRingOut(BaseModel):
+    """A shell of the pre-run ring survey (preprocessing.ring_survey)."""
+    q: float                        # its |Q| (Å⁻¹)
+    fwhm: float
+    snr: float | None = None        # its peak over the across-stack profile's noise
+    code: str                       # AL, PH, XTAL, UNK, GRID, NJ or NR (ring_survey.CODES)
+    line: str | None = None         # the line it sits on: "Al111", "Bi012"
+    phase: str | None = None        # PH: the phase the match names first
+    status: str | None = None       # PH: that phase's status (likely, possible)
+    ring: bool | None = None        # the 3D test confirms a powder ring (None: not judged)
+    removed: bool = False           # the ring stage would subtract it
+    why: str | None = None          # why it would stay (pooled_rings._left_code; faint)
+    source: str = "detected"        # detected | weak (under the detection cut)
+
+
+class RingSurveyOut(BaseModel):
+    """The pre-run powder ring survey of a volume, nothing removed (see
+    preprocessing.ring_survey and server.volumes.volume_ring_survey)."""
+    id: str
+    version: int
+    dry_run: bool = True
+    plane: str
+    slice_axis: str
+    edge_trim: int
+    q_range: list[float]
+    q_step: float
+    al_lattice_a: float | None = None
+    noise: float
+    rings: list[SurveyRingOut]
+    faint: int = 0                  # shells under the detection cut, not listed
+    phases: dict[str, Any] | None = None
+    phase_summary: str | None = None
+    phase_unsupported: str | None = None
+    not_judged: str | None = None
+    timing_s: dict[str, float]
+    lines: dict[str, Any] | None = None   # ring_survey.survey_lines: NEBULA Pilot's
+
+
 class UnconfirmedRingsOut(BaseModel):
     """The shells the ring removal detected and could not confirm as powder
     rings on its grid, which it did not subtract (pipeline.unconfirmed_rings_notice)."""

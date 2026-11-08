@@ -26,6 +26,7 @@ from nebula3d.server.schemas import (
     LaueCompareOut,
     LaueProgressOut,
     RingIsotropyOut,
+    RingSurveyOut,
     ShellFloorsOut,
     TextureOut,
     UbCheckOut,
@@ -39,6 +40,7 @@ from nebula3d.server.volumes import (
     volume_coverage,
     volume_meta,
     volume_ring_isotropy,
+    volume_ring_survey,
     volume_shell_floors,
     volume_texture,
     volume_ub_check,
@@ -165,6 +167,24 @@ def rings(
     """Which of the shells are powder rings: each rises in nearly every direction."""
     stage = _resolve_hkl(cfg, volume_id)
     return RingIsotropyOut(id=volume_id, **volume_ring_isotropy(stage.path, parse_shells(q, fwhm)))
+
+
+@router.get("/{volume_id}/ring-survey", response_model=RingSurveyOut)
+def ring_survey(
+    volume_id: str,
+    slice_axis: str = Query("H", description="the ring stage's stack axis: H, K or L"),
+    edge_trim: int = Query(1, ge=0, le=10, description="coverage-edge layers trimmed at load"),
+    cfg: ServerConfig = Depends(get_config),
+) -> RingSurveyOut:
+    """The pre-run powder ring survey: the ring stage's detection on the volume
+    as a dry run, nothing removed (Al rings, phase candidates, unrecognized
+    rings). Seconds on a 401³ volume."""
+    stage = _resolve_hkl(cfg, volume_id)
+    try:
+        out = volume_ring_survey(stage.path, slice_axis=slice_axis, edge_trim=edge_trim)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return RingSurveyOut(id=volume_id, **out)
 
 
 @router.get("/{volume_id}/shell-floors", response_model=ShellFloorsOut)
