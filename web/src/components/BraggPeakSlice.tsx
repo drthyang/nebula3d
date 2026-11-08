@@ -7,7 +7,7 @@
 // both axes, so a peak's shape is not stretched), then overlays the punch fit
 // ellipses (fitted / measured / |Q|-floor), a crosshair at the peak centre,
 // the voxels the punch's tail sweep added on this plane (THY-60) and, with
-// "Unit cell" on, dashed lines at integer h, k, l.  The raster and the
+// "HKL grid" on, dashed lines at integer h, k, l.  The raster and the
 // overlay map r.l.u. to pixels with the same viewport (viewport.ts), so the
 // ellipses stay registered to the data at any zoom.
 

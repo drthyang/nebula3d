@@ -94,7 +94,7 @@ export function ReciprocalViewer() {
   const setScaleRef = useViewerStore((s) => s.setScaleRef);
   const setView = useViewerStore((s) => s.setView);
   const setColormap = useViewerStore((s) => s.setColormap);
-  // "Unit cell" is one setting across the pages: here the lines of integer h, k, l.
+  // "HKL grid" is one setting across the pages (Unit cell on the real-space ones): here the lines of integer h, k, l.
   const gridlines = useDpdfStore((s) => s.gridlines);
   const [cursor, setCursor] = useState<[number, number] | null>(null);
 

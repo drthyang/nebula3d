@@ -32,7 +32,7 @@ import { useDatasetStore } from "../../state/datasetStore";
 import { useNavStore } from "../../state/navStore";
 import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
-import { endAuto, refusalNote, resumeAuto, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
+import { endAuto, refusalNote, resumeAuto, standingAutoChanges, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
 import { usd } from "../auto/cost";
 import { appReportQuestion, appReportTurn } from "../auto/report";
 import { activity, type Activity, type ActivityRow } from "../auto/activity";
@@ -276,6 +276,7 @@ function Log({ rows, run, className }: { rows: ActivityRow[]; run: AutoRun; clas
 
 export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
   const run = useAutoStore((s) => s.run);
+  const decisions = useDecisionStore((s) => s.decisions);
   const act = useActivity();
   const now = useNow(run?.clock);
   const link = useRowLink();
@@ -289,8 +290,9 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
   const fixes = run.plan.reduce((n, r) => n + r.tries, 0);
   const tokens = run.usage.input + run.usage.output;
   const paused = pausedText(run.clock, now);
-  // Undo once the run is done or paused by you; not while it runs or waits for your answer.
-  const canUndo = (run.state === "done" || run.state === "stopped") && run.decisions.length > 0;
+  // Undo once the run is done or paused by you; not while it runs or waits for your answer;
+  // and only while one of its changes still stands (a fix it put back itself is no Undo).
+  const canUndo = (run.state === "done" || run.state === "stopped") && standingAutoChanges(run, decisions) > 0;
   return (
     <section className={`auto-panel auto-panel--${tone}${open ? " is-open" : ""}`} aria-label="Auto analysis" data-run={run.id}>
       <div className="auto-top">

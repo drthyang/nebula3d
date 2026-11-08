@@ -2848,6 +2848,7 @@ input[type="range"]::-moz-range-track {
 /* A saved session restored (or refused): what came back, and what is missing. */
 .session-note {
   display: flex;
+  flex-wrap: wrap; /* a phone: the text on its own row, its buttons under it */
   align-items: center;
   gap: 10px;
   margin: 10px 0 2px;
@@ -2859,7 +2860,7 @@ input[type="range"]::-moz-range-track {
   background: var(--green-soft);
 }
 .session-note > span {
-  flex: 1;
+  flex: 1 1 260px;
 }
 .session-note.warn {
   background: var(--amber-soft);
@@ -7545,6 +7546,11 @@ html.kb-open .ai-side {
   .bragg-sort button {
     min-width: 44px;
   }
+  /* a small button that is one glyph (the session note's ×, the structure
+     panel's close): 44 px wide too */
+  .btn.btn-sm[aria-label] {
+    min-width: 44px;
+  }
   .ws-head .ws-display-toggle {
     min-height: 44px;
   }
@@ -8593,5 +8599,62 @@ html.kb-open .ai-side {
     min-height: 44px;
     display: flex;
     align-items: center;
+  }
+}
+
+/* Touch screens: the chat's tool steps, its Show and Report buttons, and the
+   highlight bar's step link, clear and legend chips take 44 px taps too (the
+   rows grow; a pill or a glyph gets a 44 px hit area around it). */
+@media (pointer: coarse) {
+  .ai-steps > summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .ai-step summary {
+    align-items: center;
+    min-height: 44px;
+  }
+  .ai-step-open {
+    position: relative;
+    margin-top: 11px; /* the middle of the summary's 44 px row */
+  }
+  .ai-step-open::before {
+    content: "";
+    position: absolute;
+    left: -4px;
+    right: -4px;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+  .ai-report-btn {
+    min-height: 44px;
+  }
+  :is(.ex-step, .ex-clear) {
+    position: relative;
+  }
+  :is(.ex-step, .ex-clear)::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    min-width: 44px;
+    width: 100%;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .ex-legend .lg {
+    min-height: 44px;
+  }
+}
+
+/* Touch screens: a Compare Laue classes row is the tap that sets its class
+   (the class name's button is the keyboard's way): 44 px tall. */
+@media (pointer: coarse) {
+  .laue-row > td {
+    height: 44px;
   }
 }

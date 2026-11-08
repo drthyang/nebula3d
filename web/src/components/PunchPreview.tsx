@@ -10,7 +10,7 @@
 // It is a slice view like those of the viewer pages, on their frame and header:
 // zoom, pan and reset as on every view (ViewFrame: Ctrl/⌘ + wheel or a pinch,
 // a Shift / middle / two-finger drag, a double-click), Box zoom and the gesture
-// card, the HKL grid (the other pages' Unit cell switch, one setting: dashed
+// card, the HKL grid (one setting with the other pages' grid switch: dashed
 // lines at integer h, k, l), and the display bar for the colour range
 // (WorkspaceHeader, DisplayBar). Each plane keeps its own zoom. The three
 // share one colour scale: Auto pools their cuts through the origin, so it
@@ -366,7 +366,7 @@ export function PunchPreview({ datasetId, inputId, sourceName, meta, geom, cuts,
   const setColormap = useViewerStore((s) => s.setColormap);
   const scale = useViewerStore((s) => s.scale);
   const setScale = useViewerStore((s) => s.setScale);
-  // "HKL grid" here, "Unit cell" on the other pages: one setting, the lines of integer h, k, l.
+  // "HKL grid", one setting with the other pages' grid switch: the lines of integer h, k, l.
   const gridlines = useDpdfStore((s) => s.gridlines);
   const [cursor, setCursor] = useState<{ plane: PunchPlane; p: [number, number] } | null>(null);
   const idBase = useId();
