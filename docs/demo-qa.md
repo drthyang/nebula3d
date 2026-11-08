@@ -155,10 +155,9 @@ On the branch after the fixes:
 Then the whole demo pass ran again on both rebuilt builds, at both widths.
 It was clean, as described above.
 
-**For the docs builder:** the README's demo GIF
-(`docs/media/nebula-pilot-demo.gif`) may still show the old *Unit cell*
-label on the reciprocal views. If it does, it needs a new take. The PDF and
-Word manuals do not mention the switch.
+**For the docs builder:** the old README demo GIF showed an earlier UI; it
+was replaced by stills and removed from the repo. The PDF and Word manuals
+do not mention the HKL grid switch.
 
 ## Screenshots
 
