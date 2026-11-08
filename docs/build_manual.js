@@ -381,7 +381,7 @@ function coverMeta() {
   const W = 6600, L = 2500, R = W - L;
   const rows = [
     metaRow("Language", [run("Python ≥ 3.10", { size: 19 })], L, R),
-    metaRow("License", [run("MIT", { size: 19 })], L, R),
+    metaRow("License", [run("AGPL-3.0-or-later", { size: 19 })], L, R),
     metaRow("Core stack", [run("numpy · scipy · h5py · matplotlib", { size: 19 })], L, R),
     metaRow("Input format", [run("Mantid NeXus (MDHistoWorkspace)", { size: 19 })], L, R),
     metaRow("Reference data", [run("Mantid NeXus HKL volumes", { size: 19 })], L, R),
@@ -401,9 +401,7 @@ function cover() {
         "Three-dimensional reciprocal-space diffuse neutron scattering analysis — powder ring removal, Bragg punch-and-fill, and the 3D-ΔPDF transform, in one reproducible Python pipeline.",
         { size: 23, color: STEEL, italic: true })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 40 },
-      children: [run("Version 0.1.0", { bold: true, color: NAVY, size: 21 }),
-                 run("        •        ", { bold: true, color: GOLD, size: 21 }),
-                 run("June 2026", { bold: true, color: NAVY, size: 21 })] }),
+      children: [run("Version 0.4.0", { bold: true, color: NAVY, size: 21 })] }),
     gap(260),
     coverMeta(),
     gap(470),
@@ -441,7 +439,7 @@ function pageHeader() {
       run("nebula3d", { bold: true, color: NAVY, size: 16 }),
       run("  ·  User & Reference Manual", { color: STEEL, size: 16 }),
       new TextRun({ text: "\t" }),
-      run("v0.1.0", { color: STEEL, size: 16 }),
+      run("v0.4.0", { color: STEEL, size: 16 }),
     ],
   })] });
 }
@@ -489,7 +487,8 @@ function sec1() {
         { text: " — the 3D intensity array, per-voxel σ, a validity mask, the HKL axes, and the crystal orientation (UB) matrix travel together from raw input to ΔPDF output." }]]),
 
     h2("1.2", "Scope of This Manual"),
-    p("This manual covers the background physics and mathematics of 3D diffuse scattering analysis, the algorithms and their theoretical basis, a step-by-step workflow, the Python API, every configuration parameter, generic worked examples for single-volume and multi-volume workflows, interactive visualization, known limitations, and a complete reference list."),
+    p("This manual covers the Python package. The browser console (in-browser and native) and the NEBULA Pilot agent are documented in docs/web.md and docs/pilot.md, and the pipeline's current stages in docs/pipeline.md, at github.com/drthyang/nebula3d/tree/main/docs."),
+    p("It covers the background physics and mathematics of 3D diffuse scattering analysis, the algorithms and their theoretical basis, a step-by-step workflow, the Python API, every configuration parameter, generic worked examples for single-volume and multi-volume workflows, interactive visualization, known limitations, and a complete reference list."),
 
     h2("1.3", "What nebula3d Does Not Do"),
     p("The package does not perform raw detector reduction, normalization to an absolute cross-section, or Reverse Monte Carlo (RMC) structural refinement. It assumes the input is a Mantid background-subtracted MDHistoWorkspace volume."),
@@ -675,7 +674,7 @@ function sec4() {
     ...callout("tip", "Validated default",
       [[{ text: "Use " }, { text: "SUBTRACT_BG=\"0,1.5,1.5\"", font: MONO, size: 19 },
         { text: " — per-axis Gaussian blur with σH = 0 (slice-wise, preserves H-layering) and σK = σL = 1.5 r.l.u. Tune the blur widths for the smooth background in your volume." }]]),
-    h3("4.4.4  Centring Bug (fixed 2026-06-05)"),
+    h3("4.4.4  Centring bug (fixed)"),
     p("Earlier code computed fftshift(fftn(data)) without ifftshift and used one-sided zero-padding. The missing ifftshift introduces a linear phase ramp e^(−iπk) = (−1)ᵏ, flipping the sign of real-space features by pixel parity. Fixed throughout; regression test: test_delta_pdf_centring_positive_peak."),
   ];
 }

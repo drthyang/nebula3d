@@ -9,6 +9,54 @@ run in the browser or by the backend: the model reads and explains them, it
 does not compute them. Getting it running is in
 [QUICKSTART.md](../QUICKSTART.md#using-the-console).
 
+## Using it
+
+- **Apply cards.** A change a reply proposes shows as a card under the
+  answer, with *Apply*, *Edit* and *Dismiss*: a setting the answer names with
+  a value, a run its changes call for, each tuning trial. *Apply* goes through
+  the same checks as the Pilot's own calls; a separate *Run* card follows.
+  Every change, yours, the Pilot's or auto mode's, is listed in **Changes**
+  above the chat with *Undo*, saved with the conversation and in session
+  files, and listed in the report's Decisions. The next reply gets one line
+  saying what you applied, edited, dismissed or undid since the last one.
+- **Sample facts on your click.** A card for a sample fact (the punch's
+  supercell, the modulation), the edge trim, the Laue class and the symmetry
+  average's switches, the |Q| band or the magnetic ion shows the value and its
+  evidence. It applies only on your own click, which counts as you stating the
+  value; *Edit* opens the exact values. The click is a one-use grant for that
+  card's values, kept nowhere the model can reach, so nothing the Pilot writes
+  can apply a fact. Such a change shows as "you (click)". A ring change held
+  for want of a 3D verdict offers *Check rings in 3D*, or *Apply anyway*.
+- **Highlights.** Each check draws what it measured where it measured it:
+  leftover peaks and punch holes, ring shells by code, unmeasured space, the
+  background's judged |Q| band, the Bragg peaks' footprints, the UB check's
+  shift arrows, the ΔPDF features (+ red, − blue). A "Now examining" bar above
+  the views names the step, links to it in the chat and holds the legend, a
+  chip per class. The *Highlights* switch beside *Tools*, *Follow* and
+  *Vision* hides them. They clear when a run recomputes their stage, or with
+  *Close volume*, and cost no tokens.
+- **Auto mode.** *Run auto analysis* follows a fixed plan: a preflight of the
+  raw volume, a run of what is missing or stale, each stage's checks, then a
+  report. The app runs the checks and moves on by their verdicts. The model is
+  asked only to fix a stage that needs attention (two tries at most) and to
+  write the report; a fix that made its check worse is put back. A sample fact
+  pauses the run, before the stage it affects, for your click or *Skip*. The
+  Auto panel shows the **Now line** (what the run is doing), the activity log
+  (one row a step, details on a click), the plan, the time worked and the
+  tokens. Limits: 30 minutes of working time (time waiting for you not
+  counted), 12 model replies, $2 on Claude, and 16,000 output tokens a reply
+  where the server sets no cap. *Pause*, *Resume* and *Stop* are always there;
+  *Stop* ends the run with a report the app writes from what was checked, at
+  no model cost. *Undo auto changes* puts the run's changes back.
+- **Context meter.** "Context 62%" by the chat box: how much of the model's
+  window the next question takes, with room for the reply. Neutral below
+  70 %, amber to 90 %, red above. From amber it offers *Summarize and
+  continue* (the app's own summary of the earlier turns, no model call, no
+  measured numbers) or *Start fresh*. The chat says when earlier turns are no
+  longer sent (the model reads the newest 8), when a reload left old turns
+  out, and after a session restore. Hidden during an auto run, whose panel
+  counts its tokens.
+
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
@@ -134,7 +182,9 @@ glossary, tersely, comes with `measure_reciprocal_cut`'s and
   message names it ("edge trim", "edge erosion", "coverage edge", or "trim"
   with "edge"), and never in a tuning run. The magnetic ion, the |Q| band and
   the symmetry average's settings (the Laue class above all) the model
-  cannot change at all.
+  cannot change at all. Your click on Apply on such a card is the
+  other way they change: a one-use grant for exactly the card's values
+  (`consent.ts`, [Using it](#using-it)).
 - **Rings are changed on the 3D verdict, not on a cut.** A change to the
   ring removal's settings, or a tuning of it, waits for `assess_stage`'s ring
   verdict, judged in 3D on the outputs as they now are, to find a ring left
@@ -146,7 +196,8 @@ glossary, tersely, comes with `measure_reciprocal_cut`'s and
   rings out and tunes the rest. Your latest message lifts the gate when it
   names the change: a ring setting by name, "ring model" (or sectors, window,
   subtraction), a ring model's name, or a tuning of the rings
-  (`tools/shared/ringGate.ts`).
+  (`tools/shared/ringGate.ts`). Any run that recomputes the ring removal makes an earlier
+  ring verdict stale; a run that reuses the rings leaves it standing.
 - **The questions only you can answer are asked, never answered for you.**
   When a run's sharp peaks off the lattice bunch at one commensurate
   fraction, as the satellites of a modulation nobody declared would, the
