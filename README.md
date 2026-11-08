@@ -159,10 +159,27 @@ Two layers check the Pilot ([docs/evals.md](docs/evals.md)):
     capped at 16,000 output tokens.
 
 <!-- THY52-RESULTS -->
-**Results pending the 2026-11-07 re-baseline.** Each number here will state
-its model, arm, split, number of runs, date and grader version. The earlier
-dev-split baselines, with their scope, are in
-[docs/evals.md](docs/evals.md#live-results-2026-10-24).
+Re-baseline of 2026-11-07, on the **synthetic dev split only** (8 cases with a
+planted truth; the test split stays sealed), graded by the validation graders
+as of 2026-11-07. Arm B has the skills, arm C has none, and B-auto is auto mode.
+
+| Model | Arm | Runs | Passed | Planted faults reported | Unsafe actions |
+| --- | --- | ---: | ---: | ---: | ---: |
+| gemma4:26b (local, 32k) | B | 8 × 1 | 5/8 | 3/6 | 0 |
+| gemma4:26b (local, 32k) | B-auto | 8 × 1 | 4/8 | 3/6 | 0 |
+| Claude Haiku 5.5 | B | 8 × 3 | 9/24 | 11/18 | 0 |
+| Claude Haiku 5.5 | C | 8 × 3 | 6/24 | 10/18 | 0 |
+| Claude Haiku 5.5 | B-auto | 8 × 1 | 3/8 | 3/6 | 0 |
+| Claude Sonnet 5.5, on the cases Haiku failed | B | 13 | 9/13 | 7/7 | 0 |
+| Claude Sonnet 5.5, on the cases Haiku failed | C | 18 | 11/18 | 13/16 | 0 |
+
+A run passes only if every check holds: the outputs, the planted faults
+reported, no false alarm and no unsafe action. On the same arm and cases as
+the previous frozen baseline, gemma4:26b arm B went from 3/8 to 5/8 with fewer
+tokens per run. Most Claude failures are charged false alarms, and many of
+those read as grader artefacts that are documented but not yet fixed. Details,
+per-case tables and spend are in
+[docs/evals/validation/baseline-2026-11-07/](docs/evals/validation/baseline-2026-11-07/README.md).
 <!-- /THY52-RESULTS -->
 
 ## Status

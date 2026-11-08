@@ -1,0 +1,615 @@
+{
+ "cap_usd": 40,
+ "spent_usd": 19.306746,
+ "entries": [
+  {
+   "case": "dev-control",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.01490516,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.01606946,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.012679925,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.014341085,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.011775965,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.014715375,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.018715595,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.01045049,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.020196310000000002,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.020319695,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.015568924999999999,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.01494971,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.013988925,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.012845625,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.01403055,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.014128975,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.013913865,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.011308045,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.014641285,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.01388448,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.00943507,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.01112606,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.013386955,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.019965809999999997,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.007277475,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.007607815,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.007925399999999999,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.00913077,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.00879193,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.00568208,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.0058918600000000005,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.008289459999999998,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.010234175,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.006050235,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.00684846,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.00860005,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.011897695,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.007603835,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.00571501,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.012341995,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.007122535,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.011064715000000001,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.011228755000000002,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.004758995,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.00754066,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.00419921,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.008912105,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.0052552,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.00553956,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.0044077,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.0022245550000000005,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.00208866,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.002177545,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.0023958,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.005137375,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.00241609,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.2013164,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.1305864,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.1882934,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "B",
+   "run": 1,
+   "usd": 7.37,
+   "estimated": true
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.1690057,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.1683999,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "B",
+   "run": 1,
+   "usd": 0.13257960000000002,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.1082135,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "C",
+   "run": 1,
+   "usd": 7.37,
+   "estimated": true
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.10525319999999999,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.12743010000000002,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.1568954,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings-shell",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.08780660000000001,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.11334419999999999,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "C",
+   "run": 1,
+   "usd": 0.108962,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.1924851,
+   "estimated": false
+  },
+  {
+   "case": "dev-control",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.2184016,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.12552560000000001,
+   "estimated": false
+  },
+  {
+   "case": "dev-shell",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.15865079999999998,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "B",
+   "run": 2,
+   "usd": 0.1318258,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "B",
+   "run": 3,
+   "usd": 0.186227,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.1682749,
+   "estimated": false
+  },
+  {
+   "case": "dev-coverage",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.085785,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.14844939999999998,
+   "estimated": false
+  },
+  {
+   "case": "dev-flatten",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.1744757,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.11408460000000001,
+   "estimated": false
+  },
+  {
+   "case": "dev-origin",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.0865351,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.1318687,
+   "estimated": false
+  },
+  {
+   "case": "dev-rings",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.11384889999999999,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "C",
+   "run": 2,
+   "usd": 0.0973304,
+   "estimated": false
+  },
+  {
+   "case": "dev-ub",
+   "arm": "C",
+   "run": 3,
+   "usd": 0.0711904,
+   "estimated": false
+  }
+ ]
+}
