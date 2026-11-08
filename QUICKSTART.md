@@ -60,19 +60,26 @@ make ui                 # build the SPA into src/nebula3d/server/static
 Pick the dataset once from the switcher at the top of the sidebar; every view
 reads it from there. A session typically runs top to bottom:
 
-1. **Configure** — tune ring removal / punch / backfill / background correction / ΔPDF, then
-   **Run pipeline**. Existing outputs are skipped unless *force* is on.
+1. **Configure** — load a volume (or **Use demo**), tune ring removal / punch /
+   backfill / background correction / ΔPDF, then **Run pipeline**. Existing
+   outputs are skipped unless *force* is on; a run from a stage first remakes
+   any earlier output that is stale. **Close volume** unloads it.
 2. **Reciprocal cleanup** — compare stages (raw → ring-removed → punched →
-   backfilled → background-corrected) on one shared plane and colour scale.
+   backfilled → background-corrected) on one shared plane and colour scale;
+   *HKL grid* draws the integer h, k, l lines.
 3. **3D-ΔPDF** — three linked real-space orthoslices with a unit-cell overlay.
 4. **Q–R Band Transform** (the consistency check) — inverse-FFT the ΔPDF back to reciprocal space and
    compare *data | back-FFT | residual*, with `|Q|` and real-space `r` bands.
+   **Use in pipeline** sends the applied `|Q|` band to the pipeline's ΔPDF;
+   then **Run from ΔPDF**.
 5. **NEBULA Pilot** — open it from the sidebar; it docks beside every page.
    Connect a local (Ollama / LM Studio) or cloud (OpenAI / Gemini / Anthropic)
    model. Ask it to *Assess the run* or *Tune for the best result*, or ask
    anything about the reduction: with *Tools* on it measures cuts, judges each
-   stage, runs and tunes the pipeline, and opens the figures it talks about
-   ([docs/pilot.md](docs/pilot.md)).
+   stage, runs and tunes the pipeline, and draws its checks on the views.
+   What it proposes comes as **Apply cards** (with Undo in **Changes**);
+   **Run auto analysis** checks, fixes and reports on its own, within fixed
+   limits ([docs/pilot.md](docs/pilot.md#using-it)).
    A local model needs room: load it with a **32k context** (32768; in LM
    Studio, set the model's default Context Length, which it uses whenever it
    reloads an idle model; Ollama at its usual port gets its window from the app,
@@ -80,7 +87,10 @@ reads it from there. A session typically runs top to bottom:
    `OLLAMA_CONTEXT_LENGTH=32768`). With *Tools* on, the first request alone is
    about 7.2k tokens, and a full assessment that reads two skills about 26k with
    room for the reply; in a smaller window older results are shortened
-   ([docs/pilot.md](docs/pilot.md#guardrails)).
+   ([docs/pilot.md](docs/pilot.md#guardrails)). On the Pages site, a local
+   model also needs CORS: start Ollama with `OLLAMA_ORIGINS` set to
+   `https://drthyang.github.io`, or turn on *Enable CORS* in LM Studio's
+   server settings.
 
 ## Going further
 
