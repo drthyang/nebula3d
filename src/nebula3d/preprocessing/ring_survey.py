@@ -25,8 +25,10 @@ same detection without the removal:
 
 Each shell is then labelled, by the same rules as the stage's diagnostics
 (``match``): ``AL`` on a fitted Al line (its hkl), ``PH`` on a line of the
-phase the match names first (``possibly`` that phase: a possibility with its
-evidence, never an identification), ``XTAL`` the crystal's own scattering (it
+phase the match names first, where a confirmed ring sits on one of its lines
+(``possibly`` that phase: a possibility with its evidence, never an
+identification; :func:`~nebula3d.preprocessing.powder_phases.supported`),
+``XTAL`` the crystal's own scattering (it
 fails the ring test on height or isotropy, standing clear of the noise in the
 typical direction), and ``UNK``, unrecognized: a ring, or a shell the test
 could not show to be the crystal's own, that no line explains. A shell under
@@ -52,6 +54,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from nebula3d.core import HKLVolume, low_memory
+from nebula3d.preprocessing import powder_phases
 from nebula3d.preprocessing.pooled_rings import (
     _PLANES,
     PooledRingConfig,
@@ -146,7 +149,12 @@ def survey_rings(vol: HKLVolume, config: PooledRingConfig | None = None, *,
     found, phases = _find_shells(vol, cfg, q_grid, shell_prof, shell_cnt, q_step, sample)
     _g, _measured, _exc, noise = _profile_excess(shell_prof, shell_cnt, q_step, cfg)
     t_detect = time.perf_counter() - t0
-    match = _shell_matcher(found, phases, cfg, q_step)
+    # The phase the match names first labels shells only where a confirmed
+    # ring sits on its lines (powder_phases.supported), as its summary is
+    # given: a candidate fitted to faint bumps alone is the match's guess on
+    # noise, kept in its record.
+    named = powder_phases.supported(phases)
+    match = _shell_matcher(found, phases if named else None, cfg, q_step)
 
     def snr(amplitude: float) -> float | None:
         return _round(amplitude / noise, 1) if noise > 0 and np.isfinite(amplitude) else None
@@ -211,10 +219,6 @@ def survey_rings(vol: HKLVolume, config: PooledRingConfig | None = None, *,
                       **labelled(q, w, ring, None if ring else code, None), "ring": ring,
                       "removed": False, "why": "faint" if ring else code, "source": "weak"})
     rings.sort(key=lambda r: float(r["q"]))  # type: ignore[arg-type]
-    # The phase the match names first is reported only where a ring listed
-    # here sits on its lines: a candidate resting on faint shells the 3D test
-    # does not confirm is the match's guess on noise, kept in its record.
-    named = any(r.get("code") == "PH" for r in rings)
     cands = (phases or {}).get("candidates")
     best = cands[0] if isinstance(cands, list) and cands else None
     return {
@@ -228,7 +232,7 @@ def survey_rings(vol: HKLVolume, config: PooledRingConfig | None = None, *,
         "rings": rings,
         "faint": faint,
         "phases": phases,
-        "phase_summary": phase_summary(phases) if named else None,
+        "phase_summary": phase_summary(phases),
         # The candidate the match named that no listed ring supports, if any.
         "phase_unsupported": (best.get("phase")
                               if not named and isinstance(best, dict) else None),

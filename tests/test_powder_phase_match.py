@@ -116,3 +116,32 @@ def test_the_pipeline_hands_the_sample_name_to_the_match():
     rec = out._ring_diagnostics["powder_phases"]
     assert rec["temperature_K"] == 20.0
     assert rec["candidates"][0]["phase"] == "Bi" and rec["candidates"][0]["in_composition"]
+
+
+def test_a_phase_fitted_to_the_noise_alone_is_named_nowhere():
+    # Pure noise on a falling background: the match fits Si to faint bumps
+    # the 3D test does not confirm. Its candidate stays in the record; the
+    # stage's line (stage_phases) and the survey name no phase.
+    from nebula3d.preprocessing.ring_survey import survey_rings
+    from nebula3d.server.rings import phase_summary as stage_phase_summary
+
+    vol, _ = phase_volume({}, seed=5)
+    rec = _fit(vol).diagnostics["powder_phases"]
+    assert rec["candidates"] and rec["candidates"][0]["phase"] == "Si"
+    confirmed = {r["q"] for r in rec["rings"] if r["source"] == "ring" or r.get("code") == "ring"}
+    assert not confirmed & {ln["ring"] for ln in rec["candidates"][0]["lines"]}
+    assert not powder_phases.supported(rec)
+    assert powder_phases.summary(rec) is None and stage_phase_summary(rec) is None
+    survey = survey_rings(vol, CFG, sample="synthetic_20K.nxs")
+    assert survey["phase_summary"] is None and survey["phase_unsupported"] == "Si"
+    assert not [r for r in survey["rings"] if r["code"] == "PH"]
+
+
+def test_a_phase_a_confirmed_ring_supports_is_named(bi_case):
+    _vol, res = bi_case
+    rec = res.diagnostics["powder_phases"]
+    assert powder_phases.supported(rec)
+    # Without its confirmed rings (the same record, every ring faint and unjudged) it is not.
+    faint = {**rec, "rings": [{**r, "source": "weak", "code": "grid"} for r in rec["rings"]]}
+    assert not powder_phases.supported(faint) and powder_phases.summary(faint) is None
+    assert not powder_phases.supported(None) and not powder_phases.supported({"candidates": []})
