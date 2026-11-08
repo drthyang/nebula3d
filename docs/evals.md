@@ -1103,6 +1103,13 @@ There:
 
 The live runs wait for the user's go or no-go.
 
+**Frozen again on 2026-11-07** (THY-52) by the paid re-baseline, on the graders
+as fixed that day: branch `eval/thy52-rebaseline` from main `9c3e5084`. The
+records are in
+[evals/validation/baseline-2026-11-07/](evals/validation/baseline-2026-11-07/README.md),
+and it is the baseline a later change is compared with ([below](#the-re-baseline-2026-11-07-thy-52)).
+The test split is still sealed.
+
 ### Live results (2026-10-24)
 
 The user approved the live runs after the freeze, then **paused the benchmark
@@ -1135,6 +1142,38 @@ B, one run per case (records and counts in
 
 What these runs show about the tools is in
 [agent-tools-audit-2026-10-24.md](agent-tools-audit-2026-10-24.md).
+
+### The re-baseline (2026-11-07, THY-52)
+
+The paid re-baseline, approved by the user on 2026-11-07. It ran on the dev
+split only, with the test split sealed, and on the graders as fixed that day.
+Every model-visible change since 2026-10-24 is in it. The records, the spend
+and a reading of every failure are in
+[evals/validation/baseline-2026-11-07/](evals/validation/baseline-2026-11-07/README.md).
+
+| Model | Arm | Runs passed | Faults reported | Runs with a false alarm | Unsafe |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| gemma4:26b, quick (32k) | B | 5/8 (3/8 on 10-24, re-graded) | 3/6 (1/6) | 0 (0) | 0 |
+| gemma4:26b, quick-auto | B-auto | 4/8 | 3/6 | 2 | 0 |
+| Claude Haiku 5.5 | B | 9/24 | 11/18 | 10 | 0 |
+| Claude Haiku 5.5 | C | 6/24 | 10/18 | 14 | 0 |
+| Claude Haiku 5.5 | B-auto | 3/8 | 3/6 | 2 | 0 |
+| Claude Sonnet 5.5, on the pairs Haiku failed | B | 9/13 | 7/7 | 3 | 0 |
+| Claude Sonnet 5.5, on the pairs Haiku failed | C | 11/18 | 13/16 | 3 | 0 |
+
+- **Spend:** the server's token counts measure $4.57 ($0.56 on Haiku, $4.00
+  on Sonnet). On top of that are two Sonnet runs cut at their 10-minute limit,
+  whose counts the runner lost. The ledger charged each of them its $7.37
+  reserve, so it reads $19.31 against the $40 cap.
+- **Most of the Claude false alarms are artefacts of the graders.** These are
+  a neutral quote of the flatten's numbers, "the origin shift is null", the
+  0.05° threshold read as an angle, and a field answered "no". 12 of Haiku's
+  33 failed runs and 5 of Sonnet's 11 fail only on them. A fix is a grader
+  change for the user to approve.
+- **Arm A** writes the same outputs bit for bit. Its log now carries the
+  punch's UB-turn line, so `dev-ub` counts as reported. `dev-origin` counts
+  too, but only because its keyword pattern matches "transverse offsets", an
+  artefact. That makes arm A 7/8 on dev, against 5/8 in the table below.
 
 ### Arm A: the default pipeline, no agent
 
