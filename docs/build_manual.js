@@ -411,7 +411,7 @@ function cover() {
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 36 },
       children: [run("Tsung-Han Yang", { bold: true, color: NAVY, size: 25 })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 },
-      children: [run("© 2026 Tsung-Han Yang.  All rights reserved.", { color: MUTED, size: 18 })] }),
+      children: [run("© 2026 Tsung-Han Yang · Licensed under AGPL-3.0", { color: MUTED, size: 18 })] }),
     pageBreak(),
   ];
 }

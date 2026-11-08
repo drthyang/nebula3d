@@ -479,7 +479,7 @@ def build_manual(output_path: str) -> None:
             leading=14, textColor=NAVY, alignment=TA_CENTER),
     ))
     story.append(Paragraph(
-        "© 2026 Tsung-Han Yang. All rights reserved.",
+        "© 2026 Tsung-Han Yang · Licensed under AGPL-3.0",
         _ps(name="_cov_copy", fontName="Helvetica", fontSize=8.5,
             leading=12, textColor=DARK_GREY, alignment=TA_CENTER, spaceAfter=6),
     ))
