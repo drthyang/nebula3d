@@ -1,8 +1,8 @@
 // The header every viewer page shares, after the NeXus Viewer's workspace
 // header, so the controls sit in one order with one name each on every page:
 //
-//   row 1 — Box zoom (?) · overlays (Unit cell, Structure, …;
-//           the Configure preview names Unit cell "HKL grid")
+//   row 1 — Box zoom (?) · overlays (HKL grid on the r.l.u. views, Unit
+//           cell on the real-space ones, Structure, …)
 //           │ the page's own navigation (plane, cuts, filters)  ···  layout
 //   row 2 — the display bar(s) (DisplayBar)  ···  the page's display extras
 //
@@ -20,14 +20,14 @@ import { useDpdfStore } from "../state/dpdfStore";
 import { useWorkspaceStore } from "../state/workspaceStore";
 import { BoxZoomTool, DisplayBar, type DisplayBarProps } from "./DisplayBar";
 import { ColormapBar, Switch } from "./ui";
-import { DISPLAY_TOGGLE_TITLE, displaySummaryText, UNIT_CELL_TITLES } from "./viewerText";
+import { DISPLAY_TOGGLE_TITLE, displaySummaryText, GRID_SWITCH_LABELS, UNIT_CELL_TITLES } from "./viewerText";
 
 /**
- * The "Unit cell" switch: one setting for every page. `label` renames it
- * where another name says better what it draws (the Configure preview's
- * "HKL grid"); the setting stays the same one.
+ * The grid switch: one setting for every page (dpdfStore's `gridlines`).
+ * Its name follows what it draws: "HKL grid" on the r.l.u. views (integer
+ * h, k, l is not a unit cell), "Unit cell" on the real-space ones.
  */
-export function UnitCellsSwitch({ kind, label = "Unit cell" }: { kind: keyof typeof UNIT_CELL_TITLES; label?: string }) {
+export function UnitCellsSwitch({ kind, label = GRID_SWITCH_LABELS[kind] }: { kind: keyof typeof UNIT_CELL_TITLES; label?: string }) {
   const gridlines = useDpdfStore((s) => s.gridlines);
   const setGridlines = useDpdfStore((s) => s.setGridlines);
   return <Switch label={label} title={UNIT_CELL_TITLES[kind]} checked={gridlines} onChange={setGridlines} />;
@@ -72,7 +72,7 @@ export function WorkspaceHeader({
   displayEnd,
   notes,
 }: {
-  overlays?: ReactNode; // after the Box zoom tool: Unit cell, Structure, …
+  overlays?: ReactNode; // after the Box zoom tool: HKL grid / Unit cell, Structure, …
   nav?: ReactNode; // the page's navigation, after a separator
   end?: ReactNode; // at the right of row 1: the layout switch
   rows?: ReactNode; // whole rows between the two

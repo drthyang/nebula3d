@@ -78,7 +78,7 @@ export function UnitCellGrid({ half, viewport, latX, latY, angle = 90, lut, dash
 }
 
 /**
- * Dashed lines at integer h, k, l on an r.l.u. slice view (the "Unit cell"
+ * Dashed lines at integer h, k, l on an r.l.u. slice view (the "HKL grid"
  * switch on the reciprocal-space views), in the view's display units and at
  * its axes angle — the geometry its canvas and ticks use.  The step follows
  * the zoom, per axis: every 1, 2, 5 or 10 r.l.u., the smallest whose lines

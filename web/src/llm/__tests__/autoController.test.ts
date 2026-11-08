@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
-import { applyFact, autoLoop, endAuto, refusalNote, resumeAuto, skipFact, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
+import { applyFact, autoLoop, endAuto, refusalNote, resumeAuto, skipFact, standingAutoChanges, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
 import { REPORT_PROMPT } from "../auto/prompts";
 import { useAutoStore, type AutoRun } from "../auto/store";
 import { autoTranscript, isAppStep, isSeeded } from "../auto/transcript";
@@ -604,6 +604,25 @@ describe("Undo of auto changes", () => {
     expect(usePipelineStore.getState().symmetryLaue).toBe("");
     // A Run card follows the undo.
     expect(useDecisionStore.getState().proposals.some((p) => p.kind === "run" && p.status === "open")).toBe(true);
+  });
+
+  it("is offered only while one of the run's changes still stands", async () => {
+    unsymmetrisedRaw();
+    usePipelineStore.getState().patch({ symmetryLaue: "" });
+    outputs.tweak = (stage, e, ranWith) => (stage === "rings" ? cleanRings(e) : stage === "punch" && ranWith.punchMinSig === "6" ? cleanPunch(e) : e);
+    model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done."));
+    await start();
+    await applyFact(TRUSTED);
+    await (autoLoop() ?? Promise.resolve());
+    const standing = () => standingAutoChanges(run(), useDecisionStore.getState().decisions);
+    // The run logs its pipeline runs too: those are no change to put back.
+    expect(run().decisions.length).toBeGreaterThan(2);
+    expect(standing()).toBe(2);
+    undoAutoRun();
+    expect(standing()).toBe(1);
+    undoAutoRun(TRUSTED);
+    expect(standing()).toBe(0); // the panel's Undo auto changes goes away
+    expect(standingAutoChanges(null, [])).toBe(0);
   });
 });
 
