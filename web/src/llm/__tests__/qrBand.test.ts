@@ -163,4 +163,36 @@ describe("the Q–R page's pipeline row", () => {
   it("shows nothing with no band applied and none set from the page", () => {
     expect(render({})).toBe("");
   });
+
+  // The stage track's answer, as the row's query holds it for the settings as they are.
+  const renderWithStale = (stale: Record<string, string>) => {
+    const client = new QueryClient();
+    client.setQueryData(["stale-outputs-qr", "demo", JSON.stringify(formToParams(store())), store().flatten], { stale });
+    return renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(QBandPipeline, { datasetId: "demo", band: null, rBand: null, spanMax: SPAN, computing: false }),
+      ),
+    );
+  };
+
+  it("after Undo, keeps offering Run from ΔPDF while the pipeline's ΔPDF is stale", () => {
+    const r = setPipelineBand({ min: 1, max: 5 }, SPAN, "demo", TRUSTED);
+    expect(r.ok).toBe(true);
+    undoDecision(state().decisions[0], TRUSTED);
+    expect(standingBand("demo")).toBeNull();
+    // No band on the page and none standing: the stale ΔPDF alone keeps the row and its Run.
+    const html = renderWithStale({ delta_pdf: "the band it was made with" });
+    expect(html).toContain("Pipeline ΔPDF: |Q| full");
+    expect(html).toContain("· stale");
+    expect(html).toContain("Run from ΔPDF</button>");
+    expect(html).not.toContain(">Undo</button>");
+  });
+
+  it("goes once the stage track reads the ΔPDF up to date", () => {
+    expect(renderWithStale({})).toBe("");
+    // Another output stale, the ΔPDF not: no row.
+    expect(renderWithStale({ flattened: "backfilled" })).toBe("");
+  });
 });

@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+Since 0.4.0. The full entries are in `changes/unreleased/` until the next
+release folds them in here; no release is cut yet.
+
+- NEBULA Pilot: **Apply cards** with a **Changes** list and Undo
+  ([pilot-apply-cards](changes/unreleased/pilot-apply-cards.md)); a sample
+  fact applies on your click, a one-use grant
+  ([pilot-fact-grant](changes/unreleased/pilot-fact-grant.md)); the next reply
+  knows what you changed
+  ([pilot-since-last-reply](changes/unreleased/pilot-since-last-reply.md)).
+- NEBULA Pilot: **auto mode**, its panel with the Now line and activity log,
+  its limits, Stop and the app's report
+  ([pilot-auto-controller](changes/unreleased/pilot-auto-controller.md),
+  [pilot-auto-panel](changes/unreleased/pilot-auto-panel.md),
+  [pilot-auto-report-cap-stop](changes/unreleased/pilot-auto-report-cap-stop.md)).
+- NEBULA Pilot: **highlights** of each check on the views
+  ([pilot-highlights](changes/unreleased/pilot-highlights.md),
+  [pilot-highlights-v2](changes/unreleased/pilot-highlights-v2.md)).
+- NEBULA Pilot: a **context meter** with Summarize and continue, and no turn
+  dropped silently ([pilot-context-meter](changes/unreleased/pilot-context-meter.md)).
+- Q–R page: **Use in pipeline** for the |Q| band
+  ([qr-band-use-in-pipeline](changes/unreleased/qr-band-use-in-pipeline.md)).
+- **HKL grid**, not Unit cell, on the r.l.u. views
+  ([hkl-grid-name](changes/unreleased/hkl-grid-name.md)).
+- Fixes: a run from a stage remakes a stale earlier output, and the ring gate
+  no longer takes a verdict from before a run
+  ([run-from-refreshes-stale](changes/unreleased/run-from-refreshes-stale.md),
+  [rerun-symmetry-and-ring-gate](changes/unreleased/rerun-symmetry-and-ring-gate.md)).
+- Validation: three grader artefacts fixed on 2026-11-07, before the THY-52
+  re-baseline
+  ([validation-grader-artefacts](changes/unreleased/validation-grader-artefacts.md)).
+
 ## 0.4.0 — 2026-11-02
 
 - **Fix: on iPhone the Q–R band slider's second knob hid behind the bar.** Safari

@@ -317,6 +317,19 @@ export function undoAutoRun(event?: ClickEvent): number {
   return n;
 }
 
+/**
+ * How many of a run's changes Undo auto changes would put back: those still
+ * standing (not undone already, by the run itself or by you). A run whose
+ * changes are all back already offers no Undo.
+ */
+export function standingAutoChanges(run: { decisions: string[] } | null, decisions: readonly Decision[]): number {
+  if (!run) return 0;
+  return run.decisions.filter((id) => {
+    const d = decisions.find((x) => x.id === id);
+    return !!d && undoable(d);
+  }).length;
+}
+
 /** The promise of the loop under way, if any (tests wait on it). */
 export const autoLoop = (): Promise<void> | null => loop;
 

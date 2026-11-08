@@ -1,7 +1,9 @@
 // The Q–R page's row for the pipeline's ΔPDF (THY-68): the |Q| band the
 // pipeline's ΔPDF is made with, "Use in pipeline" to make it the band applied
 // here (llm/apply/qrBand.ts), then "Run from ΔPDF" while that ΔPDF is stale,
-// and Undo. One plain line; the details behind "?". The |R| band, a mask
+// and Undo. The row stays while the pipeline's ΔPDF is stale, whatever made
+// it so (an Undo here leaves the band-limited ΔPDF behind it), so Run from
+// ΔPDF is there until the stage track reads it up to date. One plain line; the details behind "?". The |R| band, a mask
 // after the transform the pipeline has no step for, stays on this page, and
 // the line says so while one is applied.
 
@@ -58,16 +60,18 @@ export function QBandPipeline({
 
   // Whether the pipeline's ΔPDF is stale with the settings as they are (the
   // band set, or put back): the Configure page's stage track's question (the
-  // backend's resume rule).
+  // backend's resume rule). Asked with no band too: a stale ΔPDF keeps the row.
   const staleQ = useQuery({
     queryKey: ["stale-outputs-qr", datasetId, params, flatten],
     queryFn: () => fetchStaleOutputs({ dataset_id: datasetId ?? "", flatten_enabled: flatten, params: JSON.parse(params) as StageParamsIn }),
-    enabled: Boolean(datasetId && (band || rBand || standing)) && !running && (!PYODIDE_MODE || boot.ready),
+    enabled: Boolean(datasetId) && !running && (!PYODIDE_MODE || boot.ready),
     staleTime: Infinity,
     retry: false,
   });
 
-  if (!datasetId || (!band && !rBand && !standing)) return null;
+  // Stale by the backend's answer (an error alone shows no row of its own).
+  const staleNow = staleQ.data?.stale.delta_pdf !== undefined;
+  if (!datasetId || (!band && !rBand && !standing && !staleNow)) return null;
 
   const pipeline = bandText({ pdfQMin, pdfQMax });
   const applied = bandText(bandFields(band, spanMax));
