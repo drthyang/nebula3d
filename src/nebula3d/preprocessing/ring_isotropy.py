@@ -525,19 +525,23 @@ def _cell_medians(vol: HKLVolume, windows: Sequence[tuple[float, int, bool]],
     # and are gathered in slab order, so the result is the serial loop's.
     keys: list[NDArray[np.int32]] = []
     vals: list[NDArray[np.float32]] = []
-    starts_h = range(0, h.size, slab)
+    starts_h = list(range(0, h.size, slab))
     workers = _slab_workers(len(starts_h), lean)
-    if workers > 1:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            parts = list(pool.map(one_slab, starts_h))
-    else:
-        parts = [one_slab(i0) for i0 in starts_h]
-    for part_keys, part_vals, part_grid in parts:
-        keys.extend(part_keys)
-        vals.extend(part_vals)
-        if part_grid is not None:
-            grid += part_grid
-    del parts
+    # A batch of slabs at a time (one in turn), each added as it ends, so no
+    # more than a batch's grid counts wait: the serial loop's memory.
+    pool = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
+    try:
+        for b0 in range(0, len(starts_h), workers):
+            batch = starts_h[b0:b0 + workers]
+            parts = pool.map(one_slab, batch) if pool is not None else map(one_slab, batch)
+            for part_keys, part_vals, part_grid in parts:
+                keys.extend(part_keys)
+                vals.extend(part_vals)
+                if part_grid is not None:
+                    grid += part_grid
+    finally:
+        if pool is not None:
+            pool.shutdown()
     if not keys:
         return None
     key = np.concatenate(keys)

@@ -19,8 +19,7 @@ from fastapi.testclient import TestClient
 
 import nebula3d
 from nebula3d import pipeline
-from nebula3d.preprocessing import PooledRingConfig, fit_pooled_rings
-from nebula3d.preprocessing import ring_isotropy
+from nebula3d.preprocessing import PooledRingConfig, fit_pooled_rings, ring_isotropy
 from nebula3d.preprocessing.ring_survey import CODES, survey_lines, survey_rings
 from nebula3d.server import volumes as vol_mod
 from nebula3d.server.app import create_app

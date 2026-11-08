@@ -31,6 +31,10 @@ skill cites (docs/algorithms/), which R4 (the skills' restructure) decides.
 The other tools' method text stays here: their contracts and results carry
 what the model needs.
 
+`ring_survey` (THY-43) came after R2 with a contract only; its method is in
+reduction-qc's Details, "Before a run", and in
+`src/nebula3d/preprocessing/ring_survey.py`.
+
 The descriptions as the model reads them now:
 `web/src/llm/__tests__/__snapshots__/model-visible/2-tools.md`.
 
