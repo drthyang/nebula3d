@@ -674,7 +674,7 @@ function sec4() {
     ...callout("tip", "Validated default",
       [[{ text: "Use " }, { text: "SUBTRACT_BG=\"0,1.5,1.5\"", font: MONO, size: 19 },
         { text: " — per-axis Gaussian blur with σH = 0 (slice-wise, preserves H-layering) and σK = σL = 1.5 r.l.u. Tune the blur widths for the smooth background in your volume." }]]),
-    h3("4.4.4  Centring Bug (fixed 2026-06-05)"),
+    h3("4.4.4  Centring bug (fixed)"),
     p("Earlier code computed fftshift(fftn(data)) without ifftshift and used one-sided zero-padding. The missing ifftshift introduces a linear phase ramp e^(−iπk) = (−1)ᵏ, flipping the sign of real-space features by pixel parity. Fixed throughout; regression test: test_delta_pdf_centring_positive_peak."),
   ];
 }

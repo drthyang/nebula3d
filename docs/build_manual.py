@@ -1162,7 +1162,7 @@ def build_manual(output_path: str) -> None:
         "near-origin spike does not dominate the display."
     ))
 
-    story.append(H3("4.4.5  The Centring Bug (Fixed 2026-06-05)"))
+    story.append(H3("4.4.5  Centring bug (fixed)"))
     story.append(P(
         "Earlier code computed <tt>fftshift(fftn(data))</tt> without "
         "<tt>ifftshift</tt> and used one-sided zero-padding. With Q=0 at the array "
