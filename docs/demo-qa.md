@@ -127,12 +127,12 @@ What the script did record is listed below; none of it comes from the app:
   own reply time. The Now line and the log show progress throughout.
   *Workaround:* start auto mode first and talk over it, or demo it on the
   native build.
-- **Q–R: after Undo, the row with Run from ΔPDF goes away**, though the
-  pipeline's ΔPDF is still the band-limited one. Configure's stage track
-  marks the 3D-ΔPDF stale. *Workaround:* press Run pipeline on Configure,
-  with Force off. It remakes only the ΔPDF (checked in this pass).
-  Changing this would be a behaviour change, so it is left for after the
-  freeze.
+- **Q–R: after Undo, the row with Run from ΔPDF went away**, though the
+  pipeline's ΔPDF was still the band-limited one. Fixed on
+  `fix/qr-undo-run`: the row now stays, with Run from ΔPDF, for as long as
+  the stage track reads the pipeline's ΔPDF as stale. Without that fix, the
+  workaround is Run pipeline on Configure, with Force off, which remakes
+  only the ΔPDF.
 - **A local model on the Pages build needs CORS.** Ollama must be started
   with `OLLAMA_ORIGINS` set to the site's origin, and LM Studio needs Enable
   CORS. The connection settings say so in their hint. *Workaround:* set it
