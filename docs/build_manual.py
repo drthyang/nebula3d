@@ -383,7 +383,7 @@ def _header_footer(canvas, doc):
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.white)
         canvas.drawString(doc.leftMargin, h - 1.35 * cm,
-                          "nebula3d  |  Manual  v0.1")
+                          "nebula3d  |  Manual  v0.4")
         canvas.setFillColor(DARK_GREY)
         canvas.setFont("Helvetica", 8)
         canvas.drawRightString(w - doc.rightMargin, h - 1.35 * cm,
@@ -441,15 +441,14 @@ def build_manual(output_path: str) -> None:
         styles["subtitle"],
     ))
     story.append(SP(24))
-    story.append(Paragraph("Version 0.1.0", styles["version"]))
-    story.append(Paragraph("June 2026", styles["version"]))
+    story.append(Paragraph("Version 0.4.0", styles["version"]))
     story.append(SP(80))
 
     # Bottom metadata box
     _meta_cell = _ps(name="_mc", fontName="Helvetica", fontSize=9, leading=12)
     meta_rows = [
         ["Language",         Paragraph("Python ≥ 3.10", _meta_cell)],
-        ["License",          Paragraph("MIT", _meta_cell)],
+        ["License",          Paragraph("AGPL-3.0-or-later", _meta_cell)],
         ["Dependencies",     Paragraph("numpy, scipy, h5py, matplotlib", _meta_cell)],
         ["Instrument",       Paragraph("Mantid NeXus (MDHistoWorkspace)", _meta_cell)],
         ["Reference data", Paragraph(
@@ -498,6 +497,15 @@ def build_manual(output_path: str) -> None:
     # 1  INTRODUCTION
     # -----------------------------------------------------------------------
     story.append(H1("1.  Introduction"))
+    story.append(P(
+        "<b>Where the rest is documented.</b> This manual covers the Python "
+        "package. The browser console (in-browser and native) and the NEBULA "
+        "Pilot agent are documented in <tt>docs/web.md</tt> and "
+        "<tt>docs/pilot.md</tt>, and the pipeline's current stages in "
+        "<tt>docs/pipeline.md</tt>, at "
+        "<link href=\"https://github.com/drthyang/nebula3d/tree/main/docs\">"
+        "github.com/drthyang/nebula3d/tree/main/docs</link>."
+    ))
     story.append(P(
         "<b>nebula3d</b> is a Python 3.10+ toolkit for the complete "
         "analysis of three-dimensional (3D) diffuse neutron scattering volumes. "
