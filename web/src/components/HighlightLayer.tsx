@@ -58,6 +58,7 @@ const DASH: Partial<Record<ClassId, string>> = {
   broad: "4 3",
   AL: "5 3",
   RM: "2 2",
+  PH: "3 2",
   fpBroad: "3 2",
   GRID: "1.5 2.5",
   XTAL: "6 3",
@@ -142,8 +143,9 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
   const shellShape = (s: DrawnShell, i: number) => {
     const p = px(s.e);
     const faint = s.style === "faint";
-    const width = s.cls === "LEFT" ? 2 : faint ? 0.9 : 1.4;
-    const dash = s.cls === "LEFT" ? undefined : DASH[s.cls];
+    const bold = s.cls === "LEFT" || s.cls === "UNK";
+    const width = bold ? 2 : faint ? 0.9 : 1.4;
+    const dash = bold ? undefined : DASH[s.cls];
     const transform = p.angle ? `rotate(${p.angle.toFixed(2)} ${p.cx.toFixed(1)} ${p.cy.toFixed(1)})` : undefined;
     const ring = (stroke: string, sw: number) => (
       <ellipse cx={p.cx} cy={p.cy} rx={Math.max(0.5, p.rx)} ry={Math.max(0.5, p.ry)} transform={transform} fill="none" stroke={stroke} strokeWidth={sw} strokeDasharray={dash} />
@@ -180,10 +182,10 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
   const shellChips =
     primary && !small
       ? shells
-          .filter((s) => s.style === "full" && codes[s.cls])
+          .filter((s) => s.style === "full" && (s.label || codes[s.cls]))
           .flatMap((s, i) => {
             const p = px(s.e);
-            const text = codes[s.cls]!;
+            const text = s.label ?? codes[s.cls]!;
             const cw = 6.2 * text.length + 8;
             for (let k2 = 0; k2 < 16; k2++) {
               const [x, y] = onEllipse(p, ((-90 + i * 47 + k2 * 22.5) * Math.PI) / 180);

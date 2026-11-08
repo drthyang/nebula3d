@@ -36,6 +36,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
+  fetchRingSurvey: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -252,7 +253,7 @@ describe("a stop leaves a consistent record", () => {
     expect(run().state).toBe("stopped");
     expect(status()).toMatchObject({ preflight: "stopped", run: "pending" });
     expect(run().decisions).toEqual([]);
-    expect(run().steps.map((s) => s.name)).toEqual(["qmax_coverage"]);
+    expect(run().steps.map((s) => s.name)).toEqual(["qmax_coverage", "ring_survey"]);
   });
 
   it("comes back from a reload stopped, its clock paused, Resume restarting its row; from a file, its steps never evidence", async () => {

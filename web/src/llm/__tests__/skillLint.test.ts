@@ -69,6 +69,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
+  fetchRingSurvey: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -377,6 +378,8 @@ const OTHER_NAMES: { name: string; what: string; holds: () => boolean }[] = [
   { name: "processed/", what: "a dataset's outputs, which tuning never writes", holds: () => source("src/nebula3d/server/tuning.py").includes("``processed/``") },
   { name: "edge_trim", what: "the pipeline's edge trim, a run parameter", holds: () => /\bedge_trim\?:/.test(source("web/src/api/types.ts")) },
   { name: "flag", what: "compare_laue_classes' flag (the diffuse supports less)", holds: () => has("compare_laue_classes", "flag") },
+  // The pre-run ring survey's lines (THY-43), one word each.
+  ...["al", "phases", "unrecognized", "unconfirmed", "removal"].map((name) => ({ name, what: `ring_survey's ${name}`, holds: () => has("ring_survey", name) })),
   { name: "chi2", what: "compare_laue_classes' χ²/dof of each class", holds: () => has("compare_laue_classes", "chi2") },
   {
     name: "common_flag",
@@ -604,6 +607,7 @@ const PEAKS_STEP: AgentStep = {
 const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => void; userMessage?: string; replySteps?: AgentStep[] }[] = [
   { name: "read_skill", args: { name: "reduction-qc" } },
   { name: "describe_dataset", args: {} },
+  { name: "ring_survey", args: {} },
   { name: "current_view", args: {} },
   { name: "measure_reciprocal_cut", args: { plane: "h0l", value: 1 } },
   { name: "measure_dpdf_cut", args: { plane: "xz", value: 0 } },

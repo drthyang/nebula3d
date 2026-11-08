@@ -130,6 +130,13 @@ export interface ToolFacts {
   // the assistant marks (state/marks.ts) never rests on it. Left out: a tool
   // that only reads measures; one that acts never does.
   measures?: false;
+  // A pre-run tool (ring_survey): offered only on a dataset before its run,
+  // with no stage output but its raw volume, as the reply finds the dataset
+  // when it starts (localTools.ts, offeredOn), so a reply after a run, the
+  // worst turn among them, never carries it; auto mode's replies, which all
+  // come after its run, hold none (auto/controller.ts). A call by name still
+  // runs. Left out: offered on any dataset.
+  preRun?: true;
 }
 
 /** A tool's facts with every field resolved, as factsOf returns them. */
@@ -152,6 +159,7 @@ export interface Facts {
   askedFor: ((message: string) => boolean) | null;
   readsReply: boolean;
   measures: boolean; // it reads the data: what a mark may rest on
+  preRun: boolean; // offered only before a run
 }
 
 const byArgs = <T>(fact: ByArgs<T> | undefined, fallback: T): ((args: Args) => T) =>
@@ -183,5 +191,6 @@ export function resolveFacts(name: string, declared?: ToolFacts): Facts {
     askedFor: declared?.askedFor ?? null,
     readsReply: declared?.readsReply ?? false,
     measures: acts === null && declared?.measures !== false,
+    preRun: declared?.preRun ?? false,
   };
 }

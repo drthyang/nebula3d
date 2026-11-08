@@ -17,7 +17,7 @@ import { goToStep } from "./goToStep";
 
 // The classes counted on the cut; the bands, hatches and the coverage's lines are shown without a number.
 const COUNTED = new Set<ClassId>([
-  "node", "sharp", "broad", "protected", "holes", "r2", "AL", "LEFT", "GRID", "XTAL", "NJ", "RM",
+  "node", "sharp", "broad", "protected", "holes", "r2", "AL", "LEFT", "GRID", "XTAL", "NJ", "RM", "PH", "UNK",
   "fpRes", "fpBroad", "fpNone", "dpos", "dneg", "fillUp", "fillDown", "far", "rotated",
 ]);
 // Classes with no chip where they draw nothing, beside the counted ones: the UB turn's arrows, a profile's line.
@@ -78,8 +78,8 @@ function Swatch({ c }: { c: ClassDef }) {
     case "pedestal":
       return <svg width="16" height="12" aria-hidden="true"><rect x="1" y="2" width="14" height="8" fill={col} fillOpacity="0.18" stroke={col} strokeDasharray="3 2" /></svg>;
     default: {
-      const dash = { AL: "4 3", RM: "2 2", GRID: "1.5 2.5", XTAL: "5 3", NJ: "1 3", edges: "4 3", band: "4 3", reach: "6 2" }[c.id as string];
-      return <svg width="16" height="12" aria-hidden="true"><line x1="1" y1="6" x2="15" y2="6" stroke={col} strokeWidth={c.id === "LEFT" ? 2 : 1.6} strokeDasharray={dash} /></svg>;
+      const dash = { AL: "4 3", RM: "2 2", PH: "3 2", GRID: "1.5 2.5", XTAL: "5 3", NJ: "1 3", edges: "4 3", band: "4 3", reach: "6 2" }[c.id as string];
+      return <svg width="16" height="12" aria-hidden="true"><line x1="1" y1="6" x2="15" y2="6" stroke={col} strokeWidth={c.id === "LEFT" || c.id === "UNK" ? 2 : 1.6} strokeDasharray={dash} /></svg>;
     }
   }
 }

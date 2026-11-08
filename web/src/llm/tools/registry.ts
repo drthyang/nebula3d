@@ -14,6 +14,7 @@ import type { ToolSpec } from "../provider/client";
 import { refusalFor } from "../skills";
 import { read_skill } from "./defs/read_skill";
 import { describe_dataset } from "./defs/describe_dataset";
+import { ring_survey } from "./defs/ring_survey";
 import { current_view } from "./defs/current_view";
 import { measure_reciprocal_cut } from "./defs/measure_reciprocal_cut";
 import { measure_dpdf_cut } from "./defs/measure_dpdf_cut";
@@ -46,6 +47,7 @@ import type { AgentTool, Args, ChatTool } from "./types";
 export const CHAT_TOOLS: ChatTool[] = [
   read_skill,
   describe_dataset,
+  ring_survey,
   current_view,
   measure_reciprocal_cut,
   measure_dpdf_cut,

@@ -51,6 +51,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
+  fetchRingSurvey: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),

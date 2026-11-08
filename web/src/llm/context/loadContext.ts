@@ -52,6 +52,9 @@ export const safe = async <T>(p: Promise<T>): Promise<T | null> => {
 export const stageVolumeId = (dataset: Dataset, name: string): string | undefined =>
   dataset.stages.find((s) => s.name === name && s.exists)?.volume_id;
 
+/** Whether a run has written any of the dataset's stage outputs (its raw volume aside): a dataset listing no stages has none. */
+export const ranOn = (dataset: Dataset): boolean => Array.isArray(dataset.stages) && dataset.stages.some((s) => s.exists && s.name !== "raw");
+
 export const hklVolumeId = (dataset: Dataset): string | undefined =>
   stageVolumeId(dataset, "raw") ?? dataset.stages.find((s) => s.kind === "hkl" && s.exists)?.volume_id;
 

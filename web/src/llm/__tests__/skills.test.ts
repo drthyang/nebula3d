@@ -13,6 +13,7 @@ import type { ChatMessage } from "../provider/client";
 import { MAX_TOOL_ROUNDS } from "../runPolicy";
 import {
   allSkills,
+  BEFORE_A_RUN,
   frontmatter,
   headingsOf,
   parseSkill,
@@ -89,9 +90,25 @@ describe("the skills", () => {
       if (s.details) {
         expect(read, s.name).not.toContain(s.details);
         expect(read, s.name).toContain('`section` "Details"');
-        for (const h of headingsOf(s.details).filter((x) => x.level === 3)) expect(read, `${s.name}: ${h.heading}`).toContain(h.heading);
+        // Every part but the one read with the core before a run (BEFORE_A_RUN).
+        for (const h of headingsOf(s.details).filter((x) => x.level === 3 && x.heading !== BEFORE_A_RUN)) expect(read, `${s.name}: ${h.heading}`).toContain(h.heading);
+        expect(read, s.name).not.toContain(BEFORE_A_RUN);
       }
     }
+  });
+
+  it("reads with a skill's core, before a run, the part of its details that says what to do first", () => {
+    const qc = skillNamed("reduction-qc")!;
+    const before = readSkill("reduction-qc", undefined, undefined, { beforeRun: true });
+    const after = readSkill("reduction-qc");
+    expect(before.startsWith(`Skill reduction-qc\n\n${qc.core}\n\n## ${BEFORE_A_RUN}\n`)).toBe(true);
+    expect(before).toContain("`ring_survey`");
+    expect(after).not.toContain("ring_survey");
+    // The rest of the read is the same; the part can be read by its heading after a run too.
+    expect(before.slice(before.indexOf("\n---\n"))).toBe(after.slice(after.indexOf("\n---\n")));
+    expect(readSkill("reduction-qc", undefined, BEFORE_A_RUN)).toContain("`ring_survey`");
+    // A skill without the part reads the same either way.
+    for (const s of allSkills().filter((x) => !x.details.includes(`### ${BEFORE_A_RUN}`))) expect(readSkill(s.name, undefined, undefined, { beforeRun: true })).toBe(readSkill(s.name));
   });
 
   it("reads a skill's section on request: Details, or one part of it by its heading", () => {

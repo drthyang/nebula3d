@@ -35,6 +35,7 @@ describe("the registry", () => {
     expect(CHAT_TOOLS.map((t) => t.name)).toEqual([
       "read_skill",
       "describe_dataset",
+      "ring_survey",
       "current_view",
       "measure_reciprocal_cut",
       "measure_dpdf_cut",

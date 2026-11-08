@@ -80,6 +80,21 @@ found.
 **Status:** Draft: awaiting the user's interview (questions in
 `docs/SKILL_INTERVIEWS.md`).
 
+### Before a run
+
+Read with the core while the dataset has no outputs yet.
+
+- `ring_survey` first: the raw volume's powder rings as the ring stage would
+  find them, nothing removed. `al`: the Al lattice and its lines (the sample
+  environment). `phases`: a library phase whose lines may explain other
+  rings. `unrecognized`: rings no line explains, |Q| and snr. `unconfirmed`:
+  shells the 3D test could not judge. `removal`: what the ring stage would
+  remove.
+- The ring stage removes every ring the 3D test confirms, an unrecognized
+  one too, and keeps the rest. Report an unrecognized ring as a possible ring
+  with its |Q| and strength, never as a phase or a fault; ask the user about
+  the sample, its mount and its environment.
+
 ### Know the data
 
 A symmetrised volume and its unsymmetrised export are separate datasets.

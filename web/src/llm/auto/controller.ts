@@ -141,8 +141,10 @@ const settingsNow = (): Partial<PipelineConfig> => configOf(usePipelineStore.get
 // The tools a fix reply holds: all but the run (the app runs from the change)
 // and the regrid (only the user asks for one). The report's: the reading
 // ones, and the console's view.
-export const FIX_TOOLS: AgentTool[] = CHAT_TOOLS.filter((t) => !factsOf(t.name).startsRuns || t.name === "tune_pipeline").filter((t) => factsOf(t.name).acts !== "dataset");
-export const REPORT_TOOLS: AgentTool[] = CHAT_TOOLS.filter((t) => !factsOf(t.name).actsOnPipeline && factsOf(t.name).acts !== "dataset");
+// Every reply comes after the run: the pre-run tools (preRun: ring_survey) are none of theirs.
+const AFTER_RUN: AgentTool[] = CHAT_TOOLS.filter((t) => !factsOf(t.name).preRun);
+export const FIX_TOOLS: AgentTool[] = AFTER_RUN.filter((t) => !factsOf(t.name).startsRuns || t.name === "tune_pipeline").filter((t) => factsOf(t.name).acts !== "dataset");
+export const REPORT_TOOLS: AgentTool[] = AFTER_RUN.filter((t) => !factsOf(t.name).actsOnPipeline && factsOf(t.name).acts !== "dataset");
 
 /** The checks the report rests on (as report/collect.ts measures them), on the outputs as they are. */
 export function finalChecks(dataset: Dataset): Call[] {
@@ -622,6 +624,9 @@ async function preflight(): Promise<void> {
   const context = await safe(session!.loadContext(d));
   const calls: Call[] = [
     { name: "qmax_coverage", args: {} },
+    // The raw volume's powder rings, nothing removed (THY-43): the Al lines,
+    // the phase their neighbours may be, the rings no line explains.
+    ...(hklVolumeId(d) ? [{ name: "ring_survey", args: {} }] : []),
     ...(hklVolumeId(d) ? [{ name: "ub_check", args: {} }] : []),
     ...(stageVolumeId(d, "braggpunched") ? [{ name: "grain_check", args: {} }] : []),
     // The Laue classes compared on the raw volume, only where it is not symmetrised already.

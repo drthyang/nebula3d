@@ -202,6 +202,47 @@ export interface PowderPhases {
   broad?: { id: string; name: string; halos: { q: number; fwhm: number; significance: number }[] }[];
 }
 
+/** A shell of the pre-run ring survey (nebula3d.preprocessing.ring_survey). */
+export interface SurveyRing {
+  q: number; // its |Q| (Å⁻¹)
+  fwhm: number;
+  snr: number | null; // its peak over the across-stack profile's noise
+  // AL on an Al line; XTAL the crystal's own; PH on the named phase's line;
+  // UNK a ring no line explains; GRID, NJ, NR unexplained and not confirmed
+  // (the grid too coarse, not judged, not a ring by the test).
+  code: "AL" | "XTAL" | "PH" | "UNK" | "GRID" | "NJ" | "NR";
+  line?: string | null; // "Al111", "Bi012"
+  phase?: string | null; // PH: the phase the match names first
+  status?: string | null; // PH: its status (likely, possible)
+  ring: boolean | null; // the 3D test confirms a powder ring (null: not judged)
+  removed: boolean; // the ring stage would subtract it
+  why?: string | null; // why it would stay
+  source: "detected" | "weak"; // weak: under the detection cut
+}
+
+/** The pre-run powder ring survey of a volume, nothing removed (GET /api/volumes/{id}/ring-survey). */
+export interface RingSurvey {
+  id: string;
+  version: number;
+  dry_run: boolean;
+  plane: string;
+  slice_axis: string;
+  edge_trim: number;
+  q_range: number[];
+  q_step: number;
+  al_lattice_a: number | null;
+  noise: number;
+  rings: SurveyRing[];
+  faint: number; // shells under the detection cut, not listed
+  phases: PowderPhases | null;
+  phase_summary: string | null; // the phase match's line, null where no listed ring supports it
+  phase_unsupported: string | null; // the candidate no listed ring supports, if any
+  not_judged: string | null; // why the grid cannot judge a ring
+  timing_s: Record<string, number>;
+  // NEBULA Pilot's lines (ring_survey.survey_lines).
+  lines: { al: string; phases: string | null; unrecognized: string; unconfirmed?: string; removal: string; grid?: string } | null;
+}
+
 export interface UbCheck {
   id: string;
   fit: "orientation" | "lattice" | "both" | "symmetric";

@@ -413,6 +413,18 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     other_datasets: arr(obj({ id: str, label: str })),
   }),
 
+  // The survey's lines (nebula3d.preprocessing.ring_survey.survey_lines):
+  // unconfirmed only where a shell the test could not judge is left, grid
+  // only where the grid cannot judge a ring.
+  ring_survey: obj({
+    al: str,
+    phases: maybeStr,
+    unrecognized: str,
+    unconfirmed: optional(str),
+    removal: maybeStr,
+    grid: optional(str),
+  }),
+
   current_view: obj({
     page: str,
     dataset: str,

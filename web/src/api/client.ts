@@ -19,6 +19,7 @@ import type {
   RegridResult,
   RingDiagnostics,
   RingIsotropy,
+  RingSurvey,
   ServerMemory,
   ShellFloors,
   Slice,
@@ -161,6 +162,17 @@ export function fetchMeta(volumeId: string): Promise<VolumeMeta> {
 export function fetchVolumeCoverage(volumeId: string): Promise<VolumeCoverage> {
   if (PYODIDE_MODE) return engine.volumeCoverage(volumeId);
   return getJSON<VolumeCoverage>(`/api/volumes/${encodeURIComponent(volumeId)}/coverage`);
+}
+
+/**
+ * The pre-run powder ring survey of a volume (the raw one, before a run): the
+ * ring stage's detection as a dry run, nothing removed, with the ring stage's
+ * stack axis and the run's edge trim.
+ */
+export function fetchRingSurvey(volumeId: string, sliceAxis = "H", edgeTrim = 1): Promise<RingSurvey> {
+  if (PYODIDE_MODE) return engine.ringSurvey(volumeId, sliceAxis, edgeTrim);
+  const q = new URLSearchParams({ slice_axis: sliceAxis, edge_trim: String(edgeTrim) });
+  return getJSON<RingSurvey>(`/api/volumes/${encodeURIComponent(volumeId)}/ring-survey?${q}`);
 }
 
 /** Whether the volume's UB puts its Bragg peaks (nodes every `cell`) on their nodes. */

@@ -37,6 +37,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
+  fetchRingSurvey: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -657,7 +658,7 @@ describe("the calls it makes itself", () => {
     model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done."));
     await start();
     const own = run().steps.filter((s) => s.id.startsWith("auto:")).map((s) => s.name);
-    expect(new Set(own)).toEqual(new Set(["qmax_coverage", "ub_check", "grain_check", "run_pipeline", "assess_stage", "texture_check", "symmetry_check"]));
+    expect(new Set(own)).toEqual(new Set(["qmax_coverage", "ring_survey", "ub_check", "grain_check", "run_pipeline", "assess_stage", "texture_check", "symmetry_check"]));
   });
 });
 

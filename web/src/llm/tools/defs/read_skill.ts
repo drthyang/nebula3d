@@ -2,6 +2,7 @@
 // gates, steps), a section of it on request, or a document it cites. Offered
 // with the skills on only (its facts' needsSkills).
 
+import { ranOn } from "../../context/loadContext";
 import { allSkills, readSkill, readsCore, REFERENCE_MAX_CHARS } from "../../skills";
 import { ToolArgError, type ChatTool } from "../types";
 
@@ -33,7 +34,8 @@ export const read_skill: ChatTool = {
     const section = typeof args.section === "string" && args.section.trim() ? args.section.trim() : undefined;
     let text: string;
     try {
-      text = readSkill(name, reference, section);
+      // On a dataset before its run, a skill's core comes with what it does first (BEFORE_A_RUN).
+      text = readSkill(name, reference, section, { beforeRun: !ranOn(ctx.dataset) });
     } catch (e) {
       throw new ToolArgError((e as Error).message);
     }

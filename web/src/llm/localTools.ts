@@ -9,6 +9,8 @@
 // only for a message that asks for it. A tool it calls by name all the same
 // still runs (agent.ts), and stays offered.
 
+import type { Dataset } from "../api/types";
+import { ranOn } from "./context/loadContext";
 import { factsOf, toolsWhere, type AgentTool } from "./tools";
 import type { AskedAbout } from "./tools/facts";
 
@@ -54,6 +56,17 @@ export function toolsFor(question: string, tools: readonly AgentTool[]): AgentTo
     return f.offeredFor === "always" || f.offeredFor.some((a) => asked.includes(a));
   });
 }
+
+/**
+ * The tools offered on `dataset`, for any model: the pre-run ones (their
+ * facts' `preRun`: ring_survey) only before its run (ranOn). The reply reads
+ * the dataset as it starts (agent.ts); a tool held back still runs when
+ * called by name. Without a dataset (no tool context), all of them.
+ */
+export { ranOn };
+
+export const offeredOn = (tools: readonly AgentTool[], dataset: Dataset | null | undefined): readonly AgentTool[] =>
+  dataset && ranOn(dataset) ? tools.filter((t) => !factsOf(t.name).preRun) : tools;
 
 /** The text of the conversation's last user message: the question the reply answers. */
 export const lastQuestion = (messages: { role: string; content: unknown }[]): string => {

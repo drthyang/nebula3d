@@ -19,6 +19,7 @@ import type {
   RegridResult,
   RingDiagnostics,
   RingIsotropy,
+  RingSurvey,
   ShellFloors,
   Slice,
   UbCheck,
@@ -40,9 +41,10 @@ import { shellFloorsOf } from "./shellFloors";
  * The API client's functions the crystal answers: the test file's mocks of
  * them. The regrid's (regridDataset) is optional: only a file that runs
  * regrid_refined_ub's gate open mocks it; so is the Laue comparison's
- * (compareLaueClasses), mocked by the files that run compare_laue_classes.
+ * (compareLaueClasses), mocked by the files that run compare_laue_classes,
+ * and the pre-run ring survey's (fetchRingSurvey), by those that run ring_survey.
  */
-export type BackendMocks = { regridDataset?: Mock; compareLaueClasses?: Mock } & Record<
+export type BackendMocks = { regridDataset?: Mock; compareLaueClasses?: Mock; fetchRingSurvey?: Mock } & Record<
   | "fetchBraggProfile"
   | "fetchConsistencyCheck"
   | "fetchDataset"
@@ -524,6 +526,42 @@ const ringDiagnostics = (id: string): RingDiagnostics => ({
   phase_summary: null,
 });
 
+// The pre-run ring survey of the raw volume (nebula3d.preprocessing.
+// ring_survey): the powder ring at 3.2 Å⁻¹ on no Al line (no Al lattice
+// fitted), confirmed, so the ring stage would remove it; the crystal's own
+// shell at 3.93 Å⁻¹ kept, as the ring stage recorded them; and a faint shell
+// at 4.31 Å⁻¹ between the two the 3D test could not judge (no clean flank).
+const ringSurvey = (id: string): RingSurvey => ({
+  id,
+  version: 1,
+  dry_run: true,
+  plane: "0kl",
+  slice_axis: "H",
+  edge_trim: 1,
+  q_range: [1.5, 10.5],
+  q_step: 0.049,
+  al_lattice_a: null,
+  noise: 0.21,
+  rings: [
+    { q: RING_Q, fwhm: 0.24, snr: 41.5, code: "UNK", ring: true, removed: true, source: "detected" },
+    { q: 3.93, fwhm: 0.16, snr: 9.2, code: "XTAL", ring: false, removed: false, why: "isotropy", source: "detected" },
+    { q: 4.31, fwhm: 0.12, snr: 7.4, code: "NJ", ring: null, removed: false, why: "flank", source: "weak" },
+  ],
+  faint: 2,
+  phases: null,
+  phase_summary: null,
+  phase_unsupported: null,
+  not_judged: null,
+  timing_s: { profiles: 0.12, detect: 0.31, total: 0.31 },
+  lines: {
+    al: "no Al lattice fitted",
+    phases: null,
+    unrecognized: "3.20 (snr 42, removed)",
+    unconfirmed: "4.31 (snr 7, flank)",
+    removal: "would remove 1 (unrecognized 1); keep 1 (1 not rings)",
+  },
+});
+
 // The whole volume's shell floors of a dataset's flattened stage, on the
 // flatten's shells, with its input's level (the server's shell-floors): once per dataset.
 const floorsByStem = new Map<string, ShellFloors>();
@@ -572,6 +610,7 @@ export function installBackend(api: BackendMocks): void {
   api.fetchRingIsotropy.mockImplementation(async (id: string, shells: { q: number; fwhm: number }[]) => ringIsotropy(id, shells));
   // The grid is fine (0.0625 r.l.u., 0.098 Å⁻¹ a voxel): the ring removal left no ring unconfirmed.
   api.fetchRingDiagnostics.mockImplementation(async (id: string) => ringDiagnostics(id));
+  api.fetchRingSurvey?.mockImplementation(async (id: string) => ringSurvey(id));
   api.fetchDataset.mockImplementation(async (id: string) => DATASETS.find((d) => d.id === stemOf(id)));
   api.regridDataset?.mockImplementation(async (id: string) => regridAnswer(id));
   // The Laue classes compared on the demo crystal (the backend's own result,

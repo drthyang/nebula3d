@@ -90,6 +90,15 @@ export interface Skill {
 /** The section of a skill read on request, not with its core. */
 export const DETAILS = "Details";
 
+/**
+ * The part of a skill's Details (a `### Before a run` heading) read with its
+ * core on a dataset before its run (read_skill), and left out of the core's
+ * list of parts: what the method does before the workflow (THY-43: the
+ * ring survey). A reply after a run, the worst turn among them, reads the
+ * core alone; the part can still be read by its heading.
+ */
+export const BEFORE_A_RUN = "Before a run";
+
 /** Parse a SKILL.md: frontmatter `name` and `description`, its core and details, and a "## References" list. */
 export function parseSkill(source: string, dir: string, files: Readonly<Record<string, string>>): Skill {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(source);
@@ -303,14 +312,15 @@ function indexOf(text: string): string {
 /**
  * What read_skill returns, plain Markdown, so the model reads it as written:
  * - a skill's core (head, gates and steps), with what it leaves for a read on
- *   request: its details' parts and its references, by name;
+ *   request: its details' parts and its references, by name; with
+ *   `opts.beforeRun` (a dataset before its run), its BEFORE_A_RUN part after it;
  * - with `section`, one section of the skill (Details, or a part of it by its
  *   heading);
  * - with `reference`, one document the skill cites: whole when short, else its
  *   opening and the index of its sections; with `section` too, one section.
  * A section longer than REFERENCE_MAX_CHARS is read part by part.
  */
-export function readSkill(name: string, reference?: string, section?: string): string {
+export function readSkill(name: string, reference?: string, section?: string, opts: { beforeRun?: boolean } = {}): string {
   const skill = skillNamed(name);
   if (!skill) throw new Error(`no skill named "${name}"; the skills are ${allSkills().map((s) => s.name).join(", ")}`);
   if (reference !== undefined) {
@@ -332,7 +342,12 @@ export function readSkill(name: string, reference?: string, section?: string): s
     const part = partOf(skill.body, section, `skill ${name}`, readable);
     return `Skill ${skill.name}, section "${part.heading}"\n\n${part.text}`;
   }
-  const parts = headingsOf(skill.details).filter((h) => h.level === 3).map((h) => h.heading);
+  const parts = headingsOf(skill.details).filter((h) => h.level === 3 && h.heading !== BEFORE_A_RUN).map((h) => h.heading);
+  // Before a run, the part of the Details that says what to do first
+  // (BEFORE_A_RUN), as a section of its own after the steps: the loop's
+  // compaction keeps a skill's head, gates and steps whole and drops it
+  // (readings/compact.ts).
+  const before = opts.beforeRun ? sectionAt(skill.details, BEFORE_A_RUN, 3)?.replace(/^### /, "## ") ?? null : null;
   // Names only (THY-63 R5): what each part or page holds, its own read says (a
   // long page opens with its headings).
   const later = [
@@ -343,7 +358,7 @@ export function readSkill(name: string, reference?: string, section?: string): s
       ? `References of this skill (read one with read_skill and \`reference\`; a long one opens with its sections): ${skill.references.map((r) => r.name).join("; ")}.`
       : "",
   ].filter(Boolean);
-  return `Skill ${skill.name}\n\n${skill.core}${later.length ? `\n\n---\n${later.join("\n")}` : ""}`;
+  return `Skill ${skill.name}\n\n${skill.core}${before ? `\n\n${before}` : ""}${later.length ? `\n\n---\n${later.join("\n")}` : ""}`;
 }
 
 /**

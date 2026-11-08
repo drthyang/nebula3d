@@ -83,6 +83,7 @@ export interface DrawnShell {
   style: Style;
   e: DisplayEllipse;
   tick?: "up" | "down";
+  label?: string; // its chip's words in place of its class's code
 }
 export interface DrawnBand {
   cls: ClassId;
@@ -410,7 +411,7 @@ function computeDraw(set: OverlaySet, v: ViewContext): ViewDraw {
       case "shell": {
         const e = shell(item.q);
         if (!e || (box && !crosses(e, box))) break;
-        out.shells.push({ cls: item.cls, style, e, ...(item.tick ? { tick: item.tick } : {}) });
+        out.shells.push({ cls: item.cls, style, e, ...(item.tick ? { tick: item.tick } : {}), ...(item.label ? { label: item.label } : {}) });
         add(item.cls);
         break;
       }

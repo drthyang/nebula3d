@@ -59,6 +59,10 @@ export interface OverlayData {
   // texture_check: the holes filled outside their range (the farthest first),
   // and how many the volume holds.
   fillHoles?: { holes: FillHole[]; nHoles: number };
+  // ring_survey: every shell the pre-run survey lists, its |Q| (Å⁻¹), its
+  // code (nebula3d.preprocessing.ring_survey.CODES), the line it sits on
+  // ("Al111", "Bi012") and, on another phase's line, that phase.
+  ringSurvey?: { q: number; code: string; line: string | null; phase: string | null }[];
   // grain_check: every image of the far orbits under the declared operations,
   // and, where the rotated copy explains them (a second grain, or the UB off),
   // the map from its nodes to H K L.
