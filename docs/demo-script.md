@@ -120,7 +120,7 @@ the re-baseline is in the README.
 - [ ] **The demo is cached:** open the Pages site, Use demo and Run pipeline
   once, so the engine and wheel are in the browser cache.
 - [ ] **The native build is ready** as the fallback: `make ui`, the demo
-  folder written, `nebula3d-web --data-root demo` started in a terminal.
+  folder written, `nebula3d-web --data-root demo` running in a terminal.
 - [ ] **Screenshots open** in a tab or folder, for the fallback.
 - [ ] **Follow and Highlights on**, Vision off, in the Pilot's toggles.
 - [ ] **Known issues** ([demo-qa.md](demo-qa.md#known-issues-with-workarounds)):
