@@ -66,7 +66,8 @@ the tool steps, the computed verdict under the reply, and the **Apply cards**:
 a setting applies through the same checks as the model's calls; a sample fact
 (a supercell, the Laue class) applies only on your click, a one-use grant the
 model cannot forge. Apply one, show it in **Changes**, **Undo** it. If the
-model proposes no card, show `docs/media/pilot-apply-cards.jpg`.
+model proposes no card, switch to the scripted model and type "cards", or
+show `docs/media/pilot-apply-cards.jpg`.
 
 **8. Auto mode.** **Run auto analysis**. Start it and talk over it: a fixed
 plan (preflight, run, check each stage, report); the app runs the checks and
@@ -95,12 +96,19 @@ the re-baseline is in the README.
 - **Network or Pages slow:** use the native build (`nebula3d-web --data-root
   demo`, the [README](../README.md#quick-start) shows how to write the demo
   volume). Its reports open in about 1.5 s and auto mode is faster.
-- **Model slow or down:** switch to the scripted path: the demo-QA scripted
-  model, if you have it running (an OpenAI-compatible server; connect as
-  *Custom*; "highlights" and "cards" give the replies shown in the
-  screenshots). Otherwise show the screenshots in [docs/media](media/):
-  `pilot-apply-cards.jpg`, `pilot-auto-done.jpg`, `pilot-auto-report.jpg`,
-  `pilot-context-meter.jpg`, `qr-use-in-pipeline.jpg`.
+- **Model slow or down:** switch to the scripted model,
+  [scripts/demo/scripted-model.mjs](../scripts/demo/scripted-model.mjs):
+  `node scripts/demo/scripted-model.mjs` serves an OpenAI-compatible API on
+  port 18790 with no model behind it. Set the Pilot's base URL to
+  `http://127.0.0.1:18790/v1` (it shows as *Custom*, no key) and pick
+  `scripted-pilot`. Type "highlights" for a check on every stage and page,
+  "cards" for a sample-fact card and two setting cards, "long 20000" to fill
+  the context meter; for auto mode, run
+  `curl 'http://127.0.0.1:18790/scenario?name=fix'` first. Say that it is
+  scripted. If even that fails, show the screenshots in
+  [docs/media](media/): `pilot-apply-cards.jpg`, `pilot-auto-done.jpg`,
+  `pilot-auto-report.jpg`, `pilot-context-meter.jpg`,
+  `qr-use-in-pipeline.jpg`.
 - **Long steps:** start them first and talk over them: the Pilot's
   assessment during the pipeline run (step 3), the auto run (2.5 min in the
   browser), and the report (about 20 s in the browser).
@@ -121,7 +129,8 @@ the re-baseline is in the README.
   once, so the engine and wheel are in the browser cache.
 - [ ] **The native build is ready** as the fallback: `make ui`, the demo
   folder written, `nebula3d-web --data-root demo` running in a terminal.
-- [ ] **Screenshots open** in a tab or folder, for the fallback.
+- [ ] **The scripted model running** (`node scripts/demo/scripted-model.mjs`)
+  as the fallback, and the screenshots open in a tab or folder.
 - [ ] **Follow and Highlights on**, Vision off, in the Pilot's toggles.
 - [ ] **Known issues** ([demo-qa.md](demo-qa.md#known-issues-with-workarounds)):
   - Reports take about 20 s to open in the browser build (1.5 s natively).
