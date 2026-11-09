@@ -5,7 +5,7 @@
 // lets go of the volumes it keeps for the views. No file is deleted, on disk
 // or in the server's folders.
 
-import { releaseServerCaches } from "../api/client";
+import { forgetBraggProfiles, releaseServerCaches } from "../api/client";
 import { PYODIDE_MODE, restartEngine } from "../api/pyodideEngine";
 import { queryClient } from "../api/queryClient";
 import type { Dataset } from "../api/types";
@@ -65,6 +65,7 @@ export async function closeVolume(): Promise<void> {
   await pause(50);
   if (!PYODIDE_MODE) await settle(() => queryClient.isFetching() === 0, SETTLE_MS);
   queryClient.removeQueries({ predicate: (q) => q.getObserversCount() === 0 });
+  forgetBraggProfiles(); // the punch records kept parsed (api/client.ts)
   if (!PYODIDE_MODE) await releaseServerCaches().catch(() => undefined); // an older server keeps them until evicted
   await queryClient.resetQueries();
 }

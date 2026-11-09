@@ -613,6 +613,52 @@ def test_bragg_profile_gives_the_nodes_the_node_test_left(tmp_path):
     assert client.get(f"/api/bragg/{SLUG}/profile").json()["node_test"] is None
 
 
+def test_bragg_profile_answers_304_while_the_record_stands(tmp_path):
+    """The record is tens of MB on a large volume and the console reads it
+    each time it reads the run: asked again with its ETag, the route answers
+    304 with no body while the file stands, and the record afresh, under a
+    new tag, once the punch writes it again or it is gone."""
+    import os
+
+    (tmp_path / "raw").mkdir()
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
+    nebula3d.save(_vol(), paths.braggpunched)
+    profile = {"schema_version": 1, "n_peaks": 0, "peaks": []}
+    paths.bragg_profile_json.write_text(json.dumps(profile), encoding="utf-8")
+    client = TestClient(create_app(ServerConfig(data_root=tmp_path)))
+    url = f"/api/bragg/{SLUG}/profile"
+
+    first = client.get(url)
+    tag = first.headers["etag"]
+    assert first.status_code == 200 and tag.startswith('"') and first.json()["has_profile"] is True
+    assert first.headers["cache-control"] == "no-cache"
+    again = client.get(url, headers={"If-None-Match": tag})
+    assert again.status_code == 304 and again.content == b"" and again.headers["etag"] == tag
+    # A list of tags, a weak one among them, matches too; another tag does not.
+    assert client.get(url, headers={"If-None-Match": f'"x", W/{tag}'}).status_code == 304
+    assert client.get(url, headers={"If-None-Match": '"x"'}).status_code == 200
+
+    # Written again (the same size, a later mtime): a new tag and the new record.
+    profile["schema_version"] = 2
+    paths.bragg_profile_json.write_text(json.dumps(profile), encoding="utf-8")
+    st = paths.bragg_profile_json.stat()
+    os.utime(paths.bragg_profile_json, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
+    fresh = client.get(url, headers={"If-None-Match": tag})
+    assert fresh.status_code == 200 and fresh.json()["schema_version"] == 2
+    assert fresh.headers["etag"] != tag
+
+    # Gone: the empty record, under a tag of its own.
+    paths.bragg_profile_json.unlink()
+    gone = client.get(url, headers={"If-None-Match": fresh.headers["etag"]})
+    assert gone.status_code == 200 and gone.json()["has_profile"] is False
+    assert client.get(url, headers={"If-None-Match": gone.headers["etag"]}).status_code == 304
+
+    # An unknown dataset is still a 404.
+    assert client.get("/api/bragg/no-such-dataset/profile").status_code == 404
+
+
 def test_ring_diagnostics_missing_returns_empty_state(env):
     client, _ = env
     r = client.get(f"/api/rings/{SLUG}/diagnostics")
