@@ -137,7 +137,7 @@ export async function askAssistant({
     });
     // The Apply cards the reply leads to, built from its steps' whole results
     // (the transcript keeps what was read): UI only, the model reads none of them.
-    proposeFromReply(lastTurnId(), result.steps, result.content, ctx?.dataset.id);
+    proposeFromReply(lastTurnId(), result.steps, result.content, ctx?.dataset.id, ctx?.dataset.stages);
     if (told !== undefined) markTold(told);
     return { turn: lastTurnId(), result, stopped: false, error: null, tokens };
   } catch (e) {

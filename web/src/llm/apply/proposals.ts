@@ -30,6 +30,7 @@ import {
   isUserChoice,
   ProposalError,
   proposalToPatch,
+  RUN_STAGES,
   SAMPLE_PARAMS,
   SYMMETRY_AVERAGE_SETTINGS,
   toFormValue,
@@ -44,7 +45,7 @@ import type { StageRun } from "../tune/tuner";
 import { USER_SETTINGS } from "../tune/userSettings";
 import { settingLabel } from "../../pages/configSections";
 import { methodTitle } from "./settingTitle";
-import type { PipelineConfig } from "../../state/pipelineStore";
+import { enabledStages, type PipelineConfig } from "../../state/pipelineStore";
 
 export type ProposalKind = "setting" | "fact" | "run" | "trial";
 // "auto": a change or a run auto mode made (auto/controller.ts), logged as its own.
@@ -206,6 +207,35 @@ export interface BuildInput {
   // The conversation's earlier steps (its tunings among them): a setting the
   // answer names with a value a tuning tried and did not keep gets no card.
   earlierSteps?: readonly AgentStep[];
+  // The dataset's stage outputs on disk (Dataset.stages): a Run card starts
+  // no later than the first stage whose input is there (runnableFrom).
+  outputs?: readonly { name: string; exists: boolean }[];
+}
+
+// Each stage's output, as the dataset lists it.
+const OUTPUT_OF: Record<RunStage, string> = {
+  symmetry_average: "symmetrized",
+  rings: "ringremoved",
+  punch: "braggpunched",
+  backfill: "backfilled",
+  flatten: "flattened",
+  pdf: "delta_pdf",
+};
+
+/**
+ * Where a run from `stage` can start: `stage` when the output of the switched-on
+ * stage before it is on disk, else that stage, and so on back to the first
+ * (whose input is the raw volume). A pre-run reply's change to a punch
+ * setting, with only the raw volume there, offered "Run from Bragg punch".
+ * Unknown outputs leave `stage` as it is.
+ */
+export function runnableFrom(stage: RunStage, outputs: readonly { name: string; exists: boolean }[] | undefined, config: PipelineConfig): RunStage {
+  if (!outputs) return stage;
+  const on = enabledStages(config).filter((st): st is RunStage => (RUN_STAGES as readonly string[]).includes(st));
+  let i = on.indexOf(stage);
+  if (i < 0) return stage;
+  while (i > 0 && !outputs.some((o) => o.name === OUTPUT_OF[on[i - 1]] && o.exists)) i -= 1;
+  return on[i];
 }
 
 /**
@@ -340,7 +370,8 @@ export function buildProposals(input: BuildInput): Proposal[] {
         const ranAfter = steps.slice(steps.indexOf(s) + 1).some((x) => x.name === "run_pipeline" && x.status === "done");
         // The run the changes call for: from their rerun_from, or before it the
         // symmetry average, when a change reaches what it reads (runStageFor).
-        const runAt = rerun && runStageFor(changed.map((c) => String(c.setting)), rerun, config);
+        const wanted = rerun && runStageFor(changed.map((c) => String(c.setting)), rerun, config);
+        const runAt = wanted && runnableFrom(wanted, input.outputs, config);
         if (runAt && changed.length && !ranAfter) {
           drafts.push(runDraft(runAt, changed.map((c) => `${cardSetting(String(c.setting))?.title ?? String(c.setting)} ${text(c.from)} → ${text(c.to)}`).join(", "), "rerun", s.id));
         }
