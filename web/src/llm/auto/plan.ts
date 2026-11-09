@@ -227,8 +227,8 @@ const rank = (k: Kind): number => (k === "attention" ? 1 : 0);
  * could not judge now needs attention; a check needs attention for a reason
  * it did not have; or, for the same reasons, every number those reasons rest
  * on is no better and one is worse; or, for the ring removal, its worst ring
- * residual (left or dent) grew; or, for a pedestal the flatten left, the
- * larger of its floor trend (in size) and floor span grew. A fix that left the stage as it was, or
+ * residual (left or dent) grew; or, for a pedestal the flatten left, its
+ * floor span grew (its trend alone never puts a fix back). A fix that left the stage as it was, or
  * better on one number and worse on another, is not worse: it is kept, and
  * the next fix starts from it.
  */
@@ -254,14 +254,15 @@ export function madeWorse(stage: Stage, before: readonly AgentStep[], after: rea
     const worst = (m: Readonly<Record<string, unknown>>) => Math.max(num(m.max_ring_left) ?? 0, num(m.max_ring_dent) ?? 0);
     if (worst(m1) > worst(m0)) return true;
   }
-  // The same for a pedestal left: it rests on the floors' trend with |Q| and
-  // their span, both near 1; a fix that eases one and raises the other further
-  // (a wider fit range that tilts the floors at high |Q|) is worse by the
-  // larger of the two.
+  // A pedestal left is judged by its floor span alone (the user's rule): a
+  // fix that widens the span is put back; one that raises the floor trend's
+  // size with the span no wider (the b·Q² term turned on) is kept. The
+  // trend follows the shape of the floors, not how far they stray.
   if (stage === "flatten" && own.reasons.includes("pedestal")) {
-    const [trend, span] = MEASURES.pedestal!.measures;
-    const worst = (m: Readonly<Record<string, unknown>>) => Math.max(trend(m) ?? 0, span(m) ?? 0);
-    if (worst(m1) > worst(m0)) return true;
+    const span = MEASURES.pedestal!.measures[1];
+    const s0 = span(m0);
+    const s1 = span(m1);
+    return s0 != null && s1 != null && s1 > s0;
   }
   let worse = false;
   for (const r of own.reasons) {

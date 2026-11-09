@@ -1,7 +1,7 @@
 // Auto mode's revert-worse rule (auto/plan.ts, madeWorse) on the ring
 // removal: a fix that changes the ring model and leaves far more ring than
 // it took dent away is worse, and put back. The same for the flatten's
-// pedestal, by the larger of its floor trend and span. Made-up numbers.
+// pedestal, by its floor span alone. Made-up numbers.
 
 import { describe, expect, it } from "vitest";
 
@@ -43,24 +43,21 @@ const flatten = (m: Record<string, unknown>): AgentStep[] => [
   },
 ];
 
-describe("a flatten fix judged against the checks before it", () => {
-  it("is worse when it eases the trend but widens the span past it (a wider fit range)", () => {
+describe("a flatten fix judged against the checks before it: by its floor span alone", () => {
+  it("is worse when it widens the span, though it eases the trend (a wider fit range): put back", () => {
     const before = flatten({ floor_trend: 0.91, floor_span_fraction: 0.85 });
-    const after = flatten({ floor_trend: 0.85, floor_span_fraction: 1.08 });
-    expect(madeWorse("flatten", before, after)).toBe(true);
+    expect(madeWorse("flatten", before, flatten({ floor_trend: 0.85, floor_span_fraction: 1.08 }))).toBe(true);
   });
 
-  it("reads the trend by its size: a floor falling with |Q| is a pedestal too", () => {
+  it("is not worse when only the trend's size grows, the span no wider (the b·Q² term on): kept", () => {
     const before = flatten({ floor_trend: -0.87, floor_span_fraction: 0.86 });
-    // the trend's sign flipped but its size grew: worse, though the span eased
-    expect(madeWorse("flatten", before, flatten({ floor_trend: 0.91, floor_span_fraction: 0.85 }))).toBe(true);
-    // both eased in size: not worse
-    expect(madeWorse("flatten", before, flatten({ floor_trend: 0.84, floor_span_fraction: 0.83 }))).toBe(false);
+    expect(madeWorse("flatten", before, flatten({ floor_trend: 0.91, floor_span_fraction: 0.85 }))).toBe(false);
+    expect(madeWorse("flatten", before, flatten({ floor_trend: 0.95, floor_span_fraction: 0.86 }))).toBe(false);
   });
 
-  it("is not worse when the larger measure shrinks, or nothing moved", () => {
+  it("is not worse when the span narrows, or nothing moved", () => {
     const before = flatten({ floor_trend: 0.95, floor_span_fraction: 0.85 });
-    expect(madeWorse("flatten", before, flatten({ floor_trend: 0.9, floor_span_fraction: 0.88 }))).toBe(false);
+    expect(madeWorse("flatten", before, flatten({ floor_trend: 0.97, floor_span_fraction: 0.8 }))).toBe(false);
     expect(madeWorse("flatten", before, before)).toBe(false);
   });
 });
