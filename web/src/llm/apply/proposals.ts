@@ -43,7 +43,7 @@ import {
 import type { StageRun } from "../tune/tuner";
 import { USER_SETTINGS } from "../tune/userSettings";
 import { settingLabel } from "../../pages/configSections";
-import { methodTitle, settingTitle } from "./settingTitle";
+import { methodTitle } from "./settingTitle";
 import type { PipelineConfig } from "../../state/pipelineStore";
 
 export type ProposalKind = "setting" | "fact" | "run" | "trial";
@@ -442,7 +442,7 @@ export function buildProposals(input: BuildInput): Proposal[] {
           change: { ...t.settings },
           fields,
           from: pick(config, Object.keys(fields)),
-          shown: { from: "", to: t.n === 1 ? "your settings" : changed.map(([k, v]) => `${settingTitle(k)} ${String(v)}`).join(", ") },
+          shown: { from: "", to: t.n === 1 ? "your settings" : changed.map(([k, v]) => `${k}=${String(v)}`).join(", ") },
           runFrom: run.stage,
           source: { via: "trial" },
           evidence: [],

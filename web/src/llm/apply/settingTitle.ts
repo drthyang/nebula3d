@@ -19,3 +19,7 @@ export function settingTitle(key: string): string {
   const p = TUNE_PARAMS.find((x) => x.key === key);
   return p ? methodTitle(key, p.stage) : settingLabel(key);
 }
+
+/** A trial card's changes ("punchFootprint=own, …", as the record and the since line keep them) in console names: "Punch footprint own". */
+export const trialChangesText = (to: string): string =>
+  to.replace(/\b([a-z][A-Za-z0-9]*)=/g, (_, key: string) => `${settingTitle(key)} `);

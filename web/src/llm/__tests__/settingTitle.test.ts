@@ -4,8 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { settingTitle } from "../apply/settingTitle";
 import { cardSetting } from "../apply/proposals";
+import { settingTitle, trialChangesText } from "../apply/settingTitle";
 
 describe("a setting's name in the app's words", () => {
   it("is the card's title for a method setting: its stage's word and its Configure label", () => {
@@ -21,5 +21,10 @@ describe("a setting's name in the app's words", () => {
   it("is the Configure label for another setting, and the key only where the console has no label", () => {
     expect(settingTitle("edgeTrim")).toBe("Edge trim");
     expect(settingTitle("noSuchSetting")).toBe("noSuchSetting");
+  });
+
+  it("names a trial card's changes so, its record keeping the keys", () => {
+    expect(trialChangesText("punchFootprint=own, punchProfileNSigma=0.3")).toBe("Punch footprint own, Punch profile reach ×σ 0.3");
+    expect(trialChangesText("your settings")).toBe("your settings");
   });
 });
