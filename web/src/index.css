@@ -7506,7 +7506,28 @@ h6.md-h {
    transcript takes what is left, so the composer stays at the sheet's foot
    however short it is dragged. Docked on a short screen (a phone held
    landscape) the chips get the same row. */
+/* In the sheet the transcript keeps 96 px while the sheet has them (the lists
+   above give theirs up first, to nothing on a sheet dragged low); while an
+   auto run is open its panel comes first and the transcript takes the rest. */
 .ai-side[data-mode="sheet"] .ai-transcript {
+  min-height: min(96px, 100%);
+}
+.ai-side[data-mode="sheet"] .ai-body:has(> .auto-panel) > .ai-transcript {
+  min-height: min(96px, 100%);
+}
+/* A short sheet with an auto run open: the run's panel has the room, the
+   transcript waits under it (no sliver of it), back when the sheet is raised. */
+@container pilot (max-height: 559px) {
+  .ai-side[data-mode="sheet"] .ai-body:has(> .auto-panel) > .ai-transcript {
+    flex: 0 0 0;
+    min-height: 0;
+    padding-block: 0;
+  }
+  .ai-side[data-mode="sheet"] .ai-body:has(> .auto-panel) > .ai-marks {
+    display: none;
+  }
+}
+.ai-side[data-mode="sheet"] :is(.ai-marks, .ai-marks:has(> .ai-mark-list)) {
   min-height: 0;
 }
 .ai-side[data-mode="sheet"] .ai-reviews {
@@ -7522,6 +7543,66 @@ h6.md-h {
 }
 .ai-side[data-mode="sheet"] .ai-reviews > * {
   flex: none;
+}
+/* In the sheet the dock is two lines: the chips in one row that scrolls
+   sideways ("Run auto analysis" or "Pause auto analysis" first, then Tools,
+   Follow, Highlights, Vision, the context meter and Clear), and the composer.
+   A warning or the meter's details take a line of their own between them. */
+.ai-side[data-mode="sheet"] .ai-dock {
+  flex-flow: row wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ai-side[data-mode="sheet"] .ai-dock > * {
+  flex: 1 0 100%;
+  min-width: 0;
+}
+.ai-side[data-mode="sheet"] .ai-dock > .ai-reviews {
+  flex: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.ai-side[data-mode="sheet"] .ai-dock > .ai-toggles {
+  flex: 1 1 0;
+  flex-wrap: nowrap;
+  justify-content: flex-start; /* a row that scrolls must start at its start */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.ai-side[data-mode="sheet"] .ai-dock > .ai-toggles::-webkit-scrollbar {
+  display: none;
+}
+.ai-side[data-mode="sheet"] .ai-dock > .ai-toggles > * {
+  flex: none;
+}
+/* A short panel (a phone's sheet at its default height or lower, a phone held
+   landscape): the connection row gives its line to the conversation while the
+   model is connected and its settings are closed; the dock stays whole. */
+@container pilot (max-height: 400px) {
+  .ai-topbar:has(.ai-conn-status.ok):not(:has(.ai-gear.on)) {
+    display: none;
+  }
+}
+/* Lower still (a sheet at its lowest), too short for a readable line of the
+   conversation: the panel is its title row and the dock, the meter's details
+   a scrolling line or two. Dragged up, the conversation comes back. */
+@container pilot (max-height: 250px) {
+  .ai-panel-head {
+    padding-bottom: 0;
+  }
+  .ai-body {
+    display: none;
+  }
+  .ai-dock {
+    gap: 6px;
+    padding-top: 0;
+  }
+  .ai-meter-detail {
+    max-height: 34px;
+  }
 }
 @media (max-height: 600px) {
   /* there the panel scrolls (to the chips and the composer) rather than
@@ -8161,12 +8242,16 @@ html.kb-open .ai-side {
   border: 1px solid rgba(79, 143, 247, 0.45);
   border-radius: var(--radius);
   background: linear-gradient(var(--accent-soft), transparent 70%), var(--surface);
-  overflow: hidden;
+  overflow-y: auto; /* only when even its fixed parts do not fit (a fact it waits for, on a phone) */
 }
 .auto-panel > * {
   flex: none;
 }
+/* the header, the Now line and the bar stay in view should the panel scroll */
 .auto-top {
+  position: sticky;
+  top: -10px;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -8562,8 +8647,8 @@ html.kb-open .ai-side {
   cursor: pointer;
 }
 .ai-side[data-mode="sheet"] .auto-panel {
+  --auto-min: 150px; /* its head, the Now line, the bar and "The plan and all … steps" */
   gap: 6px;
-  max-height: 70%;
 }
 /* the last steps give up their height first in a short sheet */
 .auto-panel > .auto-recent {
@@ -8583,6 +8668,18 @@ html.kb-open .ai-side {
 }
 .ai-side[data-mode="sheet"] .auto-panel.is-open .auto-body {
   display: flex;
+}
+/* opened on a phone, the plan and the whole log scroll with the panel, one
+   scroll box under its header */
+.ai-side[data-mode="sheet"] .auto-panel.is-open > .auto-body {
+  flex: none;
+  overflow: visible;
+}
+.ai-side[data-mode="sheet"] .auto-panel.is-open .auto-body > .auto-all {
+  max-height: none;
+  overflow: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 .ai-side[data-mode="sheet"] .auto-head {
   flex-wrap: wrap;
