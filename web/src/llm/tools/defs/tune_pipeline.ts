@@ -6,11 +6,12 @@ import { loadSettings } from "../../settings";
 import { skillsOn } from "../../skills";
 import { TUNE_STAGE_LABELS, TUNE_STAGES, type TuneStage } from "../../tune/catalog";
 import { headline, type StageEvaluation } from "../../tune/evaluate";
-import { startTuning, stopTuning, useTuneStore, type StageRun } from "../../tune/tuner";
+import { stageTimeLeft, startTuning, stopTuning, useTuneStore, type StageRun } from "../../tune/tuner";
 import { ALL_STAGES, keysOf } from "../facts";
 import { num, oneOf } from "../shared/args";
 import { checkIdle, unique } from "../shared/pipeline";
 import { namesRingTuning, ringEvidenceRefusal, ringVerdictAllowsChange } from "../shared/ringGate";
+import { STAGE_NAMES } from "../../verdicts/rules";
 import { ToolArgError, type ChatTool } from "../types";
 
 // Two evaluations with the same numbers: the change had no measurable effect.
@@ -77,9 +78,15 @@ export const tune_pipeline: ChatTool = {
     const ringsHeld = stages.includes("rings") && !namesRingTuning(ctx.userMessage) && !ringVerdictAllowsChange(ctx);
     const heldOut = ringsHeld ? [{ stage: "rings", why: ringEvidenceRefusal("A tuning of the powder-ring subtraction") }] : [];
     if (ringsHeld) stages = stages.filter((st) => st !== "rings");
-    if (!stages.length) throw new Error(heldOut[0].why);
-    const trials = Math.round(num(args, "trials_per_stage", 3));
-    if (trials < 2 || trials > 5) throw new ToolArgError("trials_per_stage must be within [2, 5]");
+    // Auto mode's budget (ctx.tuneBudget): a stage whose tuning time in the run is spent is not tuned again.
+    const budget = ctx.tuneBudget;
+    const spent = stages.filter((st) => stageTimeLeft(budget, st) <= 0);
+    for (const st of spent) heldOut.push({ stage: st, why: `auto mode's ${Math.round(budget!.stageMs / 60000)} min for tuning ${STAGE_NAMES[st]} in this run are spent; its settings stand` });
+    stages = stages.filter((st) => !spent.includes(st));
+    if (!stages.length) throw new Error(heldOut.map((h) => h.why).join("; "));
+    const asked = Math.round(num(args, "trials_per_stage", 3));
+    if (asked < 2 || asked > 5) throw new ToolArgError("trials_per_stage must be within [2, 5]");
+    const trials = budget ? Math.min(asked, budget.trials) : asked;
 
     useNavStore.getState().setTab("execution");
     let last = "";
@@ -100,6 +107,7 @@ export const tune_pipeline: ChatTool = {
         llm: ctx.model?.settings ?? loadSettings(),
         ...(ctx.model && { onUsage: ctx.model.usage, maxTokens: ctx.model.maxTokens }),
         skills: skillsOn(ctx),
+        ...(budget && { budget }),
       });
     } finally {
       unsubscribe();

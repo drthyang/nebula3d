@@ -111,6 +111,9 @@ let clock = 0;
 beforeAll(() => {
   installBackend(api);
   vi.spyOn(performance, "now").mockImplementation(() => clock);
+  // run_pipeline times a run by the wall clock (as the Execution page does): the same frozen clock.
+  const wall = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => wall + clock);
 });
 afterAll(() => {
   vi.restoreAllMocks();

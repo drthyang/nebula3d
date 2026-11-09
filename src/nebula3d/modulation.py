@@ -57,6 +57,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ALPHA",
+    "CLEAR_ENRICHMENT",
+    "CLEAR_ON_LATTICE",
     "FORMS",
     "HALF_WIDTH",
     "MAX_ORDER",
@@ -88,6 +90,21 @@ ALPHA = 1.35e-3
 #: The fewest hits that count as bunching: a modulation repeats at every node,
 #: so one ± pair of peaks is not evidence of one.
 MIN_HITS = 3
+#: A bunching points to one k only when its hits reach this many times what
+#: chance gives (:attr:`Bunching.clear`). A modulation's satellites sit at
+#: their fractions nearly all, in bands that cover a small share of the
+#: coordinate: on a synthetic family at H ≡ ±1/5, every hit, about five times
+#: chance. A test that fires under it holds peaks that merely crowd one part
+#: of the coordinate (Bragg lobes beside the nodes crowd its small fractions,
+#: whose bands can cover half of it), which other fractions fit as well: no
+#: one k stands out.
+CLEAR_ENRICHMENT = 2.0
+#: ... and when at least this share of its hits lie on the lattice in the
+#: other coordinates (within one grid step of a node's plane on each), as the
+#: satellites of k along the coordinate do (``on_lattice``). A Bragg peak's
+#: lobes and tails sit off its node in every direction, few of them on the
+#: lattice in the other two.
+CLEAR_ON_LATTICE = 0.5
 #: A sharp peak is no wider than this × the median Bragg peak at the nodes, on
 #: every axis: the "as sharp as Bragg" ratio of the console's settings.
 SHARP_RATIO = 2.0
@@ -579,11 +596,21 @@ class Bunching:
     centres: tuple[tuple[float, float, float], ...]  # the hits, up to 12
     mean_distance: float = 0.0
     others: tuple[str, ...] = ()
+    on_lattice: int = 0  # the hits on the lattice in the other coordinates
 
     @property
     def expected(self) -> float:
         """The hits chance would give."""
         return self.peaks * self.p0
+
+    @property
+    def clear(self) -> bool:
+        """Whether one k along the coordinate stands out: hits at least
+        :data:`CLEAR_ENRICHMENT` times what chance gives, and at least
+        :data:`CLEAR_ON_LATTICE` of them on the lattice in the other
+        coordinates, as satellites of that k are."""
+        return (self.hits >= CLEAR_ENRICHMENT * self.expected
+                and self.on_lattice >= CLEAR_ON_LATTICE * self.hits)
 
     def where(self) -> str:
         """``"H ≡ ±1/3 (mod 1)"``: the coordinate and the fractions."""
@@ -608,6 +635,8 @@ class Bunching:
             "centres": [list(c) for c in self.centres],
             "mean_distance": round(self.mean_distance, 6),
             "others": list(self.others),
+            "on_lattice": self.on_lattice,
+            "clear": self.clear,
             "where": self.where(),
         }
 
@@ -615,10 +644,14 @@ class Bunching:
         """The run log's line."""
         also = f" (and the equivalent {', '.join(self.equivalents)})" if self.equivalents else ""
         fits = f"; the grid also fits {', '.join(self.others)}" if self.others else ""
+        weak = "" if self.clear else (
+            f"; under {CLEAR_ENRICHMENT:g} × chance" if self.hits < CLEAR_ENRICHMENT * self.expected
+            else f"; {self.on_lattice} of them on the lattice in the other coordinates"
+        ) + ", so no one k stands out"
         return (f"sharp peaks off the lattice bunch at {self.where()}{also}: {self.hits} of "
                 f"{self.peaks} lie within {self.half_width:g} r.l.u. of it, where chance puts "
                 f"{self.expected:.2g} (binomial tail {self.p_value:.2g}, under {self.alpha:g} "
-                f"over {self.tests} tests){fits}; no modulation is declared there, so the "
+                f"over {self.tests} tests){weak}{fits}; no modulation is declared there, so the "
                 f"search punched them")
 
 
@@ -706,11 +739,18 @@ def detect_commensurate(
 
     grid_x: dict[tuple[int, int, int], Any] = {}
     peak_x: dict[tuple[int, int, int], Any] = {}
+    # Each peak's symmetry images, and each image within one grid step of a
+    # node's plane, axis by axis: a satellite of k along one axis lies on the
+    # lattice along the others (in one of its images, on symmetrised data).
+    images = [pts @ np.asarray(g, dtype=np.float64).T for g in group]
+    planar = [[_band(img[:, i], 0.0, steps[i], float(cells[i])) if steps[i] > 0
+               else np.ones(n, dtype=bool) for i in range(3)] for img in images]
     fired: list[tuple[float, int, int, Bunching]] = []
     for order, (c, axis, forms, counts, q) in enumerate(plans):
         width = steps[c]
         covered: Any = np.zeros((1, 1, 1), dtype=bool)
         hit = np.zeros(n, dtype=bool)
+        aside = np.zeros(n, dtype=bool)  # hits on the lattice in the other coordinates
         near = np.full(n, np.inf)
         values = []
         for p in range(1, q):
@@ -726,6 +766,10 @@ def detect_commensurate(
                 covered = covered | _band(grid_x[f], centre, width, float(period))
                 here |= _band(peak_x[f], centre, width, float(period))
                 near = np.minimum(near, _offset(peak_x[f], centre, float(period)))
+            own_centre = float(Fraction(p, q) * cells[c])
+            for img, flat in zip(images, planar):
+                aside |= (_band(img[:, c], own_centre, width, float(cells[c]))
+                          & np.logical_and.reduce([flat[j] for j in range(3) if j != c]))
             hit |= here
             if here.any():
                 values.append((_text(Fraction(p, q) * cells[c]), int(here.sum())))
@@ -749,7 +793,8 @@ def detect_commensurate(
         fired.append((spread, q, order, Bunching(
             coordinate=own, equivalents=equivalents, period=cells[c], denominator=q,
             values=tuple(values), hits=hits, peaks=n, p0=p0, p_value=tail, alpha=alpha,
-            tests=tests, half_width=width, centres=centres, mean_distance=spread)))
+            tests=tests, half_width=width, centres=centres, mean_distance=spread,
+            on_lattice=int((aside & hit).sum()))))
     if not fired:
         return None
     fired.sort(key=lambda f: (round(f[0], 9), f[1], f[2]))

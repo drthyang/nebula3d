@@ -25,6 +25,7 @@ import { LAUE_RULE_DELTA, LAUE_RULE_Z } from "../../state/laueCompare";
 import { DEFAULT_EDGE_TRIM, EDGE_TRIM_LAYERS, STAGES, usePipelineStore } from "../../state/pipelineStore";
 import { bridgeConfig, nodeModules } from "../evals/devData/bridgeWorker";
 import { GRID_TOO_COARSE, isTooCoarse } from "../metrics/coarse";
+import { CLEAR_ENRICHMENT } from "../metrics/bunching";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_FIT_Q, FULL_SHELL } from "../metrics/flatten";
 import { percentile, radialFloorShells, type GridSlice } from "../metrics/sliceStats";
@@ -183,6 +184,7 @@ print(json.dumps({
         "max_order": modulation.MAX_ORDER,
         "forms": list(modulation.FORMS),
         "reads_k": [reads_k(t) for t in args["k_texts"]],
+        "clear_enrichment": modulation.CLEAR_ENRICHMENT,
     },
 }))
 `;
@@ -228,7 +230,7 @@ type Py = {
   laue_rule: [number, number];
   edge_trim: number;
   defaults: Record<string, unknown>;
-  modulation: { defaults: Record<"order" | "form" | "half_width", unknown>; half_width: number; max_order: number; forms: string[]; reads_k: boolean[] };
+  modulation: { defaults: Record<"order" | "form" | "half_width", unknown>; half_width: number; max_order: number; forms: string[]; reads_k: boolean[]; clear_enrichment: number };
 };
 
 let py: Py;
@@ -264,6 +266,12 @@ const PINS: Pin[] = [
     ts: "DEFAULT_EDGE_TRIM, state/pipelineStore.ts (one of EDGE_TRIM_LAYERS)",
     py: "PipelineParams.edge_trim, nebula3d.pipeline",
     values: () => [[DEFAULT_EDGE_TRIM, (EDGE_TRIM_LAYERS as readonly number[]).includes(DEFAULT_EDGE_TRIM)], [py.edge_trim, true]],
+  },
+  {
+    name: "how many times chance a bunching's hits reach before it names one k (for a record without its verdict)",
+    ts: "CLEAR_ENRICHMENT, metrics/bunching.ts",
+    py: "CLEAR_ENRICHMENT, nebula3d.modulation (Bunching.clear)",
+    values: () => [CLEAR_ENRICHMENT, py.modulation.clear_enrichment],
   },
   {
     name: "the window's weight on unmeasured space (1e-3)",

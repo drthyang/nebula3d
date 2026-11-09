@@ -122,7 +122,7 @@ function OpenCard({ p, ctx, pinned = false }: { p: Proposal; ctx: ToolContext | 
   const anyway = (e: SyntheticEvent) => {
     if (ctx) void applyAnyway(p, ctx, e.nativeEvent, edited());
   };
-  const line = note ?? why ?? (yours ? YOURS_NOTE : ring ? (check ? RING_CLEAN_NOTE : RING_NOTE) : null);
+  const line = note ?? why ?? (yours ? (p.what ? `${p.what} ${YOURS_NOTE}` : YOURS_NOTE) : ring ? (check ? RING_CLEAN_NOTE : RING_NOTE) : null);
 
   return (
     <div className={`pc pc--${p.kind}${yours ? " pc--fact" : ""}`} data-proposal={p.id}>
@@ -280,11 +280,19 @@ function DoneCard({ p, decision }: { p: Proposal; decision: Decision | undefined
   const busy = useChatStore((s) => s.busy);
   const text = p.kind === "run" ? p.title : changeText(p.title, decision?.shown ?? p.shown);
   const what =
-    p.status === "dismissed" ? "dismissed" : p.status === "undone" ? "undone" : p.kind === "run" ? `run by ${decision ? byText(decision) : "you"}` : `applied by ${decision ? byText(decision) : "you"}`;
+    p.status === "dismissed"
+      ? "dismissed"
+      : p.status === "undone"
+        ? "undone"
+        : p.status === "covered"
+          ? "applied with another card"
+          : p.kind === "run"
+            ? `run by ${decision ? byText(decision) : "you"}`
+            : `applied by ${decision ? byText(decision) : "you"}`;
   return (
     <div className={`pc-done pc-done--${p.status}`} data-proposal={p.id}>
       <span className="ok" aria-hidden="true">
-        {p.status === "applied" ? "✓" : p.status === "undone" ? "↶" : "–"}
+        {p.status === "applied" || p.status === "covered" ? "✓" : p.status === "undone" ? "↶" : "–"}
       </span>
       <span className="pc-done-text">
         <b>{text}</b> · {what}

@@ -62,12 +62,15 @@ export async function runPipelineFrom(from: RunStage | null, ctx: ToolContext, i
     if (events.length === seen) return;
     seen = events.length;
     const ev = events[events.length - 1];
+    if (!ev) return; // the log emptied (a run starting): nothing to say yet
     const at = ev.stage ? stages.indexOf(ev.stage) : -1;
     io.progress?.((at >= 0 ? `${at + 1}/${stages.length} ` : "") + eventLine(ev));
   });
   const cancel = () => void usePipelineStore.getState().cancel();
   io.signal?.addEventListener("abort", cancel);
-  const t0 = performance.now();
+  // Wall-clock time, as the Execution page times the run and its stages (the
+  // store's event times): the two read the same, however loaded the machine.
+  const t0 = Date.now();
   let ended: string;
   try {
     ended = await usePipelineStore.getState().runStages(stages, { datasetId: ctx.dataset.id, force, ...(forceFrom ? { forceFrom } : {}) });
@@ -75,7 +78,7 @@ export async function runPipelineFrom(from: RunStage | null, ctx: ToolContext, i
     unsubscribe();
     io.signal?.removeEventListener("abort", cancel);
   }
-  const seconds = Math.round((performance.now() - t0) / 100) / 10;
+  const seconds = Math.round((Date.now() - t0) / 100) / 10;
   const events = usePipelineStore.getState().events.filter((e) => !reusedUpstream(e));
 
   if (ended !== "done") {

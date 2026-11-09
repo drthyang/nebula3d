@@ -14,6 +14,7 @@ from nebula3d.analysis.ub_refine import (
     SYMMETRISED,
     _commutant,
     _metric_basis,
+    _windowed_centre,
     cell_parameters,
     fit_ub,
     measure_centres,
@@ -226,3 +227,51 @@ def test_peaks_between_voxels_are_centred_without_exaggerating_their_offset():
     truth = c.nodes @ (np.linalg.inv(UB) @ true).T
     assert len(c.nodes) > 300
     assert np.abs(c.hkl - truth).max() < 2e-3  # r.l.u.; the grid step is 0.1
+
+
+def _windowed_centre_every_voxel(q, excess, start, width, reach):
+    """The windowed centre as it was computed before its candidates were
+    gathered: every round over every voxel of the box."""
+    x = np.asarray(start, dtype=np.float64).copy()
+    for _round in range(100):
+        d = q - x
+        r2 = np.sum(d * d, axis=1)
+        near = r2 <= 9.0 * width * width
+        w = excess[near] * np.exp(-r2[near] / (2.0 * width * width))
+        total = float(w.sum())
+        if total <= 0:
+            return None
+        shift = (w[:, None] * d[near]).sum(axis=0) / total
+        x = x + shift
+        if float(np.linalg.norm(x - start)) > reach:
+            return None
+        if float(np.linalg.norm(shift)) < 1e-6 * width:
+            return x
+    return None
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_the_windowed_centre_reads_only_its_window_and_gives_the_same_bits(seed):
+    """The UB check's centring gathers the voxels near its window and gathers
+    them again as the window moves, for speed: to the bit what a pass over
+    every voxel of the box gives, a centre that moves far, a peak that never
+    settles and an empty window included."""
+    rng = np.random.default_rng(seed)
+    step = 0.03
+    axis = np.arange(-15, 16) * step
+    q = np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1).reshape(-1, 3)
+    centre = rng.uniform(-0.12, 0.12, 3)  # up to ~4 voxels off the start: re-gathered on the way
+    sigma = rng.uniform(0.02, 0.06)
+    excess = np.exp(-np.sum((q - centre) ** 2, axis=1) / (2 * sigma**2))
+    excess += rng.normal(0.0, rng.choice([0.0, 0.05, 0.5]), excess.shape)
+    if seed % 10 == 9:
+        excess = -np.abs(excess)  # no positive weight
+    start = q[int(np.argmin(np.sum(q**2, axis=1)))]
+    width = 1.2 * step
+    for reach in (0.25, 0.05):
+        want = _windowed_centre_every_voxel(q, excess, start, width, reach)
+        got = _windowed_centre(q, excess, start, width, reach)
+        if want is None:
+            assert got is None
+        else:
+            np.testing.assert_array_equal(got, want)

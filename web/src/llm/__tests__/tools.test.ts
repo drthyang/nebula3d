@@ -597,6 +597,29 @@ describe("run_pipeline", () => {
     useNavStore.setState({ tab: "config" });
   });
 
+  it("times the run by the wall clock, as the Execution page times it and its stages", async () => {
+    let wall = 1_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => wall);
+    const run = fakeRun("done");
+    usePipelineStore.setState({
+      runStages: vi.fn(async (stages: string[], opts?: unknown) => {
+        wall += 588_000; // a ring removal of almost ten minutes on a loaded machine
+        void stages;
+        void opts;
+        return run();
+      }),
+    });
+    api.fetchDataset.mockResolvedValue(dataset);
+    try {
+      const r = await callTool({ ...ctx }, "run_pipeline", {});
+      expect(r.ok, r.text).toBe(true);
+      expect(JSON.parse(r.text).seconds).toBe(588);
+      expect(r.summary).toMatch(/^done in 588 s/);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("runs the enabled stages, streams its progress, and reads the fresh dataset", async () => {
     const runStages = fakeRun("done");
     usePipelineStore.setState({ runStages });
@@ -749,6 +772,19 @@ describe("tune_pipeline", () => {
     tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ error: "the run with your settings failed" }));
     const r = await callTool({ ...ctx }, "tune_pipeline", {});
     expect(r.text).toBe("Error: tuning stopped: the run with your settings failed");
+  });
+
+  it("under auto mode's budget: at most its trials, and no stage whose tuning time in the run is spent", async () => {
+    tuner.startTuning.mockImplementation(async () => useTuneStore.setState({ finishedNote: "Done." }));
+    const tuneBudget = { trials: 3, stageMs: 240_000, spentMs: { punch: 240_000 } };
+    const r = await callTool({ ...ctx, tuneBudget }, "tune_pipeline", { stages: ["punch", "backfill"], trials_per_stage: 5 });
+    expect(r.ok, r.text).toBe(true);
+    expect(tuner.startTuning).toHaveBeenCalledWith(expect.objectContaining({ stages: ["backfill"], trialsPerStage: 3, budget: tuneBudget }));
+    expect(JSON.parse(r.text).held_out).toEqual([{ stage: "punch", why: "auto mode's 4 min for tuning the Bragg punch in this run are spent; its settings stand" }]);
+    tuner.startTuning.mockClear();
+    const none = await callTool({ ...ctx, tuneBudget }, "tune_pipeline", { stages: ["punch"] });
+    expect(none.text).toBe("Error: auto mode's 4 min for tuning the Bragg punch in this run are spent; its settings stand");
+    expect(tuner.startTuning).not.toHaveBeenCalled();
   });
 
   it("checks its arguments before starting", async () => {

@@ -48,9 +48,9 @@
 import { fetchDataset } from "../../api/client";
 import type { Dataset } from "../../api/types";
 import { configOf } from "../../state/configMemory";
-import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { formToParams, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { toolStepsIn, type AgentStep } from "../agent";
-import { dismissCard, applyOnClick, undoable, undoDecision } from "../apply/actions";
+import { dismissCard, applyOnClick, mergeIntoTwin, undoable, undoDecision } from "../apply/actions";
 import { addProposals, logDecision, nextProposalNumber, updateProposal, useDecisionStore, type Decision } from "../apply/decisions";
 import { buildProposals, cardSetting, runProposal, runStageFor, SETTING_KEYS, type Proposal } from "../apply/proposals";
 import { marksMade } from "../answerChecks";
@@ -68,11 +68,12 @@ import { callTool, CHAT_TOOLS, factsOf, type AgentTool, type ToolContext } from 
 import { openView } from "../tools/openView";
 import { BRAGG, DPDF, examining } from "../examine/overlays";
 import { useNavStore } from "../../state/navStore";
-import { useTuneStore } from "../tune/tuner";
+import { useTuneStore, type TuneBudget } from "../tune/tuner";
 import { RUN_STAGES, type ParamValue, type RunStage } from "../tune/catalog";
 import { addUsage, measured, notCounted, type Usage } from "../usage";
 import { costOf, priceOf, type Price } from "./cost";
 import {
+  AUTO_TUNING,
   factRow,
   holdsBack,
   isFactCard,
@@ -130,6 +131,7 @@ interface Session {
   work: { dataset: Dataset; datasets: Dataset[] }; // the dataset as the run's last call left it
   dearestReply: number; // the most one reply has cost so far, US dollars
   unwatch: (() => void) | null; // the pause's watch of the fact's card
+  tuneBudget: (TuneBudget & { run: string }) | null; // the run's cap on its tunings (AUTO_TUNING)
 }
 
 let session: Session | null = null;
@@ -360,6 +362,7 @@ function openSession(start: AutoStart): Session {
     work: { dataset: start.ctx.dataset, datasets: start.ctx.datasets },
     dearestReply: 0,
     unwatch: null,
+    tuneBudget: null,
   };
   return session;
 }
@@ -444,8 +447,28 @@ const halt = (): never => {
 
 // ---------------------------------------------------------------- facts
 
+/**
+ * A fact's card that can no longer be applied as it stands, set aside so the
+ * run never waits on a disabled Apply: one whose change holds already (applied
+ * with another card, the Laue class two tools offer) is covered; one whose
+ * settings moved since some other way is stale, and dismissed.
+ */
+function retireStale(): void {
+  // A card under way (its own Apply moves the form first) is never set aside.
+  const r = useAutoStore.getState().run;
+  if (!session || !r || useDecisionStore.getState().working) return;
+  const form = usePipelineStore.getState();
+  const holds = (fields: Partial<PipelineConfig>) => Object.entries(fields).every(([k, v]) => form[k as keyof PipelineConfig] === v);
+  for (const f of r.facts) {
+    const p = useDecisionStore.getState().proposals.find((x) => x.id === f.proposal);
+    if (f.status !== "open" || p?.status !== "open" || holds(p.from)) continue;
+    updateProposal(p.id, { status: Object.keys(p.fields).length && holds(p.fields) ? "covered" : "dismissed" });
+  }
+}
+
 /** The open facts, in the order they were found, and the row each holds back. */
 const openFacts = (r: AutoRun): { fact: AutoFact; row: RowId }[] => {
+  retireStale();
   const proposals = useDecisionStore.getState().proposals;
   return r.facts.flatMap((f) => {
     const p = proposals.find((x) => x.id === f.proposal);
@@ -483,14 +506,20 @@ function watchFact(id: string): void {
     const p = useDecisionStore.getState().proposals.find((x) => x.id === id);
     return p && p.status !== "open" ? p : null;
   };
+  let done = false; // answered once: setting a card aside re-enters this listener
   const answer = () => {
+    if (!session || done) return;
+    // Another card's Apply, or a change of the form, can leave this one covered or stale: set aside, never waited on.
+    retireStale();
     const p = settled();
-    if (!p || !session) return;
+    if (!p || !session || done) return;
+    done = true;
     session.unwatch?.();
     session.unwatch = null;
     answered(p);
   };
-  session.unwatch = useDecisionStore.subscribe(answer);
+  const stops = [useDecisionStore.subscribe(answer), usePipelineStore.subscribe(answer)];
+  session.unwatch = () => stops.forEach((f) => f());
 }
 
 function answered(p: Proposal): void {
@@ -520,8 +549,12 @@ function settleFacts(): void {
     if (f.status !== "open" || !p || p.status === "open") return f;
     const d = [...decisions].reverse().find((x) => x.proposal === p.id && x.action !== "undo");
     if (d && !r.decisions.includes(d.id)) ids.push(d.id);
+    // Covered: applied with another card, whose own decision and run stand for it.
+    if (p.status === "covered") return { ...f, status: "applied" as const };
     const applied = p.status === "applied";
-    if (applied && ran) {
+    // A fact that changes nothing a run reads (no setting the run sends) owes no run: run
+    // again, it would reuse every output (a Laue class set with the symmetry average off).
+    if (applied && ran && changesTheRun(d?.before ?? p.from, d?.after ?? p.fields)) {
       const at = d?.runFrom ?? p.runFrom ?? stageOfFact(p);
       if (!from || RUN_STAGES.indexOf(at) < RUN_STAGES.indexOf(from)) from = at;
     }
@@ -534,6 +567,12 @@ function settleFacts(): void {
     pendingRun: from,
     plan: first ? x.plan.map((row) => (isStage(row.id) && rowIndex(row.id) >= rowIndex(first) ? { ...row, status: "pending" as const, detail: undefined } : row)) : x.plan,
   }));
+}
+
+/** Whether settings `before` → `after` change what a run sends (formToParams, the flatten's switch), on the form as it is. */
+export function changesTheRun(before: Partial<PipelineConfig>, after: Partial<PipelineConfig>, form: PipelineConfig = usePipelineStore.getState()): boolean {
+  const sent = (s: PipelineConfig) => JSON.stringify([s.flatten, formToParams(s)]);
+  return sent({ ...form, ...before }) !== sent({ ...form, ...after });
 }
 
 const stageOfFact = (p: Proposal): RunStage => {
@@ -561,7 +600,7 @@ function cardsFrom(steps: readonly AgentStep[]): void {
     config: usePipelineStore.getState(),
     dataset: session!.work.dataset.id,
     firstId: nextProposalNumber(),
-  }).filter((p) => !alreadyAsked(p));
+  }).filter((p) => !(p.kind !== "run" && mergeIntoTwin(p)) && !alreadyAsked(p));
   addProposals(ps);
   takeCards(ps);
 }
@@ -806,6 +845,7 @@ async function stageRow(stage: Stage): Promise<void> {
   }
   const limits = run().limits;
   let putBack = 0; // fixes put back for making it worse
+  let unchanged = 0; // fixes that adopted no change (a tuning that kept the settings, a reply that changed none)
   while (rowOf(run(), stage).tries < limits.fixesPerStage) {
     holdFor(stage);
     const hit = limitBeforeFix();
@@ -828,6 +868,7 @@ async function stageRow(stage: Stage): Promise<void> {
       }
     }
     if (!reply) return endFixes("cost", stage);
+    if (!changes.length) unchanged += 1;
     if (changes.length) {
       from = run().pendingRun ?? from;
       await appRun(from);
@@ -858,7 +899,8 @@ async function stageRow(stage: Stage): Promise<void> {
   }
   const tries = rowOf(run(), stage).tries;
   const back = putBack ? ` (${countWord(putBack)} put back: ${putBack === 1 ? "it" : "they"} made it worse)` : "";
-  patchRow(stage, { status: "attention", detail: `still needs attention after ${countWord(tries)} fix${tries === 1 ? "" : "es"}${back}` });
+  const kept = !unchanged ? "" : unchanged === tries ? ": no change adopted" : ` (${countWord(unchanged)} adopted no change)`;
+  patchRow(stage, { status: "attention", detail: `still needs attention after ${countWord(tries)} fix${tries === 1 ? "" : "es"}${kept}${back}` });
 }
 
 /** A limit ends the fixes: the stage stays as its checks found it, the stages after it are not checked, and the run goes to its report. */
@@ -979,7 +1021,13 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
   };
   // A tuning run in the reply asks the run's model, and its requests count in
   // the run's spend as the reply's do (tune_pipeline reads ctx.model).
+  // The run's cap on a tuning's trials and time (AUTO_TUNING), its spent time kept in the run's record.
+  if (!s.tuneBudget || s.tuneBudget.run !== r.id) {
+    s.tuneBudget = { run: r.id, trials: AUTO_TUNING.trials, stageMs: AUTO_TUNING.stageMinutes * 60_000, spentMs: { ...(r.tuneSpentMs ?? {}) } };
+  }
+  const tuneBudget = s.tuneBudget;
   const ctx: ToolContext = {
+    tuneBudget,
     dataset: s.work.dataset,
     datasets: s.work.datasets,
     skillsRead: new Set(),
@@ -1018,6 +1066,7 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
     s.abort.signal.removeEventListener("abort", stopReply);
     s.reply = null;
     s.dearestReply = Math.max(s.dearestReply, spent);
+    patchRun({ tuneSpentMs: { ...tuneBudget.spentMs } });
   }
   if (stopped()) halt();
   if (!out) fail("model", "a reply was under way in the chat");

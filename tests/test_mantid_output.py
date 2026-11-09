@@ -555,3 +555,58 @@ def test_pipeline_resumed_from_disk_equals_one_in_memory(tmp_path, precision):
                                           err_msg=f"{name}.{field}")
     np.testing.assert_array_equal(load_delta_pdf(mem.delta_pdf).data,
                                   load_delta_pdf(disk.delta_pdf).data)
+
+
+def _float32_edge_axes(vol: HKLVolume, quantum: float = 2.0**-19) -> HKLVolume:
+    """*vol* on the axes a Mantid file with float32 bin edges gives: each
+    centre the midpoint of two edges on float32's grid (2⁻¹⁹ about |x| ≈ 30),
+    uneven at float64 precision by more than a millionth of a step."""
+    from dataclasses import replace
+
+    def axis(a: np.ndarray) -> np.ndarray:
+        step = (a[-1] - a[0]) / (a.size - 1)
+        edges = np.linspace(a[0] - step / 2, a[-1] + step / 2, a.size + 1)
+        edges = np.round(edges / quantum) * quantum
+        return (edges[:-1] + edges[1:]) * 0.5
+
+    return replace(vol, h_axis=axis(vol.h_axis), k_axis=axis(vol.k_axis),
+                   l_axis=axis(vol.l_axis))
+
+
+def test_float32_edge_axes_survive_every_reload(tmp_path):
+    """An axis uneven at float32 precision loads back as written, however
+    often a stage is saved and reloaded (the exact centres, not the midpoints
+    of the edges derived from them)."""
+    vol = _float32_edge_axes(_vol())
+    path = tmp_path / "a.h5"
+    for _ in range(3):
+        nebula3d.save(vol, path)
+        back = nebula3d.load(path, dtype=None)
+        for name in ("h_axis", "k_axis", "l_axis"):
+            np.testing.assert_array_equal(getattr(back, name), getattr(vol, name), err_msg=name)
+        vol = back
+
+
+def test_a_flatten_rerun_from_disk_keeps_the_backfills_grid(tmp_path):
+    """The flatten run again on its own (auto mode's fix with the b·Q² term)
+    reads the backfilled stage from disk: on a raw volume whose axes are uneven
+    at float32 precision, its output is on the backfill's grid to the bit, so
+    the shell floors of the two compare (GET .../shell-floors was a 422)."""
+    from nebula3d.demo import demo_volume
+    from nebula3d.server.volumes import volume_shell_floors
+
+    raw = tmp_path / "demo.nxs"
+    nebula3d.save(_float32_edge_axes(demo_volume(41, extent=3.0), 2.0**-16), raw)
+    params = pipeline.PipelineParams(pdf_check_enabled=False)
+    stages = ("rings", "punch", "backfill", "flatten")
+    pipeline.run_pipeline(raw, params, proc_dir=tmp_path, stages=stages)
+    params.flatten.q2_term = True
+    pipeline.run_pipeline(raw, params, proc_dir=tmp_path, stages=("flatten",))
+
+    paths = pipeline.pipeline_paths(raw, proc_dir=tmp_path)
+    filled = nebula3d.load(paths.backfilled, dtype=None)
+    flat = nebula3d.load(paths.flattened, dtype=None)
+    for name in ("h_axis", "k_axis", "l_axis"):
+        np.testing.assert_array_equal(getattr(flat, name), getattr(filled, name), err_msg=name)
+    floors = volume_shell_floors(paths.flattened, paths.backfilled)
+    assert floors["floors_before"] is not None and floors["flatten"]["q2_term"] is True

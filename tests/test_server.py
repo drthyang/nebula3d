@@ -556,6 +556,8 @@ def test_bragg_profile_reads_saved_json(tmp_path):
         "n_peaks": 1,
         "fit_covariance": True,
         "punch_frame": "q",
+        "punch_footprint": "ellipsoid",
+        "fit_unconstrained": True,
         "peaks": [{
             "index": 0,
             "source_node_hkl": [1, 0, 0],
@@ -585,6 +587,8 @@ def test_bragg_profile_reads_saved_json(tmp_path):
     assert body["has_profile"] is True
     assert body["fit_covariance"] is True
     assert body["peaks"][0]["width_q"] == [0.12, 0.08, 0.04]
+    # How the holes were cut, which the assessment cites.
+    assert (body["punch_footprint"], body["fit_unconstrained"]) == ("ellipsoid", True)
     assert body["node_test"] is None  # every node judged: the record has none
 
 

@@ -9,6 +9,7 @@
 
 import type { AdvancedStage } from "../state/configViewStore";
 import type { PipelineConfig } from "../state/pipelineStore";
+import { isTuningView } from "../api/client";
 
 export type SectionStage = "symmetry_average" | "rings" | "punch" | "backfill" | "flatten" | "pdf";
 
@@ -162,3 +163,10 @@ export const SETTING_LABEL: Readonly<Partial<Record<Key, string>>> = {
 
 /** A setting's label, by the field it is held in (SETTING_LABEL); the field's name where it has none. */
 export const settingLabel = (key: string): string => SETTING_LABEL[key as Key] ?? key;
+
+/** The folder's datasets in words, a tuning run's views of them apart: "1 dataset in folder (+2 tuning runs)". */
+export function folderCount(datasets: readonly { id: string }[]): string {
+  const runs = datasets.filter((d) => isTuningView(d.id)).length;
+  const own = datasets.length - runs;
+  return `${own} dataset${own === 1 ? "" : "s"} in folder${runs ? ` (+${runs} tuning run${runs === 1 ? "" : "s"})` : ""}`;
+}

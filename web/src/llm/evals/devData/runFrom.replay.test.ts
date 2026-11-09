@@ -108,3 +108,27 @@ describe("a ring verdict's mark of the ring output, on the dev control", () => {
     expect(ringOutputChanged({ ...before, runs: before.runs + 1 }, listing)).toBe(true);
   });
 });
+
+describe("declaring a Laue class (the Laue card), on the dev control", () => {
+  it("switches the symmetry average on: a run of what is stale makes every stage again, and the symmetry check judges the class", async () => {
+    const c = devCase("dev-control");
+    const { id } = await c.dataset();
+    expect(usePipelineStore.getState().symmetryAverageEnabled).toBe(false);
+    expect(await runButton(id, false)).toBe("done");
+    const before = await c.tool("symmetry_check", {});
+    expect(before.ok, before.summary).toBe(true);
+    expect(before.summary).toMatch(/no symmetry declared/);
+
+    // The card's fields (apply/proposals.ts, declareDraft), and auto mode's run from the average: everything stale.
+    usePipelineStore.getState().patch({ symmetryAverageEnabled: true, symmetryLaue: "m-3m" });
+    // Every output made from the raw volume is stale: the average is not made yet, and the rings now read it.
+    expect(Object.keys(await staleNow(id))).toContain("ringremoved");
+    const made = await c.tool("run_pipeline", {});
+    expect(made.ok, made.summary).toBe(true);
+    expect(made.result.stages).toMatchObject({ symmetry_average: "computed", rings: "computed", pdf: "computed" });
+    expect(await staleNow(id)).toEqual({});
+    const after = await c.tool("symmetry_check", {});
+    expect(after.ok, after.summary).toBe(true);
+    expect(after.summary).not.toMatch(/no symmetry declared/);
+  });
+});

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Dataset } from "../../api/types";
 import { runAgent } from "../agent";
-import { claudeWindow, CLAUDE_DEFAULT_WINDOW, contextWindow, conversationCost, meterDetail, meterReading, openingSpecs, requestTokens, AMBER_AT, RED_ABOVE, type ContextWindow } from "../contextMeter";
+import { claudeWindow, CLAUDE_DEFAULT_WINDOW, contextWindow, conversationCost, meterDetail, meterReading, meterText, openingSpecs, requestTokens, AMBER_AT, RED_ABOVE, type ContextWindow } from "../contextMeter";
 import { STREAM_MAX_TOKENS } from "../provider/anthropic";
 import { TOOLS_CONTEXT, type ChatMessage, type ToolSpec } from "../provider/client";
 import { baseTokens, estimateTokens, observeTokens, ollamaWindow, REPLY_RESERVE, resetTokenState } from "../provider/tokens";
@@ -73,6 +73,16 @@ describe("the meter's maths and levels", () => {
   const w32: ContextWindow = { size: 32_768, reserve: 6_144, source: "tools" };
   // The prompt that makes the share exactly `share` of the window, with the reserve.
   const promptAt = (w: ContextWindow, share: number) => Math.round(share * w.size!) - w.reserve;
+
+  it("moves as a long chat grows on a 1M window: a tenth of a per cent under 10 %, whole above", () => {
+    const w1m: ContextWindow = { size: 1_000_000, reserve: 64_000, source: "claude" };
+    // Each reply adds a few thousand tokens of text: whole per cents read 7 % throughout.
+    const shown = [6_000, 9_000, 12_000, 15_000].map((p) => meterReading(p, w1m));
+    expect(shown.map((r) => r.percent)).toEqual([7, 7, 7, 7]);
+    expect(shown.map(meterText)).toEqual(["Context 7.0%", "Context 7.3%", "Context 7.6%", "Context 7.9%"]);
+    expect(meterText(meterReading(14_336, w32))).toBe("Context 62%");
+    expect(meterText(meterReading(1_234, { size: null, reserve: 0, source: "unknown" } as unknown as ContextWindow))).toBe("Context ≈ 1k tokens");
+  });
 
   it("counts the reply's room: (prompt + reserve) / window", () => {
     const r = meterReading(14_336, w32); // 14,336 + 6,144 = 20,480 = 62.5 %, shown as 62 %

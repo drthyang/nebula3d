@@ -12,6 +12,7 @@
 // in the Markdown, so the report still says how to reproduce it.
 
 import { parseBlocks, type Block, type Inline } from "../markdown";
+import { tidyNumbers } from "../numberText";
 import { WORDS } from "../verdicts";
 import { STANDING_CAVEATS, type Report, type ReportCheck, type Verdict } from "./report";
 
@@ -81,7 +82,8 @@ export function reportMarkdown(r: Report): string {
     out.push(...autoLines(r.auto).map((l) => `- ${l}`), "");
   }
 
-  if (r.narrative) out.push("## The model's summary", "", "*Written by the model; the numbers above are measured.*", "", r.narrative, "");
+  // Float noise the model copied reads rounded here too, as the page shows it (numberText.ts).
+  if (r.narrative) out.push("## The model's summary", "", "*Written by the model; the numbers above are measured.*", "", tidyNumbers(r.narrative), "");
 
   if (r.figures.length) {
     out.push("## Figures", "");
@@ -170,8 +172,16 @@ function blocksHtml(blocks: Block[]): string {
           return `<p>${inlineHtml(b.inline)}</p>`;
         case "code":
           return `<pre>${esc(b.value)}</pre>`;
-        case "list":
-          return `<${b.ordered ? "ol" : "ul"}>${b.items.map((i) => `<li>${inlineHtml(i)}</li>`).join("")}</${b.ordered ? "ol" : "ul"}>`;
+        case "list": {
+          // An item's sub-list inside it; an ordered list from its own first number.
+          const tag = b.ordered ? "ol" : "ul";
+          const start = b.ordered && b.start !== undefined ? ` start="${b.start}"` : "";
+          const items = b.items.map((it, i) => {
+            const sub = b.nested?.[i];
+            return `<li>${inlineHtml(it)}${sub ? blocksHtml([sub]) : ""}</li>`;
+          });
+          return `<${tag}${start}>${items.join("")}</${tag}>`;
+        }
         case "table":
           return `<table><thead><tr>${b.header.map((h) => `<th>${inlineHtml(h)}</th>`).join("")}</tr></thead><tbody>${b.rows
             .map((row) => `<tr>${row.map((c) => `<td>${inlineHtml(c)}</td>`).join("")}</tr>`)

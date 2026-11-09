@@ -19,6 +19,7 @@ import {
   sectionDisplay,
   sectionOf,
   snapIndex,
+  snapToGrid,
   toPixels,
   type MarkRegion,
   type Section,
@@ -51,6 +52,20 @@ describe("the grid", () => {
     const g = { ranges: [[-42, 41.48148148148149], [-42, 41.48148148148149], [-42, 41.48148148148149]] as [[number, number], [number, number], [number, number]], shape: [162, 162, 162] as [number, number, number] };
     expect(gridValue(g, 2, 81)).toBe(0);
     expect(gridValue(g, 2, 82)).toBeCloseTo(0.5185, 4);
+  });
+
+  it("reads a float32 axis's samples as the grid means them: 0 and −4.5, not float noise beside them", () => {
+    // About ±8 r.l.u. in 321 samples, the ends a float32 ulp or so off.
+    const r: [number, number] = [Math.fround(-8.0000005), Math.fround(7.9999995)];
+    const g = { ranges: [r, r, r] as [[number, number], [number, number], [number, number]], shape: [321, 321, 321] as [number, number, number] };
+    expect(g.ranges[0][0] + 160 * gridStep(g, 0)).not.toBe(0);
+    expect(gridValue(g, 1, 160)).toBe(0);
+    expect(gridValue(g, 1, 70)).toBe(-4.5);
+    expect(String(gridValue(g, 1, 161))).toBe("0.05");
+    // Snapped, every sample is still the one it was.
+    for (let i = 0; i < 321; i++) expect(snapIndex(g, 1, gridValue(g, 1, i))).toBe(i);
+    expect(snapToGrid(1.1920928955078125e-7, 0.0333)).toBe(0);
+    expect(Object.is(snapToGrid(-1e-9, 0.05), 0)).toBe(true);
   });
 });
 

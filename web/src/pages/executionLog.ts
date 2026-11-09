@@ -47,6 +47,9 @@ export interface StageInfo {
   message?: string;
   firstT: number;
   lastT: number;
+  // When it said how it ended (its done or skip line): its time ends there, a
+  // note after it (the ring removal's symmetry line) not counted.
+  endT?: number;
   // How the stage ended, once it said so (done: computed, skip: reused).
   // A stage can add a note after that (the ring removal and the flatten say
   // they averaged over the symmetry after their done line): still ended.
@@ -61,17 +64,23 @@ export function stageInfo(events: readonly JobEvent[], times: readonly number[])
     const ended = ev.status === "done" || ev.status === "skip" ? (ev.status as "done" | "skip") : undefined;
     const cur = out[ev.stage];
     if (!cur) {
-      out[ev.stage] = { status: ev.status, fraction: ev.fraction ?? null, message: ev.message, firstT: times[i], lastT: times[i], ...(ended ? { endedAs: ended } : {}) };
+      out[ev.stage] = { status: ev.status, fraction: ev.fraction ?? null, message: ev.message, firstT: times[i], lastT: times[i], ...(ended ? { endedAs: ended, endT: times[i] } : {}) };
     } else {
       cur.status = ev.status;
       cur.fraction = ev.fraction ?? null;
       cur.message = ev.message ?? cur.message;
       cur.lastT = times[i];
-      if (ended) cur.endedAs = ended;
+      if (ended) {
+        cur.endedAs = ended;
+        cur.endT = times[i];
+      }
     }
   });
   return out;
 }
+
+/** How long a stage took: from its first line to the line that said how it ended (else its last). */
+export const stageMs = (info: StageInfo): number => (info.endT ?? info.lastT) - info.firstT;
 
 /** A stage's status as its state reads it: an error, else how it ended once it said so, else its latest. */
 const statusOf = (s: StageInfo | undefined): string | undefined => (s ? (s.status === "error" ? "error" : (s.endedAs ?? s.status)) : undefined);

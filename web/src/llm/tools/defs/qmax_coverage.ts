@@ -14,7 +14,7 @@ import { dpdfVolumeId, hklVolumeId, safe, stageVolumeId } from "../../context/lo
 import { qRadius } from "../../context/pipelineContext";
 import { roundSig } from "../../metrics/sliceStats";
 import { skillsOn } from "../../skills";
-import { judge } from "../../verdicts/rules";
+import { judge, WEIGHT_FIGURES } from "../../verdicts/rules";
 import { cleanupView, RECIP_FIXED, RECIP_PLANES, recipMeta, recipRange } from "../shared/cuts";
 import type { ChatTool } from "../types";
 
@@ -133,7 +133,8 @@ export const qmax_coverage: ChatTool = {
     return {
       result: {
         verdict,
-        window_weight_on_unmeasured: openWeight,
+        // Shown to the checks' figures, as assess_stage pdf shows it; the verdict reads it whole.
+        window_weight_on_unmeasured: openWeight == null ? null : roundSig(openWeight, WEIGHT_FIGURES),
         window_shape: dmeta?.window_shape ?? null,
         window_scale: dmeta?.window_scale ?? null,
         transform_reach_q: reach == null ? null : roundSig(reach, 4),

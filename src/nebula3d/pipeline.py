@@ -96,6 +96,7 @@ from nebula3d.preprocessing import (
     trim_coverage_edge,
     write_global_ring_diagnostics,
 )
+from nebula3d.preprocessing.pooled_rings import SUMMARY_LEFT, left_shell_words, on_al_line
 from nebula3d.preprocessing.radial_background import (
     _azimuthal_angle as _plane_azimuthal_angle,
 )
@@ -383,6 +384,10 @@ def bragg_profile_from_records(
         "fit_covariance": bool(remover.integer_optimize_shape),
         "punch_frame": str(remover.punch_frame),
         "punch_footprint": str(remover.punch_footprint),
+        # Whether the integer peaks' shape fit ran without its constraints (the
+        # ellipsoid footprint's "drop fit constraints"): with the footprint,
+        # what a reading of this record can cite of how the holes were cut.
+        "fit_unconstrained": bool(remover.integer_fit_unconstrained),
         "footprint_profile": None if footprint is None else {
             "axes": ["ρ", "θ", "φ"],
             "q_centers": [float(v) for v in footprint.q_centers],
@@ -1823,6 +1828,20 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
     at_grid = [s for s, w in zip(unjudged, reason) if w.startswith(GRID_TOO_COARSE)]
     other = [w for w in reason if not w.startswith(GRID_TOO_COARSE)]
     rejected = len(rejected_shells) - len(unjudged)
+    # The judged shells left on an Al line (a doublet's member that does not
+    # rise on its own) are no scattering of the crystal: named by the record's
+    # code, as the Pilot and the ring record name them. The others are counted,
+    # as before (their codes can differ between the native and the browser
+    # run where a criterion sits on its limit).
+    judged = [s for s in rejected_shells if not (s.get("isotropy") or {}).get("not_judged")]
+    named = sorted(((s, w) for s in judged
+                    if on_al_line(s) and (w := left_shell_words(s)) is not None),
+                   key=lambda sw: float(sw[0]["q_center"]))
+    own = rejected - len(named)
+    not_rings = ("the crystal's own scattering, kept" if not named else "; ".join(
+        ([f"{own} the crystal's own scattering, kept"] if own else [])
+        + [f"{w}, left" for _s, w in named[:SUMMARY_LEFT]]
+        + ([f"{len(named) - SUMMARY_LEFT} more left"] if len(named) > SUMMARY_LEFT else [])))
     why = "; ".join(dict.fromkeys(other))  # each reason once, in the shells' order
     notice = ""
     if at_grid:
@@ -1833,7 +1852,7 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
             "q_centers": [round(float(s["q_center"]), 4) for s in at_grid]}
     _emit(progress, "rings", "done", 1.0,
           f"pooled ring removal {d['status']}: {len(d['shells'])} shells "  # type: ignore[arg-type]
-          + (f"confirmed as rings, {rejected} not (the crystal's own scattering, kept) "
+          + (f"confirmed as rings, {rejected} not ({not_rings}) "
              + (f"and {len(other)} not judged ({why}; kept) " if other else "")
              if p.pooled_confirm_rings else "")
           + f"(of {d['n_planes_fitted']}/{d['n_planes']} planes fitted), removed "
@@ -2173,7 +2192,9 @@ def punch_bragg(vol: HKLVolume, params: PunchParams | None = None, *,
     (``_bragg_profile["modulation"]``); a line in its log says so when they do.
     """
     p = params or PunchParams()
-    _emit(progress, "punch", "start", None, f"Bragg punch (mode={p.mode})")
+    constraints = ", fit constraints dropped" if p.integer_fit_unconstrained else ""
+    _emit(progress, "punch", "start", None,
+          f"Bragg punch (mode={p.mode}, footprint={p.punch_footprint}{constraints})")
     if p.min_significance is not None and p.significance_noise == "sigma":
         note = sigma_note(vol)
         if note is not None:

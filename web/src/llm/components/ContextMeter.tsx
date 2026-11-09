@@ -7,7 +7,7 @@
 // phone it stays out of the toggles row until amber, and the action takes the
 // bar's place there, so the dock grows by no row. UI only: nothing here is sent.
 
-import { meterDetail, type ContextWindow, type MeterAction, type MeterReading } from "../contextMeter";
+import { meterDetail, meterText, type ContextWindow, type MeterAction, type MeterReading } from "../contextMeter";
 
 const compact = (n: number): string => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 1e4 ? 1 : 0)}k`);
 
@@ -34,7 +34,7 @@ export function ContextMeterChip({
         </span>
       )}
       <span className="ai-meter-text" role="status">
-        {reading.percent !== null ? `Context ${reading.percent}%` : `Context ≈ ${compact(reading.prompt)} tokens`}
+        {reading.percent !== null ? meterText(reading) : `Context ≈ ${compact(reading.prompt)} tokens`}
       </span>
       <button
         type="button"

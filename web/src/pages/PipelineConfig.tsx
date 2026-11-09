@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
 import { browseDataRoot, checkModulation, fetchDatasets, fetchMeta, fetchStaleOutputs, fetchVolumeCoverage, setDataRoot } from "../api/client";
+import { folderCount } from "./configSections";
 import {
   bootPercent,
   engine,
@@ -994,7 +995,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
             </Field>
             <div className="dataset-meta">
               <span>{selectedDataset?.raw_name ?? "No raw file selected"}</span>
-              <span>{datasets.length} datasets in folder · switch in the sidebar</span>
+              <span>{folderCount(datasets)} · switch in the sidebar</span>
             </div>
           </div>
         </div>

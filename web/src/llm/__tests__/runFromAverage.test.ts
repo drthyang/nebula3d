@@ -175,12 +175,11 @@ describe("an Apply card's Run, with the symmetry average on", () => {
     expect(state().decisions[state().decisions.length - 1]).toMatchObject({ kind: "run", action: "apply", runFrom: "symmetry_average" });
   });
 
-  it("after a Laue class, a Run card from the symmetry average (none while the average is off)", async () => {
+  it("after a Laue class, a Run card from the symmetry average, which declaring the class switches on", async () => {
     const laue = () => propose([step("compare_laue_classes", {}, { suggestion: "m-3m", classes: [], flag: null })])[0];
+    expect(usePipelineStore.getState().symmetryAverageEnabled).toBe(false);
     await applyOnClick(laue(), ctx, TRUSTED);
-    expect(runCard()).toBeUndefined();
-    usePipelineStore.setState({ symmetryAverageEnabled: true, symmetryLaue: "" });
-    await applyOnClick(laue(), ctx, TRUSTED);
+    expect(usePipelineStore.getState()).toMatchObject({ symmetryAverageEnabled: true, symmetryLaue: "m-3m" });
     expect(runCard()).toMatchObject({ runFrom: "symmetry_average", title: "Run from Symmetry average" });
   });
 

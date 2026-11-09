@@ -118,3 +118,12 @@ describe("the settings' labels (SETTING_LABEL)", () => {
     expect(settingLabel("noSuchField")).toBe("noSuchField");
   });
 });
+
+describe("the data folder's count", () => {
+  it("counts the folder's own datasets, a tuning run's views of them apart", async () => {
+    const { folderCount } = await import("../configSections");
+    expect(folderCount([{ id: "demo" }])).toBe("1 dataset in folder");
+    expect(folderCount([{ id: "a" }, { id: "a~tune~20261108T133720-efa2" }, { id: "a~tune~20261108T134255-b708" }])).toBe("1 dataset in folder (+2 tuning runs)");
+    expect(folderCount([{ id: "a" }, { id: "b" }, { id: "b~tune~r1" }])).toBe("2 datasets in folder (+1 tuning run)");
+  });
+});

@@ -24,6 +24,7 @@ import {
   decisionLine,
   HELD_NOTE,
   needsClick,
+  proposeFromReply,
   reportDecisions,
   ringHeldNow,
   undoAll,
@@ -160,13 +161,20 @@ describe("the modulation's card", () => {
 });
 
 describe("the settings only the user sets", () => {
-  it("the Laue class the comparison suggests, through the Configure page's form: no Run card, a whole run recomputes it", async () => {
+  it("the Laue class the comparison suggests, declared through the symmetry average: what Apply does said plainly, and a run from the average", async () => {
     const [p] = propose([step("compare_laue_classes", {}, { suggestion: "m-3m", classes: [], flag: null })]);
-    expect(p).toMatchObject({ held: "symmetry", fields: { symmetryLaue: "m-3m" } });
-    expect(p.runFrom).toBeUndefined();
+    expect(p).toMatchObject({
+      title: "Declare m-3m (symmetry average)",
+      held: "symmetry",
+      fields: { symmetryAverageEnabled: true, symmetryLaue: "m-3m" },
+      shown: { from: "none declared", to: "m-3m" },
+      runFrom: "symmetry_average",
+    });
+    expect(p.what).toBe("Apply averages the volume over m-3m and runs again from the start; the outputs then declare m-3m, which the stages and the symmetry check read.");
     await applyOnClick(p, ctx, TRUSTED);
-    expect(store().symmetryLaue).toBe("m-3m");
-    expect(state().proposals.filter((x) => x.kind === "run")).toEqual([]);
+    expect(store()).toMatchObject({ symmetryLaue: "m-3m", symmetryAverageEnabled: true });
+    // Declared already: no card.
+    expect(propose([step("compare_laue_classes", {}, { suggestion: "m-3m", classes: [], flag: null }, "c2")])).toEqual([]);
   });
 
   it("the |Q| band the coverage suggests: its two edges as the slider writes them, a Run card from the ΔPDF; Edit checks the pair", async () => {
@@ -182,6 +190,25 @@ describe("the settings only the user sets", () => {
     expect(store()).toMatchObject({ pdfQMin: "0.60", pdfQMax: "6.50" });
     expect(state().decisions[0]).toMatchObject({ action: "edit-apply", byClick: true, shown: { from: "full", to: "0.6–6.5 Å⁻¹" } });
     expect(state().proposals.find((x) => x.kind === "run")).toMatchObject({ runFrom: "pdf" });
+  });
+
+  it("one Laue class card for the Bragg sensing's and the comparison's: a later reply's twin joins it, and applying covers a card its change holds", async () => {
+    const compare = step("compare_laue_classes", {}, { suggestion: "m-3m", classes: [], flag: null }, "c1");
+    proposeFromReply(2, [compare], "", "demo");
+    const [card] = state().proposals;
+    expect(card.title).toBe("Declare m-3m (symmetry average)");
+    // The same class from another tool in a later reply: no second card, its evidence joins the first.
+    const again = { ...step("compare_laue_classes", {}, { suggestion: "m-3m", classes: [], flag: null }, "c2") };
+    proposeFromReply(3, [again], "", "demo");
+    expect(state().proposals.filter((p) => p.status === "open")).toHaveLength(1);
+    expect(state().proposals[0].evidence.map((e) => e.step)).toEqual(["c1", "c2"]);
+    // A card whose change the Apply makes hold (the class alone): covered, no Apply left to wait on.
+    addProposals([{ ...card, id: "P90", title: "Laue class", change: { symmetryLaue: "m-3m" }, fields: { symmetryLaue: "m-3m" }, from: { symmetryLaue: "" }, evidence: [] }]);
+    await applyOnClick(card, ctx, TRUSTED);
+    expect(state().proposals.find((p) => p.id === card.id)!.status).toBe("applied");
+    expect(state().proposals.find((p) => p.id === "P90")!.status).toBe("covered");
+    // The report lists the one Apply, no "kept" line for the covered card.
+    expect(reportDecisions("demo").map((d) => d.decision)).toEqual(["Applied Declare m-3m (symmetry average) none declared → m-3m"]);
   });
 
   it("the magnetic ion, the edge trim and the average's switch: each from a refused call, each set on the click", async () => {

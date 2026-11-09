@@ -149,6 +149,9 @@ def test_views_resolve_each_stage_to_its_folder(root: Path) -> None:
     assert ids == [base.id, tuning.view_id(base.id, run.id)]
     assert find_dataset(cfg, tuning.view_id(base.id, run.id, "punch-9")) is not None
     assert find_dataset(cfg, f"{base.id}~tune~../../etc") is None
+    # The folder's count is its own datasets: a tuning run's view is listed, not counted.
+    body = TestClient(create_app(cfg)).get("/api/data-root").json()
+    assert body["n_datasets"] == 1
 
 
 def test_bad_trials_are_refused(root: Path) -> None:

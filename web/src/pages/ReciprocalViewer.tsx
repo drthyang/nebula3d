@@ -24,7 +24,7 @@ import {
 import { powderPhaseText } from "../components/powderPhase";
 import { HighlightLayer } from "../components/HighlightLayer";
 import { RegionMarks, type MarkItem } from "../components/RegionMarks";
-import { sectionOf, type Section } from "../components/regionMark";
+import { sectionOf, snapToGrid, type Section } from "../components/regionMark";
 import { HklGrid } from "../components/UnitCellGrid";
 import { useLevels } from "../components/useLevels";
 import { ViewFrame } from "../components/ViewFrame";
@@ -144,7 +144,8 @@ export function ReciprocalViewer() {
   }, [axisInfo, focus, fixedAxis, setCutIndex, setFocus]);
 
   const idx = axisInfo ? Math.min(cutIndex, axisInfo.n - 1) : 0;
-  const value = axisInfo ? axisInfo.min + idx * axisInfo.step : 0;
+  // The cut as the grid means it: 0, not the float noise of a float32 axis's sample (snapToGrid).
+  const value = axisInfo ? snapToGrid(axisInfo.min + idx * axisInfo.step, axisInfo.step) : 0;
   const plane = AXIS_TO_PLANE[fixedAxis];
   const lut = COLORMAPS[colormap] ?? COLORMAPS.inferno;
 
@@ -180,7 +181,7 @@ export function ReciprocalViewer() {
 
   // Auto is taken from the CENTRE cut, so the scale holds still while the cut
   // slider is dragged and intensities stay comparable across cut positions.
-  const centerValue = axisInfo ? axisInfo.min + Math.floor(axisInfo.n / 2) * axisInfo.step : 0;
+  const centerValue = axisInfo ? snapToGrid(axisInfo.min + Math.floor(axisInfo.n / 2) * axisInfo.step, axisInfo.step) : 0;
   const scaleResults = useQueries({
     queries: stages.map((s) => ({
       queryKey: ["slice", s.volume_id, plane, centerValue, false],

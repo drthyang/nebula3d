@@ -101,7 +101,7 @@ describe("auto mode on dev-flatten, through the real pipeline", () => {
     expect(usePipelineStore.getState().punchSupercellH).toBe("");
     expect(run()).toMatchObject({ state: "paused", pause: { kind: "fact", before: "flatten" } });
     expect(run().facts.map((f) => [f.title, f.status])).toEqual([
-      ["Laue class", "declined"],
+      ["Declare 4/mmm (symmetry average)", "declined"],
       ["Supercell H", "open"],
     ]);
     const runsBefore = run().steps.filter((s) => s.name === "run_pipeline").length;

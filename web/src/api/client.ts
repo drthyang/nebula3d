@@ -84,6 +84,9 @@ export function fetchDatasets(): Promise<Dataset[]> {
   return getJSON<Dataset[]>("/api/datasets");
 }
 
+/** Whether a dataset id is a tuning run's view of a dataset ("<id>~tune~<run>…"), listed beside it, no dataset of its own. */
+export const isTuningView = (datasetId: string): boolean => datasetId.includes("~tune~");
+
 // One dataset by id — including a tuning run's view of it
 // ("<id>~tune~<run>" or "<id>~tune~<run>~<stage>-<n>").
 export function fetchDataset(datasetId: string): Promise<Dataset> {

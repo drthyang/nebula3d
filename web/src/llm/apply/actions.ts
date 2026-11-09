@@ -92,7 +92,47 @@ export function proposeFromReply(turn: number, steps: readonly AgentStep[], answ
     tune: useTuneStore.getState().stages,
     firstId: nextProposalNumber(),
   });
-  addProposals(ps);
+  // A card an open one makes already (an earlier reply's): none twice, its evidence joining that card's.
+  addProposals(ps.filter((p) => p.kind === "run" || !mergeIntoTwin(p)));
+}
+
+/** Whether `p` has an open twin; its evidence then joins the twin's (the Laue comparison's beside the Bragg sensing's). */
+export function mergeIntoTwin(p: Proposal): boolean {
+  const twin = openTwin(p);
+  if (!twin) return false;
+  const more = p.evidence.filter((e) => !twin.evidence.some((x) => x.step === e.step));
+  if (more.length) updateProposal(twin.id, { evidence: [...twin.evidence, ...more] });
+  return true;
+}
+
+/** The same change as `p`: its kind, fields and change. */
+export const sameChange = (p: Proposal, q: Proposal): boolean =>
+  q.kind === p.kind && JSON.stringify(q.fields) === JSON.stringify(p.fields) && JSON.stringify(q.change) === JSON.stringify(p.change);
+
+/** An open card on `p`'s dataset with `p`'s change, if any. */
+const openTwin = (p: Proposal): Proposal | undefined =>
+  useDecisionStore.getState().proposals.find((q) => q.id !== p.id && q.status === "open" && q.dataset === p.dataset && sameChange(p, q));
+
+/**
+ * After a card's change, the other open cards on its dataset whose change
+ * now holds (a Laue class the Bragg sensing and the Laue comparison both
+ * offered): covered, with no Apply left, never stale and waiting. Returns them.
+ */
+export function retireCovered(dataset: string, except: string): Proposal[] {
+  const s = config();
+  const covered = useDecisionStore
+    .getState()
+    .proposals.filter(
+      (q) =>
+        q.id !== except &&
+        q.dataset === dataset &&
+        q.status === "open" &&
+        q.kind !== "run" &&
+        Object.keys(q.fields).length > 0 &&
+        Object.entries(q.fields).every(([k, v]) => s[k as keyof PipelineConfig] === v),
+    );
+  for (const q of covered) updateProposal(q.id, { status: "covered" });
+  return covered;
 }
 
 // --------------------------------------------------------------- the card's state
@@ -286,6 +326,7 @@ async function applyChange(p: Proposal, ctx: ToolContext, edited: Record<string,
       ...(grant ? { byClick: true as const } : {}),
     });
     updateProposal(p.id, { status: "applied", ...(edited ? { shown } : {}) });
+    retireCovered(p.dataset, p.id);
     if (runAt) offerRun(p.turn, p.dataset, runAt, changeText(p.title, shown));
   } finally {
     useDecisionStore.setState({ working: null });
@@ -310,7 +351,8 @@ const asText = (v: unknown): string => (typeof v === "string" ? v : JSON.stringi
 
 /** What a card's settings read now, as its line shows them: the |Q| band as one, else each setting's value. */
 function shownTo(p: Proposal, s: PipelineConfig): string {
-  const keys = Object.keys(p.change);
+  // A Laue class declared through the symmetry average reads as the class.
+  const keys = Object.keys(p.change).filter((k, _i, all) => !(k === "symmetryAverageEnabled" && all.includes("symmetryLaue")));
   if (keys.includes("pdfQMin") && keys.includes("pdfQMax")) return s.pdfQMax ? `${s.pdfQMin ? Number(s.pdfQMin) : 0}–${Number(s.pdfQMax)} Å⁻¹` : "full";
   return keys
     .map((k) => {

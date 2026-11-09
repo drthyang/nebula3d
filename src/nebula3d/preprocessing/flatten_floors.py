@@ -74,7 +74,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from nebula3d.core import HKLVolume, low_memory, q_bin_indices
+from nebula3d.core import HKLVolume, low_memory, q_bin_indices, same_axes
 from nebula3d.preprocessing.radial_flatten import measured_q_range, shell_edges
 from nebula3d.utils.counting import bincount
 
@@ -311,10 +311,7 @@ def shell_floors(
 
 
 def _same_grid(vol: HKLVolume, other: HKLVolume) -> None:
-    if (vol.data.shape != other.data.shape
-            or not all(np.array_equal(a, b) for a, b in
-                       ((vol.h_axis, other.h_axis), (vol.k_axis, other.k_axis),
-                        (vol.l_axis, other.l_axis)))
+    if (not same_axes(vol, other)
             or not np.array_equal(np.asarray(vol.ub_matrix), np.asarray(other.ub_matrix))):
         raise ValueError("before must be on the volume's grid: the same shape, axes and UB")
 

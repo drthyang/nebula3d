@@ -356,14 +356,26 @@ def dim_centers(
     data_grp: h5py.Group, d_label: str, extra: h5py.Group | None = None,
 ) -> NDArray[np.float64]:
     """Bin centres of dim *d_label* (``"D0"``…): NEBULA3D's exact copy when the
-    file has one that matches the edges, else the edge midpoints."""
-    centers = _bin_centers(data_grp[d_label][:].astype(np.float64))
+    file has one that matches the edges, else the edge midpoints.
+
+    The copy matches when its centres sit on the edges' midpoints, or when the
+    edges are the ones :func:`write_md_histo` derives from it
+    (:func:`_bin_edges`). An axis read from a Mantid file whose edges were
+    stored in float32 is uneven at that precision, so the midpoints of the
+    edges derived from it can miss it by more than the first test allows;
+    without the second, every stage reloaded from disk (a run resumed from a
+    stage) moved its axes by a float32 ulp, and its grid no longer equalled
+    that of the stage it came from."""
+    edges = data_grp[d_label][:].astype(np.float64)
+    centers = _bin_centers(edges)
     if extra is None or f"{d_label}_centers" not in extra:
         return centers
     exact = np.asarray(extra[f"{d_label}_centers"][()], dtype=np.float64)
+    if exact.shape != centers.shape:
+        return centers
     step = float(np.abs(np.diff(centers)).max()) if centers.size > 1 else 1.0
-    if exact.shape == centers.shape and np.allclose(exact, centers, rtol=0.0,
-                                                    atol=1e-6 * step):
+    if (np.allclose(exact, centers, rtol=0.0, atol=1e-6 * step)
+            or np.array_equal(_bin_edges(exact), edges)):
         return exact
     return centers
 

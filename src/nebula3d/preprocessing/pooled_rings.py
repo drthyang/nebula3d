@@ -1167,6 +1167,31 @@ def _crystals_own(verdict: object) -> bool:
 SUMMARY_LEFT = 4
 
 
+def on_al_line(shell: object) -> bool:
+    """Whether a shell of the record sits on a fitted Al line (its ``match``)."""
+    m = shell.get("match") if isinstance(shell, dict) else None
+    return isinstance(m, dict) and m.get("phase") == "Al"
+
+
+def left_shell_words(shell: object) -> str | None:
+    """A judged shell the pooled ring removal left, named as its record names
+    it (:func:`shell_summary`'s code): its |Q|, its Al line if it sits on one,
+    and why it was left (:func:`_left_code`), a cluster's member said as the
+    doublet or cluster it belongs to: ``"6.76 Å⁻¹ Al331, member of a
+    doublet"``.  None for anything but a shell with a |Q|."""
+    if not isinstance(shell, dict) or not isinstance(shell.get("q_center"), (int, float)):
+        return None
+    verdict = shell.get("isotropy")
+    code = _left_code(verdict)
+    if code == "member":
+        lines = verdict.get("lines") if isinstance(verdict, dict) else None
+        code = ("member of a doublet" if isinstance(lines, list) and len(lines) == 2
+                else "member of a cluster")
+    m = shell.get("match")
+    al = f" Al{m.get('hkl')}" if isinstance(m, dict) and m.get("phase") == "Al" else ""
+    return f"{float(shell['q_center']):.2f} Å⁻¹{al}, {code}"
+
+
 def _left_code(verdict: object) -> str:
     """Why a shell was left, in one word: the first criterion it failed
     (height, isotropy, snr, curve, member), or why it was not judged (grid,
@@ -1243,4 +1268,4 @@ def removed_shells(diagnostics: object) -> list[dict[str, object]] | None:
 
 
 __all__ = ["SUMMARY_LEFT", "PooledRingConfig", "PooledRingResult", "fit_pooled_rings",
-           "removed_shells", "shell_summary"]
+           "left_shell_words", "on_al_line", "removed_shells", "shell_summary"]

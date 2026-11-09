@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { useDecisionStore } from "../apply/decisions";
 import { sinceLine } from "../apply/since";
-import { applyFact, autoLoop, endAuto, refusalNote, resumeAuto, skipFact, standingAutoChanges, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
+import { applyFact, autoLoop, changesTheRun, endAuto, refusalNote, resumeAuto, skipFact, standingAutoChanges, startAuto, startBlocked, stopAuto, undoAutoRun } from "../auto/controller";
 import { REPORT_PROMPT } from "../auto/prompts";
 import { useAutoStore, type AutoRun } from "../auto/store";
 import { autoTranscript, isAppStep, isSeeded } from "../auto/transcript";
@@ -189,7 +189,8 @@ describe("a run with a fixable stage", () => {
     model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", round === 1 ? { punchMinSig: 5 + model.sent.length % 3 } : null)(round) : say("The punch still needs attention."));
     await start();
     expect(status()).toMatchObject({ punch: "attention", backfill: "passed", report: "done" });
-    expect(run().plan.find((r) => r.id === "punch")).toMatchObject({ tries: 2, detail: "still needs attention after two fixes" });
+    // The second fix set the value the first had: it adopted no change, and the row says so.
+    expect(run().plan.find((r) => r.id === "punch")).toMatchObject({ tries: 2, detail: "still needs attention after two fixes (one adopted no change)" });
     expect(run().replies).toBe(3); // two fixes and the report
     expect(run().problems).toEqual(["the Bragg punch needs attention: missed at nodes (assess_stage punch)", "the counts end at 4.4 Å⁻¹, inside the box (qmax_coverage)"]);
     // The model is not asked for them: its prompt asks for the verdicts, the changes and what is left.
@@ -347,13 +348,51 @@ describe("a run that pauses for a sample fact", () => {
     clock.t += 40 * 60_000;
     await applyFact(TRUSTED);
     await (autoLoop() ?? Promise.resolve());
-    expect(usePipelineStore.getState().symmetryLaue).toBe("4/mmm");
+    // Declared through the symmetry average, which the run then reads.
+    expect(usePipelineStore.getState()).toMatchObject({ symmetryLaue: "4/mmm", symmetryAverageEnabled: true });
     expect(run().state).toBe("done");
     expect(run().limit).toBeNull();
-    expect(run().facts).toEqual([{ proposal: expect.any(String), title: "Laue class", shown: "none → 4/mmm", status: "applied", at: expect.any(Number) }]);
+    expect(run().facts).toEqual([{ proposal: expect.any(String), title: "Declare 4/mmm (symmetry average)", shown: "none declared → 4/mmm", status: "applied", at: expect.any(Number) }]);
     const fact = decisions().find((d) => d.kind === "fact")!;
     expect([fact.by, fact.byClick, fact.action]).toEqual(["you", true, "apply"]);
-    expect(pipeline.runs[0].with.symmetryLaue).toBe("4/mmm");
+    expect(pipeline.runs[0].with).toMatchObject({ symmetryLaue: "4/mmm", symmetryAverageEnabled: true });
+  });
+
+  const declaring = (cls: string) =>
+    api.fetchBraggSense.mockImplementation(async (id: string) => ({
+      ...braggSenseKeeping(id),
+      mirrors: { tested: 12, worst_share: 0, exact: true, declared: false, declare: cls },
+      lines: { ...braggSenseKeeping(id).lines, symmetry: `declares none, yet every axis mirror holds to 0.0e+00 of the spread: symmetrised already; declaring ${cls} is the user's` },
+    }));
+
+  it("asks once for a class the Bragg sensing and the Laue comparison both offer, the card resting on both", async () => {
+    declaring("4/mmm");
+    await start();
+    expect(run().pause).toMatchObject({ kind: "fact", before: "run" });
+    expect(run().facts).toHaveLength(1);
+    const card = useDecisionStore.getState().proposals.find((p) => p.id === run().facts[0].proposal)!;
+    expect(card.title).toBe("Declare 4/mmm (symmetry average)");
+    expect(card.evidence.map((e) => e.label)).toEqual(expect.arrayContaining(["Sensed the Bragg peaks", "Compared the Laue classes by R_int"]));
+    expect(useDecisionStore.getState().proposals.filter((p) => p.status === "open" && p.held === "symmetry")).toHaveLength(1);
+  });
+
+  it("never waits on a card another one's Apply left stale: it is set aside and the run goes on", async () => {
+    declaring("mmm");
+    await start();
+    expect(run().facts.map((f) => f.title)).toEqual(["Declare mmm (symmetry average)", "Declare 4/mmm (symmetry average)"]);
+    await applyFact(TRUSTED);
+    for (let i = 0; i < 100 && run().state !== "done"; i++) await (autoLoop() ?? new Promise((r) => setTimeout(r, 10)));
+    expect(usePipelineStore.getState()).toMatchObject({ symmetryAverageEnabled: true, symmetryLaue: "mmm" });
+    expect(run().state).toBe("done");
+    expect(run().facts.map((f) => f.status)).toEqual(["applied", "declined"]);
+    expect(useDecisionStore.getState().proposals.filter((p) => p.held === "symmetry").map((p) => p.status)).toEqual(["applied", "dismissed"]);
+  });
+
+  it("owes no run for a fact that changes nothing a run sends (a Laue class with the average off: 0 computed, 6 reused)", () => {
+    const form = { ...usePipelineStore.getState(), symmetryAverageEnabled: false, symmetryLaue: "" };
+    expect(changesTheRun({ symmetryLaue: "" }, { symmetryLaue: "mmm" }, form)).toBe(false);
+    expect(changesTheRun({ symmetryAverageEnabled: false, symmetryLaue: "" }, { symmetryAverageEnabled: true, symmetryLaue: "mmm" }, form)).toBe(true);
+    expect(changesTheRun({ punchSupercellH: "" }, { punchSupercellH: "2" }, form)).toBe(true);
   });
 
   it("goes on after Skip, the fact declined and listed in the report's digest", async () => {
@@ -364,11 +403,12 @@ describe("a run that pauses for a sample fact", () => {
     expect(usePipelineStore.getState().symmetryLaue).toBe("");
     expect(run().facts[0].status).toBe("declined");
     const report = last(model.sent).messages[1].content as string;
-    expect(report).toContain("you kept symmetryLaue none, declined 4/mmm");
+    expect(report).toContain("you kept symmetryLaue none declared, declined 4/mmm");
   });
 
   it("pauses before the punch for a supercell the fix proposes, and runs from the punch once you apply it", async () => {
-    usePipelineStore.getState().patch({ symmetryLaue: "4/mmm" });
+    // The class declared already (the average over it on): the preflight asks nothing.
+    usePipelineStore.getState().patch({ symmetryLaue: "4/mmm", symmetryAverageEnabled: true });
     outputs.tweak = (stage, e, ranWith) => (stage === "rings" ? cleanRings(e) : stage === "punch" && ranWith.punchSupercellH === "2" ? cleanPunch(e) : e);
     model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", { punchSupercellH: 2 })(round) : say("Done."));
     await start();
@@ -836,7 +876,9 @@ describe("the Now line and the activity log", () => {
     }
     expect(during!.now).toBe("Tuning the Bragg punch, trial 2 of 3");
     expect(during!.rows.slice(-1)[0]).toMatchObject({ status: "running", line: "Tuning the Bragg punch, trial 2 of 3" });
-    expect(activityNow()!.rows.find((r) => r.title === "Fix the Bragg punch, first of one")!.line).toBe("Tuned the stage");
+    // The tuning changed no setting: the log says no change was adopted, not that the stage was tuned.
+    expect(activityNow()!.rows.find((r) => r.title === "Fix the Bragg punch, first of one")!.line).toBe("No change adopted: the tuning kept the current settings");
+    expect(run().plan.find((r) => r.id === "punch")!.detail).toBe("still needs attention after one fix: no change adopted");
   });
 
   it("a fact: waits for your answer, the row needs you; Skip logs it skipped and the run goes on", async () => {
@@ -846,14 +888,14 @@ describe("the Now line and the activity log", () => {
     model.respond = () => say("Done.");
     await start();
     let a = activityNow()!;
-    expect(a.now).toBe("Waiting for your answer: Laue class");
-    expect(a.rows.slice(-1)[0]).toMatchObject({ status: "needs you", title: "Asked you: Laue class none → 4/mmm", line: expect.stringMatching(/^Waiting for your answer/) });
+    expect(a.now).toBe("Waiting for your answer: Declare 4/mmm (symmetry average)");
+    expect(a.rows.slice(-1)[0]).toMatchObject({ status: "needs you", title: "Asked you: Declare 4/mmm (symmetry average) none declared → 4/mmm", line: expect.stringMatching(/^Waiting for your answer/) });
     skipFact();
     await new Promise((r) => setTimeout(r, 0));
     await (autoLoop() ?? Promise.resolve());
     a = activityNow()!;
     expect(a.now).toBe("Done, with its report.");
-    expect(a.rows.find((r) => r.title.startsWith("Asked you: Laue class"))).toMatchObject({ status: "skipped", line: expect.stringMatching(/^Skipped by you/) });
+    expect(a.rows.find((r) => r.title.startsWith("Asked you: Declare 4/mmm"))).toMatchObject({ status: "skipped", line: expect.stringMatching(/^Skipped by you/) });
     // Asked after the preflight's checks, before the run.
     const i = a.rows.findIndex((r) => r.title.startsWith("Asked you"));
     expect(a.rows.slice(0, i).some((r) => r.title === "Checked Qmax against coverage")).toBe(true);

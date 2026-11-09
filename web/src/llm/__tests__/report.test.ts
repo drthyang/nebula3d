@@ -155,6 +155,13 @@ describe("rendering", () => {
     expect(html).toContain("needs attention");
   });
 
+  it("numbers the model's summary as it wrote it: sub-lists inside their item, a broken list going on at its number", () => {
+    const answer = "1. Rings.\n2. Punch.\n   - tails\n3. Backfill.\n\n- an aside\n\n4. Flatten.";
+    const html = reportHtml(buildReport(input({ answer })));
+    expect(html).toContain("<ol><li>Rings.</li><li>Punch.<ul><li>tails</li></ul></li><li>Backfill.</li></ol>");
+    expect(html).toContain('<ol start="4"><li>Flatten.</li></ol>');
+  });
+
   it("opens on the results and their limitations, and keeps the provenance, whole, in one collapsed section", () => {
     const tuning = [{ stage: "punch", why: "fewer leftovers", trials: [{ n: 1, changes: "your settings", headline: "12 missed", chosen: false }, { n: 2, changes: "punchMinSig=4", headline: "0 missed", chosen: true }] }];
     const steps = [{ tool: "assess_stage", summary: "assessed the five stages on three planes", ok: true }];
