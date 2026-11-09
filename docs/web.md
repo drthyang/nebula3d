@@ -507,7 +507,8 @@ window, the renderer's memory or the DOM nodes grow, the page keeps changing
 its DOM or burning CPU, or any passes its bound
 (`PW=<playwright-core> node scripts/pilot_memory_check.mjs <url> <out-dir>
 --model=<scripted model URL>`; its header lists the limits). Use it on a
-synthetic volume of a realistic size, such as 401 × 401 × 301.
+synthetic volume of a realistic size, such as 401 × 401 × 301
+(`PYTHONPATH=src python scripts/demo/synthetic_volume.py <data-root>` writes one).
 
 ### Memory bar
 

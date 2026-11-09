@@ -13,7 +13,8 @@
 //     [--max-cpu=0.5] [--max-mutations=200] [--shell] [--profile] [--snapshot]
 //
 // <base-url> is a running console: the native server with a synthetic volume
-// (a realistic size is 401 × 401 × 301; the auto run runs its pipeline), or
+// (a realistic size is 401 × 401 × 301, which scripts/demo/synthetic_volume.py
+// writes; the auto run runs its pipeline), or
 // the Pyodide build with --demo (it loads the demo volume first). Synthetic
 // data only: never point it at measured data you may not publish.
 //
