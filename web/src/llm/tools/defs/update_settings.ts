@@ -43,6 +43,7 @@ import { checkUserSettings, userSetting } from "../../tune/userSettings";
 import { keysOf } from "../facts";
 import { checkIdle, unique } from "../shared/pipeline";
 import { namesRingSetting, RING_SETTINGS, ringEvidenceRefusal, ringVerdictAllowsChange } from "../shared/ringGate";
+import { settingTitle } from "../../apply/settingTitle";
 import { ToolArgError, type ChatTool } from "../types";
 
 /** A setting update_settings changes: a method choice or threshold of the catalog, or a fact about the sample. */
@@ -209,9 +210,10 @@ export const update_settings: ChatTool = {
         };
       });
     const rerunFrom = TUNE_STAGES.find((st) => changed.some((c) => settableOrUsers(c.setting)!.stage === st));
+    // The step's line names the settings as the console does; its result keeps the keys.
     const done = changed.length
-      ? changed.map((c) => `${c.setting} ${c.from} → ${c.to}`).join(", ")
-      : `no change: ${unchanged.join(", ")} already set`;
+      ? changed.map((c) => `${settingTitle(c.setting)} ${c.from} → ${c.to}`).join(", ")
+      : `no change: ${unchanged.map(settingTitle).join(", ")} already set`;
     return {
       result: {
         changed,
@@ -222,10 +224,10 @@ export const update_settings: ChatTool = {
       summary: refused.length
         ? [
             done,
-            ...(refused.some((k) => isSampleFact(k)) ? [`refused, a fact about the sample: ${refused.filter((k) => isSampleFact(k)).join(", ")}`] : []),
-            ...(refused.some((k) => isUserChoice(k)) ? [`refused, the user's to choose: ${refused.filter((k) => isUserChoice(k)).join(", ")}`] : []),
-            ...(refused.some(userSets) ? [`refused, the user's to set: ${refused.filter(userSets).join(", ")}`] : []),
-            ...(refused.some((k) => RING_SETTINGS.includes(k)) ? [`refused, no 3D verdict of a powder ring left: ${refused.filter((k) => RING_SETTINGS.includes(k)).join(", ")}`] : []),
+            ...(refused.some((k) => isSampleFact(k)) ? [`refused, a fact about the sample: ${refused.filter((k) => isSampleFact(k)).map(settingTitle).join(", ")}`] : []),
+            ...(refused.some((k) => isUserChoice(k)) ? [`refused, the user's to choose: ${refused.filter((k) => isUserChoice(k)).map(settingTitle).join(", ")}`] : []),
+            ...(refused.some(userSets) ? [`refused, the user's to set: ${refused.filter(userSets).map(settingTitle).join(", ")}`] : []),
+            ...(refused.some((k) => RING_SETTINGS.includes(k)) ? [`refused, no 3D verdict of a powder ring left: ${refused.filter((k) => RING_SETTINGS.includes(k)).map(settingTitle).join(", ")}`] : []),
           ].join("; ")
         : done,
     };

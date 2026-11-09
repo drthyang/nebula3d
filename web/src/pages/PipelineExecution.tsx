@@ -21,7 +21,7 @@ import type { JobEvent } from "../api/types";
 import { useDatasetStore } from "../state/datasetStore";
 import { useConfigViewStore } from "../state/configViewStore";
 import { laueSpecOf } from "../state/laue";
-import { STAGES, STAGE_LABELS, usePipelineStore } from "../state/pipelineStore";
+import { runMs, STAGES, STAGE_LABELS, usePipelineStore } from "../state/pipelineStore";
 import { PYODIDE_MODE } from "../api/pyodideEngine";
 import { litStage, useHighlightKeys } from "../llm/highlight";
 import { logClass, runOutputs, runPhase, stageInfo as infoOf, stageMs, stageStates, warns, windowSupportFailed, type Phase } from "./executionLog";
@@ -93,8 +93,10 @@ function condense(events: JobEvent[], times: number[]): { ev: JobEvent; t: numbe
 
 export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const lit = useHighlightKeys();
-  const { events, times, terminal, running, reconnecting, flatten, symmetrize, jobId, lastRun } = usePipelineStore(
+  const { events, times, terminal, running, reconnecting, flatten, symmetrize, jobId, lastRun, startedAt, endedAt } = usePipelineStore(
     useShallow((s) => ({
+      startedAt: s.startedAt,
+      endedAt: s.endedAt,
       reconnecting: s.reconnecting,
       events: s.events,
       times: s.times,
@@ -142,7 +144,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
   );
 
   // Latest status / fraction / message + first & last timestamp per stage.
-  const stageInfo = infoOf(events, times);
+  const stageInfo = infoOf(events, times, startedAt);
   const phase: Phase = runPhase(running, terminal, events.length);
 
   // Each stage's state: the run's own stages (a reused output that is stale
@@ -190,9 +192,8 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
   const interruptedNo = interruptedStage ? inRun.indexOf(interruptedStage) + 1 : 0;
 
   // Timing figures.
-  const startT = times[0] ?? Date.now();
-  const lastT = times[times.length - 1] ?? startT;
-  const elapsed = (phase === "running" ? Date.now() : lastT) - startT;
+  // The run's time, as the Pilot says it too (runMs: from its request to its end as heard).
+  const elapsed = runMs({ startedAt, endedAt, running: phase === "running", times }) ?? 0;
   const eta =
     phase === "running" && overall > 0.02 && overall < 1
       ? (elapsed * (1 - overall)) / overall

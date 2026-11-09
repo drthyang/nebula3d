@@ -39,7 +39,7 @@ Change or tune the 3D-ΔPDF so its checks above pass: one update_settings change
 ### Report
 
 ```text
-Report on this auto run from the checks above, its final ones: each stage's verdict with the numbers it rests on, what changed during the run and why, and what is left for the user to decide.
+Report on this auto run from the checks above, its final ones: each stage's verdict with the numbers it rests on, what changed during the run and why, and what is left for the user to decide. Use the console's names, not keys or tool names.
 ```
 
 The transcript's line before each (the user turn the chat keeps; later chat history, never the guard's user words): `Auto · fix the ring removal, first of two`, `Auto · fix the Bragg punch, first of two`, `Auto · the report`.
@@ -54,6 +54,7 @@ The transcript's line before each (the user turn the chat keeps; later chat hist
 ```text
 - auto run so far: preflight done; the run done; the ring removal still needs attention after two fixes; the Bragg punch still needs attention after two fixes; the backfill still needs attention after two fixes; the flatten still needs attention after two fixes; the 3D-ΔPDF still needs attention after two fixes
 - the fixes ended at the time limit
+- the chat before this run: Compared the Laue classes by R_int
 - in this auto run, auto mode ran the pipeline from the start; you kept modulation default, declined k = (0, 1/3, 0), order 1, points, ± 0.08 r.l.u.; auto mode applied ringPooledSectors 72 → 32; ran the pipeline from rings; undid ringPooledSectors 32 → 72; ran the pipeline from rings; applied punchMinSig 5 → 6; ran the pipeline from punch
 ```
 

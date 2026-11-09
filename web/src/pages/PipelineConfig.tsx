@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
 import { browseDataRoot, checkModulation, fetchDatasets, fetchMeta, fetchStaleOutputs, fetchVolumeCoverage, setDataRoot } from "../api/client";
-import { folderCount } from "./configSections";
+import { datasetCount, folderCount } from "./configSections";
 import {
   bootPercent,
   engine,
@@ -692,7 +692,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       setRootDraft(next.data_root);
       resetDataset();
       await queryClient.invalidateQueries();
-      setRootNote(`${next.n_datasets} datasets`);
+      setRootNote(datasetCount(next.n_datasets));
     } catch (e) {
       setRootError((e as Error).message);
     }
@@ -706,7 +706,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
       setRootDraft(next.data_root);
       resetDataset();
       await queryClient.invalidateQueries();
-      setRootNote(`${next.n_datasets} datasets`);
+      setRootNote(datasetCount(next.n_datasets));
     } catch (e) {
       const message = (e as Error).message;
       if (message.startsWith("409 ")) {
@@ -755,7 +755,7 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
     ? rootError
     : rootNote ??
       (dataRootQ.data
-        ? `${dataRootQ.data.raw_exists ? "raw" : "no raw"} · ${dataRootQ.data.processed_exists ? "processed" : "no processed"} · ${dataRootQ.data.n_datasets} datasets`
+        ? `${dataRootQ.data.raw_exists ? "raw" : "no raw"} · ${dataRootQ.data.processed_exists ? "processed" : "no processed"} · ${datasetCount(dataRootQ.data.n_datasets)}`
         : " ");
 
   return (

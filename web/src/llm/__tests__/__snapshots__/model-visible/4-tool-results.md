@@ -1635,7 +1635,7 @@ natively and runs only when the support has unsupported voxels.
 
 ## consistency_details {}
 
-253 characters sent.
+248 characters sent.
 
 ```json
 {
@@ -1650,7 +1650,7 @@ natively and runs only when the support has unsupported voxels.
   "crop_hkl": null,
   "apodization": "gaussian",
   "pearson_r_even": 1,
-  "normalized_rms_even": 2.1e-7,
+  "normalized_rms_even": 0,
   "odd_share": 0.00421,
   "n_voxels_even": 117649
 }

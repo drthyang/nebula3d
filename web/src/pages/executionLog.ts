@@ -57,14 +57,19 @@ export interface StageInfo {
 }
 
 /** Each stage's latest status, fraction and message, how it ended, and its first and last times. */
-export function stageInfo(events: readonly JobEvent[], times: readonly number[]): Record<string, StageInfo> {
+export function stageInfo(events: readonly JobEvent[], times: readonly number[], start?: number | null): Record<string, StageInfo> {
   const out: Record<string, StageInfo> = {};
+  // A stage's time starts where the one before it ended (or the run began):
+  // reading its input and the run's start-up are its time too, so the
+  // stages' times add up to the run's (runMs), less what follows the last.
+  let since = start ?? times[0];
   events.forEach((ev, i) => {
     if (!ev.stage || !ev.status) return;
     const ended = ev.status === "done" || ev.status === "skip" ? (ev.status as "done" | "skip") : undefined;
     const cur = out[ev.stage];
     if (!cur) {
-      out[ev.stage] = { status: ev.status, fraction: ev.fraction ?? null, message: ev.message, firstT: times[i], lastT: times[i], ...(ended ? { endedAs: ended, endT: times[i] } : {}) };
+      out[ev.stage] = { status: ev.status, fraction: ev.fraction ?? null, message: ev.message, firstT: Math.min(since ?? times[i], times[i]), lastT: times[i], ...(ended ? { endedAs: ended, endT: times[i] } : {}) };
+      if (ended) since = times[i];
     } else {
       cur.status = ev.status;
       cur.fraction = ev.fraction ?? null;
@@ -73,13 +78,14 @@ export function stageInfo(events: readonly JobEvent[], times: readonly number[])
       if (ended) {
         cur.endedAs = ended;
         cur.endT = times[i];
+        since = times[i];
       }
     }
   });
   return out;
 }
 
-/** How long a stage took: from its first line to the line that said how it ended (else its last). */
+/** How long a stage took: from the end of the one before it (or the run's start) to the line that said how it ended (else its last). */
 export const stageMs = (info: StageInfo): number => (info.endT ?? info.lastT) - info.firstT;
 
 /** A stage's status as its state reads it: an error, else how it ended once it said so, else its latest. */

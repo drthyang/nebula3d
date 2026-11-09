@@ -246,8 +246,9 @@ export function showMark(mark: Mark, datasetId: string | undefined): boolean {
   const v = mark.view;
   if (v.page === "cleanup") {
     const vs = useViewerStore.getState();
-    // The shared colour scale from the mark's own stage, where what it marks stands out.
-    vs.setScaleRef(WHERE_OUTPUT[mark.where]);
+    // The mark's own stage's view on its own Auto scale, where what it marks
+    // stands out; the other views keep the shared scale (viewerStore, markScale).
+    vs.setMarkScale(WHERE_OUTPUT[mark.where]);
     // The cleanup page snaps the focus to its grid once its metadata is in (openView does the same).
     vs.setFocus({ axis: v.axis, value: v.value });
     vs.setFixedAxis(v.axis);

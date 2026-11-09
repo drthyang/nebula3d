@@ -32,6 +32,7 @@ import {
 import { useDecisionStore, type Decision } from "../apply/decisions";
 import { editedChange, editFields } from "../apply/edit";
 import type { Proposal } from "../apply/proposals";
+import { trialChangesText } from "../apply/settingTitle";
 import { useChatStore } from "../chatStore";
 import type { ToolContext } from "../tools";
 import { goToStep } from "./goToStep";
@@ -81,7 +82,7 @@ function Change({ p }: { p: Proposal }) {
       ) : (
         " "
       )}
-      {p.shown.to}
+      {p.kind === "trial" ? trialChangesText(p.shown.to) : p.shown.to}
     </span>
   );
 }

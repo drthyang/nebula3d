@@ -14,6 +14,7 @@ import { scanLeftoverPeaks } from "../metrics/punch";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
+import { unitFigure } from "../tools/shared/figures";
 import { ubTurnFacts } from "../metrics/ubTurn";
 import type { GridSlice } from "../metrics/sliceStats";
 import { operationSymmetry, pointGroup, sectionSymmetry, transpose } from "../metrics/symmetry";
@@ -151,12 +152,13 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const open = dmeta?.window_open_weight;
     return {
       back_fft_pearson_r: m ? roundSig(m.pearson_r, 5) : null,
-      back_fft_normalized_rms: m ? roundSig(m.normalized_rms, 4) : null,
+      // A share or a normalised figure at float roundoff reads 0 (unitFigure), not 7.94e-15.
+      back_fft_normalized_rms: m ? unitFigure(m.normalized_rms, 4) : null,
       // Against the data's even part, which the real transform keeps (the
       // verdict's r): 1 when the transform is sound. The odd share is what r
       // against the data loses to counting noise on unsymmetrised data.
       back_fft_pearson_r_even: m?.pearson_r_even != null ? roundSig(m.pearson_r_even, 6) : null,
-      back_fft_odd_share: m?.odd_share != null ? roundSig(m.odd_share, 3) : null,
+      back_fft_odd_share: m?.odd_share != null ? unitFigure(m.odd_share, 3) : null,
       // Each plane's r to the round trip's own figures (back_fft_pearson_r's), not float noise.
       back_fft_per_plane_r: m?.per_plane_r ? Object.fromEntries(Object.entries(m.per_plane_r).map(([k, r]) => [k, typeof r === "number" ? roundSig(r, 5) : r])) : null,
       mean_feature_snr: mean(Object.values(perPlane).map((p) => p?.feature_snr)),

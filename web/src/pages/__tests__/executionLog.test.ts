@@ -189,8 +189,20 @@ describe("a stage that adds a note after its done line", () => {
     // The note on the symmetry lands after the whole run's later stages: seconds, not minutes, of the ring removal.
     const times = [0, 10_000, 70_000, 600_000, 610_000, 620_000, 630_000];
     const info = stageInfo(events, times);
-    expect(stageMs(info.rings)).toBe(60_000);
-    expect(stageMs(info.pdf)).toBe(10_000); // no end line: its last
+    // From the symmetry average's end (0 s) to its own done line (70 s): its start-up is its time too.
+    expect(stageMs(info.rings)).toBe(70_000);
+    expect(stageMs(info.pdf)).toBe(20_000); // from the punch's end; no end line: its last
+  });
+
+  it("starts each stage where the one before it ended, so the stages add up to the run's time", () => {
+    // The run asked for at 0; its first line 7 s later (the job's start-up); a gap between stages (writing, reading).
+    const times = [7_000, 9_000, 15_000, 16_000, 24_000, 30_000, 31_000];
+    const info = stageInfo(events, times, 0);
+    expect(stageMs(info.symmetry_average)).toBe(7_000);
+    expect(stageMs(info.rings)).toBe(8_000); // 7 s → 15 s, its symmetry note at 16 s not counted
+    expect(stageMs(info.punch)).toBe(9_000); // 15 s → 24 s
+    const sum = ["symmetry_average", "rings", "punch", "pdf"].reduce((a, st) => a + stageMs(info[st]), 0);
+    expect(sum).toBe(31_000); // the run's time to its last line
   });
 
   it("is failed when an error of its own comes after its done line", () => {

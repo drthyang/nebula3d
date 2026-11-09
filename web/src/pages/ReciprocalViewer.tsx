@@ -85,6 +85,7 @@ export function ReciprocalViewer() {
   const scale = useViewerStore((s) => s.scale);
   const manual = useViewerStore((s) => s.levels);
   const scaleRef = useViewerStore((s) => s.scaleRef);
+  const markScale = useViewerStore((s) => s.markScale);
   const views = useViewerStore((s) => s.views);
   const colormap = useViewerStore((s) => s.colormap);
   const setFixedAxis = useViewerStore((s) => s.setFixedAxis);
@@ -213,6 +214,10 @@ export function ReciprocalViewer() {
 
   // "Each view": every stage on its own Auto from its centre-cut slice.
   const panelAuto = scaleResults.map((r) => (perPanel && r.data ? cachedAuto(r.data, scale) : null));
+  // A shown mark's stage: its view alone on its own Auto (viewerStore, markScale).
+  const markIdx = !perPanel && markScale ? stageIds.indexOf(markScale) : -1;
+  const markData = markIdx >= 0 ? scaleResults[markIdx]?.data : undefined;
+  const markAuto = markData ? cachedAuto(markData, scale) : null;
 
   // One viewport for every stage view on this plane, shared with the Q–R page.
   const fit = useMemo(() => {
@@ -391,7 +396,7 @@ export function ReciprocalViewer() {
           dispatch={dispatchLayout}
           views={stages.map((s, i) => {
             const r = sliceResults[i];
-            const own = perPanel ? panelAuto[i] : null;
+            const own = perPanel ? panelAuto[i] : i === markIdx ? markAuto : null;
             const lo = own ? own.lo : lv.levels.lo;
             const hi = own ? own.hi : lv.levels.hi;
             return {

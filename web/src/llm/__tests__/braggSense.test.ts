@@ -89,7 +89,7 @@ describe("bragg_sense's result", () => {
     freshConsole();
     const r = await sensed();
     expect(JSON.parse(r.text)).toEqual({ ...BRAGG_SENSE_LINES, recommend: { punchFootprint: "ellipsoid", punchFitUnconstrained: true } });
-    expect(r.summary).toBe("195 strong nodes · punchFootprint ellipsoid, punchFitUnconstrained true · reach grows with |Q|");
+    expect(r.summary).toBe("195 strong nodes · Punch footprint ellipsoid, Punch drop fit constraints true · reach grows with |Q|");
     // The flagged peaks ride beside the result, for the overlays; the model reads the lines alone.
     expect(r.text).not.toMatch(/flagged|dirs|widths/);
   });

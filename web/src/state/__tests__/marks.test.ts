@@ -182,15 +182,20 @@ describe("showing a mark", () => {
     expect(useMarkStore.getState().revealed).toEqual({ id: "M1", seq: 2 });
   });
 
-  it("scales the views from the mark's own stage, and the Highlights bar no longer names the step shown before", () => {
+  it("scales the mark's own stage's view on its own, the others keeping the shared scale, and the Highlights bar no longer names the step shown before", () => {
     useViewerStore.getState().setScaleRef("raw");
     useExamineStore.setState({ current: "grain_check|{}" });
     const s = spec("punch", { shape: "box", center: [1, 1, 0.5], half: [0.05, 0.05, 0.05] });
     const plan = planMark(s, RECIP, NOW);
     if (!plan.ok) throw new Error(plan.reason);
     placeMark(s, plan, "ds1");
-    expect(useViewerStore.getState().scaleRef).toBe("braggpunched");
+    // The shared scale stays the user's (a punch residual's range saturated the raw views); the punch's view scales itself.
+    expect(useViewerStore.getState().scaleRef).toBe("raw");
+    expect(useViewerStore.getState().markScale).toBe("braggpunched");
     expect(useExamineStore.getState().current).toBeNull();
+    // Picking the scale again puts the mark's view back on it.
+    useViewerStore.getState().setScaleRef("flattened");
+    expect(useViewerStore.getState().markScale).toBeNull();
   });
 
   it("opens the 3D-ΔPDF page with its three cuts and the zoom of each section", () => {

@@ -30,7 +30,7 @@ import { ReciprocalViewer } from "./pages/ReciprocalViewer";
 import { useDatasetStore, useInitializeDataset } from "./state/datasetStore";
 import { useNavStore, type Tab } from "./state/navStore";
 import { usePipelineStore } from "./state/pipelineStore";
-import { datasetName } from "./api/datasetName";
+import { datasetName, menuDatasets } from "./api/datasetName";
 import pkg from "../package.json";
 
 
@@ -207,7 +207,7 @@ export function App() {
             >
               {/* none picked: none loaded yet, or the volume was closed */}
               {(!datasets.length || !datasetId) && <option value="" disabled={datasets.length > 0}>—</option>}
-              {datasets.map((d) => (
+              {menuDatasets(datasets, datasetId).map((d) => (
                 <option key={d.id} value={d.id} title={d.raw_name}>
                   {datasetName(d, datasets)}
                 </option>

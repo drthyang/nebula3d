@@ -12,12 +12,12 @@ import { useEffect } from "react";
 
 import { DATASET_KEY, useDatasetStore } from "./datasetStore";
 import { LEGACY_PROTECTION_KEYS, migratedProtection } from "./modulation";
-import { usePipelineStore, type PipelineConfig } from "./pipelineStore";
+import { JOB_STATE_KEYS, usePipelineStore, type PipelineConfig } from "./pipelineStore";
 
 const CONFIG_KEY = "nebula3d.configByDataset.v1";
 
 // The store's job state, not settings.
-const NOT_CONFIG = new Set(["jobId", "running", "reconnecting", "events", "times", "terminal", "lastRun"]);
+const NOT_CONFIG = JOB_STATE_KEYS;
 
 type Saved = Record<string, Partial<PipelineConfig>>;
 

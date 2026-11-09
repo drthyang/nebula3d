@@ -22,6 +22,8 @@
 // (proposals.ts, runStageFor): the symmetry average, while it is on, for a
 // change to what it reads (the edge trim, the Laue class).
 
+import { queryClient } from "../../api/queryClient";
+import type { Dataset } from "../../api/types";
 import { noteAgentEdit } from "../../state/agentEdits";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { ringOutputChanged, ringOutputMark } from "../../state/ringOutput";
@@ -81,7 +83,13 @@ export function cardContext(ctx: ToolContext): ToolContext {
 // --------------------------------------------------------------- after a reply
 
 /** Build and keep the proposals a finished reply leads to (session.ts calls it with the reply's whole steps). */
-export function proposeFromReply(turn: number, steps: readonly AgentStep[], answer: string, dataset: string | undefined): void {
+export function proposeFromReply(
+  turn: number,
+  steps: readonly AgentStep[],
+  answer: string,
+  dataset: string | undefined,
+  outputs?: readonly { name: string; exists: boolean }[],
+): void {
   if (!dataset) return;
   const ps = buildProposals({
     turn,
@@ -91,6 +99,9 @@ export function proposeFromReply(turn: number, steps: readonly AgentStep[], answ
     dataset,
     tune: useTuneStore.getState().stages,
     firstId: nextProposalNumber(),
+    earlierSteps: toolStepsIn(useChatStore.getState().turns.filter((t) => t.id !== turn)),
+    // The outputs on disk as the console last read them, else as the reply began.
+    outputs: queryClient.getQueryData<Dataset[]>(["datasets"])?.find((d) => d.id === dataset)?.stages ?? outputs,
   });
   // A card an open one makes already (an earlier reply's): none twice, its evidence joining that card's.
   addProposals(ps.filter((p) => p.kind === "run" || !mergeIntoTwin(p)));

@@ -4,7 +4,7 @@ import { fetchConsistencyCheck } from "../../../api/client";
 import { safe } from "../../context/loadContext";
 import { evidence } from "../../inference";
 import { described, description } from "../shared/describe";
-import { r4, r6 } from "../shared/figures";
+import { r4, r6, unitFigure } from "../shared/figures";
 import type { ChatTool } from "../types";
 
 export const consistency_details: ChatTool = {
@@ -23,13 +23,13 @@ export const consistency_details: ChatTool = {
     const result = {
       ...m,
       pearson_r: r4(m.pearson_r),
-      normalized_rms: r4(m.normalized_rms),
+      normalized_rms: unitFigure(m.normalized_rms),
       per_plane_r: Object.fromEntries(Object.entries(m.per_plane_r ?? {}).map(([k, v]) => [k, r4(v)])),
       ...(m.pearson_r_even !== undefined
         ? {
             pearson_r_even: r6(m.pearson_r_even),
-            normalized_rms_even: r4(m.normalized_rms_even),
-            odd_share: r4(m.odd_share),
+            normalized_rms_even: unitFigure(m.normalized_rms_even),
+            odd_share: unitFigure(m.odd_share),
           }
         : {}),
     };

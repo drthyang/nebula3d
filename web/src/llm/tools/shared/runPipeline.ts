@@ -9,7 +9,7 @@
 import { fetchBraggProfile, fetchDataset } from "../../../api/client";
 import type { JobEvent } from "../../../api/types";
 import { useNavStore } from "../../../state/navStore";
-import { enabledStages, runFrom, STAGE_LABELS, STAGES, usePipelineStore } from "../../../state/pipelineStore";
+import { enabledStages, runFrom, runMs, STAGE_LABELS, STAGES, usePipelineStore } from "../../../state/pipelineStore";
 import { safe, stageVolumeId } from "../../context/loadContext";
 import { offLatticeBunching } from "../../metrics/bunching";
 import type { RunStage } from "../../tune/catalog";
@@ -68,9 +68,9 @@ export async function runPipelineFrom(from: RunStage | null, ctx: ToolContext, i
   });
   const cancel = () => void usePipelineStore.getState().cancel();
   io.signal?.addEventListener("abort", cancel);
-  // Wall-clock time, as the Execution page times the run and its stages (the
-  // store's event times): the two read the same, however loaded the machine.
-  const t0 = Date.now();
+  // The run's time as the Execution page shows it (runMs: from its request to
+  // its end as heard), not to when this call resumed, after the listings were
+  // read again.
   let ended: string;
   try {
     ended = await usePipelineStore.getState().runStages(stages, { datasetId: ctx.dataset.id, force, ...(forceFrom ? { forceFrom } : {}) });
@@ -78,7 +78,7 @@ export async function runPipelineFrom(from: RunStage | null, ctx: ToolContext, i
     unsubscribe();
     io.signal?.removeEventListener("abort", cancel);
   }
-  const seconds = Math.round((Date.now() - t0) / 100) / 10;
+  const seconds = Math.round((runMs(usePipelineStore.getState()) ?? 0) / 100) / 10;
   const events = usePipelineStore.getState().events.filter((e) => !reusedUpstream(e));
 
   if (ended !== "done") {

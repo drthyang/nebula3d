@@ -30,6 +30,7 @@ import {
   isUserChoice,
   ProposalError,
   proposalToPatch,
+  RUN_STAGES,
   SAMPLE_PARAMS,
   SYMMETRY_AVERAGE_SETTINGS,
   toFormValue,
@@ -43,7 +44,8 @@ import {
 import type { StageRun } from "../tune/tuner";
 import { USER_SETTINGS } from "../tune/userSettings";
 import { settingLabel } from "../../pages/configSections";
-import type { PipelineConfig } from "../../state/pipelineStore";
+import { methodTitle } from "./settingTitle";
+import { enabledStages, type PipelineConfig } from "../../state/pipelineStore";
 
 export type ProposalKind = "setting" | "fact" | "run" | "trial";
 // "auto": a change or a run auto mode made (auto/controller.ts), logged as its own.
@@ -97,11 +99,6 @@ interface CardSetting {
 
 // A stage's word before a setting's label on a card: "Punch min σ" (the
 // Configure page shows the label inside its stage's section).
-const STAGE_WORD: Record<TuneStage, string> = { rings: "Ring", punch: "Punch", backfill: "Backfill", flatten: "Background", pdf: "ΔPDF" };
-const lowerFirst = (s: string): string => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
-
-/** A method setting's name on a card: its stage's word and its Configure label (pages/configSections.ts). */
-export const methodTitle = (key: string, stage: TuneStage): string => `${STAGE_WORD[stage]} ${lowerFirst(settingLabel(key))}`;
 
 /** A fact's or a user-only setting's name on a card: its Configure label; the modulation, four fields there, as one. */
 const factTitle = (key: string): string => (key === "modulation" ? "Modulation" : settingLabel(key));
@@ -207,6 +204,70 @@ export interface BuildInput {
   dataset: string;
   tune?: readonly StageRun[]; // the tuning run, when the reply ran one
   firstId: number; // the number the first new proposal takes ("P<n>")
+  // The conversation's earlier steps (its tunings among them): a setting the
+  // answer names with a value a tuning tried and did not keep gets no card.
+  earlierSteps?: readonly AgentStep[];
+  // The dataset's stage outputs on disk (Dataset.stages): a Run card starts
+  // no later than the first stage whose input is there (runnableFrom).
+  outputs?: readonly { name: string; exists: boolean }[];
+}
+
+// Each stage's output, as the dataset lists it.
+const OUTPUT_OF: Record<RunStage, string> = {
+  symmetry_average: "symmetrized",
+  rings: "ringremoved",
+  punch: "braggpunched",
+  backfill: "backfilled",
+  flatten: "flattened",
+  pdf: "delta_pdf",
+};
+
+/**
+ * Where a run from `stage` can start: `stage` when the output of the switched-on
+ * stage before it is on disk, else that stage, and so on back to the first
+ * (whose input is the raw volume). A pre-run reply's change to a punch
+ * setting, with only the raw volume there, offered "Run from Bragg punch".
+ * Unknown outputs leave `stage` as it is.
+ */
+export function runnableFrom(stage: RunStage, outputs: readonly { name: string; exists: boolean }[] | undefined, config: PipelineConfig): RunStage {
+  if (!outputs) return stage;
+  const on = enabledStages(config).filter((st): st is RunStage => (RUN_STAGES as readonly string[]).includes(st));
+  let i = on.indexOf(stage);
+  if (i < 0) return stage;
+  while (i > 0 && !outputs.some((o) => o.name === OUTPUT_OF[on[i - 1]] && o.exists)) i -= 1;
+  return on[i];
+}
+
+/**
+ * The trials the conversation's tunings ran and did not keep, each as the
+ * form fields its changes set: from each tune_pipeline step's result, every
+ * trial with a result but the chosen one, by its stage.
+ */
+export function rejectedTrials(steps: readonly AgentStep[]): Partial<PipelineConfig>[] {
+  const out: Partial<PipelineConfig>[] = [];
+  for (const s of steps) {
+    if (s.name !== "tune_pipeline" || s.status !== "done" || !s.result) continue;
+    let result: unknown;
+    try {
+      result = JSON.parse(s.result);
+    } catch {
+      continue;
+    }
+    const stages = (result as { stages?: unknown }).stages;
+    if (!Array.isArray(stages)) continue;
+    for (const r of stages as { stage?: TuneStage; chosen_trial?: number; trials?: { n: number; changes?: Record<string, ParamValue>; result?: string }[] }[]) {
+      if (!r.stage || !Array.isArray(r.trials)) continue;
+      for (const t of r.trials) {
+        if (r.chosen_trial == null || t.n === r.chosen_trial || t.result === undefined || !t.changes || !Object.keys(t.changes).length) continue;
+        try {
+          out.push(proposalToPatch(r.stage, t.changes));
+        } catch {
+          // a trial the catalogue no longer reads: nothing to compare
+        }
+      }
+    }
+  }
+  return out;
 }
 
 type Draft = Omit<Proposal, "id" | "turn" | "dataset" | "status">;
@@ -309,7 +370,8 @@ export function buildProposals(input: BuildInput): Proposal[] {
         const ranAfter = steps.slice(steps.indexOf(s) + 1).some((x) => x.name === "run_pipeline" && x.status === "done");
         // The run the changes call for: from their rerun_from, or before it the
         // symmetry average, when a change reaches what it reads (runStageFor).
-        const runAt = rerun && runStageFor(changed.map((c) => String(c.setting)), rerun, config);
+        const wanted = rerun && runStageFor(changed.map((c) => String(c.setting)), rerun, config);
+        const runAt = wanted && runnableFrom(wanted, input.outputs, config);
         if (runAt && changed.length && !ranAfter) {
           drafts.push(runDraft(runAt, changed.map((c) => `${cardSetting(String(c.setting))?.title ?? String(c.setting)} ${text(c.from)} → ${text(c.to)}`).join(", "), "rerun", s.id));
         }
@@ -374,11 +436,17 @@ export function buildProposals(input: BuildInput): Proposal[] {
     }
   }
 
-  // The settings the answer names with a value that no call set.
+  // The settings the answer names with a value that no call set; none a
+  // tuning in this conversation tried and did not keep (the run's suggestions
+  // offered the ring stack window and the punch footprint its tunings had
+  // just rejected).
   const named = new Set<string>();
+  const rejected = settingsInAnswer(input.answer).length ? rejectedTrials([...(input.earlierSteps ?? []), ...steps]) : [];
+  const triedAndDropped = (fields: Partial<PipelineConfig>): boolean => rejected.some((r) => JSON.stringify(r) === JSON.stringify(fields));
   for (const { key, value } of settingsInAnswer(input.answer)) {
     if (setByCall.has(key) || named.has(key)) continue;
     const d = settingDraft(key, value, "answer", null);
+    if (d && triedAndDropped(d.fields)) continue;
     if (d) {
       drafts.push(d);
       named.add(key);
@@ -493,3 +561,4 @@ export function settingsInAnswer(answer: string): { key: string; value: string }
   }
   return out;
 }
+

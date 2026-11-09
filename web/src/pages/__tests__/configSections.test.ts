@@ -126,4 +126,11 @@ describe("the data folder's count", () => {
     expect(folderCount([{ id: "a" }, { id: "a~tune~20261108T133720-efa2" }, { id: "a~tune~20261108T134255-b708" }])).toBe("1 dataset in folder (+2 tuning runs)");
     expect(folderCount([{ id: "a" }, { id: "b" }, { id: "b~tune~r1" }])).toBe("2 datasets in folder (+1 tuning run)");
   });
+
+  it("says the data root's count in words (\"1 dataset\", never \"1 datasets\")", async () => {
+    const { datasetCount } = await import("../configSections");
+    expect(datasetCount(1)).toBe("1 dataset");
+    expect(datasetCount(0)).toBe("0 datasets");
+    expect(datasetCount(3)).toBe("3 datasets");
+  });
 });

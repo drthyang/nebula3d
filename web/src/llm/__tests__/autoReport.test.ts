@@ -39,6 +39,19 @@ function sampleRun(): AutoRun {
 }
 
 describe("the report of an auto run", () => {
+  it("sets a fixed stage's checks from before its fixes beside the latest (the run record, not the reply's trimmed context)", () => {
+    const r = sampleRun();
+    const before = [{ step: "auto:A1:3", label: "Checked the flatten", text: "Flatten: needs attention · trend 0.91 · span 0.85 · pedestal left" }];
+    const after = [{ step: "auto:A1:9", label: "Checked the flatten", text: "Flatten: needs attention · trend 0.85 · span 0.86 · pedestal left" }];
+    const plan = r.plan.map((row) => (row.id === "flatten" ? { ...row, status: "attention" as const, tries: 2, before, evidence: after } : row.id === "pdf" ? { ...row, status: "passed" as const, before: after, evidence: after } : row));
+    const a = autoReportSection({ ...r, plan }, 99 * M);
+    expect(a.plan.find((p) => p.row === "Background correction")!.evidence).toBe(
+      "Before its fixes: Checked the flatten: Flatten: needs attention · trend 0.91 · span 0.85 · pedestal left. After: Checked the flatten: Flatten: needs attention · trend 0.85 · span 0.86 · pedestal left",
+    );
+    // A stage the run did not fix reads its checks once.
+    expect(a.plan.find((p) => p.row === "3D-ΔPDF")!.evidence).toBe("Checked the flatten: Flatten: needs attention · trend 0.85 · span 0.86 · pedestal left");
+  });
+
   it("lists the plan with each outcome and its evidence, the facts and their answers, the held changes, the limit and the use", () => {
     const a = autoReportSection(sampleRun(), 99 * M);
     expect(a.plan.find((p) => p.row === "Bragg punch")).toEqual({ row: "Bragg punch", outcome: "passed after its first fix", evidence: "Assessed a stage: Bragg punch: meets its goal" });

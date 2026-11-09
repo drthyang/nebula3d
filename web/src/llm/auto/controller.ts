@@ -838,7 +838,8 @@ async function stageRow(stage: Stage): Promise<void> {
     checks = await judgeSensed(checks);
     kind = stageKind(stage, checks);
   }
-  patchRow(stage, { outcome: kind, evidence: evidenceOf(checks) });
+  // The checks before any fix, kept beside the latest for the report (auto/report.ts).
+  patchRow(stage, { outcome: kind, evidence: evidenceOf(checks), before: evidenceOf(checks) });
   if (kind !== "attention") {
     patchRow(stage, { status: STATUS_OF[kind], detail: kind === "pass" ? "passed" : "not judged" });
     return;
@@ -985,6 +986,19 @@ function logChanges(before: Partial<PipelineConfig>, turn: number, by: { step?: 
 // ---------------------------------------------------------------- the model's replies
 
 /**
+ * The checks the chat ran before the run (its turns not the run's own), by
+ * their step labels, once each: those that read the data, less those the
+ * report's seeded checks run again and the pre-run tools (preRun: the ring
+ * survey and the Bragg sensing), whose stages the run itself checks.
+ */
+export function checksBeforeRun(runTurns: readonly number[], seed: readonly Pick<AgentStep, "name">[]): string[] {
+  const again = new Set(seed.map((x) => x.name));
+  const chat = toolStepsIn(useChatStore.getState().turns.filter((t) => !runTurns.includes(t.id)));
+  const labels = chat.filter((x) => x.status === "done" && factsOf(x.name).measures && !factsOf(x.name).preRun && !again.has(x.name)).map((x) => factsOf(x.name).label);
+  return [...new Set(labels)];
+}
+
+/**
  * One model reply of the run (a fix, the report), with no chat history and
  * its checks seeded. Null when the spend limit stopped it. A stop halts the
  * run; a failure of the model server pauses it (Retry restarts the row).
@@ -996,7 +1010,9 @@ async function modelReply({ label, prompt, seed, rounds }: { label: string; prom
   const decisions = useDecisionStore.getState().decisions.filter((d) => r.decisions.includes(d.id));
   const context = await s.loadContext(s.work.dataset);
   if (stopped()) halt();
-  const messages = autoMessages(context, digest({ plan: r.plan, fixesPerStage: r.limits.fixesPerStage, limit: r.limit, decisions, proposals }), prompt, rounds);
+  // The report names what the chat checked before the run, which it does not see (digest).
+  const chatChecks = prompt === REPORT_PROMPT ? checksBeforeRun(r.turns, seed) : [];
+  const messages = autoMessages(context, digest({ plan: r.plan, fixesPerStage: r.limits.fixesPerStage, limit: r.limit, decisions, proposals, chatChecks }), prompt, rounds);
   // The run's earlier steps are this reply's evidence besides its own, the seeded ones its own.
   const seeded = new Set(seed.map((x) => x.id));
   const earlier = r.steps.filter((x) => !seeded.has(x.id));

@@ -43,6 +43,10 @@ export interface PlanRow {
   detail?: string; // one plain line, result first
   outcome?: Kind; // a stage's verdict from its latest check
   evidence?: { step: string; label: string; text: string }[]; // the latest checks' own lines
+  // A stage's checks as the run first found them, before its fixes: the report
+  // sets them beside the latest (the run's report, read from the trimmed
+  // context alone, said it did not have the flatten's numbers from before).
+  before?: { step: string; label: string; text: string }[];
 }
 
 export const ROW_TITLES: Record<RowId, string> = {
@@ -186,6 +190,7 @@ export function stageKind(stage: Stage, steps: readonly AgentStep[]): Kind {
 type Measure = (m: Readonly<Record<string, unknown>>) => number | null;
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const field = (k: string): Measure => (m) => num(m[k]);
+const abs = (v: number | null): number | null => (v == null ? null : Math.abs(v));
 const MEASURES: Partial<Record<Reason, { measures: Measure[]; worse: "higher" | "lower" }>> = {
   "ring left": { measures: [field("max_ring_left")], worse: "higher" },
   "ring dent": { measures: [field("max_ring_dent")], worse: "higher" },
@@ -197,7 +202,8 @@ const MEASURES: Partial<Record<Reason, { measures: Measure[]; worse: "higher" | 
     worse: "higher",
   },
   seam: { measures: [field("mean_median_seam_sigma")], worse: "higher" },
-  pedestal: { measures: [(m) => num(m.floor_trend) ?? num(m.max_floor_trend), (m) => num(m.floor_span_fraction) ?? num(m.max_floor_span_fraction)], worse: "higher" },
+  // The trend's size: a floor falling with |Q| is as much a pedestal as one rising (pedestalLeft).
+  pedestal: { measures: [(m) => abs(num(m.floor_trend) ?? num(m.max_floor_trend)), (m) => num(m.floor_span_fraction) ?? num(m.max_floor_span_fraction)], worse: "higher" },
   "back-FFT": { measures: [(m) => num(m.back_fft_pearson_r_even) ?? num(m.back_fft_pearson_r)], worse: "lower" },
   "window past limit": { measures: [field("window_weight_on_unmeasured")], worse: "higher" },
   "symmetry broken": { measures: [field("max_symmetry_break")], worse: "higher" },
@@ -221,7 +227,8 @@ const rank = (k: Kind): number => (k === "attention" ? 1 : 0);
  * could not judge now needs attention; a check needs attention for a reason
  * it did not have; or, for the same reasons, every number those reasons rest
  * on is no better and one is worse; or, for the ring removal, its worst ring
- * residual (left or dent) grew. A fix that left the stage as it was, or
+ * residual (left or dent) grew; or, for a pedestal the flatten left, its
+ * floor span grew (its trend alone never puts a fix back). A fix that left the stage as it was, or
  * better on one number and worse on another, is not worse: it is kept, and
  * the next fix starts from it.
  */
@@ -246,6 +253,16 @@ export function madeWorse(stage: Stage, before: readonly AgentStep[], after: rea
   if (stage === "rings" && own.reasons.some((r) => r === "ring left" || r === "ring dent")) {
     const worst = (m: Readonly<Record<string, unknown>>) => Math.max(num(m.max_ring_left) ?? 0, num(m.max_ring_dent) ?? 0);
     if (worst(m1) > worst(m0)) return true;
+  }
+  // A pedestal left is judged by its floor span alone (the user's rule): a
+  // fix that widens the span is put back; one that raises the floor trend's
+  // size with the span no wider (the b·Q² term turned on) is kept. The
+  // trend follows the shape of the floors, not how far they stray.
+  if (stage === "flatten" && own.reasons.includes("pedestal")) {
+    const span = MEASURES.pedestal!.measures[1];
+    const s0 = span(m0);
+    const s1 = span(m1);
+    return s0 != null && s1 != null && s1 > s0;
   }
   let worse = false;
   for (const r of own.reasons) {

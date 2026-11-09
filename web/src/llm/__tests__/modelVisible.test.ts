@@ -568,10 +568,10 @@ const SAMPLES: Sample[] = [
     before: () =>
       usePipelineStore.setState({
         runStages: vi.fn(async () => {
-          usePipelineStore.setState({ running: true, events: [] });
+          usePipelineStore.setState({ running: true, events: [], startedAt: clock, endedAt: null });
           for (const ev of RUN_EVENTS) usePipelineStore.setState((s) => ({ events: [...s.events, ev] }));
           clock += 42_300;
-          usePipelineStore.setState({ running: false, terminal: "done" });
+          usePipelineStore.setState({ running: false, terminal: "done", endedAt: clock });
           return "done";
         }),
       }),

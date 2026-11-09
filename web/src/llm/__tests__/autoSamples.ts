@@ -45,5 +45,9 @@ export function longestDigest(stage: Stage | null): string {
   const at = stage ? plan.findIndex((r) => r.id === stage) : plan.length - 1;
   const rows = plan.map((r, i) => (i < at ? worded(r) : i === at && stage ? { ...r, status: "fixing" as const, tries: 2 } : r));
   const { decisions, proposals } = runDecisions();
-  return digest({ plan: rows, fixesPerStage: 2, limit: stage ? null : "time", decisions, proposals });
+  // The report's, after a chat that ran a check the report does not run again.
+  return digest({ plan: rows, fixesPerStage: 2, limit: stage ? null : "time", decisions, proposals, ...(stage ? {} : { chatChecks: CHAT_CHECKS }) });
 }
+
+/** A check the chat made before the run that the report's seeded checks do not run again, by its label (controller.ts, checksBeforeRun): the run 3 pre-run's. */
+export const CHAT_CHECKS = ["Compared the Laue classes by R_int"];

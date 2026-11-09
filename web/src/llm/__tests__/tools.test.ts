@@ -359,7 +359,7 @@ describe("update_settings", () => {
     usePipelineStore.setState({ punchMinSig: "6" });
     const r = await run("update_settings", { changes: { punchMinSig: 6 } });
     expect(JSON.parse(r.text)).toEqual({ changed: [], already_set: ["punchMinSig"], rerun_from: null });
-    expect(r.summary).toBe("no change: punchMinSig already set");
+    expect(r.summary).toBe("no change: Punch min σ already set");
   });
 
   it("tells the Configure page which fields it changed, and only when it changed them (state/agentEdits.ts)", async () => {
@@ -421,7 +421,7 @@ describe("update_settings", () => {
         refused: [{ setting: "symmetryReaverage", why: refusal("symmetryReaverage") }],
         rerun_from: "punch",
       });
-      expect(r.summary).toBe("punchMinSig 5 → 6; refused, the user's to set: symmetryReaverage");
+      expect(r.summary).toBe("Punch min σ 5 → 6; refused, the user's to set: symmetryReaverage");
     });
 
     it("shows a blank Laue class as none chosen, not as a default", async () => {
@@ -453,7 +453,7 @@ describe("update_settings", () => {
       }
       const mixed = await after("Raise the punch significance to 6.", { punchMinSig: 6, edgeTrim: 2 });
       expect(mixed.ok).toBe(true);
-      expect(mixed.summary).toBe("punchMinSig 5 → 6; refused, the user's to choose: edgeTrim");
+      expect(mixed.summary).toBe("Punch min σ 5 → 6; refused, the user's to choose: Edge trim");
     });
 
     it("makes the change once the user names it, and checks the value", async () => {
@@ -513,7 +513,7 @@ describe("update_settings", () => {
         refused: [{ setting: "punchSupercellH", why: refusal("punchSupercellH") }],
         rerun_from: "punch",
       });
-      expect(r.summary).toBe("punchMinSig 5 → 6; refused, a fact about the sample: punchSupercellH");
+      expect(r.summary).toBe("Punch min σ 5 → 6; refused, a fact about the sample: Supercell H");
       // A fact the message names beside one it does not: the named one changes.
       const declared = await after("The sample has a modulation with k = (1/2, 0, 0); declare it as planes.", {
         modulation: { k: "1/2, 0, 0", form: "planes" },
@@ -597,13 +597,16 @@ describe("run_pipeline", () => {
     useNavStore.setState({ tab: "config" });
   });
 
-  it("times the run by the wall clock, as the Execution page times it and its stages", async () => {
+  it("times the run as the Execution page does (runMs): from its request to its end as heard, not to after the listings are read", async () => {
     let wall = 1_000_000;
     const clock = vi.spyOn(Date, "now").mockImplementation(() => wall);
     const run = fakeRun("done");
     usePipelineStore.setState({
       runStages: vi.fn(async (stages: string[], opts?: unknown) => {
+        usePipelineStore.setState({ startedAt: wall, endedAt: null });
         wall += 588_000; // a ring removal of almost ten minutes on a loaded machine
+        usePipelineStore.setState({ endedAt: wall });
+        wall += 7_000; // the listings read again after the end
         void stages;
         void opts;
         return run();
