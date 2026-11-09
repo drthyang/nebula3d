@@ -464,6 +464,24 @@ describe("evaluateStage", () => {
     expect(headline("pdf", await evaluate(0.000976))).toMatch(/ · unmeasured 9\.76e-4 · /);
   });
 
+  it("reads the round trip's float roundoff as 0: a normalised RMS of 7.94e-15 or an odd share of 7.12e-30 is no measurement", async () => {
+    const withPdf: Dataset = {
+      ...dataset,
+      stages: [...dataset.stages, { name: "delta_pdf", exists: true, kind: "delta_pdf" as const, volume_id: "demo.delta_pdf" }],
+    };
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: true, metrics: { pearson_r: 1, normalized_rms: 7.94e-15, pearson_r_even: 1, normalized_rms_even: 7.9e-15, odd_share: 7.12e-30 } });
+    api.fetchDpdfMeta.mockResolvedValue({ lattice: { a: 3.9, b: 3.9, c: 3.9 }, window_open_weight: 1.31e-5, window_shape: "ellipsoid" });
+    api.fetchDpdfSlice.mockImplementation(async () => makeSlice(21, 21, (x, y) => Math.cos(x) * Math.cos(y)));
+    const e = await evaluateStage("pdf", withPdf);
+    expect([e.back_fft_normalized_rms, e.back_fft_odd_share]).toEqual([0, 0]);
+    expect(headline("pdf", e)).toMatch(/ · RMS 0 · /);
+    expect(headline("pdf", e)).not.toMatch(/e-15|e-30/);
+    // A measured share keeps its figures; the window's tiny weight is a measurement, not roundoff.
+    api.fetchConsistencyCheck.mockResolvedValue({ has_check: true, metrics: { pearson_r: 0.99, normalized_rms: 0.1253, pearson_r_even: 1, normalized_rms_even: 0, odd_share: 0.0219 } });
+    const m = await evaluateStage("pdf", withPdf);
+    expect([m.back_fft_normalized_rms, m.back_fft_odd_share, m.window_weight_on_unmeasured]).toEqual([0.1253, 0.0219, 1.31e-5]);
+  });
+
   it("does not judge a symmetry the file never declared: unsymmetrised data differ from their images by their own noise", async () => {
     const withPdf: Dataset = {
       ...dataset,
