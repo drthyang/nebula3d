@@ -12,8 +12,7 @@ description: >-
 # Reduction QC: is the reduced volume fit for a 3D-ΔPDF?
 
 A reduction can look clean on one cut and still be wrong in ways every later
-stage inherits. Check it first, in this order, and say what each check
-found.
+stage inherits. Check it first, in order.
 
 ## Gates
 
@@ -55,25 +54,25 @@ found.
    (`update_settings` refuses it).
 5. **Powder rings.** `assess_stage` for the rings (`shells_judged`), then
    `radial_profile`. Report leftovers and dents at the confirmed rings as
-   shares of the diffuse beside them. A ring too weak to rise in nearly every
-   direction is neither removed nor counted: if one shows by eye, say so.
+   shares of the diffuse beside them. A ring too weak for the 3D test is
+   neither removed nor counted: if one shows by eye, say so.
 6. **The flatten floor.** `assess_stage` for the flatten: floors near zero, no
    trend with |Q| (`floor_trend`), a span small against the diffuse level
    (`floor_span_fraction`), over the whole volume; `pedestal_left` says
    whether they make a pedestal. **When to turn the Q² term on:** when
    `assess_stage` for the flatten reports `pedestal_left`, set `flattenQ2` on,
-   rerun from the flatten (`run_pipeline` with `from_stage` flatten), and read
-   `assess_stage` for the flatten again: keep the term if the pedestal is
-   gone, and report its trend and span before and after. Leave it off
-   otherwise.
+   rerun (`run_pipeline`, `from_stage` flatten), and read `assess_stage` for
+   it again: keep the term if the pedestal is gone, and report its trend and
+   span before and after. Leave it off otherwise.
 7. **Symmetry kept.** On symmetrised data, after the pipeline: `symmetry_check`
    on the ΔPDF; a clear break means a stage broke it (delta-pdf-interpretation).
 8. **Report** the checks in order, each a verdict with the tool's numbers; what
    you would change and why; what was not checked; what the user decides (the
-   band, the magnetic ion, whether to regrid). Mark a finding at a place (a
-   ring left over, leftover intensity at one spot) with `mark_region` on the
-   stage that shows it, resting on the call that measured it; name the mark by
-   its id where the report gives the finding.
+   band, the magnetic ion, whether to regrid). Name settings and fields by
+   console labels, not keys: Laue class, b·Q² term, ring ratio, counts end
+   inside the box, Global 3D. Mark a finding at a place (a ring or spot left
+   over) with `mark_region` on the stage that shows it, resting on the call
+   that measured it; cite the mark's id with the finding.
 
 ## Details
 
