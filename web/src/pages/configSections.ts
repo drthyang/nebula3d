@@ -164,6 +164,9 @@ export const SETTING_LABEL: Readonly<Partial<Record<Key, string>>> = {
 /** A setting's label, by the field it is held in (SETTING_LABEL); the field's name where it has none. */
 export const settingLabel = (key: string): string => SETTING_LABEL[key as Key] ?? key;
 
+/** A count of datasets in words: "1 dataset", "3 datasets". */
+export const datasetCount = (n: number): string => `${n} dataset${n === 1 ? "" : "s"}`;
+
 /** The folder's datasets in words, a tuning run's views of them apart: "1 dataset in folder (+2 tuning runs)". */
 export function folderCount(datasets: readonly { id: string }[]): string {
   const runs = datasets.filter((d) => isTuningView(d.id)).length;
