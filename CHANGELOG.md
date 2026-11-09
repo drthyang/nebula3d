@@ -29,6 +29,9 @@ release folds them in here; no release is cut yet.
   no longer takes a verdict from before a run
   ([run-from-refreshes-stale](changes/unreleased/run-from-refreshes-stale.md),
   [rerun-symmetry-and-ring-gate](changes/unreleased/rerun-symmetry-and-ring-gate.md)).
+- Fix: the console reads the Bragg punch's record once per version of its
+  file, not on every read of the run; a memory check of a whole scripted auto
+  run ([browser-memory](changes/unreleased/browser-memory.md)).
 - Validation: three grader artefacts fixed on 2026-11-07, before the THY-52
   re-baseline
   ([validation-grader-artefacts](changes/unreleased/validation-grader-artefacts.md)).
