@@ -54,7 +54,12 @@
 //   - the DOM changes at no more than --max-mutations nodes a second (a clock
 //     ticking is a few; a view drawn again and again is thousands);
 //   - the page lays out no more than --max-layouts times a second (a CSS
-//     layout loop shows here even when the DOM and the scripts are still).
+//     layout loop shows here even when the DOM and the scripts are still);
+// and over the whole session:
+//   - the Bragg punch's record (GET /api/bragg/<id>/profile) is downloaded once
+//     per version of its file: a read of a version already downloaded is a 304
+//     (no body; Chromium reports it as a failed request, net::ERR_ABORTED, so
+//     those are counted as the 304s they are), and no read fails otherwise.
 // --config seeds the Configure form of every dataset the server lists (a
 // stage set to need attention, so the auto run fixes or tunes it: with
 // --scenario=tune its fix is a tuning run, whose card the transcript keeps).
@@ -232,6 +237,22 @@ page.on("crash", () => {
   console.log("PAGE CRASH");
 });
 page.on("pageerror", (e) => console.log(`pageerror: ${e.message}`));
+// The punch record's reads: bodies by ETag (one per version), 304s, and
+// reads that failed with no answer at all.
+const PROFILE = /\/api\/bragg\/[^/]+\/profile$/;
+const punchReads = { bodies: {}, notModified: 0, failed: 0, answered: new WeakSet() };
+page.on("response", (r) => {
+  if (!PROFILE.test(new URL(r.url()).pathname)) return;
+  punchReads.answered.add(r.request());
+  if (r.status() === 304) punchReads.notModified += 1;
+  else if (r.ok()) {
+    const tag = r.headers().etag ?? "(no tag)";
+    punchReads.bodies[tag] = (punchReads.bodies[tag] ?? 0) + 1;
+  }
+});
+page.on("requestfailed", (r) => {
+  if (PROFILE.test(new URL(r.url()).pathname) && !punchReads.answered.has(r)) punchReads.failed += 1;
+});
 const cdp = await ctx.newCDPSession(page);
 await cdp.send("Performance.enable");
 const bcdp = await browser.newBrowserCDPSession();
@@ -420,6 +441,10 @@ if (outcome === "done" && !crashed) {
     if (lps == null) problems.push("the page did not report its layout count while idle");
     else if (lps > MAX_LAYOUTS) problems.push(`the page laid out ${lps.toFixed(1)} times a second while idle (limit ${MAX_LAYOUTS}): a layout loop`);
   }
+  // The punch record: each version downloaded once, no read lost.
+  const twice = Object.entries(punchReads.bodies).filter(([, n]) => n > 1);
+  if (twice.length) problems.push(`the Bragg punch record was downloaded again for a version already read (${twice.map(([t, n]) => `${t} ×${n}`).join(", ")})`);
+  if (punchReads.failed) problems.push(`${punchReads.failed} read(s) of the Bragg punch record failed with no answer`);
   // And the run itself kept within the bound.
   const peak = Math.max(0, ...samples.map((s) => s.rss ?? 0));
   if (peak > MAX_MB) problems.push(`renderer memory peaked at ${peak} MB during the session (limit ${MAX_MB})`);
@@ -437,6 +462,7 @@ const summary = {
   idleSeconds: IDLE_S,
   start,
   end,
+  braggProfile: { versions: Object.keys(punchReads.bodies).length, bodies: Object.values(punchReads.bodies).reduce((a, n) => a + n, 0), notModified: punchReads.notModified, failed: punchReads.failed },
   peak: samples.length ? { rss: Math.max(...samples.map((s) => s.rss ?? 0)), nodes: Math.max(...samples.map((s) => s.nodes ?? 0)), oilpan: Math.max(...samples.map((s) => s.oilpan ?? 0)), buffers: Math.max(...samples.map((s) => s.buffers ?? 0)) } : null,
   problems,
   samples,
@@ -447,5 +473,6 @@ if (outcome !== "done" || crashed) {
   console.log(`the run did not finish: ${crashed ? "the page crashed" : outcome}`);
   process.exit(2);
 }
+console.log(`Bragg punch record: ${summary.braggProfile.bodies} downloads of ${summary.braggProfile.versions} version(s), ${summary.braggProfile.notModified} answered 304, ${summary.braggProfile.failed} failed`);
 console.log(problems.length ? `FAIL\n  ${problems.join("\n  ")}` : `ok: idle ${IDLE_S} s, renderer ${start.rss} → ${end.rss} MB, DOM nodes ${start.nodes} → ${end.nodes}`);
 process.exit(problems.length ? 1 : 0);

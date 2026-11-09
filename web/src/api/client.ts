@@ -368,7 +368,10 @@ export function fetchConsistencyCheck(datasetId: string): Promise<ConsistencyChe
 // record unchanged on disk) reuses the parse instead of downloading and
 // parsing it again. Every read still asks, so a record a run wrote again is
 // never missed. Reads of one dataset go one at a time: a second waits for
-// the first, then asks with its tag.
+// the first, then asks with its tag. A tuning run's views (each trial's own
+// record, isTuningView) are kept apart, two of them: a tuning reads one per
+// trial, and they must not push out the dataset's own record, which was then
+// downloaded again, unchanged, once the tuning ended.
 const BRAGG_PROFILES_KEPT = 2;
 const braggProfiles = new Map<string, { etag: string; value: BraggProfile }>();
 const braggReads = new Map<string, Promise<BraggProfile>>();
@@ -391,7 +394,10 @@ async function readBraggProfile(datasetId: string): Promise<BraggProfile> {
   const etag = r.headers.get("ETag");
   if (etag) {
     braggProfiles.set(datasetId, { etag, value });
-    while (braggProfiles.size > BRAGG_PROFILES_KEPT) braggProfiles.delete(braggProfiles.keys().next().value as string);
+    // The oldest of its own kind goes: a view never pushes out a dataset's record, nor a dataset a view's.
+    const kind = isTuningView(datasetId);
+    const same = [...braggProfiles.keys()].filter((id) => isTuningView(id) === kind);
+    for (const id of same.slice(0, Math.max(0, same.length - BRAGG_PROFILES_KEPT))) braggProfiles.delete(id);
   }
   return value;
 }

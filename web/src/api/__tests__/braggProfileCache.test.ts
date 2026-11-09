@@ -86,6 +86,23 @@ describe("fetchBraggProfile", () => {
     expect(s.served[s.served.length - 1].ifNoneMatch).toBe('"c"');
   });
 
+  it("a tuning's trials (its views) never push out the dataset's own record", async () => {
+    const ids = ["a", "b", "a~tune~r1~punch-1", "a~tune~r1~punch-2", "a~tune~r1~punch-3", "a~tune~r1"];
+    for (const id of ids) s.write(id, `"${id}"`, { ...record(1), dataset_id: id });
+    await fetchBraggProfile("a");
+    await fetchBraggProfile("b");
+    for (const id of ids.slice(2)) await fetchBraggProfile(id);
+    // after the tuning, both datasets' records are still kept: each read is a 304
+    const before = s.served.length;
+    await fetchBraggProfile("a");
+    await fetchBraggProfile("b");
+    expect(s.served.slice(before).map((x) => x.ifNoneMatch)).toEqual(['"a"', '"b"']);
+    // and the views keep their last two
+    await fetchBraggProfile("a~tune~r1");
+    await fetchBraggProfile("a~tune~r1~punch-1");
+    expect(s.served.slice(-2).map((x) => x.ifNoneMatch)).toEqual(['"a~tune~r1"', null]);
+  });
+
   it("reads at once go one at a time: the second asks with the first's tag", async () => {
     s.write("ds", '"v1"', record(1));
     s.holdNext();
