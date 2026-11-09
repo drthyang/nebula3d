@@ -89,7 +89,10 @@ function rowWords(r: PlanRow, fixesPerStage: number): string | null {
 /**
  * The run so far, for the next reply's context: the plan's outcomes, the
  * limit that ended the fixes, and the run's decisions (yours and auto
- * mode's), each line as the since line writes one.
+ * mode's), each line as the since line writes one. For the report, the
+ * checks the chat ran before the run (`chatChecks`, by their step labels,
+ * no numbers): a reply has no chat history, and the run's report said the
+ * Laue comparison the pre-run had made "was not run".
  */
 export function digest({
   plan,
@@ -97,16 +100,19 @@ export function digest({
   limit,
   decisions,
   proposals,
+  chatChecks = [],
 }: {
   plan: readonly PlanRow[];
   fixesPerStage: number;
   limit: LimitHit | null;
   decisions: readonly Decision[];
   proposals: readonly Proposal[];
+  chatChecks?: readonly string[];
 }): string {
   const words = plan.map((r) => rowWords(r, fixesPerStage)).filter((w): w is string => !!w);
   const lines = [`- auto run so far: ${words.length ? words.join("; ") : "starting"}`];
   if (limit) lines.push(`- the fixes ended at ${LIMIT_WORDS[limit]}`);
+  if (chatChecks.length) lines.push(`- the chat before this run: ${chatChecks.join("; ")}`);
   const since = sinceLine(decisions, proposals, "in this auto run");
   if (since) lines.push(since);
   return lines.join("\n");

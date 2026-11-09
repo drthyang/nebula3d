@@ -934,7 +934,11 @@ describe("the headroom target (docs/pilot-context-design.md §5.8), enforced sin
 // under it (estimated about 21.5k). Each phase prompt's growth is held by its
 // own ceiling; the target holds either reply whatever the ceilings allow.
 const AUTO_FIX_CEILING = 10_733;
-const AUTO_REPORT_CEILING = 13_048;
+// Raised 13,048 -> 13,064 with the user's yes (fix/run3-bugs, about 20 asked):
+// the report's digest names the checks the chat ran before the run, which an
+// auto reply does not see (one line, 18 est. tokens with the Laue comparison;
+// the report prompt's console-names sentence had taken 14 of the 16 spare).
+const AUTO_REPORT_CEILING = 13_064;
 
 describe("auto mode's replies (THY-65 PR 6), held to the 20 % target", () => {
   /** The app's own call, as the controller keeps it: a step with its result as the executor made it. */
