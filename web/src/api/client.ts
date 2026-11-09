@@ -361,9 +361,56 @@ export function fetchConsistencyCheck(datasetId: string): Promise<ConsistencyChe
   return getJSON<ConsistencyCheck>(`/api/consistency/${encodeURIComponent(datasetId)}/check`);
 }
 
+// The punch's record, parsed, with the ETag it came under, for the last few
+// datasets read. On a large volume it is tens of MB, and the console reads it
+// each time it reads the run (the Pilot's context, an auto run's checks, the
+// Bragg page): each read asks the server again, with the tag, and a 304 (the
+// record unchanged on disk) reuses the parse instead of downloading and
+// parsing it again. Every read still asks, so a record a run wrote again is
+// never missed. Reads of one dataset go one at a time: a second waits for
+// the first, then asks with its tag.
+const BRAGG_PROFILES_KEPT = 2;
+const braggProfiles = new Map<string, { etag: string; value: BraggProfile }>();
+const braggReads = new Map<string, Promise<BraggProfile>>();
+
+async function readBraggProfile(datasetId: string): Promise<BraggProfile> {
+  const url = `/api/bragg/${encodeURIComponent(datasetId)}/profile`;
+  const kept = braggProfiles.get(datasetId);
+  // no-store: the browser neither keeps the body nor answers from its own
+  // cache, so a 304 reaches this code (and the parse kept here is the one copy).
+  const r = await fetch(url, { cache: "no-store", headers: kept ? { "If-None-Match": kept.etag } : {} });
+  if (r.status === 304 && kept) {
+    // The newest read last: the one kept longest.
+    braggProfiles.delete(datasetId);
+    braggProfiles.set(datasetId, kept);
+    return kept.value;
+  }
+  braggProfiles.delete(datasetId);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${url}`);
+  const value = (await r.json()) as BraggProfile;
+  const etag = r.headers.get("ETag");
+  if (etag) {
+    braggProfiles.set(datasetId, { etag, value });
+    while (braggProfiles.size > BRAGG_PROFILES_KEPT) braggProfiles.delete(braggProfiles.keys().next().value as string);
+  }
+  return value;
+}
+
 export function fetchBraggProfile(datasetId: string): Promise<BraggProfile> {
   if (PYODIDE_MODE) return engine.braggProfile(datasetId);
-  return getJSON<BraggProfile>(`/api/bragg/${encodeURIComponent(datasetId)}/profile`);
+  const before = braggReads.get(datasetId);
+  const read = (before ? before.then(() => undefined, () => undefined) : Promise.resolve()).then(() => readBraggProfile(datasetId));
+  braggReads.set(datasetId, read);
+  const done = () => {
+    if (braggReads.get(datasetId) === read) braggReads.delete(datasetId);
+  };
+  read.then(done, done);
+  return read;
+}
+
+/** Forget the kept Bragg profiles (closing the volume lets go of what it read). */
+export function forgetBraggProfiles(): void {
+  braggProfiles.clear();
 }
 
 /**

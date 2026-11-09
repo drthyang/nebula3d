@@ -496,6 +496,19 @@ by measurement that the dock is whole and on screen, that nothing covers the
 composer or the transcript, and that the boxes above the transcript do not
 overlap (`PW=<playwright-core> node scripts/pilot_layout_check.mjs <url>
 <out-dir> --model=<scripted model URL> [--engines=chromium,webkit] [--demo]`).
+`scripts/pilot_memory_check.mjs` runs a whole scripted auto run (the "fix"
+scenario, Follow on) on a running console and samples the tab every 5 s: the
+JS, Blink (Oilpan) and ArrayBuffer heaps, the renderer's and GPU process's
+memory, DOM nodes (collected or not, and those in the document), layout
+objects, live canvases and ImageData, DOM changes and the CSS animations
+running. Once the run is done it leaves the page idle (2 minutes by default)
+and fails when, between a forced garbage collection at each end of that
+window, the renderer's memory or the DOM nodes grow, the page keeps changing
+its DOM or burning CPU, or any passes its bound
+(`PW=<playwright-core> node scripts/pilot_memory_check.mjs <url> <out-dir>
+--model=<scripted model URL>`; its header lists the limits). Use it on a
+synthetic volume of a realistic size, such as 401 × 401 × 301
+(`PYTHONPATH=src python scripts/demo/synthetic_volume.py <data-root>` writes one).
 
 ### Memory bar
 
@@ -660,7 +673,7 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
 | GET | `/api/consistency/{dataset_id}/check` | the pipeline's saved back-FFT check metrics (no FFT) |
 | GET | `/api/consistency/{dataset_id}/slice?panel=data\|recon\|residual\|dpdf&...` | binary consistency slice |
 | POST | `/api/consistency/{dataset_id}/save` | save the band-limited back-FFT result |
-| GET | `/api/bragg/{dataset_id}/profile` | the fitted Bragg profile the punch recorded |
+| GET | `/api/bragg/{dataset_id}/profile` | the fitted Bragg profile the punch recorded. It carries an `ETag` (the record file's path, mtime, size and inode, and the package version) and `Cache-Control: no-cache`; asked again with that tag in `If-None-Match`, it answers 304 with no body while the file stands. The console keeps the record it parsed and asks with its tag each time, so a large record (tens of MB) is downloaded and parsed once per version of the file |
 | GET | `/api/rings/{dataset_id}/diagnostics` | what the ring stage recorded in its diagnostics: their `status`, and `unconfirmed_at_grid`, the ring candidates (powder rings or the crystal's own scattering) the pooled model detected and could not confirm on its grid, which it did not subtract (`count`, `needs`, the `notice` its run log ends on, `q_centers`), else null. Diagnostics older than the ring-removed volume give none (`has_diagnostics` false). The bridge's `ring_diagnostics_json` returns the same fields. See [which shells are rings](pipeline.md#which-shells-are-rings-and-the-grid-that-takes) |
 | GET, PUT | `/api/data-root` | the data root the server reads, and changing it |
 | POST | `/api/data-root/browse` | pick the data root in a native folder dialog |

@@ -193,6 +193,34 @@ def labels_envelope(cfg: ServerConfig, dataset_id: str, plane: str, value: float
     return _pack(header, plane_labels.astype(np.float32))
 
 
+def bragg_profile_etag(cfg: ServerConfig, dataset_id: str) -> str | None:
+    """A validator (an HTTP ETag) for the punch's record of a dataset as
+    ``GET /api/bragg/{id}/profile`` serves it, or None for an unknown dataset.
+
+    The record is tens of MB on a large volume, and the console asks for it
+    each time it reads the run (THY-65's auto runs, many times a session):
+    asked again with this tag, the route answers 304 while the record stands.
+    It changes whenever the record could: the file written again, replaced or
+    removed (its path, mtime, size and inode), or another version of this
+    package serving it. Read it before the file, so a record rewritten in
+    between is served under its old tag and read again next time."""
+    import hashlib
+
+    from nebula3d import __version__
+
+    ds = find_dataset(cfg, dataset_id)
+    if ds is None:
+        return None
+    path = artifact_path(cfg, ds, "bragg_profile_json")
+    try:
+        st = path.stat()
+        stamp = f"{st.st_mtime_ns}:{st.st_size}:{st.st_ino}"
+    except OSError:
+        stamp = "none"
+    key = f"{dataset_id}|{path}|{stamp}|{__version__}"
+    return '"' + hashlib.sha256(key.encode("utf-8")).hexdigest()[:32] + '"'
+
+
 def bragg_profile_payload(cfg: ServerConfig, dataset_id: str) -> dict[str, Any] | None:
     """The punch's record of a dataset (``GET /api/bragg/{id}/profile``):
     per-peak widths, ``node_test`` (the nodes its node test could not judge),
