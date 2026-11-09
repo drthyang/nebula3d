@@ -125,8 +125,8 @@ chat box shows how full the model's window is, and from 70 % offers
 | --- | --- |
 | ![The Auto panel after a run: the plan with each stage's state and the activity log](docs/media/pilot-auto-done.jpg) | ![On a phone: the Auto panel paused, with its Now line and the last steps of the log](docs/media/pilot-auto-phone.jpg) |
 | **Auto mode, finished:** the plan, each stage's state and the activity log. | **On a phone:** the Now line and the last steps, with Resume and Stop. |
-| ![The context meter at 93 percent in red, offering Summarize and continue](docs/media/pilot-context-meter.jpg) | ![The auto run's report: quality checks per stage and the problems the checks found](docs/media/pilot-auto-report.jpg) |
-| **Context meter** at 93 %, offering *Summarize and continue*. | **The report:** each stage's check, and the problems the checks found, written by the app, not the model. |
+| ![The context meter at 91 percent in red, offering Summarize and continue](docs/media/pilot-context-meter.jpg) | ![The auto run's report: quality checks per stage and the problems the checks found](docs/media/pilot-auto-report.jpg) |
+| **Context meter** at 91 %, offering *Summarize and continue*. | **The report:** each stage's check, and the problems the checks found, written by the app, not the model. |
 
 All screenshots: the synthetic demo volume with a scripted model (a test
 server with no model behind it), from the demo QA of 2026-11-07

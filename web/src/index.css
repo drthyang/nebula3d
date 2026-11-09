@@ -8289,8 +8289,9 @@ html.kb-open .ai-side {
 }
 .auto-head {
   display: flex;
+  flex-wrap: wrap; /* a narrow panel: Pause / Resume and Stop go to a line of their own, not out of view */
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
 }
 .auto-title {
   white-space: nowrap;
@@ -8684,9 +8685,6 @@ html.kb-open .ai-side {
   overflow: visible;
   -webkit-mask-image: none;
   mask-image: none;
-}
-.ai-side[data-mode="sheet"] .auto-head {
-  flex-wrap: wrap;
 }
 .auto-refused {
   align-self: center;
