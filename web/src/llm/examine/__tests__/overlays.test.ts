@@ -34,6 +34,7 @@ describe("the registry", () => {
     expect(Object.entries(OVERLAYS).filter(([, e]) => typeof e === "function").map(([n]) => n).sort()).toEqual([
       "assess_stage",
       "bragg_peaks",
+      "bragg_sense",
       "dpdf_peaks",
       "grain_check",
       "line_profile",

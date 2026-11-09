@@ -45,6 +45,8 @@ export type Reason =
   | "ring left"
   | "ring dent"
   | "missed at nodes"
+  // A Bragg tail left beside a punch hole (THY-43: metrics/punch.ts TAIL_SHARE).
+  | "Bragg tails"
   | "sharp off-lattice"
   | "seam"
   | "pedestal"
@@ -252,18 +254,26 @@ const rings: StageRule = {
 export const D5_PROTECTED_SHARP_PEAKS_COUNT = false;
 
 const punch: StageRule = {
-  criterion: criterionOf("punch")`No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima${evidence(" are diffuse scattering, and")} stay.`,
-  goal: goalOf("punch")`Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice)${evidence(
+  criterion: criterionOf("punch")`No Bragg peak missed at a lattice node or left as a tail beside its hole (3 % or more of its height), and no sharp peak left off the lattice outside the protected planes. Broad maxima${evidence(" are diffuse scattering, and")} stay.`,
+  goal: goalOf("punch")`Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) and Bragg tails (leftover_bragg_tails: maxima beside a punched Bragg peak's hole, or within 0.25 Å⁻¹ of it, holding 3 % or more of its height${evidence(
+    "; a footprint that does not follow the peaks' shape leaves them",
+  )}) must reach 0 on every plane; leftover_beside_holes counts every maximum at a hole's rim, the faint ones under 3 % included. Off-lattice sharp peaks${evidence(
     " are satellites or spurious peaks",
-  )} the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis${evidence(
+  )} the search punches unless their positions are protected: leftover_on_protected_planes_sharp of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest of leftover_off_lattice_sharp are peaks the search left, so fewer of those is better where they are spurious; leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis${evidence(
     ": diffuse maxima such as short-range order, which are the signal, not peaks to punch",
-  )}). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.`,
+  )}) stay. left_after_backfill: the peaks at nodes and Bragg tails on the backfilled planes, reported. Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.`,
   judge: (m) => {
     const atNodes = num(m.leftover_at_nodes);
     if (atNodes == null) return nothing();
     const sharp = num(m.leftover_off_lattice_sharp) ?? 0;
     const counted = D5_PROTECTED_SHARP_PEAKS_COUNT ? sharp : sharp - (num(m.leftover_on_protected_planes_sharp) ?? 0);
-    return judged([...(atNodes !== 0 ? (["missed at nodes"] as const) : []), ...(counted !== 0 ? (["sharp off-lattice"] as const) : [])]);
+    // An evaluation from before THY-43 judged no rims: judged as it was.
+    const tails = num(m.leftover_bragg_tails) ?? 0;
+    return judged([
+      ...(atNodes !== 0 ? (["missed at nodes"] as const) : []),
+      ...(tails !== 0 ? (["Bragg tails"] as const) : []),
+      ...(counted !== 0 ? (["sharp off-lattice"] as const) : []),
+    ]);
   },
 };
 
@@ -436,7 +446,7 @@ const STAGE_RULES: Record<Stage, StageRule> = { rings, punch, backfill, flatten,
 export const TERSE_CRITERION_MAX = 160;
 export const TERSE_CRITERION: Record<Stage, string> = {
   rings: "No powder ring left above, or dented below, three times its plane's noise; a powder ring rises at least 0.15 of its median height in 90 % of directions.",
-  punch: "No Bragg peak missed at a lattice node; no sharp peak left off the lattice outside the protected planes.",
+  punch: "No Bragg peak missed at a lattice node or left as a tail of 3 % or more beside its hole; no sharp peak off the lattice outside the protected planes.",
   backfill: "A median seam of 1σ or less; fill bias is texture_check's.",
   flatten: `No pedestal: ${PEDESTAL_WHERE} floor trend and span both ${PEDESTAL_LIMIT} or more over ${PEDESTAL_SHELLS}. Floor in σ: ${FLATTEN_FLOOR_SIGMA_NOTE}.`,
   pdf: `Back-FFT r of ${BACK_FFT_R_OK} or more against ${EVEN_PART}; at most 1e-3 of the window's weight on unmeasured space; the declared symmetry kept.`,

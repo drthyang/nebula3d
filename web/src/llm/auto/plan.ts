@@ -176,6 +176,7 @@ const MEASURES: Partial<Record<Reason, { measures: Measure[]; worse: "higher" | 
   "ring left": { measures: [field("max_ring_left")], worse: "higher" },
   "ring dent": { measures: [field("max_ring_dent")], worse: "higher" },
   "missed at nodes": { measures: [field("leftover_at_nodes")], worse: "higher" },
+  "Bragg tails": { measures: [field("leftover_bragg_tails")], worse: "higher" },
   // As the punch's rule counts them: those on protected planes stay by design.
   "sharp off-lattice": {
     measures: [(m) => (num(m.leftover_off_lattice_sharp) == null ? null : num(m.leftover_off_lattice_sharp)! - (num(m.leftover_on_protected_planes_sharp) ?? 0))],

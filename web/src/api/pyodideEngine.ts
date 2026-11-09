@@ -47,6 +47,7 @@ import type {
   RingDiagnostics,
   RingIsotropy,
   RingSurvey,
+  BraggSense,
   ShellFloors,
   Slice,
   SliceHeader,
@@ -515,6 +516,10 @@ export const engine = {
   },
   ringSurvey(volumeId: string, sliceAxis: string, edgeTrim: number): Promise<RingSurvey> {
     return jsonCall<RingSurvey>("volume_ring_survey_json", [volumeId, sliceAxis, edgeTrim]);
+  },
+  // The pre-run Bragg sensing (webbridge.volume_bragg_sense_json), with the run's settings.
+  braggSense(volumeId: string, paramsJson: string): Promise<BraggSense> {
+    return jsonCall<BraggSense>("volume_bragg_sense_json", [volumeId, paramsJson]);
   },
   ubCheck(volumeId: string, cell: string, qMax: number | null): Promise<UbCheck> {
     return jsonCall<UbCheck>("volume_ub_check_json", [volumeId, cell, qMax]);

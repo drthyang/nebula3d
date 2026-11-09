@@ -1477,10 +1477,11 @@ export function PipelineConfig({ onStarted }: { onStarted: () => void }) {
                       onChange={(v) => patch({ punchFitUnconstrained: v })}
                     />
                     <HelpTip>
-                      Each integer Bragg peak&apos;s ellipsoid, tilt included, is fitted from its measured shape in Q.
-                      It always contains the resolution ellipsoid (the Bragg footprint) and is capped at a few times
-                      it. This switch drops both limits: useful for profile diagnostics, but it can create unstable
-                      punch masks on weak or noisy peaks.
+                      Acts only with the ellipsoid footprint: with own or profile it changes nothing. Each integer
+                      Bragg peak&apos;s ellipsoid, tilt included, is fitted from its measured shape in Q. It always
+                      contains the resolution ellipsoid (the Bragg footprint) and is capped at a few times it. This
+                      switch drops both limits: useful for profile diagnostics, but it can create unstable punch
+                      masks on weak or noisy peaks.
                     </HelpTip>
                   </div>
                   <div className={cls("switch-row", flash("incidentBeamFitCovariance"))}>

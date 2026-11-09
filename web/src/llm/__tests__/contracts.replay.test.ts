@@ -24,6 +24,8 @@ const CALLS: Call[] = [
   ["describe_dataset", {}],
   // The pre-run survey reads the raw volume, whatever the case's run wrote.
   ["ring_survey", {}],
+  // So does the pre-run Bragg sensing (on the dev grid: not judged, too coarse).
+  ["bragg_sense", {}],
   ["current_view", {}],
   ["measure_reciprocal_cut", { plane: "h0l", value: 0 }],
   ["measure_reciprocal_cut", { plane: "hk0", value: 0.5 }],

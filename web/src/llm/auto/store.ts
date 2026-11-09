@@ -77,6 +77,10 @@ export interface AutoRun {
   problems?: string[] | null;
   pendingRun: RunStage | null; // a change applied whose run has not finished: Resume runs it first
   seedForm: SeedForm | null; // the form a transport took the seeded checks in, once found
+  // The method settings the pre-run Bragg sensing recommended, applied before
+  // the run as auto mode's own (controller.ts, applySensed): their decisions,
+  // and whether the punch's row has judged them against the defaults yet.
+  sensed?: { decisions: string[]; judged: boolean };
 }
 
 interface AutoStore {
@@ -270,6 +274,9 @@ function readPause(v: unknown): AutoPause | null {
  * parts, each of its type; a step from a file is marked restored. Null when
  * it is no record.
  */
+const isSensed = (v: unknown): v is { decisions: string[]; judged: boolean } =>
+  !!v && typeof v === "object" && Array.isArray((v as { decisions?: unknown }).decisions) && (v as { decisions: unknown[] }).decisions.every((d) => typeof d === "string") && typeof (v as { judged?: unknown }).judged === "boolean";
+
 export function readAutoRun(v: unknown, { fromFile }: { fromFile: boolean }): AutoRun | null {
   if (!isObj(v) || !isStr(v.id) || !isStr(v.dataset) || !oneOf(v.state, STATES)) return null;
   const clock = readClock(v.clock);
@@ -311,5 +318,6 @@ export function readAutoRun(v: unknown, { fromFile }: { fromFile: boolean }): Au
     ...(Array.isArray(v.problems) ? { problems: strings(v.problems) } : v.problems === null ? { problems: null } : {}),
     pendingRun: oneOf(v.pendingRun, RUN_STAGES) ? v.pendingRun : null,
     seedForm: oneOf(v.seedForm, ["round", "message"] as const) ? v.seedForm : null,
+    ...(isSensed(v.sensed) ? { sensed: { decisions: [...v.sensed.decisions], judged: v.sensed.judged } } : {}),
   };
 }

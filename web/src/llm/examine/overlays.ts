@@ -29,6 +29,8 @@ import type { LeftoverPeak, OverlayData } from "./data";
 /** A class of overlay: one legend chip, turned on and off as one. */
 export type ClassId =
   | "node" // a leftover at a lattice node: a missed Bragg peak
+  | "tail" // a Bragg tail beside a punch hole (THY-43)
+  | "faint" // a faint rim beside a punch hole, under 3 % of its peak
   | "sharp" // a sharp leftover off the lattice
   | "broad" // a broad one off the lattice: a diffuse maximum, kept
   | "protected" // off the lattice where the run's search left it alone
@@ -58,6 +60,8 @@ export type ClassId =
   | "fillDown" // below it
   | "far" // an off-lattice orbit far from any Bragg node
   | "rotated" // a node of the rotated copy of the Bragg lattice (a second grain, or the UB off)
+  | "sTilt" // a Bragg peak sensed before a run: tilted and elongated (its fit's ellipse)
+  | "sLobes" // one with several lobes
   | "line"; // a line profile's line
 
 /** A semantic colour (index.css tokens), with shape and dash as the second cue. */
@@ -85,7 +89,8 @@ export type OverlayItem =
   | { kind: "spot"; cls: ClassId; at: V3; size: number; label?: string; tolVoxels?: number }
   // A fitted Bragg peak's footprint (as the Bragg page draws its fit): its
   // principal widths and directions (r.l.u.), else its widths along H K L.
-  | { kind: "footprint"; cls: ClassId; at: V3; widths: V3; dirs: M3 | null; principal: V3 | null; label?: string }
+  // `plane`: drawn on that plane's views only (a section's own ellipse, as bragg_sense measured it).
+  | { kind: "footprint"; cls: ClassId; at: V3; widths: V3; dirs: M3 | null; principal: V3 | null; label?: string; plane?: string }
   // The UB turn ω (rad, Cartesian) at the Bragg nodes (every `cell` r.l.u.):
   // each node's shift ω × Q, in H K L through the volume's UB.
   | { kind: "turn"; cls: ClassId; ub: M3; omega: V3; cell: V3 }
@@ -130,6 +135,8 @@ export const DPDF = "delta_pdf";
 
 const CLASSES: Record<ClassId, ClassDef> = {
   node: { id: "node", label: "left at a node", tone: "red", views: { [PUNCHED]: "full", [RAW]: "faint" } },
+  tail: { id: "tail", label: "Bragg tail", tone: "red", views: { [PUNCHED]: "full", [RAW]: "faint" } },
+  faint: { id: "faint", label: "faint rim", tone: "grey", views: { [PUNCHED]: "full" } },
   sharp: { id: "sharp", label: "off-lattice", tone: "amber", views: { [PUNCHED]: "full", [RAW]: "faint" } },
   broad: { id: "broad", label: "broad, kept", tone: "cyan", views: { [PUNCHED]: "full", [RAW]: "faint" } },
   protected: { id: "protected", label: "protected, kept", tone: "grey", views: { [PUNCHED]: "full", [RAW]: "faint" } },
@@ -159,6 +166,8 @@ const CLASSES: Record<ClassId, ClassDef> = {
   fillDown: { id: "fillDown", label: "filled below", tone: "blue", views: { [FILLED]: "full", [PUNCHED]: "faint" } },
   far: { id: "far", label: "far from nodes", tone: "amber", views: { [RAW]: "full", [PUNCHED]: "faint" } },
   rotated: { id: "rotated", label: "rotated copy", tone: "teal", views: { [RAW]: "full" } },
+  sTilt: { id: "sTilt", label: "tilted, elongated", tone: "amber", views: { [RAW]: "full" } },
+  sLobes: { id: "sLobes", label: "several lobes", tone: "red", views: { [RAW]: "full" } },
   line: { id: "line", label: "profile line", tone: "accent", views: {} }, // on the stage the profile read (lineMapped)
 };
 
@@ -177,9 +186,11 @@ const round = (x: number, d = 2) => Number(x.toFixed(d));
 
 // ---------------------------------------------------------------- the punch
 
-/** A leftover's class: at a node; else where the search left it alone; else broad; else sharp off the lattice. */
-export function leftoverClass(p: Pick<LeftoverPeak, "at_node" | "on_protected_plane" | "broad">): ClassId {
+/** A leftover's class: at a node; a Bragg tail; a faint rim; else where the search left it alone; else broad; else sharp off the lattice. */
+export function leftoverClass(p: Pick<LeftoverPeak, "at_node" | "on_protected_plane" | "broad" | "bragg_tail" | "faint">): ClassId {
   if (p.at_node) return "node";
+  if (p.bragg_tail) return "tail";
+  if (p.faint) return "faint";
   if (p.on_protected_plane) return "protected";
   return p.broad ? "broad" : "sharp";
 }
@@ -214,6 +225,8 @@ function cutLeftovers(r: Found, plane: string, cut: number): LeftoverPeak[] {
       broad: p.broad === true,
       ...(typeof p.at_node === "boolean" ? { at_node: p.at_node } : {}),
       ...(typeof p.on_protected_plane === "boolean" ? { on_protected_plane: p.on_protected_plane } : {}),
+      ...(p.bragg_tail === true ? { bragg_tail: true } : {}),
+      ...(p.faint === true ? { faint: true } : {}),
     }];
   });
 }
@@ -350,7 +363,7 @@ interface Mapped {
 type Mapper = (r: Found, args: Record<string, unknown>, data: OverlayData | undefined) => Mapped | null;
 
 const PUNCH_HELP = [
-  "Leftovers: red ring at a lattice node (a missed Bragg peak); amber diamond sharp off the lattice; cyan dashed broad (a diffuse maximum, kept); grey where the run's search left the position alone (protected, kept).",
+  "Leftovers: red ring at a lattice node (a missed Bragg peak); red, a Bragg tail beside a punch hole (3 % or more of its peak); grey, a faint rim (under 3 %); amber diamond sharp off the lattice; cyan dashed broad (a diffuse maximum, kept); grey where the run's search left the position alone (protected, kept).",
   "Holes: the punch's NaN voxels on this slice, traced. Round 2: the voxels the tail sweep added (magenta).",
 ];
 const RINGS_HELP = [
@@ -364,6 +377,7 @@ function punchMapped(r: Found, data: OverlayData | undefined): Mapped | null {
   // The result first: what is left, the zeros left out.
   const parts: [number | null, string][] = [
     [n("leftover_at_nodes"), "missed at nodes"],
+    [n("leftover_bragg_tails"), "Bragg tails"],
     [sharp != null ? sharp - kept : null, "sharp off-lattice"],
     [n("leftover_off_lattice_broad"), "broad kept"],
   ];
@@ -539,6 +553,35 @@ function surveyLabel(s: SurveyShell): string | undefined {
 const SURVEY_HELP = [
   "Before a run, nothing removed: the ring stage's detection and 3D ring test as a dry run. AL: a shell on a fitted Al line, its hkl. PH: on a line of the phase the match names, possibly that phase (a possibility, never an identification). ?: a ring no line explains, its |Q| in Å⁻¹. XTAL: the crystal's own scattering, rising in some directions only. GRID, NJ: shells no line explains that the test could not judge (the grid too coarse; no clean flank).",
 ];
+
+// ---------------------------------------------------------------- the pre-run Bragg sensing
+
+const SENSE_HELP = [
+  "Before a run, nothing punched: the strong Bragg peaks on six raw sections whose shape an axis-aligned footprint misses, each drawn as its unconstrained fit's ellipse. Amber: tilted and elongated. Red: several lobes (a doublet, a streak). The result says what each footprint would leave and which the peaks ask for.",
+];
+
+const braggSense: Mapper = (r, _args, data) => {
+  const peaks = data?.braggSensed ?? [];
+  const items: OverlayItem[] = peaks.flatMap((p, i): OverlayItem[] => {
+    const at = v3(p.hkl);
+    if (!at || p.dirs?.length !== 3 || p.widths?.length !== 3) return [];
+    const cls: ClassId = p.lobes >= 2 ? "sLobes" : "sTilt";
+    const label = i < 6 ? hklLabel(at) : undefined;
+    // The ellipse's widths along H K L for the cut test: the cut's own axis a voxel thin.
+    const widths = [0, 1, 2].map((k) => Math.abs(p.dirs[2][k]) * p.widths[2]) as V3;
+    // On its own section's views only: a node on two sections is measured on each, in its plane.
+    return [{ kind: "footprint", cls, at, widths, dirs: p.dirs, principal: p.widths as V3, plane: p.plane, ...(label ? { label } : {}) }];
+  });
+  const shape = typeof r.shape === "string" ? r.shape : "";
+  return {
+    title: "Bragg peaks before the run",
+    where: items.length ? `${items.length} flagged peaks · ${shape.split(":")[0]}` : shape || "no peak flagged",
+    help: SENSE_HELP,
+    measured: [RAW],
+    views: { [RAW]: "primary" },
+    items,
+  };
+};
 
 const ringSurvey: Mapper = (r, _args, data) => {
   const shells = data?.ringSurvey ?? surveyShellsFromResult(r);
@@ -784,6 +827,7 @@ type Entry = Mapper | { none: string; title?: string } | { later: string; title:
 export const OVERLAYS: Record<string, Entry> = {
   assess_stage: assessStage,
   ring_survey: ringSurvey,
+  bragg_sense: braggSense,
   measure_reciprocal_cut: measureCut,
   qmax_coverage: coverage,
   // The views read the marks themselves (RegionMarks), above the overlays.
@@ -845,6 +889,7 @@ export function overlaysOf(step: AgentStep): OverlaySet | null {
 // What the v2 tools examine while they run: their title and views.
 const RUNNING: Record<string, (args: Record<string, unknown>) => { title: string; views: OverlaySet["views"] }> = {
   ring_survey: () => ({ title: "Ring survey", views: { [RAW]: "primary" } }),
+  bragg_sense: () => ({ title: "Bragg peaks before the run", views: { [RAW]: "primary" } }),
   bragg_peaks: () => ({ title: "Bragg peaks", views: { [BRAGG]: "primary", [RAW]: "reading" } }),
   dpdf_peaks: () => ({ title: "ΔPDF features", views: { [DPDF]: "primary" } }),
   ub_check: () => ({ title: "UB turn", views: { [RAW]: "primary", [BRAGG]: "reading" } }),

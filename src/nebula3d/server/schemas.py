@@ -856,6 +856,31 @@ class LaueCompareIn(BaseModel):
     token: str | None = None
 
 
+class BraggSenseIn(BaseModel):
+    """The run's settings for the pre-run Bragg sensing: its edge trim and
+    precision (how the raw volume is loaded) and its punch settings (how each
+    footprint is modelled)."""
+    params: StageParamsIn = StageParamsIn()
+
+
+class BraggSenseOut(BaseModel):
+    """The raw volume's Bragg peaks sensed before a run, nothing punched
+    (analysis.bragg_sense.sense_bragg, server.bragg.volume_bragg_sense)."""
+    id: str
+    version: int
+    sections: list[dict[str, Any]]
+    n_nodes: int
+    mirrors: dict[str, Any]
+    not_judged: str | None = None
+    evidence: dict[str, float] | None = None
+    footprints: dict[str, Any] | None = None
+    width_q: dict[str, Any] | None = None
+    prediction: dict[str, Any] | None = None
+    flagged: list[dict[str, Any]] = []
+    seconds: float
+    lines: dict[str, str]
+
+
 class TuningRunIn(BaseModel):
     dataset_id: str
     first_stage: str

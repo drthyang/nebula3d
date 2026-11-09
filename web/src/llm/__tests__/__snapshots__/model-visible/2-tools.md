@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (29 tools, 22072 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (30 tools, 22561 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -64,7 +64,22 @@ Parameters:
 }
 ```
 
-## 4. current_view
+## 4. bragg_sense
+
+```text
+The raw volume's Bragg peaks before a run, nothing punched: their shapes on six raw sections and the share of each peak every punch footprint would leave. Returns shape, left, footprint and constraints (the rule's choice, with its numbers), q (a reach growing with |Q|), symmetry (symmetrised data that declare none), recommend (the settings to set with update_settings).
+```
+
+Parameters:
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+## 5. current_view
 
 ```text
 What the user is looking at: the console page and the cuts open in the reciprocal-space and ΔPDF viewers. Use it when the user says 'this', 'here' or 'what I'm looking at'.
@@ -79,7 +94,7 @@ Parameters:
 }
 ```
 
-## 5. measure_reciprocal_cut
+## 6. measure_reciprocal_cut
 
 ```text
 Compute the stage-quality metrics (ring removal, leftover Bragg peaks, backfill seams, flatten floors) on any reciprocal-space cut: one cut, not the volume. A reply's first call also returns fields, what each one means. Use it to check whether a finding holds on other planes or off-zero cuts (e.g. L=0.5, or K=1/3 for satellites).
@@ -105,7 +120,7 @@ Parameters:
 }
 ```
 
-## 6. measure_dpdf_cut
+## 7. measure_dpdf_cut
 
 ```text
 Compute the 3D-ΔPDF feature metrics (feature SNR, strong-feature fraction, sign balance, anisotropy and its direction, radial trend) on any real-space section, in its own robust σ. A reply's first call also returns fields, what each one means.
@@ -131,7 +146,7 @@ Parameters:
 }
 ```
 
-## 7. assess_stage
+## 8. assess_stage
 
 ```text
 Judge a stage's output against its goal by the stage's rule, on the three principal planes through the origin and the records the stage writes, as tuning judges trials. stage: rings, punch, backfill, flatten, pdf, or all (default). Returns per stage its verdict, criterion, headline and numbers; one stage adds the per-plane detail and its goal. Use it for a verdict on a stage, after a run, and before and after a change.
@@ -152,7 +167,7 @@ Parameters:
 }
 ```
 
-## 8. texture_check
+## 9. texture_check
 
 ```text
 Did the punch and backfill print a pattern of their own into reciprocal space? Each punch hole's fill, in 3-D, against the range its rim allows. Returns median_fill_bias_sigma and median_fill_bias_level, above/below_fraction, above/below_floor_fraction (beyond a fifth of the local level), systematic_fill_bias and its criterion; per cut (default: the three principal planes), azimuthal_ratio: the sector means' spread around |Q| shells after the backfill over before the punch (1: none added).
@@ -177,7 +192,7 @@ Parameters:
 }
 ```
 
-## 9. qmax_coverage
+## 10. qmax_coverage
 
 ```text
 Does the forward transform (data → 3D-ΔPDF) reach past measured reciprocal space? Returns verdict: the window's weight on unmeasured space from the ΔPDF's record (≲ 1e-3 is clean), else the reach against full_coverage_q (where shells stop holding counts in 95 % of voxels); raw_counts (the counts' edges in |Q|), suggested_band, band_check; counts_end_inside_box (true: the counts stop before the box's face). With the window fitted to the coverage, the verdict judges the counts' end and the band.
@@ -192,7 +207,7 @@ Parameters:
 }
 ```
 
-## 10. symmetry_check
+## 11. symmetry_check
 
 ```text
 Does the 3D-ΔPDF keep the symmetry its data were declared symmetrised with? Each operation of the declared point group (none: the cell's in-plane ones): the RMS difference from the ΔPDF's image over its RMS, on the worst section it maps (x–y at ±z, default 0; x–z, y–z), else voxel by voxel (tested_on, not_tested). Returns ops, holds, verdict; a kept symmetry holds to about 1e-3; more means a stage broke it, or the sample lacks it. Which operations the sample has is the user's to say.
@@ -212,7 +227,7 @@ Parameters:
 }
 ```
 
-## 11. dpdf_contrast
+## 12. dpdf_contrast
 
 ```text
 Set the 3D-ΔPDF viewer's colour range so pair-correlation features carry the colour and the FFT ripple stays dim. Call it once without arguments: the limit is the 99.9th percentile of |ΔPDF| on the three centre sections (origin disk left out), the page's Auto. Use it before you describe a ΔPDF figure. Returns the applied limit, and what the 99.5th and 99.97th percentiles would give. Pass percentile or limit_sigma only for a range the user asks for; reset returns to Auto.
@@ -240,7 +255,7 @@ Parameters:
 }
 ```
 
-## 12. dpdf_peaks
+## 13. dpdf_peaks
 
 ```text
 The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed: + more pairs than the average structure, − fewer), n_vectors of one sign, length and size (likely symmetry copies), up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). Use it after the trust checks (qmax_coverage, symmetry_check, assess_stage pdf).  What a feature means is the user's call.
@@ -266,7 +281,7 @@ Parameters:
 }
 ```
 
-## 13. grain_check
+## 14. grain_check
 
 ```text
 Is there a second grain, and what are the punch's sharp off-lattice peaks? Groups them into orbits of the declared point group and tests the strongest. An orbit within a quarter of the node spacing of a Bragg node is that peak displaced, its offset over |Q| a rotation angle (a lower bound). A second grain is one rotation of the Bragg lattice that indexes most orbits, against random directions; under 2° it is the UB, not a grain. Returns verdict and its numbers. Run the punch first.
@@ -286,7 +301,7 @@ Parameters:
 }
 ```
 
-## 14. ub_check
+## 15. ub_check
 
 ```text
 Is the volume's UB right? Fits a UB to the raw volume's Bragg-peak centres (the punch cell's nodes, low |Q| first); it changes no data. Returns verdict, rms_start → rms, cell_start → cell, orientation_change_deg, radial (offset along Q per |Q| band and direction), mean_offset_rlu, origin_shift_rlu. On a symmetrised volume only the changes that commute with its operations are fitted (fit 'symmetric'): the orientation needs the unsymmetrised file. An offset that changes with |Q| is no UB error.
@@ -306,7 +321,7 @@ Parameters:
 }
 ```
 
-## 15. compare_laue_classes
+## 16. compare_laue_classes
 
 ```text
 Which Laue class does the sample have? Compares by R_int every Laue class the cell's metric allows (within 2%) and whose operations map the grid, on the raw volume as the average reads it, on all measured voxels and the diffuse, each over its noise floor (x_noise). Returns classes, rule, suggestion (or none), flag (the diffuse supports less than the Bragg peaks). Refused on a symmetrised volume. Seconds to minutes. The class is the user's to set: cite classes, rule and flag when you suggest one.
@@ -321,7 +336,7 @@ Parameters:
 }
 ```
 
-## 16. radial_profile
+## 17. radial_profile
 
 ```text
 The median intensity in |Q| shells of one reciprocal cut, for each cleanup stage side by side (raw, ringremoved, braggpunched, backfilled, flattened). Shell medians ignore Bragg peaks but follow powder rings, which are bumps in raw that ring removal should take out without denting the diffuse; after flatten the floor should sit near 0 at every |Q|. Use it to see where in |Q| a stage left or removed signal.
@@ -360,7 +375,7 @@ Parameters:
 }
 ```
 
-## 17. line_profile
+## 18. line_profile
 
 ```text
 Intensity along a straight line parallel to one axis through any stage volume — e.g. along H through (H, 1/3, 0) to see a satellite row, or across a residual ring. Reciprocal stages take H/K/L (r.l.u.); delta_pdf takes x/y/z (Å). Returns sampled points plus the exact maximum, minimum and median.
@@ -416,7 +431,7 @@ Parameters:
 }
 ```
 
-## 18. bragg_peaks
+## 19. bragg_peaks
 
 ```text
 Peaks from the punch stage's fitted Bragg profile: position (HKL and |Q|), intensity, local background, significance, measured width per axis (Å⁻¹), whether each axis is resolution-limited, and anisotropy (largest/smallest principal width). Sort by a property or by distance to an HKL point.
@@ -452,7 +467,7 @@ Parameters:
 }
 ```
 
-## 19. consistency_details
+## 20. consistency_details
 
 ```text
 The run's saved back-FFT check in full: Pearson r and normalised RMS of the inverse-FFT ΔPDF against the cleaned data, r per principal plane, the |Q| and r bands, crop and apodization. pearson_r_even compares the round trip with the data's even part under Q → −Q, what the transform keeps: 1 when it is sound; r against the data is lower by the odd part (odd_share), no fault on unsymmetrised data. Neither says a feature is real.
@@ -467,7 +482,7 @@ Parameters:
 }
 ```
 
-## 20. run_log
+## 21. run_log
 
 ```text
 The log of the last pipeline run in this session: each stage's start, skip, result and error lines (how many ring shells were fitted, peaks punched, voxels left unmeasured, the back-FFT r, …) and how the run ended. Use it to explain a result or a failure.
@@ -494,7 +509,7 @@ Parameters:
 }
 ```
 
-## 21. compare_datasets
+## 22. compare_datasets
 
 ```text
 The same cut measured on several datasets (e.g. temperatures), to see what changes between them. kind=reciprocal compares the stage metrics; kind=dpdf compares the ΔPDF feature metrics and back-FFT r. Up to 6 datasets; default all.
@@ -530,7 +545,7 @@ Parameters:
 }
 ```
 
-## 22. run_verdict
+## 23. run_verdict
 
 ```text
 The verdict on the run that {{achieved}} gives now, computed from this reply's checks: its words (null before any check), each stage's verdict, what needs attention, is not judged or not measured, and the data's problems no setting fixes. Read it before you write whether the run met its goal.
@@ -545,7 +560,7 @@ Parameters:
 }
 ```
 
-## 23. configure_settings
+## 24. configure_settings
 
 ```text
 The Configure page's settings that differ from their defaults, what the next run would use ("(default)": the backend's), and how many are at their defaults; all: true lists every one. They may differ from the settings that made the files on disk. update_settings lists the settings it can change; name them exactly as there.
@@ -565,7 +580,7 @@ Parameters:
 }
 ```
 
-## 24. update_settings
+## 25. update_settings
 
 ```text
 Change settings on the Configure page for the next run_pipeline: only those the user named or agreed to, when they ask for a change or to improve or tune the result; when unsure which they mean, ask. A fact about the sample changes only when the user's latest message names it, never to improve a result. The magnetic ion, the |Q| band and the symmetry average (the symmetry* settings) stay with the user: suggest a Laue class with your evidence. Returns each change and the stage to rerun from.
@@ -587,7 +602,7 @@ Parameters:
 }
 ```
 
-## 25. run_pipeline
+## 26. run_pipeline
 
 ```text
 Run the reduction pipeline on the selected dataset with the Configure page's settings, as the Run button does; the console shows it on its Execution page. Without from_stage, outputs that still follow from the settings and inputs are reused (unless Force is on) and the rest recomputed; with from_stage, that stage and every enabled one after it are recomputed: use it after update_settings. Seconds to minutes. Returns how it ended, the stages computed or reused, and the outputs, to measure next.
@@ -608,7 +623,7 @@ Parameters:
 }
 ```
 
-## 26. tune_pipeline
+## 27. tune_pipeline
 
 ```text
 Search for the best settings, one stage at a time: the current settings run, you propose alternatives, each runs and is judged against the stage's goal, the best is kept, and later stages build on it. Trials run in a tuning folder: the dataset's outputs stay, and the chosen settings land on the Configure page. Minutes (one run per trial). Returns each trial's changes and numbers (no_effect: the current settings' numbers exactly) and each stage's choice and why: quote these, nothing else.
@@ -638,7 +653,7 @@ Parameters:
 }
 ```
 
-## 27. regrid_refined_ub
+## 28. regrid_refined_ub
 
 ```text
 Regrid the raw volume onto its refined UB (ub_check's fit) as a new dataset, <stem>_regridded.nxs beside the raw file, never over one; no pipeline is run. Only when the user's latest message asks for a regrid. Refused, with code and reason, when the turn is under turn_threshold_deg, a symmetrised volume has no unsymmetrised source, or the file or dataset id exists. Returns the new dataset, the turn, the peaks' RMS before → after, and the measured voxels lost outside the old grid.
@@ -658,7 +673,7 @@ Parameters:
 }
 ```
 
-## 28. show_in_viewer
+## 29. show_in_viewer
 
 ```text
 Open a cut in the console's viewer so the user can see what you are describing: view=cleanup opens the reciprocal-space cleanup page (all stages side by side) at a reciprocal plane; view=dpdf opens the 3D-ΔPDF page at a real-space section. Use it for the one cut that best shows your point.
@@ -687,7 +702,7 @@ Parameters:
 }
 ```
 
-## 29. mark_region
+## 30. mark_region
 
 ```text
 Mark a region in the slice views and move them to it, so the user sees a finding (satellites at h ± q, a ring left over, a ΔPDF feature). where: raw, rings, punch, backfill, flatten (h, k, l in r.l.u.) or pdf (x, y, z in Å along a, b, c). shape: box or ellipsoid (center, half_size), or points (up to 12). evidence: the calls showing it, as tool or tool.field (dpdf_peaks.features.0); none, or a region empty or outside the volume, marks nothing. Returns where it is drawn. Cite it by its id (M1, …).

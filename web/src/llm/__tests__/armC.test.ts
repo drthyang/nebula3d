@@ -56,6 +56,7 @@ const api = vi.hoisted(() => ({
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingSurvey: vi.fn(),
+  fetchBraggSense: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -157,7 +158,7 @@ const RUN_EVENTS: JobEvent[] = [
 // call three times after the last change, so the loop points at the first and
 // then asks for the answer.
 const ROUNDS: Call[][] = [
-  [["describe_dataset", {}], ["ring_survey", {}], ["current_view", {}], ["configure_settings", {}], ["assess_stage", {}]],
+  [["describe_dataset", {}], ["ring_survey", {}], ["bragg_sense", {}], ["current_view", {}], ["configure_settings", {}], ["assess_stage", {}]],
   [["assess_stage", { stage: "flatten" }]],
   [["update_settings", { changes: { flattenQ2: true } }]],
   [["run_pipeline", { from_stage: "flatten" }]],
@@ -321,10 +322,10 @@ describe("arm C's session, with the skills off", () => {
       expect(all).toMatch(line);
     }
     // Every request offered arm C's tools: never read_skill. A reply's first
-    // holds back the pre-run survey (the dataset has its outputs:
-    // offeredOn); the first reply calls it by name, and from then on it is offered.
+    // holds back the pre-run tools (the dataset has its outputs:
+    // offeredOn); the first reply calls them by name, and from then on they are offered.
     const held = offeredOn(toolsWithSkills(CHAT_TOOLS, false), DATASET).map((t) => t.name);
-    expect(held).toEqual(offered.filter((n) => n !== "ring_survey"));
+    expect(held).toEqual(offered.filter((n) => n !== "ring_survey" && n !== "bragg_sense"));
     const firstOffers = first.sent.map((s) => (s.tools ?? []).map((t) => t.function.name));
     expect(firstOffers[0]).toEqual(held);
     for (const names of firstOffers.slice(1)) expect(names).toEqual(offered);

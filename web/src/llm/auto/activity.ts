@@ -120,7 +120,25 @@ const args = (s: AgentStep): string => {
   return a === "{}" ? "" : a;
 };
 
-function stepRow(s: AgentStep, i: number): ActivityRow {
+function stepRow(s: AgentStep, i: number, a: ActivityInput): ActivityRow {
+  // The app's own change (THY-43: the settings the pre-run sensing recommends):
+  // what it set, each from its card, and the line it rests on.
+  if (s.name === "update_settings" && s.status === "done") {
+    const ps = a.proposals.filter((p) => p.source.step === s.id);
+    const ds = a.decisions.filter((d) => ps.some((p) => p.id === d.proposal) && d.action === "apply");
+    if (ps.length) {
+      const putBack = ds.some((d) => !!d.undoneBy && a.decisions.some((u) => u.id === d.undoneBy && u.by === "auto"));
+      const why = [...new Set(ps.flatMap((p) => p.evidence.map((e) => e.text)).filter(Boolean))].join("; ");
+      return {
+        key: s.id,
+        status: "done",
+        title: `Set ${ps.map((p) => `${lower(p.title)} to ${p.shown.to}`).join(", ")}`,
+        line: `${why || (s.summary ?? "")}${putBack ? " (it made the punch's check worse: put back)" : ""}`,
+        detail: [...ps.map((p) => `${p.title}: ${p.shown.from} → ${p.shown.to}`), ...ps.flatMap((p) => p.evidence.map((e) => `${e.label}, step ${e.n}: ${e.text}`)), `Step ${i + 1} of the run, by the app; Undo auto changes puts it back`],
+        step: s.id,
+      };
+    }
+  }
   const stage = s.name === "assess_stage" && typeof s.args?.stage === "string" && (STAGES as readonly string[]).includes(s.args.stage) ? (s.args.stage as Stage) : null;
   const title = stage ? `Checked ${STAGE_NAMES[stage]}` : factsOf(s.name).label;
   const line = s.summary ?? (s.status === "error" ? "failed" : "");
@@ -190,7 +208,7 @@ export function activityRows(a: ActivityInput): ActivityRow[] {
   run.steps.forEach((s, i) => {
     for (const turn of replyAt.get(i) ?? []) replyRow(turn);
     factRows(i);
-    if (isAppStep(s)) rows.push(stepRow(s, i));
+    if (isAppStep(s)) rows.push(stepRow(s, i, a));
   });
   // What came after the last step: replies, facts asked there.
   for (const [i, turns] of replyAt) if (i >= run.steps.length) turns.forEach(replyRow);

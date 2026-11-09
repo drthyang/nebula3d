@@ -13,12 +13,18 @@ the output it describes.
 
 FastAPI-free, like :mod:`nebula3d.server.rings`: the router
 (:mod:`nebula3d.server.routers.bragg`) and the browser bridge
-(:func:`nebula3d.webbridge.bragg_profile_json`) serve the same fields.
+(:func:`nebula3d.webbridge.bragg_profile_json`) serve the same fields. So is
+:func:`volume_bragg_sense`, the pre-run sensing of a raw volume's Bragg peaks
+(POST /api/volumes/{id}/bragg-sense, the bridge's ``volume_bragg_sense_json``).
 """
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from nebula3d.pipeline import PipelineParams
 
 
 def node_test_out(record: object) -> dict[str, Any] | None:
@@ -49,3 +55,39 @@ def tail_sweep_out(record: object) -> dict[str, Any] | None:
             or not isinstance(record.get("ran"), bool)):
         return None
     return dict(record)
+
+
+# The pre-run Bragg sensing's record (analysis.bragg_sense), small: one
+# volume's at a time, keyed by the file, its mtime and every setting it reads.
+_sense_cache: dict[tuple, dict[str, Any]] = {}
+
+
+def volume_bragg_sense(path: Path, params: PipelineParams) -> dict[str, Any]:
+    """The raw volume's Bragg peaks sensed before a run
+    (:func:`nebula3d.analysis.bragg_sense.sense_bragg`): the volume loaded as
+    the run loads it (*params*, a :class:`~nebula3d.pipeline.PipelineParams`:
+    its edge trim and precision), each footprint modelled with its punch
+    settings, and whether the file declares a symmetry (its operations, or a
+    class declared for it beside it). Returns the record with ``lines``, its few
+    lines for NEBULA Pilot (:func:`~nebula3d.analysis.bragg_sense.sense_lines`)."""
+    import dataclasses
+
+    from nebula3d.analysis.bragg_sense import sense_bragg, sense_lines
+    from nebula3d.pipeline import load_input
+    from nebula3d.server.volumes import declared_for
+    from nebula3d.symmetry import read_symmetry_ops
+
+    punch = params.punch
+    key = (str(path), path.stat().st_mtime, int(params.edge_trim), str(params.precision),
+           tuple(sorted((k, repr(v)) for k, v in dataclasses.asdict(punch).items())))
+    hit = _sense_cache.get(key)
+    if hit is not None:
+        return hit
+    declared = read_symmetry_ops(path) is not None or declared_for(path) is not None
+    vol = load_input(path, params)
+    record = sense_bragg(vol, punch, declared=declared)
+    del vol
+    out = {**record, "lines": sense_lines(record)}
+    _sense_cache.clear()
+    _sense_cache[key] = out
+    return out

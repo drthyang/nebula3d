@@ -16,6 +16,9 @@ export interface LeftoverPeak {
   sigma: number;
   at_node?: boolean;
   on_protected_plane?: boolean;
+  // Beside a punched Bragg peak, holding 3 % or more of it; under that, a faint rim (metrics/punch.ts).
+  bragg_tail?: boolean;
+  faint?: boolean;
   broad: boolean;
   hkl?: [number, number, number];
 }
@@ -63,6 +66,13 @@ export interface OverlayData {
   // code (nebula3d.preprocessing.ring_survey.CODES), the line it sits on
   // ("Al111", "Bi012") and, on another phase's line, that phase.
   ringSurvey?: { q: number; code: string; line: string | null; phase: string | null }[];
+  // bragg_sense: the Bragg peaks it flagged before a run (tilted and
+  // elongated, or with several lobes), each with its unconstrained fit's
+  // ellipse (principal directions and widths in H K L).
+  braggSensed?: { plane: string; cut: number; hkl: number[]; tilted: boolean; lobes: number; elongation: number; tilt_deg: number; dirs: number[][]; widths: number[] }[];
+  // ... and the class its data were symmetrised with, declaring none, for the
+  // card that declares it (apply/proposals.ts): no overlay draws it.
+  braggDeclare?: string;
   // grain_check: every image of the far orbits under the declared operations,
   // and, where the rotated copy explains them (a second grain, or the UB off),
   // the map from its nodes to H K L.

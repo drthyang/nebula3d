@@ -17,7 +17,7 @@ Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on eve
 ### punch
 
 ```text
-Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.
+Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) and Bragg tails (leftover_bragg_tails: maxima beside a punched Bragg peak's hole, or within 0.25 Å⁻¹ of it, holding 3 % or more of its height) must reach 0 on every plane; leftover_beside_holes counts every maximum at a hole's rim, the faint ones under 3 % included. Off-lattice sharp peaks the search punches unless their positions are protected: leftover_on_protected_planes_sharp of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest of leftover_off_lattice_sharp are peaks the search left, so fewer of those is better where they are spurious; leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis) stay. left_after_backfill: the peaks at nodes and Bragg tails on the backfilled planes, reported. Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.
 ```
 
 ### backfill
@@ -109,6 +109,9 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
     "n_off_nodes": 1,
     "n_on_protected": 0,
     "n_broad_off_nodes": 1,
+    "n_bragg_tails": 0,
+    "n_beside_holes": 0,
+    "n_faint": 0,
     "n_skipped_noisy": 0,
     "scan_sigma_threshold": 8
   },
@@ -131,7 +134,7 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
     "floor_judged_q": [2.17, 4.22]
   },
   "notes": [],
-  "fields": "ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per bump of the raw profile: residual_fraction against the diffuse beside it (negative a dip, positive a bump left), significant beyond 3 × noise_fraction; no ring verdict: one cut's bumps include the crystal's own scattering. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged."
+  "fields": "ring_removal: ring_energy_ratio, after/before share of the radial profile in ring bumps (diffuse keeps it above 0: 0.4–0.5 can be ring-free); over_subtraction_fraction, after_negative_fraction: voxels driven negative (a few percent is noise); ring_residuals per bump of the raw profile: residual_fraction against the diffuse beside it (negative a dip, positive a bump left), significant beyond 3 × noise_fraction; no ring verdict: one cut's bumps include the crystal's own scattering. bragg_punch_leftover: sharp peaks the punch missed on this cut, not what its search found: n_at_nodes, missed Bragg peaks; n_bragg_tails, maxima beside a punched Bragg peak's hole holding 3 % or more of it (n_beside_holes: every maximum beside a hole; n_faint: those under 3 %); n_off_nodes, off the lattice (on_protected_plane: kept by design); n_broad_off_nodes, FWHM ≥ 5 voxels. backfill: median_seam_sigma, |fill − rim| in σ (≲ 1 seamless); checkerboard_fraction, 0.5 random. flatten: floor_before, floor_after: shell floors by third of |Q|; after_negative_fraction ≈ 0.25 by construction; floor_trend, floor_span_fraction over the outer half of the |Q| shells the counts reach (floor_judged_q): both 0.8 or more is a pedestal (the verdict reads the volume's floors); after_floor_max_sigma is reported, not judged."
 }
 ```
 
@@ -199,28 +202,23 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
   },
   "punch": {
     "verdict": "needs attention",
-    "criterion": "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima stay.",
-    "headline": "1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
-    "total_leftover_peaks": 1,
+    "criterion": "No Bragg peak missed at a lattice node or left as a tail beside its hole (3 % or more of its height), and no sharp peak left off the lattice outside the protected planes. Broad maxima stay.",
+    "headline": "1 missed at nodes · 0 Bragg tails · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
     "leftover_at_nodes": 1,
-    "leftover_off_lattice": 0,
-    "leftover_on_protected_planes": 0,
+    "leftover_bragg_tails": 0,
+    "leftover_beside_holes": 0,
     "leftover_on_protected_planes_sharp": 0,
     "leftover_off_lattice_broad": 0,
     "leftover_off_lattice_sharp": 0,
+    "left_after_backfill": 1,
     "strongest_leftover": {
       "plane": "hk0",
-      "xy": [2, 1],
-      "intensity": 452,
-      "local_background": 21.3,
-      "contrast": 21.2,
       "sigma": 374,
       "fwhm_voxels": [1, 1],
       "broad": false,
       "hkl": [2, 1, 0],
       "at_node": true
     },
-    "noisy_spikes_skipped": 0,
     "mean_punched_fraction": 0.03,
     "fitted_peaks": 14
   },
@@ -319,28 +317,23 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
 {
   "punch": {
     "verdict": "needs attention",
-    "criterion": "No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima stay.",
-    "headline": "1 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
-    "total_leftover_peaks": 1,
+    "criterion": "No Bragg peak missed at a lattice node or left as a tail beside its hole (3 % or more of its height), and no sharp peak left off the lattice outside the protected planes. Broad maxima stay.",
+    "headline": "1 missed at nodes · 0 Bragg tails · 0 sharp off-lattice · 0 broad maxima kept · punched 0.03",
     "leftover_at_nodes": 1,
-    "leftover_off_lattice": 0,
-    "leftover_on_protected_planes": 0,
+    "leftover_bragg_tails": 0,
+    "leftover_beside_holes": 0,
     "leftover_on_protected_planes_sharp": 0,
     "leftover_off_lattice_broad": 0,
     "leftover_off_lattice_sharp": 0,
+    "left_after_backfill": 1,
     "strongest_leftover": {
       "plane": "hk0",
-      "xy": [2, 1],
-      "intensity": 452,
-      "local_background": 21.3,
-      "contrast": 21.2,
       "sigma": 374,
       "fwhm_voxels": [1, 1],
       "broad": false,
       "hkl": [2, 1, 0],
       "at_node": true
     },
-    "noisy_spikes_skipped": 0,
     "mean_punched_fraction": 0.03,
     "fitted_peaks": 14,
     "off_lattice_bunching": {
@@ -351,9 +344,12 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       "hk0": {
         "leftover_peaks": 1,
         "at_nodes": 1,
+        "bragg_tails": 0,
+        "beside_holes": 0,
         "off_lattice": 0,
         "on_protected_planes": 0,
         "off_lattice_broad": 0,
+        "left_after_backfill": 1,
         "strongest_leftover": {
           "xy": [2, 1],
           "intensity": 452,
@@ -370,23 +366,29 @@ The ΔPDF must show features above noise (feature_snr) with the transform's reac
       "h0l": {
         "leftover_peaks": 0,
         "at_nodes": 0,
+        "bragg_tails": 0,
+        "beside_holes": 0,
         "off_lattice": 0,
         "on_protected_planes": 0,
         "off_lattice_broad": 0,
+        "left_after_backfill": 0,
         "strongest_leftover": null,
         "punched_fraction": 0.0305
       },
       "0kl": {
         "leftover_peaks": 0,
         "at_nodes": 0,
+        "bragg_tails": 0,
+        "beside_holes": 0,
         "off_lattice": 0,
         "on_protected_planes": 0,
         "off_lattice_broad": 0,
+        "left_after_backfill": 0,
         "strongest_leftover": null,
         "punched_fraction": 0.0305
       }
     },
-    "goal": "Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks."
+    "goal": "Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) and Bragg tails (leftover_bragg_tails: maxima beside a punched Bragg peak's hole, or within 0.25 Å⁻¹ of it, holding 3 % or more of its height) must reach 0 on every plane; leftover_beside_holes counts every maximum at a hole's rim, the faint ones under 3 % included. Off-lattice sharp peaks the search punches unless their positions are protected: leftover_on_protected_planes_sharp of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest of leftover_off_lattice_sharp are peaks the search left, so fewer of those is better where they are spurious; leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis) stay. left_after_backfill: the peaks at nodes and Bragg tails on the backfilled planes, reported. Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks."
   },
   "measured_on": ["H–K plane at L = 0", "H–L plane at K = 0", "K–L plane at H = 0"]
 }
@@ -514,7 +516,7 @@ No skill read: it runs, and passes the switch on to the tuning prompts.
 ## read_skill {"name":"reduction-qc"} (called by name: it is not offered)
 
 ```text
-Error: no tool named read_skill. Available: describe_dataset, ring_survey, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region
+Error: no tool named read_skill. Available: describe_dataset, ring_survey, bragg_sense, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region
 ```
 
 ## The tuning prompt for the flatten, what to try

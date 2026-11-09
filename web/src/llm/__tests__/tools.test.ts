@@ -847,14 +847,14 @@ describe("assess_stage", () => {
   });
 
   it("shows the sharp leftovers on protected planes on their own line, out of the punch's verdict (D5, 2.4.5)", async () => {
-    evaluate.evaluateStage.mockResolvedValue({ leftover_at_nodes: 0, leftover_off_lattice: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 3, mean_punched_fraction: 0.03, per_plane: {} });
+    evaluate.evaluateStage.mockResolvedValue({ leftover_at_nodes: 0, leftover_on_protected_planes_sharp: 3, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 3, mean_punched_fraction: 0.03, per_plane: {} });
     const out = JSON.parse((await runOn(full, "assess_stage", { stage: "punch" })).text);
-    expect(out.punch).toMatchObject({ verdict: "meets its goal", leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3 });
+    expect(out.punch).toMatchObject({ verdict: "meets its goal", leftover_off_lattice_sharp: 3, leftover_on_protected_planes_sharp: 3 });
     expect(out.punch.goal).toMatch(/sit on protected planes and stay by design/);
   });
 
   it("carries the question for the user beside the punch's verdict, which it leaves as it was (plan 4.15)", async () => {
-    const e = { leftover_at_nodes: 0, leftover_off_lattice: 0, leftover_on_protected_planes: 0, leftover_on_protected_planes_sharp: 0, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 0, mean_punched_fraction: 0.03, per_plane: {} };
+    const e = { leftover_at_nodes: 0, leftover_on_protected_planes_sharp: 0, leftover_off_lattice_broad: 0, leftover_off_lattice_sharp: 0, mean_punched_fraction: 0.03, per_plane: {} };
     evaluate.evaluateStage.mockResolvedValue({ ...e, off_lattice_bunching: offLatticeBunching(recordOf({ bunching: BUNCHED_AT_THIRDS })) });
     const out = JSON.parse((await runOn(full, "assess_stage", { stage: "punch" })).text);
     expect(out.punch.verdict).toBe("meets its goal");

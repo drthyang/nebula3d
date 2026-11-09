@@ -164,6 +164,17 @@ describe("v2 on a view", () => {
     expect(viewDraw(set, unit({ stage: "bragg", plane: "hk0", cut: -0.05, slice: slice(11) })).ellipses).toBeUndefined();
   });
 
+  it("a sensed peak's ellipse on its own section's views only (THY-43: bragg_sense)", () => {
+    // A node on hk0 and on h0l alike, measured on each: each ellipse on its own plane.
+    const sensed = (plane: string, dirs: number[][]) => ({ plane, cut: 0, hkl: [0.2, 0, 0], tilted: false, lobes: 2, elongation: 1.5, tilt_deg: 0, dirs, widths: [0.06, 0.03, 0.01] });
+    const braggSensed = [sensed("hk0", [[1, 0, 0], [0, 1, 0], [0, 0, 1]]), sensed("h0l", [[1, 0, 0], [0, 0, 1], [0, 1, 0]])];
+    const set = setOf("bragg_sense", {}, { shape: "2 strong nodes" }, { braggSensed });
+    const hk0 = viewDraw(set, unit({ stage: "raw", plane: "hk0", cut: 0, slice: slice(11) }));
+    expect(hk0.ellipses).toHaveLength(1);
+    expect(hk0.ellipses![0].e.ry).toBeCloseTo(0.03, 9); // its own K width, not h0l's one voxel along K
+    expect(viewDraw(set, unit({ stage: "raw", plane: "h0l", cut: 0, slice: slice(11) })).ellipses).toHaveLength(1);
+  });
+
   it("the UB turn: an arrow at each node of a node plane, across Q, scaled by a round factor", () => {
     const ub = [[1.6, 0, 0], [0, 1.6, 0], [0, 0, 1.6]];
     const t = 0.002;

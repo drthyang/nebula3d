@@ -39,7 +39,10 @@ does not compute them. Getting it running is in
   raw volume, a run of what is missing or stale, each stage's checks, then a
   report. The app runs the checks and moves on by their verdicts. The model is
   asked only to fix a stage that needs attention (two tries at most) and to
-  write the report; a fix that made its check worse is put back. A sample fact
+  write the report; a fix that made its check worse is put back. Before the
+  run it sets the punch settings the pre-run Bragg sensing recommends (logged
+  as its own, undoable), and puts them back if the punch's check is worse
+  with them than with the defaults. A sample fact
   pauses the run, before the stage it affects, for your click or *Skip*. The
   Auto panel shows the **Now line** (what the run is doing), the activity log
   (one row a step, details on a click), the plan, the time worked and the

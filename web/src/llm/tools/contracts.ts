@@ -203,16 +203,35 @@ const ringMetrics = obj({
 });
 
 /** metrics/punch.ts SuspiciousPeak: a sharp peak left on the punched cut. */
+// A leftover's class beyond at_node, with the cut before the punch (THY-43).
+const rimFields = {
+  beside_hole: optional(bool),
+  bragg_tail: optional(bool),
+  faint: optional(bool),
+  share: optional(num),
+};
 const suspiciousPeak = obj({
   xy: range,
   hkl: optional(v3),
   at_node: optional(bool),
+  ...rimFields,
   on_protected_plane: optional(bool),
   fwhm_voxels: range,
   broad: bool,
   intensity: num,
   local_background: num,
   contrast: num,
+  sigma: num,
+});
+/** The strongest leftover as assess_stage's punch gives it: where, how strong and wide, its class. */
+const strongestLeftover = obj({
+  plane: str,
+  hkl: optional(v3),
+  at_node: optional(bool),
+  ...rimFields,
+  on_protected_plane: optional(bool),
+  fwhm_voxels: range,
+  broad: bool,
   sigma: num,
 });
 
@@ -224,6 +243,9 @@ const leftoverScan = obj({
   n_off_nodes: optional(num),
   n_on_protected: optional(num),
   n_broad_off_nodes: optional(num),
+  n_bragg_tails: optional(num),
+  n_beside_holes: optional(num),
+  n_faint: optional(num),
   n_skipped_noisy: num,
   scan_sigma_threshold: num,
 });
@@ -309,15 +331,15 @@ const ringsEvaluation = obj({
 
 const punchEvaluation = obj({
   sigma_note: optional(str),
-  total_leftover_peaks: num,
   leftover_at_nodes: num,
-  leftover_off_lattice: num,
-  leftover_on_protected_planes: num,
+  // With the cut before the punch (THY-43).
+  leftover_bragg_tails: optional(num),
+  leftover_beside_holes: optional(num),
   leftover_on_protected_planes_sharp: num,
   leftover_off_lattice_broad: num,
   leftover_off_lattice_sharp: num,
-  strongest_leftover: nullable(merged(obj({ plane: str }), suspiciousPeak)),
-  noisy_spikes_skipped: num,
+  left_after_backfill: optional(num),
+  strongest_leftover: nullable(strongestLeftover),
   mean_punched_fraction: maybeNum,
   fitted_peaks: maybeNum,
   // Only when the run's punch record says its sharp peaks off the lattice bunch (plan 4.15).
@@ -327,9 +349,12 @@ const punchEvaluation = obj({
       obj({
         leftover_peaks: maybeNum,
         at_nodes: maybeNum,
+        bragg_tails: optional(num),
+        beside_holes: optional(num),
         off_lattice: maybeNum,
         on_protected_planes: maybeNum,
         off_lattice_broad: maybeNum,
+        left_after_backfill: optional(num),
         strongest_leftover: nullable(suspiciousPeak),
         punched_fraction: maybeNum,
       }),
@@ -423,6 +448,19 @@ export const RESULT_CONTRACTS: Readonly<Record<string, Shape>> = {
     unconfirmed: optional(str),
     removal: maybeStr,
     grid: optional(str),
+  }),
+
+  // The sensing's lines (nebula3d.analysis.bragg_sense.sense_lines): only
+  // shape where it judged nothing; symmetry only for data symmetrised already
+  // that declare none; recommend, the changes for update_settings, or words.
+  bragg_sense: obj({
+    shape: str,
+    left: optional(str),
+    footprint: optional(str),
+    constraints: optional(str),
+    q: optional(str),
+    symmetry: optional(str),
+    recommend: union(str, obj({ punchFootprint: optional(str), punchFitUnconstrained: optional(bool) })),
   }),
 
   current_view: obj({

@@ -5,7 +5,7 @@ import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
 import { FLATTEN_FLOOR_PERCENTILE, flattenJudging, flattenMetrics, pedestalLeft } from "../metrics/flatten";
 import { ringEnergy, ringMetrics } from "../metrics/rings";
-import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
+import { BEAM_Q, BRAGG_REACH_Q, NODE_TOL_VOXELS, scanLeftoverPeaks, summarizePeakProfile, TAIL_SHARE } from "../metrics/punch";
 import { percentile, robustStats } from "../metrics/sliceStats";
 import { sectionSymmetry } from "../metrics/symmetry";
 import type { BraggProfile } from "../../api/types";
@@ -392,6 +392,109 @@ describe("bragg punch metrics", () => {
       expect(none).not.toHaveProperty("n_on_protected");
       expect(none.suspicious_peaks.every((p) => p.on_protected_plane === undefined)).toBe(true);
     }
+  });
+
+  // THY-43: with the cut before the punch, the maxima beside a punch hole are judged.
+  describe("beside the punch's holes (THY-43)", () => {
+    // 41 × 41 voxels over ±2 r.l.u. (0.1 a voxel), a cubic cell with a* = 1 Å⁻¹:
+    // |Q| of an offset in r.l.u. is its length.
+    const qOf = (v: [number, number, number]) => Math.hypot(...v);
+    const toHkl = (x: number, y: number): [number, number, number] => [x, y, 0];
+    const field = (ix: number, iy: number) => 1 + 0.02 * noise(ix, iy);
+    // A Bragg peak at the node (1, 1) (voxel 30, 30), its height `h`, and a lobe
+    // of height `lobe` five voxels along x (a doublet the footprint misses).
+    const doublet = (h: number, lobe: number) => (ix: number, iy: number) => peakAt(30, 30, h)(ix, iy) + peakAt(35, 30, lobe)(ix, iy);
+    // The punch's hole: a disk of radius `r` voxels.
+    const hole = (r: number, cx = 30, cy = 30) => (ix: number, iy: number) => (ix - cx) ** 2 + (iy - cy) ** 2 <= r * r;
+    const cuts = (peak: (ix: number, iy: number) => number, punched: (ix: number, iy: number) => boolean) => ({
+      before: makeSlice(41, 41, (_x, _y, ix, iy) => field(ix, iy) + peak(ix, iy), { half: 2 }),
+      after: makeSlice(41, 41, (_x, _y, ix, iy) => (punched(ix, iy) ? NaN : field(ix, iy) + peak(ix, iy)), { half: 2 }),
+    });
+
+    it("counts a lobe left at the hole's rim as a Bragg tail, with its share of the peak", () => {
+      const { before, after } = cuts(doublet(20, 4), hole(4.5));
+      // Without the cut before the punch, as before THY-43: a maximum beside a hole is skipped.
+      expect(scanLeftoverPeaks(after, { toHkl }).n_suspicious).toBe(0);
+      const scan = scanLeftoverPeaks(after, { toHkl, before, qOf });
+      expect([scan.n_at_nodes, scan.n_bragg_tails, scan.n_beside_holes, scan.n_faint, scan.n_off_nodes]).toEqual([0, 1, 1, 0, 0]);
+      const tail = scan.suspicious_peaks[0];
+      expect(tail).toMatchObject({ beside_hole: true, bragg_tail: true, at_node: false, hkl: [1.5, 1, 0] });
+      // About 4 over the peak's 20 above the level.
+      expect(tail.share).toBeGreaterThan(0.15);
+      expect(tail.share).toBeLessThan(0.25);
+    });
+
+    it("counts a rim under TAIL_SHARE of its peak as faint, not a tail", () => {
+      // A strong peak whose far lobe the hole leaves: under 3 % of it.
+      const { before, after } = cuts(doublet(400, 6), hole(4.5));
+      const scan = scanLeftoverPeaks(after, { toHkl, before, qOf });
+      expect([scan.n_bragg_tails, scan.n_beside_holes, scan.n_faint, scan.n_off_nodes]).toEqual([0, 1, 1, 0]);
+      expect(scan.suspicious_peaks[0]).toMatchObject({ faint: true, beside_hole: true });
+      expect(scan.suspicious_peaks[0].share).toBeLessThan(TAIL_SHARE);
+    });
+
+    it("counts a lobe within BRAGG_REACH_Q of a punched peak, not touching its hole, as its tail", () => {
+      // A narrow peak and its hole of 1.5 voxels; the lobe three voxels out, clear of it.
+      const narrow = (cx: number, h: number) => (ix: number, iy: number) => h * Math.exp(-((ix - cx) ** 2 + (iy - 30) ** 2) / 0.5);
+      const { before, after } = cuts((ix, iy) => narrow(30, 20)(ix, iy) + narrow(33, 4)(ix, iy), hole(1.5));
+      // a* = 0.5 Å⁻¹: the lobe 0.3 r.l.u., 0.15 Å⁻¹, from the peak.
+      const halfQ = (v: [number, number, number]) => 0.5 * qOf(v);
+      const scan = scanLeftoverPeaks(after, { toHkl, before, qOf: halfQ });
+      expect(scan.n_bragg_tails).toBe(1);
+      expect(scan.suspicious_peaks[0]).toMatchObject({ bragg_tail: true, hkl: [1.3, 1, 0] });
+      expect(scan.suspicious_peaks[0].beside_hole).toBeUndefined();
+      // Without |Q| (no cell) the reach is not measured: off the lattice, as before.
+      expect(scanLeftoverPeaks(after, { toHkl, before }).n_off_nodes).toBe(1);
+      // Past the reach (a* = 1 Å⁻¹: 0.3 Å⁻¹), it is no peak's tail.
+      expect(BRAGG_REACH_Q).toBe(0.25);
+      expect(scanLeftoverPeaks(after, { toHkl, before, qOf }).n_off_nodes).toBe(1);
+    });
+
+    it("puts a peak at its node within NODE_TOL_VOXELS on each axis, whatever its r.l.u.", () => {
+      // A missed peak two voxels (0.2 r.l.u.) off the node (1, 1): at the node now, off it under the old 0.12 r.l.u.
+      const missed = peakAt(32, 30, 3);
+      const slice = makeSlice(41, 41, (_x, _y, ix, iy) => field(ix, iy) + missed(ix, iy), { half: 2 });
+      expect(NODE_TOL_VOXELS).toBe(2);
+      expect(scanLeftoverPeaks(slice, { toHkl }).n_at_nodes).toBe(1);
+      // Three voxels off: off the lattice.
+      const off = makeSlice(41, 41, (_x, _y, ix, iy) => field(ix, iy) + peakAt(33, 30, 3)(ix, iy), { half: 2 });
+      expect(scanLeftoverPeaks(off, { toHkl }).n_at_nodes).toBe(0);
+    });
+
+    it("leaves out the direct beam: a maximum beside the hole at the origin", () => {
+      // The beam at the origin (voxel 20, 20) and a lobe 0.5 r.l.u. out, past BEAM_Q, beside its hole.
+      const beam = (ix: number, iy: number) => peakAt(20, 20, 20)(ix, iy) + peakAt(25, 20, 4)(ix, iy);
+      const { before, after } = cuts(beam, hole(4.5, 20, 20));
+      expect(BEAM_Q).toBe(0.35);
+      expect(scanLeftoverPeaks(after, { toHkl, before, qOf }).n_suspicious).toBe(0);
+    });
+
+    it("skips a maximum beside unmeasured space, the coverage edge, as before", () => {
+      const { before, after } = cuts(doublet(20, 4), hole(4.5));
+      // The voxels past the lobe never measured: NaN before the punch too.
+      const unmeasured = (ix: number) => ix >= 36;
+      const b = makeSlice(41, 41, (_x, _y, ix, iy) => (unmeasured(ix) ? NaN : before.data[iy * 41 + ix]), { half: 2 });
+      const a = makeSlice(41, 41, (_x, _y, ix, iy) => (unmeasured(ix) ? NaN : after.data[iy * 41 + ix]), { half: 2 });
+      expect(scanLeftoverPeaks(a, { toHkl, before: b, qOf }).n_suspicious).toBe(0);
+    });
+
+    it("keeps a maximum in a declared modulation's position out of the tails", () => {
+      const { before, after } = cuts(doublet(20, 4), hole(4.5));
+      const lobe = labelsOn(after, (x, y) => (Math.abs(x - 1.5) < 0.05 && Math.abs(y - 1) < 0.05 ? 1 : 0));
+      const scan = scanLeftoverPeaks(after, { toHkl, before, qOf, protectedLabels: lobe });
+      expect([scan.n_bragg_tails, scan.n_on_protected, scan.n_off_nodes]).toEqual([0, 1, 1]);
+    });
+
+    it("scans the backfilled cut against the punch's holes: a tail the fill carried", () => {
+      const { before, after } = cuts(doublet(20, 4), hole(4.5));
+      // The fill: the hole takes the level, the lobe stays.
+      const filled = makeSlice(41, 41, (_x, _y, ix, iy) => (Number.isFinite(after.data[iy * 41 + ix]) ? after.data[iy * 41 + ix] : 1), { half: 2 });
+      const scan = scanLeftoverPeaks(filled, { toHkl, before, punched: after, qOf });
+      expect([scan.n_at_nodes, scan.n_bragg_tails]).toEqual([0, 1]);
+      // A fill that took the lobe too: nothing left.
+      const clean = makeSlice(41, 41, (_x, _y, ix, iy) => (hole(8)(ix, iy) ? 1 + 0.02 * noise(ix, iy) : filled.data[iy * 41 + ix]), { half: 2 });
+      expect(scanLeftoverPeaks(clean, { toHkl, before, punched: after, qOf }).n_bragg_tails).toBe(0);
+    });
   });
 
   it("finds nothing on a punched (NaN-holed) smooth field", () => {

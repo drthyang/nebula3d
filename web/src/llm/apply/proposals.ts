@@ -14,7 +14,8 @@
 //  - a run's punch record found its sharp peaks off the lattice bunching
 //    (off_lattice_bunching): the modulation its question names (held).
 //  - compare_laue_classes suggested a class, qmax_coverage a |Q| band its
-//    band_check flags: the user's (held).
+//    band_check flags, bragg_sense data symmetrised already that declare
+//    none (the symmetry average over the class): the user's (held).
 //  - the answer names a setting by its exact key with a value no call set:
 //    a setting card "suggested in the answer", checked by the catalog.
 //  - a tuning run's trials: Apply on each trial row (TuneProgress).
@@ -313,6 +314,29 @@ export function buildProposals(input: BuildInput): Proposal[] {
         fields: laue,
         from: pick(config, ["symmetryLaue"]),
         shown: { from: config.symmetryLaue || "none", to: r.suggestion as string },
+        source: { step: s.id, via: "suggestion" },
+        evidence: [evidenceOf(s)],
+        held: "symmetry",
+      });
+    }
+    // The symmetry the pre-run Bragg sensing found the data symmetrised with,
+    // declaring none (THY-43): the symmetry average over it, which on data
+    // averaged already changes nothing but the declaration the stages after
+    // it read. The user's, as every symmetry is.
+    const declare = s.name === "bragg_sense" ? s.overlay?.braggDeclare : undefined;
+    const avg = declare ? checked("symmetryAverageEnabled", true) : null;
+    const cls = declare ? checked("symmetryLaue", declare) : null;
+    if (declare && avg && cls && !sameFields({ ...avg, ...cls }, config)) {
+      const fields = { ...avg, ...cls };
+      const runFrom = runStageFor(["symmetryAverageEnabled", "symmetryLaue"], null, { ...config, ...fields } as PipelineConfig);
+      drafts.push({
+        kind: "fact",
+        title: `Declare ${declare} (symmetry average)`,
+        change: { symmetryAverageEnabled: true, symmetryLaue: declare },
+        fields,
+        from: pick(config, Object.keys(fields)),
+        shown: { from: config.symmetryAverageEnabled && config.symmetryLaue ? config.symmetryLaue : "none declared", to: declare },
+        ...(runFrom ? { runFrom } : {}),
         source: { step: s.id, via: "suggestion" },
         evidence: [evidenceOf(s)],
         held: "symmetry",

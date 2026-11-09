@@ -25,7 +25,15 @@ which take precedence where the two differ.
     history, so a request stays well under today's worst turn, and gemma4 at
     32k can manage it.
   - **Sequencing.** The controller moves on by the computed verdicts and
-    never changes a setting itself.
+    never changes a setting itself, but for two accepted exceptions: it puts
+    back a fix that made its check worse (question 3), and it applies the
+    method settings the pre-run Bragg sensing recommends before its run
+    (THY-43, accepted 2026-11-08: `bragg_sense`'s `recommend`, the punch
+    footprint and its fit's constraints, through `update_settings`, logged
+    as auto mode's with the sensing's line as evidence, undoable). The punch's
+    row judges those against the defaults when its check needs attention and
+    puts them back if they made it worse. A symmetry the sensing finds still
+    pauses for your click.
   - **Pauses and limits.** It pauses at a sample fact with an Apply card. It
     has limits, Stop and Resume, and ends with a report.
 - **Highlights.** Each measuring step maps its whole result to overlays on the

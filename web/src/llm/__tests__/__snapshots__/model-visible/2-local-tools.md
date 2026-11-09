@@ -1,6 +1,6 @@
 # Tools offered to a local model
 
-`toolsFor(question, CHAT_TOOLS)` (localTools.ts): a model on a local server is offered these with its first request; a tool it calls by name all the same runs and stays offered. Their definitions are in 2-tools.md. The pre-run tools (ring_survey) only before the ring stage has run (offeredOn).
+`toolsFor(question, CHAT_TOOLS)` (localTools.ts): a model on a local server is offered these with its first request; a tool it calls by name all the same runs and stays offered. Their definitions are in 2-tools.md. The pre-run tools (ring_survey, bragg_sense) only before a run (offeredOn).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -8,7 +8,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 > How clean is this reduction?
 
-18 tools: read_skill, describe_dataset, ring_survey, current_view, measure_reciprocal_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, ub_check, radial_profile, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, show_in_viewer, mark_region.
+19 tools: read_skill, describe_dataset, ring_survey, bragg_sense, current_view, measure_reciprocal_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, ub_check, radial_profile, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, show_in_viewer, mark_region.
 
 ## a ΔPDF question
 
@@ -26,7 +26,7 @@ Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, th
 
 > Raise the punch significance to 6 and rerun the pipeline.
 
-17 tools: read_skill, describe_dataset, current_view, measure_reciprocal_cut, assess_stage, grain_check, ub_check, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer, mark_region.
+18 tools: read_skill, describe_dataset, bragg_sense, current_view, measure_reciprocal_cut, assess_stage, grain_check, ub_check, line_profile, bragg_peaks, run_log, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, show_in_viewer, mark_region.
 
 ## a regrid request
 

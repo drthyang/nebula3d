@@ -78,6 +78,10 @@ const STAGE_CASES: Record<"rings" | "punch" | "backfill" | "flatten" | "pdf", Ca
     c("a sharp peak off the protected planes is one the search left (D5)", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 4, leftover_on_protected_planes_sharp: 3 }, "attention", ["sharp off-lattice"]),
     c("an evaluation without the protected planes' sharp count counts every sharp one (D5)", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3 }, "attention", ["sharp off-lattice"]),
     c("both", { leftover_at_nodes: 1, leftover_off_lattice_sharp: 1 }, "attention", ["missed at nodes", "sharp off-lattice"]),
+    // THY-43: a Bragg tail beside a punch hole needs attention; none, or an evaluation from before (no count), as it was.
+    c("a Bragg tail left beside its hole (THY-43)", { leftover_at_nodes: 0, leftover_bragg_tails: 1, leftover_off_lattice_sharp: 0 }, "attention", ["Bragg tails"]),
+    c("no Bragg tail, faint rims aside (THY-43)", { leftover_at_nodes: 0, leftover_bragg_tails: 0, leftover_beside_holes: 41, leftover_off_lattice_sharp: 0 }, "pass"),
+    c("every reason, in the criterion's order (THY-43)", { leftover_at_nodes: 1, leftover_bragg_tails: 2, leftover_off_lattice_sharp: 1 }, "attention", ["missed at nodes", "Bragg tails", "sharp off-lattice"]),
     c("no node count", { leftover_off_lattice_sharp: 3 }, "info", ["nothing to judge"]),
   ],
   backfill: [

@@ -16,7 +16,7 @@ import {
   fetchProtectedLabels,
   fetchSlice,
 } from "../../api/client";
-import type { Dataset, FlattenSettings, VolumeMeta } from "../../api/types";
+import type { Dataset, FlattenSettings, ProtectedLabels, VolumeMeta } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { buildPipelineContext, type PipelineContext, type StageSlices } from "./pipelineContext";
 import { datasetName } from "../../api/datasetName";
@@ -89,6 +89,10 @@ export interface AssistantContext {
   context: PipelineContext;
   slices: StageSlices;
   lattice: { a: number | null; b: number | null; c: number | null } | null;
+  // What the leftover scan read beside the slices: the run's protected
+  // positions on the cut (as recorded), and the punch cell, so another scan of
+  // the cut (the backfilled one's, tune/evaluate.ts) classes peaks alike.
+  scan?: { protectedLabels: ProtectedLabels | null; supercell: [number, number, number] };
 }
 
 /** What the flatten recorded in its output, as a caller read it: `settings` null when the file records none, undefined when unknown. */
@@ -171,5 +175,10 @@ export async function loadPipelineContext(
     stages: dataset.stages,
   });
 
-  return { context, slices, lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null };
+  return {
+    context,
+    slices,
+    lattice: hklMeta?.lattice ?? dpdfMeta?.lattice ?? null,
+    scan: { protectedLabels: protectedLabels?.header.recorded !== false ? protectedLabels : null, supercell: punchSupercell() },
+  };
 }

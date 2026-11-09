@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from nebula3d.server import laue
+from nebula3d.server.bragg import volume_bragg_sense
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import (
     StageStatus,
@@ -20,6 +21,8 @@ from nebula3d.server.datasets import (
 from nebula3d.server.deps import get_config
 from nebula3d.server.params import build_params
 from nebula3d.server.schemas import (
+    BraggSenseIn,
+    BraggSenseOut,
     CoverageOut,
     LatticeOut,
     LaueCompareIn,
@@ -185,6 +188,22 @@ def ring_survey(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return RingSurveyOut(id=volume_id, **out)
+
+
+@router.post("/{volume_id}/bragg-sense", response_model=BraggSenseOut)
+def bragg_sense(
+    volume_id: str, req: BraggSenseIn, cfg: ServerConfig = Depends(get_config),
+) -> BraggSenseOut:
+    """The pre-run Bragg sensing: the peaks' shapes on a few raw sections and
+    the punch settings they ask for (analysis.bragg_sense), with the run's
+    settings (``req.params``: edge trim, precision, punch). Nothing punched.
+    Seconds on a large volume."""
+    stage = _resolve_hkl(cfg, volume_id)
+    try:
+        params = build_params(SimpleNamespace(flatten_enabled=True, params=req.params))  # type: ignore[arg-type]
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return BraggSenseOut(id=volume_id, **volume_bragg_sense(stage.path, params))
 
 
 @router.get("/{volume_id}/shell-floors", response_model=ShellFloorsOut)

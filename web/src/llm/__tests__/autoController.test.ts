@@ -3,8 +3,9 @@
 // a clean run, a run with a fixable stage, a run that pauses for a sample
 // fact (Apply and Skip), a run that hits each limit, a fix that made its
 // check worse and is put back, Stop and Resume, and a failure. The
-// controller moves on by the checks' computed verdicts, never changes a
-// setting itself, and logs every change as auto mode's.
+// controller moves on by the checks' computed verdicts, changes no setting
+// itself but the ones the pre-run sensing recommends (THY-43), and logs every
+// change as auto mode's.
 // Synthetic only: no model is loaded, no backend or API is called.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,7 +26,7 @@ import { VALIDATION_MAX_TOKENS } from "../evals/validationModels";
 import { STREAM_MAX_TOKENS } from "../provider/anthropic";
 import { CLAUDE_URL } from "./scriptedTransports";
 import { call, clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, phaseOf, pipeline, say, SCRIPTED, scriptedStream, TRUSTED, SCRIPTED_CLICK } from "./autoHarness";
-import { installBackend } from "./syntheticCrystal";
+import { braggSense, braggSenseKeeping, installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -38,6 +39,7 @@ const api = vi.hoisted(() => ({
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingSurvey: vi.fn(),
+  fetchBraggSense: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -83,6 +85,8 @@ const appChanges = () => run().steps.filter((s) => s.id.startsWith("auto:") && (
 
 beforeEach(() => {
   installBackend(api);
+  // The peaks ask for nothing unless a test says so (THY-43: auto mode applies what the sensing recommends).
+  api.fetchBraggSense.mockImplementation(async (id: string) => braggSenseKeeping(id));
   freshAuto();
   stream.fn.mockImplementation(scriptedStream);
   // The class the crystal's comparison suggests and the |Q| band its coverage
@@ -219,6 +223,98 @@ describe("a fix that made its check worse", () => {
     expect(sinceLine(ds, useDecisionStore.getState().proposals)).toContain("undid punchMinSig");
     // The activity log says the fix was put back, and why.
     expect(activityNow()!.rows.find((r) => r.title === "Fix the Bragg punch, first of two")!.line).toMatch(/^Changed Punch min σ .* → 4 \(it made the check worse: put back\)$/);
+  });
+});
+
+// THY-43: the method settings the pre-run Bragg sensing recommends (its
+// `recommend`: the ellipsoid footprint, its fit's constraints dropped) are
+// applied before the run, as auto mode's own; the punch's row judges them
+// against the defaults and puts them back if they made its check worse.
+describe("the settings the pre-run sensing recommends", () => {
+  const sensing = (extra: Partial<ReturnType<typeof braggSense>> = {}) => api.fetchBraggSense.mockImplementation(async (id: string) => ({ ...braggSense(id), ...extra }));
+  const sensed = (w: Partial<{ punchFootprint: string; punchFitUnconstrained: boolean }>) => w.punchFootprint === "ellipsoid" && w.punchFitUnconstrained === true;
+
+  it("applies them before the run through update_settings, logged as auto mode's with the sensing's line, shown in the activity log, undoable", async () => {
+    sensing();
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? cleanPunch(e) : e);
+    model.respond = () => say("Done.");
+    await start();
+    expect(run().state).toBe("done");
+    // The app's own update_settings, after the sensing and before the run, which ran with them.
+    const names = run().steps.filter(isAppStep).map((x) => x.name);
+    expect(names.indexOf("update_settings")).toBeGreaterThan(names.indexOf("bragg_sense"));
+    expect(names.indexOf("update_settings")).toBeLessThan(names.indexOf("run_pipeline"));
+    expect(sensed(pipeline.runs[0].with)).toBe(true);
+    expect(run().plan.find((r) => r.id === "preflight")!.detail).toMatch(/; set punch footprint to ellipsoid, punch drop fit constraints to true from the sensing$/);
+    // Each setting its own auto decision, the sensing's line its evidence.
+    const set = decisions().filter((d) => d.kind === "setting");
+    expect(set.map((d) => [d.title, d.shown.to, d.by, d.action])).toEqual([
+      ["Punch footprint", "ellipsoid", "auto", "apply"],
+      ["Punch drop fit constraints", "true", "auto", "apply"],
+    ]);
+    const cards = useDecisionStore.getState().proposals.filter((p) => set.some((d) => d.proposal === p.id));
+    expect(cards.every((p) => p.source.via === "auto" && p.evidence[0].label === "Sensed the Bragg peaks" && /^punchFootprint ellipsoid: /.test(p.evidence[0].text))).toBe(true);
+    // The activity log names the change and why.
+    const row = activityNow()!.rows.find((r) => r.title.startsWith("Set "))!;
+    expect(row.title).toBe("Set punch footprint to ellipsoid, punch drop fit constraints to true");
+    expect(row.line).toMatch(/^punchFootprint ellipsoid: the ellipsoid unconstrained leaves 9\.2 points less than own/);
+    // A passing punch judges nothing more: the one run.
+    expect(pipeline.runs).toHaveLength(1);
+    expect(run().sensed).toEqual({ decisions: set.map((d) => d.id), judged: false });
+    // Undo of auto changes puts them back.
+    expect(standingAutoChanges(run(), useDecisionStore.getState().decisions)).toBeGreaterThan(0);
+    undoAutoRun();
+    expect([usePipelineStore.getState().punchFootprint, usePipelineStore.getState().punchFitUnconstrained]).toEqual(["", false]);
+  });
+
+  it("puts them back when the punch's check is worse with them than with the defaults", async () => {
+    sensing();
+    // With the sensed settings, more nodes missed than with the defaults (this stand-in).
+    outputs.tweak = (stage, e, w) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? { ...e, leftover_at_nodes: sensed(w) ? 4 : 2 } : e);
+    model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", null)(round) : say("The punch needs attention."));
+    await start();
+    expect([usePipelineStore.getState().punchFootprint, usePipelineStore.getState().punchFitUnconstrained]).toEqual(["", false]);
+    // The run with them, the punch again without them; no fix changed anything after.
+    expect(pipeline.runs.map((r) => sensed(r.with))).toEqual([true, false]);
+    const set = decisions().filter((d) => d.kind === "setting" && d.action === "apply");
+    const undone = decisions().filter((d) => d.action === "undo");
+    expect(set).toHaveLength(2);
+    expect(set.every((d) => undone.some((u) => u.undoes === d.id && u.by === "auto"))).toBe(true);
+    expect(run().sensed?.judged).toBe(true);
+    expect(activityNow()!.rows.find((r) => r.title.startsWith("Set "))!.line).toMatch(/\(it made the punch's check worse: put back\)$/);
+  });
+
+  it("keeps them when the punch's check is no worse with them, setting them again for the run", async () => {
+    sensing();
+    outputs.tweak = (stage, e, w) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? { ...e, leftover_at_nodes: sensed(w) ? 1 : 3 } : e);
+    model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", null)(round) : say("The punch needs attention."));
+    await start();
+    expect([usePipelineStore.getState().punchFootprint, usePipelineStore.getState().punchFitUnconstrained]).toEqual(["ellipsoid", true]);
+    // With them, without them (the defaults judged), with them again.
+    expect(pipeline.runs.map((r) => sensed(r.with))).toEqual([true, false, true]);
+    expect(decisions().filter((d) => d.kind === "setting" && d.action === "apply" && !d.undoneBy)).toHaveLength(2);
+  });
+
+  it("still pauses for a symmetry the sensing finds the data averaged with, the user's click alone", async () => {
+    sensing({
+      mirrors: { tested: 12, worst_share: 0, exact: true, declared: false, declare: "mmm" },
+      lines: { ...braggSense("x").lines, symmetry: "declares none, yet every axis mirror holds to 0.0e+00 of the spread: symmetrised already; declaring mmm is the user's" },
+    });
+    outputs.tweak = (stage, e) => (stage === "rings" ? cleanRings(e) : stage === "punch" ? cleanPunch(e) : e);
+    model.respond = () => say("Done.");
+    await start();
+    expect(run().state).toBe("paused");
+    expect(run().pause).toMatchObject({ kind: "fact", before: "run" });
+    const fact = useDecisionStore.getState().proposals.find((p) => p.id === (run().pause as { proposal: string }).proposal)!;
+    expect([fact.title, fact.held, fact.change]).toEqual(["Declare mmm (symmetry average)", "symmetry", { symmetryAverageEnabled: true, symmetryLaue: "mmm" }]);
+    // The method settings were set before it, by the app; the symmetry was not.
+    expect(usePipelineStore.getState().punchFootprint).toBe("ellipsoid");
+    expect(usePipelineStore.getState().symmetryAverageEnabled).toBe(false);
+    expect(pipeline.runs).toHaveLength(0);
+    skipFact();
+    await (autoLoop() ?? Promise.resolve());
+    expect(run().state).toBe("done");
+    expect(usePipelineStore.getState().symmetryAverageEnabled).toBe(false);
   });
 });
 
@@ -658,7 +754,7 @@ describe("the calls it makes itself", () => {
     model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", { punchMinSig: 6 })(round) : say("Done."));
     await start();
     const own = run().steps.filter((s) => s.id.startsWith("auto:")).map((s) => s.name);
-    expect(new Set(own)).toEqual(new Set(["qmax_coverage", "ring_survey", "ub_check", "grain_check", "run_pipeline", "assess_stage", "texture_check", "symmetry_check"]));
+    expect(new Set(own)).toEqual(new Set(["qmax_coverage", "ring_survey", "bragg_sense", "ub_check", "grain_check", "run_pipeline", "assess_stage", "texture_check", "symmetry_check"]));
   });
 });
 
