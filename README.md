@@ -70,10 +70,11 @@ your device. More in [QUICKSTART.md](QUICKSTART.md).
 ## NEBULA Pilot: how it works
 
 The Pilot is a panel docked beside every page. With *Tools* on, a reply is an
-agent loop of up to 12 rounds over **28 tools**: reading (cuts, the run log,
-the Bragg profile), assessing (each stage's checks, rings, texture, coverage,
-symmetry, UB, ΔPDF features, Laue classes), display, and acting (change
-settings, run, tune, regrid). **Skills** are the user's written methods, one
+agent loop of up to 12 rounds over **29 tools**: reading (cuts, the run log,
+the Bragg profile), a powder ring survey before the run (the Al lines, a
+possible other phase, the rings no line explains), assessing (each stage's
+checks, rings, texture, coverage, symmetry, UB, ΔPDF features, Laue classes),
+display, and acting (change settings, run, tune, regrid). **Skills** are the user's written methods, one
 per stage; a stage's settings change or are tuned only after its skill was read
 in the same reply. Each check's result is drawn on the views as
 **highlights**, from results already in memory. Details:

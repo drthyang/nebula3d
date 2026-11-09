@@ -694,7 +694,7 @@ def test_ring_diagnostics_give_the_phase_match(tmp_path):
     proc.mkdir()
     paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=proc)
     nebula3d.save(_vol(), paths.ringremoved)
-    record = {"version": 1, "rings": [{"q": 2.22, "fwhm": 0.08, "snr": 7.2, "source": "ring"}],
+    record = {"version": 1, "rings": [{"q": 2.2224, "fwhm": 0.08, "snr": 7.2, "source": "ring"}],
               "candidates": [{"phase": "Sn", "group": "flux", "status": "possible",
                               "scale": -0.0017, "matched": 2, "of": 3,
                               "lines": [{"hkl": "200", "q": 2.2203, "ring": 2.2224}],

@@ -22,6 +22,8 @@ const PEAKS: AgentStep = { id: "1:c", name: "dpdf_peaks", args: {}, status: "don
 // come last, so the reads see the case's default run.
 const CALLS: Call[] = [
   ["describe_dataset", {}],
+  // The pre-run survey reads the raw volume, whatever the case's run wrote.
+  ["ring_survey", {}],
   ["current_view", {}],
   ["measure_reciprocal_cut", { plane: "h0l", value: 0 }],
   ["measure_reciprocal_cut", { plane: "hk0", value: 0.5 }],

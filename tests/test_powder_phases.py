@@ -311,12 +311,13 @@ def test_the_temperature_keeps_a_contracted_lattice():
 def test_the_composition_orders_flux_candidates_of_one_status():
     rec = {"candidates": [
         {"phase": "Te", "group": "flux", "elements": ["Te"], "status": "possible", "score": 2.0,
-         "unmatched": []},
+         "unmatched": [], "lines": [{"hkl": "101", "q": 2.0, "ring": 2.0}]},
         {"phase": "Bi", "group": "flux", "elements": ["Bi"], "status": "possible", "score": 1.6,
          "unmatched": [2.1]},
         {"phase": "Cu", "group": "sample environment", "elements": ["Cu"], "status": "likely",
          "score": 1.4, "unmatched": []}],
-        "rings": []}
+        # A confirmed ring the summary's phase rests on (powder_phases.supported).
+        "rings": [{"q": 2.0, "source": "ring"}]}
     out = pp.rank(json.loads(json.dumps(rec)), {"Tb", "Bi"})
     assert [c["phase"] for c in out["candidates"]] == ["Cu", "Bi", "Te"]
     assert out["candidates"][1]["in_composition"] is True
@@ -342,7 +343,7 @@ def test_vanadium_rings_as_strong_as_the_al_would_need_too_much_of_it():
     rec = _match(_phase_lines("V", -0.002, 70.0), al=al_ref, exclude=["Al"])
     v = [c for c in rec["candidates"] if c["phase"] == "V"]
     assert v and v[0]["status"] == "possible" and v[0]["amount_vs_al"] > pp.MAX_AMOUNT_VS_AL
-    assert "× the Al's volume" in pp.summary({"candidates": v, "rings": []})
+    assert "× the Al's volume" in pp.summary({"candidates": v, "rings": rec["rings"]})
 
 
 def test_the_summary_names_lines_hidden_and_unmatched():
@@ -352,7 +353,9 @@ def test_the_summary_names_lines_hidden_and_unmatched():
         "of": 2, "lines": [{"hkl": "200", "q": 2.2203, "ring": 2.2224},
                            {"hkl": "420", "q": 4.8412, "ring": 4.8439}],
         "hidden": [{"hkl": "211", "q": 3.12, "under": "Al200"}], "missing": [],
-        "unmatched": [], "amount_vs_al": 0.12}], "rings": []}
+        "unmatched": [], "amount_vs_al": 0.12}],
+        # One ring the removal confirmed, one faint one the 3D test confirmed.
+        "rings": [{"q": 2.2224, "source": "ring"}, {"q": 4.8439, "source": "weak", "code": "ring"}]}
     assert pp.summary(rec) == ("possibly Sn flux: 2 of 2 rings matched, scale -0.2 %; "
                                "lines 200 2.22, 420 4.84; hidden 211 under Al200; "
                                "unmatched none")
@@ -394,7 +397,8 @@ def test_the_summary_names_four_of_each_and_counts_the_rest():
     lines = [{"hkl": f"{i}00", "q": 2.0 + i, "ring": 2.0 + i} for i in range(1, 7)]
     rec = {"candidates": [{"phase": "Sn", "group": "flux", "status": "likely", "scale": -0.003,
                            "matched": 6, "of": 9, "lines": lines, "hidden": [], "missing": [],
-                           "unmatched": [1.6, 1.7, 1.8, 1.9, 2.05]}], "rings": []}
+                           "unmatched": [1.6, 1.7, 1.8, 1.9, 2.05]}],
+           "rings": [{"q": 3.0, "source": "ring"}]}
     line = pp.summary(rec)
     assert "lines 100 3.00, 200 4.00, 300 5.00, 400 6.00, +2 more" in line
     assert "unmatched 1.60, 1.70, 1.80, 1.90, +1 more" in line

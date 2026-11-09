@@ -46,6 +46,8 @@ export type ClassId =
   | "reach" // the forward transform's reach
   | "band" // the |Q| band the coverage suggests
   | "RM" // a confirmed ring removed that sat on no Al line
+  | "PH" // the pre-run survey: a ring on a line of the phase the match names (possibly that phase)
+  | "UNK" // the pre-run survey: a ring no line explains
   | "fpRes" // a fitted Bragg peak, resolution-limited on an axis (as the Bragg page flags it): its footprint solid
   | "fpBroad" // one measured wider than the resolution on every axis: dashed
   | "fpNone" // one whose width could not be measured: dotted
@@ -91,7 +93,9 @@ export type OverlayItem =
   | { kind: "lattice"; cls: ClassId; map: M3 }
   // A line along one axis (0–2) through `through` (the other two coordinates).
   | { kind: "line"; cls: ClassId; along: number; through: V3 }
-  | { kind: "shell"; cls: ClassId; q: number; tick?: "up" | "down" }
+  // A |Q| shell; `label` is its chip's words in place of its class's code
+  // (the survey's "AL 111", "Bi 012", "? 3.60").
+  | { kind: "shell"; cls: ClassId; q: number; tick?: "up" | "down"; label?: string }
   | { kind: "band"; cls: ClassId; q0: number; q1: number }
   // |Q| below `inside` (a beam stop) and above `outside` (past the counts)
   | { kind: "hatch"; cls: ClassId; inside: number | null; outside: number }
@@ -143,6 +147,8 @@ const CLASSES: Record<ClassId, ClassDef> = {
   reach: { id: "reach", label: "transform's reach", tone: "amber", views: { [RAW]: "full" } },
   band: { id: "band", label: "suggested band", tone: "green", views: { [RAW]: "full" } },
   RM: { id: "RM", code: "RM", label: "removed (not Al)", tone: "accent", views: { [RAW]: "full", [RINGS]: "faint" } },
+  PH: { id: "PH", code: "PH", label: "possibly another phase", tone: "cyan", views: { [RAW]: "full" } },
+  UNK: { id: "UNK", code: "?", label: "unrecognized ring", tone: "r2", views: { [RAW]: "full" } },
   fpRes: { id: "fpRes", label: "resolution-limited", tone: "accent", views: { [BRAGG]: "full", [RAW]: "full" } },
   fpBroad: { id: "fpBroad", label: "broadened", tone: "amber", views: { [BRAGG]: "full", [RAW]: "full" } },
   fpNone: { id: "fpNone", label: "width not measured", tone: "grey", views: { [BRAGG]: "full", [RAW]: "full" } },
@@ -486,6 +492,77 @@ const coverage: Mapper = (r) => {
   };
 };
 
+// ---------------------------------------------------------------- the pre-run ring survey
+
+/** A shell of the pre-run survey, as its overlay data (or its result's lines) give it. */
+interface SurveyShell {
+  q: number;
+  code: string;
+  line: string | null;
+  phase: string | null;
+}
+
+// The survey's codes (nebula3d.preprocessing.ring_survey.CODES) as classes: NR, not
+// a ring by the 3D test and on no line, is not drawn (the ring check draws no such shell either).
+const SURVEY_CLASS: Record<string, ClassId | undefined> = { AL: "AL", PH: "PH", UNK: "UNK", XTAL: "XTAL", GRID: "GRID", NJ: "NJ" };
+
+/** The shells a survey's result names, for a step drawn again without its data: the Al lines listed, the phase's lines, the rings unrecognized and unconfirmed. */
+export function surveyShellsFromResult(r: Found): SurveyShell[] {
+  const out: SurveyShell[] = [];
+  const pairs = (text: string): [string, number][] =>
+    text
+      .split(",")
+      .map((x) => x.trim().split(/\s+/))
+      .flatMap(([hkl, q]) => (hkl && q && Number.isFinite(Number(q)) ? [[hkl, Number(q)] as [string, number]] : []));
+  const al = typeof r.al === "string" ? /lines (.*)$/.exec(r.al) : null;
+  for (const [hkl, q] of al ? pairs(al[1]) : []) out.push({ q, code: "AL", line: `Al${hkl}`, phase: null });
+  const ph = typeof r.phases === "string" ? r.phases : "";
+  const phase = /^(?:likely|possibly) ([A-Za-z0-9]+)/.exec(ph)?.[1] ?? null;
+  const lines = /(?:^|; )lines ([^;]*)/.exec(ph);
+  if (phase) for (const [hkl, q] of lines ? pairs(lines[1]) : []) out.push({ q, code: "PH", line: `${phase}${hkl}`, phase });
+  // "3.59 (snr 85, removed), 4.85 (snr 7, grid)": each |Q| and what follows it.
+  const listed = (v: unknown): [number, string][] =>
+    typeof v === "string" ? [...v.matchAll(/(\d+(?:\.\d+)?) \(([^)]*)\)/g)].map((m) => [Number(m[1]), m[2]]) : [];
+  for (const [q] of listed(r.unrecognized)) out.push({ q, code: "UNK", line: null, phase: null });
+  for (const [q, why] of listed(r.unconfirmed)) out.push({ q, code: /\bgrid\b/.test(why) ? "GRID" : "NJ", line: null, phase: null });
+  return out.sort((a, b) => a.q - b.q);
+}
+
+/** A survey shell's chip: "AL 111", "Bi 012", "? 3.60"; the class's code for the others. */
+function surveyLabel(s: SurveyShell): string | undefined {
+  if (s.code === "AL" && s.line) return `AL ${s.line.replace(/^Al/, "")}`;
+  if (s.code === "PH" && s.line && s.phase) return `${s.phase} ${s.line.slice(s.phase.length)}`;
+  if (s.code === "UNK") return `? ${s.q.toFixed(2)}`;
+  return undefined;
+}
+
+const SURVEY_HELP = [
+  "Before a run, nothing removed: the ring stage's detection and 3D ring test as a dry run. AL: a shell on a fitted Al line, its hkl. PH: on a line of the phase the match names, possibly that phase (a possibility, never an identification). ?: a ring no line explains, its |Q| in Å⁻¹. XTAL: the crystal's own scattering, rising in some directions only. GRID, NJ: shells no line explains that the test could not judge (the grid too coarse; no clean flank).",
+];
+
+const ringSurvey: Mapper = (r, _args, data) => {
+  const shells = data?.ringSurvey ?? surveyShellsFromResult(r);
+  const items: OverlayItem[] = shells.flatMap((s): OverlayItem[] => {
+    const cls = SURVEY_CLASS[s.code];
+    if (!cls) return [];
+    const label = surveyLabel(s);
+    return [{ kind: "shell", cls, q: s.q, ...(label ? { label } : {}) }];
+  });
+  const nAl = shells.filter((s) => s.code === "AL").length;
+  const phases = [...new Set(shells.filter((s) => s.code === "PH" && s.phase).map((s) => s.phase!))];
+  const unk = shells.filter((s) => s.code === "UNK").map((s) => s.q.toFixed(2));
+  const where = [
+    nAl ? `${nAl} Al line${nAl === 1 ? "" : "s"}` : "no Al lines",
+    ...phases.map((ph) => `possibly ${ph} (${shells.filter((s) => s.phase === ph).length})`),
+    unk.length ? `unrecognized ${unk.join(", ")} Å⁻¹` : "none unrecognized",
+  ].join(" · ");
+  const help = [...SURVEY_HELP];
+  const a = typeof r.al === "string" ? /a=([\d.]+)\s*Å/.exec(r.al)?.[1] : undefined;
+  if (a) help.push(`The fitted Al lattice: a = ${a} Å.`);
+  if (typeof r.removal === "string") help.push(`The ring stage ${r.removal}.`);
+  return { title: "Ring survey", where, help, measured: [RAW], views: { [RAW]: "primary" }, items };
+};
+
 // ---------------------------------------------------------------- v2: small helpers
 
 const v3 = (v: unknown): V3 | null => {
@@ -706,6 +783,7 @@ type Entry = Mapper | { none: string; title?: string } | { later: string; title:
 /** The registry: every measuring tool, by name (the test holds it to facts' `measures`). */
 export const OVERLAYS: Record<string, Entry> = {
   assess_stage: assessStage,
+  ring_survey: ringSurvey,
   measure_reciprocal_cut: measureCut,
   qmax_coverage: coverage,
   // The views read the marks themselves (RegionMarks), above the overlays.
@@ -766,6 +844,7 @@ export function overlaysOf(step: AgentStep): OverlaySet | null {
 
 // What the v2 tools examine while they run: their title and views.
 const RUNNING: Record<string, (args: Record<string, unknown>) => { title: string; views: OverlaySet["views"] }> = {
+  ring_survey: () => ({ title: "Ring survey", views: { [RAW]: "primary" } }),
   bragg_peaks: () => ({ title: "Bragg peaks", views: { [BRAGG]: "primary", [RAW]: "reading" } }),
   dpdf_peaks: () => ({ title: "ΔPDF features", views: { [DPDF]: "primary" } }),
   ub_check: () => ({ title: "UB turn", views: { [RAW]: "primary", [BRAGG]: "reading" } }),

@@ -92,7 +92,7 @@ import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
 import { RUN_POLICY } from "../evals/validationModels";
-import { toolsFor } from "../localTools";
+import { offeredOn, toolsFor } from "../localTools";
 import { buildChatMessages } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolSpec } from "../provider/client";
 import {
@@ -107,7 +107,7 @@ import {
 import { isCompacted, SKILL_CORE_MAX } from "../readings/compact";
 import { DEFAULT_SETTINGS, type LlmSettings } from "../settings";
 import { allSkills, DETAILS, headingsOf, readsCore, readSkill, REFERENCE_MAX_CHARS } from "../skills";
-import { callTool, CHAT_TOOLS, type AgentTool } from "../tools";
+import { callTool, CHAT_TOOLS, factsOf, toolSpecs, type AgentTool } from "../tools";
 import { STAGE_SKILL } from "../skills";
 import { TUNE_PARAMS, TUNE_STAGES } from "../tune/catalog";
 import { longestDigest } from "./autoSamples";
@@ -129,6 +129,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
+  fetchRingSurvey: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -564,7 +565,10 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     expect(run.sent).toHaveLength(ORDERS.method.length + 1);
     expect(run.peak).toBe(run.sent.length - 1);
     const b = breakdown(run.sent[run.peak], run.key);
-    expect(b.offered).toBe(CHAT_TOOLS.length);
+    // Every tool but the pre-run ones (offeredOn: ring_survey), which a reply
+    // on a dataset after its run is not offered.
+    expect(b.offered).toBe(offeredOn(CHAT_TOOLS, DATASET).length);
+    expect(CHAT_TOOLS.length - b.offered).toBe(PRE_RUN_TOOLS.length);
     columns.push({ head: ["console (Claude)", "all tools"], b, reserve: CLAUDE_REPLY });
     room.push({ what: "every tool's definition (the console)", measured: b.tools, ceiling: CEILING_ALL_TOOLS });
     expectWithin("every tool's definition, as the console sends them", b.tools, CEILING_ALL_TOOLS);
@@ -573,7 +577,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
 
   it("arm B on a local model: the TASK's offer, before and after the loop's compaction", async () => {
     // The tools offered for the TASK; those called all the same join them.
-    const offer = toolsFor(TASK, CHAT_TOOLS).map((t) => t.name);
+    const offer = toolsFor(TASK, offeredOn(CHAT_TOOLS, DATASET)).map((t) => t.name);
     const called = [...new Set(ORDERS.method.map((c) => c.name))];
     const sentTools = CHAT_TOOLS.filter((t) => offer.includes(t.name) || called.includes(t.name)).length;
 
@@ -684,6 +688,68 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
       `LM Studio loaded with ${n(WINDOW)} (window.ts, agent.ts): every request fits with MIN_REPLY free, and nothing is shortened. ` +
         `Largest sent ${n(b.prompt)} (request ${run.peak + 1} of ${run.sent.length}), ${n(WINDOW - b.prompt)} left for the reply. ` +
         `Both skills' cores at the cap (${n(SKILL_CORE_MAX)} characters each) leave ${n(WINDOW - bothAtCap)} to spare past MIN_REPLY.`,
+    );
+  }, TURN_TIMEOUT);
+});
+
+// The pre-run tools (THY-43: ring_survey), offered only on a dataset before
+// its run (their facts' preRun, localTools.ts offeredOn): a reply on
+// a dataset after its run, the worst turn and every turn the ceilings above
+// hold among them, never carries them, so they sit outside those ceilings.
+// A reply that starts before the run carries the survey's definition on
+// every request, and its result once it is called (and, called by name after
+// a run, the same): both are held to a ceiling of their own here, the result
+// at its longest (survey_lines with every list at its four named and a
+// count, the phase's line at the 420 characters THY-62 allows it). Measured
+// 2026-11-08 on the branch feat/pre-run-ring-survey: the definition 132
+// est. tokens, the result at its longest 530, the synthetic crystal's 132;
+// and reduction-qc's part for before a run (skills.ts BEFORE_A_RUN), which
+// read_skill gives with the core on a dataset before its run only, 246.
+// The worst turn with both on it is printed against the 20 % target, not
+// held: that turn is a reply after a run, which is never offered the survey.
+// A reply that starts before the run and runs it (the validation TASK on a
+// fresh dataset) does carry them: 132 a request, the result once, and the
+// skill's part where it reads reduction-qc before the run.
+const PRE_RUN_TOOLS = CHAT_TOOLS.filter((t) => factsOf(t.name).preRun).map((t) => t.name);
+const PRE_RUN_CEILING = { definition: 132, result: 530, skill: 246 };
+// The survey's lines at their longest (nebula3d.preprocessing.ring_survey.survey_lines).
+const LONGEST_SURVEY_LINES = {
+  al: "a=4.0406 Å; lines 111 2.69, 200 3.11, 220 4.39, 311 5.17, +12 more",
+  phases:
+    "possibly Te or Bi: 4 of 7 rings matched, scale -0.4 %; lines 012 1.92, 104 2.27, 110 2.36, 202 3.38, +3 more; hidden 104 under Al111, 110 under Al111, 202 under a crystal shell, 116 under Al220, +1 more; missing 015 2.96, 107 3.73; unmatched 3.60, 4.85, 5.62, 8.91, +2 more; needs 2.5× the Al's volume; also Sn (possible), Cu (possible)",
+  unrecognized: "3.60 (snr 85, removed), 4.85 (snr 31, removed), 5.62 (snr 12, faint, kept), 8.91 (snr 9, faint, kept), +2 more",
+  unconfirmed: "9.99 (snr 12, flank), 7.31 (snr 8, grid), 6.02 (snr 7, cells), 2.11 (snr 6, flank), +1 more",
+  removal: "would remove 19 (Al 14, phase 3, unrecognized 2); keep 7 (3 not rings)",
+};
+
+describe("before a run: the pre-run survey (THY-43), held off the worst turn", () => {
+  it("is offered on a dataset before its ring stage runs only, and its definition and result keep to their own ceiling", async () => {
+    expect(PRE_RUN_TOOLS).toEqual(["ring_survey"]);
+    const before = { ...DATASET, stages: DATASET.stages.map((st) => (st.name === "raw" ? st : { ...st, exists: false })) };
+    expect(offeredOn(CHAT_TOOLS, before).map((t) => t.name)).toEqual(CHAT_TOOLS.map((t) => t.name));
+    expect(offeredOn(CHAT_TOOLS, DATASET).map((t) => t.name)).toEqual(CHAT_TOOLS.filter((t) => !PRE_RUN_TOOLS.includes(t.name)).map((t) => t.name));
+    const survey = CHAT_TOOLS.find((t) => t.name === "ring_survey")!;
+    const definition = baseTokens([], toolSpecs([survey]));
+    const asResult = (text: string) => baseTokens([{ role: "tool", tool_call_id: "s", content: text }]) - baseTokens([{ role: "tool", tool_call_id: "s", content: "" }]);
+    const r = await callTool({ dataset: before, datasets: DATASETS }, "ring_survey", {});
+    expect(r.ok, r.text).toBe(true);
+    const crystal = asResult(r.text);
+    const longest = asResult(JSON.stringify(LONGEST_SURVEY_LINES));
+    // The skill's part for before a run (BEFORE_A_RUN), read with reduction-qc's core on a dataset before its run.
+    const skill = (readSkill("reduction-qc", undefined, undefined, { beforeRun: true }).length - readSkill("reduction-qc").length) / MARKDOWN_CHARS_PER_TOKEN;
+    room.push({ what: "reduction-qc's part for before a run", measured: skill, ceiling: PRE_RUN_CEILING.skill });
+    expectWithin("reduction-qc's part for before a run", skill, PRE_RUN_CEILING.skill);
+    room.push({ what: "the pre-run survey's definition", measured: definition, ceiling: PRE_RUN_CEILING.definition });
+    room.push({ what: "the pre-run survey's result, at its longest", measured: longest, ceiling: PRE_RUN_CEILING.result });
+    expectWithin("the pre-run survey's definition (ring_survey)", definition, PRE_RUN_CEILING.definition);
+    expectWithin("the pre-run survey's result at its longest", longest, PRE_RUN_CEILING.result);
+    expect(crystal).toBeLessThan(longest);
+    const { before: worst } = await localTurn();
+    const withSurvey = worst.prompts[worst.peak] + definition + skill + longest + REPLY_RESERVE;
+    target.push(
+      `Before a run (THY-43): the survey's definition ${n(definition)} est. tokens on every request of a reply that starts before a run, reduction-qc's part for before a run ${n(skill)} with its core, its result ${n(crystal)} ` +
+        `on the synthetic crystal, ${n(longest)} at its longest. Were a reply after a run ever to carry both, the worst local turn would be ${n(withSurvey)} with the reply reserve, ` +
+        `against the 20 % target's ${n(HEADROOM_TARGET)}: ${withSurvey > HEADROOM_TARGET ? `over by ${n(withSurvey - HEADROOM_TARGET)}` : "met"}; it never is (offeredOn, readSkill's beforeRun).`,
     );
   }, TURN_TIMEOUT);
 });

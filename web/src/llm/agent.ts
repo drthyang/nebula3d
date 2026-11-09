@@ -26,7 +26,7 @@ import {
 } from "./provider/client";
 import { answerIssues, earlierSources, issuesNote, issuesPrompt, keptAnswerNote, markUnsupported, unsupportedClaims, type AnswerIssues } from "./answerChecks";
 import { fillReferences } from "./references";
-import { lastQuestion, toolsFor } from "./localTools";
+import { lastQuestion, offeredOn, toolsFor } from "./localTools";
 import { classifyFailure, explainFailure, pause, RETRIES, RETRY_DELAYS_MS, STALL_MS, StallError, type Failure } from "./recovery";
 import { baseTokens, DATA_CHARS_PER_TOKEN, estimateTokens, observeTokens, PROSE_CHARS_PER_TOKEN } from "./provider/tokens";
 import { planWindow } from "./provider/window";
@@ -329,7 +329,10 @@ export async function runAgent({
   const windowKey = `${settings.baseUrl}|${settings.model}`;
   // A local model is offered the reading tools and those its question is
   // about (localTools.ts); one it calls by name all the same runs, and joins.
-  let offered = policy.toolScoping === "question" ? toolsFor(lastQuestion(messages), tools) : tools;
+  // Any model is offered the pre-run tools only on a dataset before its run
+  // (offeredOn), as the reply finds it.
+  const onDataset = offeredOn(tools, ctx?.dataset);
+  let offered = policy.toolScoping === "question" ? toolsFor(lastQuestion(messages), onDataset) : [...onDataset];
   const offer = (name: string) => {
     const tool = tools.find((t) => t.name === name);
     if (tool && !offered.includes(tool)) offered = tools.filter((t) => offered.includes(t) || t === tool);

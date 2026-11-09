@@ -52,7 +52,7 @@ export function rowMeta(row: PlanRow): string {
 
 /** A row's aside, after its name: what it covers, or which fix it is on. */
 export function rowSub(row: PlanRow, fixesPerStage: number): string | null {
-  if (row.id === "preflight" && row.status !== "done") return "coverage, UB, Laue";
+  if (row.id === "preflight" && row.status !== "done") return "coverage, rings, UB, Laue";
   if (isStage(row.id) && row.tries > 0 && (row.status === "fixing" || row.status === "running")) return `fix ${row.tries} of ${fixesPerStage}`;
   if (isStage(row.id) && row.tries > 0 && (row.status === "fixed" || row.status === "attention")) return `${row.tries} fix${row.tries === 1 ? "" : "es"}`;
   return null;

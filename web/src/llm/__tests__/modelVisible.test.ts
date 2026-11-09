@@ -34,7 +34,7 @@ import { answerIssues, earlierSources, issuesPrompt, marksMade } from "../answer
 import { loadPipelineContext } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
 import { armSetup, TASK } from "../evals/validation";
-import { toolsFor } from "../localTools";
+import { offeredOn, toolsFor } from "../localTools";
 import { CORE, roundsLine } from "../prompts/system";
 import { buildChatMessages, buildStageReviewMessages, systemPrompt, type ReviewStage } from "../prompts/templates";
 import type { ChatMessage, StreamDelta, ToolCall } from "../provider/client";
@@ -77,6 +77,7 @@ const api = vi.hoisted(() => ({
   fetchMeta: vi.fn(),
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
+  fetchRingSurvey: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -179,7 +180,13 @@ const QUESTION = "How clean is this reduction?";
 // ---------------------------------------------------------------- 1. the opening messages
 
 describe("1. the system prompt and the first user message, as the app builds them", () => {
-  const tools = (ts: readonly AgentTool[]) => `Tools offered (${ts.length}): ${ts.map((t) => t.name).join(", ")}.`;
+  // On the synthetic crystal, whose stages have run; a dataset before its
+  // run (the validation's own cases) is offered the pre-run tools too.
+  const tools = (all: readonly AgentTool[]) => {
+    const ts = offeredOn(all, DATASET);
+    const pre = all.filter((t) => !ts.includes(t)).map((t) => t.name);
+    return `Tools offered (${ts.length}): ${ts.map((t) => t.name).join(", ")}.${pre.length ? ` Before the ring stage has run, also: ${pre.join(", ")} (offeredOn).` : ""}`;
+  };
 
   it("arm B: tools on, skills on (the Pilot as shipped)", async () => {
     const b = armSetup("B", context);
@@ -331,7 +338,7 @@ describe("2. the tools, as sent to the model", () => {
     await expect(
       doc(
         "Tools offered to a local model",
-        "`toolsFor(question, CHAT_TOOLS)` (localTools.ts): a model on a local server is offered these with its first request; a tool it calls by name all the same runs and stays offered. Their definitions are in 2-tools.md.",
+        "`toolsFor(question, CHAT_TOOLS)` (localTools.ts): a model on a local server is offered these with its first request; a tool it calls by name all the same runs and stays offered. Their definitions are in 2-tools.md. The pre-run tools (ring_survey) only before the ring stage has run (offeredOn).",
         body,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/2-local-tools.md`);
@@ -488,6 +495,13 @@ const BUNCHED_NOTE = "a run whose punch record says its sharp peaks off the latt
 
 const SAMPLES: Sample[] = [
   { name: "read_skill", args: { name: "bragg-node-audit" } },
+  // On a dataset before its run, a skill's core comes with its part for before a run (THY-43).
+  {
+    name: "read_skill",
+    args: { name: "reduction-qc" },
+    note: "on a dataset before its run: the core and its part for before a run",
+    ctx: { dataset: { ...DATASET, stages: DATASET.stages.map((st) => (st.name === "raw" ? st : { ...st, exists: false })) } },
+  },
   // A skill's details, read on request (THY-63 R4).
   { name: "read_skill", args: { name: "bragg-node-audit", section: "Details" } },
   // A long reference page: its index, then one section (THY-63 R4).
@@ -497,6 +511,7 @@ const SAMPLES: Sample[] = [
     args: { name: "delta-pdf-interpretation", reference: "delta_pdf", section: "The window and the measured coverage (`support`)" },
   },
   { name: "describe_dataset", args: {} },
+  { name: "ring_survey", args: {}, note: "the raw volume before a run: its ring on no Al line, the crystal's own shell, a faint shell not judged" },
   { name: "current_view", args: {} },
   { name: "measure_reciprocal_cut", args: { plane: "h0l", value: 1 } },
   { name: "measure_dpdf_cut", args: { plane: "xz", value: 0 } },

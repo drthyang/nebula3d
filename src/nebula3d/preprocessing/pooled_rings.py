@@ -265,11 +265,10 @@ def fit_pooled_rings(
     for i in range(n_planes):
         q2, phi2, data2, valid2 = _plane_inputs(vol, cfg.plane, axis, i)
         abs_total += float(np.abs(data2[valid2]).sum())
-        if int(valid2.sum()) < _MIN_PLANE_VOXELS:
+        profile = _shell_profile(q2, data2, valid2, edges)
+        if profile is None:
             continue
-        prof, cnt = _robust_radial_profile(
-            q2[valid2], data2[valid2], edges, (10.0, 80.0), _MIN_VOXELS_PER_BIN, "median")
-        shell_prof[i], shell_cnt[i] = prof, cnt
+        shell_prof[i], shell_cnt[i] = profile
         keep2 = _sampling_keep(vol, cfg, axis, i, q2, phi2)
         fit2 = keep2 & np.isfinite(data2)
         sector_med[i], sector_cnt[i] = _sector_profiles(
@@ -280,41 +279,13 @@ def fit_pooled_rings(
             progress(0.4 * (i + 1) / n_planes, f"sector profiles {i + 1}/{n_planes}")
     t_pass1 = time.perf_counter() - t_start
 
-    def confirm(c: NDArray[np.float64], f: NDArray[np.float64], rings: list[tuple[float, float]],
-                others: list[tuple[float, float]]) -> list[ShellIsotropy]:
-        return judge_shells(vol, list(zip(c.tolist(), f.tolist())), cfg.isotropy,
-                            rings=rings, others=others)
-
-    al_test = _AlTest(
-        scales=lambda rings: al_cell_scales(vol, rings, cfg.isotropy),
-        judge=lambda clusters, scale, others: judge_al_lines(
-            vol, clusters, cfg.isotropy, cell_scale=scale, others=others),
-        width_ratio=cfg.isotropy.al_width_ratio)
-    found = _detect_shells(q_grid, shell_prof, shell_cnt, q_step, cfg,
-                           confirm if cfg.confirm_rings else None,
-                           al_test if cfg.confirm_rings else None)
+    found, phases = _find_shells(vol, cfg, q_grid, shell_prof, shell_cnt, q_step, sample)
     centers, fwhm, amps, al_a, rejected = (found.centers, found.fwhm, found.amps, found.al_a,
                                            found.rejected)
-    phases = (_phase_match(q_grid, shell_prof, shell_cnt, q_step, cfg, found,
-                           confirm if cfg.confirm_rings else None, sample)
-              if cfg.match_phases else None)
     del shell_prof, shell_cnt
     t_detect = time.perf_counter() - t_start
 
-    # The Al line each shell sits on, kept or not: a phase match, the one
-    # phase the ring removal knows (its lattice fitted from the confirmed rings).
-    al_lines = (aluminum_fcc_lines(al_a, cfg.q_max + 0.1, max(0.0, cfg.q_min - 0.1))
-                if al_a is not None else [])
-    al_q = np.array([ln.q for ln in al_lines])
-    tol = max(2.0 * q_step, 0.02)
-
-    def match(q: float, w: float) -> dict[str, object]:
-        j = _on_al_line(q, w, al_q, tol)
-        if j is None:
-            return _phase_line(phases, q, q_step)
-        return {"match": {"phase": "Al", "hkl": al_lines[j].family.split("/")[0],
-                          "q": round(float(al_q[j]), 4)}}
-
+    match = _shell_matcher(found, phases, cfg, q_step)
     for s in rejected:
         s.update(match(float(s["q_center"]), float(s["fwhm"])))  # type: ignore[arg-type]
     diagnostics: dict[str, object] = {
@@ -463,6 +434,70 @@ def _plane_inputs(
     data2 = np.take(vol.data, index, axis=axis).astype(np.float64)
     valid2 = np.take(vol.mask, index, axis=axis) & np.isfinite(data2)
     return q2, np.broadcast_to(phi2, q2.shape), data2, valid2
+
+
+def _shell_profile(
+    q2: NDArray[np.float64], data2: NDArray[np.float64], valid2: NDArray[np.bool_],
+    edges: NDArray[np.float64],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]] | None:
+    """One plane's all-azimuth median profile on the |Q| bins ``edges`` and
+    its voxel counts, the shells' detection reads across the stack; None for a
+    plane with fewer than :data:`_MIN_PLANE_VOXELS` valid voxels."""
+    if int(valid2.sum()) < _MIN_PLANE_VOXELS:
+        return None
+    return _robust_radial_profile(
+        q2[valid2], data2[valid2], edges, (10.0, 80.0), _MIN_VOXELS_PER_BIN, "median")
+
+
+def _find_shells(
+    vol: HKLVolume, cfg: PooledRingConfig, q_grid: NDArray[np.float64],
+    shell_prof: NDArray[np.float64], shell_cnt: NDArray[np.float64], q_step: float,
+    sample: str | None,
+) -> tuple[_Shells, dict[str, object] | None]:
+    """The shells of the across-stack profiles (:func:`_detect_shells`), each
+    judged in 3D on ``vol`` with ``cfg.confirm_rings``, and the phase match of
+    the rings the Al lines leave (:func:`_phase_match`, with ``cfg.match_phases``):
+    what the ring removal subtracts, and the pre-run ring survey reads
+    (:mod:`nebula3d.preprocessing.ring_survey`)."""
+
+    def confirm(c: NDArray[np.float64], f: NDArray[np.float64], rings: list[tuple[float, float]],
+                others: list[tuple[float, float]]) -> list[ShellIsotropy]:
+        return judge_shells(vol, list(zip(c.tolist(), f.tolist())), cfg.isotropy,
+                            rings=rings, others=others)
+
+    al_test = _AlTest(
+        scales=lambda rings: al_cell_scales(vol, rings, cfg.isotropy),
+        judge=lambda clusters, scale, others: judge_al_lines(
+            vol, clusters, cfg.isotropy, cell_scale=scale, others=others),
+        width_ratio=cfg.isotropy.al_width_ratio)
+    found = _detect_shells(q_grid, shell_prof, shell_cnt, q_step, cfg,
+                           confirm if cfg.confirm_rings else None,
+                           al_test if cfg.confirm_rings else None)
+    phases = (_phase_match(q_grid, shell_prof, shell_cnt, q_step, cfg, found,
+                           confirm if cfg.confirm_rings else None, sample)
+              if cfg.match_phases else None)
+    return found, phases
+
+
+def _shell_matcher(found: _Shells, phases: dict[str, object] | None, cfg: PooledRingConfig,
+                   q_step: float) -> Callable[[float, float], dict[str, object]]:
+    """The line a shell at (|Q|, FWHM) sits on, as its diagnostics' ``match``:
+    the fitted Al line it sits on, kept or not (the one phase the ring removal
+    knows, its lattice fitted from the confirmed rings), else the line of the
+    phase the match names first, else nothing."""
+    al_lines = (aluminum_fcc_lines(found.al_a, cfg.q_max + 0.1, max(0.0, cfg.q_min - 0.1))
+                if found.al_a is not None else [])
+    al_q = np.array([ln.q for ln in al_lines])
+    tol = max(2.0 * q_step, 0.02)
+
+    def match(q: float, w: float) -> dict[str, object]:
+        j = _on_al_line(q, w, al_q, tol)
+        if j is None:
+            return _phase_line(phases, q, q_step)
+        return {"match": {"phase": "Al", "hkl": al_lines[j].family.split("/")[0],
+                          "q": round(float(al_q[j]), 4)}}
+
+    return match
 
 
 def _sampling_keep(
@@ -986,6 +1021,23 @@ def _across_stack(shell_prof: NDArray[np.float64], shell_cnt: NDArray[np.float64
     return pooled, n
 
 
+def _profile_excess(
+    shell_prof: NDArray[np.float64], shell_cnt: NDArray[np.float64], q_step: float,
+    cfg: PooledRingConfig,
+) -> tuple[NDArray[np.float64], NDArray[np.bool_], NDArray[np.float64], float]:
+    """The across-stack profile (gaps filled), which of its bins are measured
+    (enough planes sample them), its excess over the SNIP baseline, and that
+    excess's bin noise: what the phase match reads, and what a shell's
+    signal-to-noise is measured against (its amplitude over the noise)."""
+    pooled, n_sampled = _across_stack(shell_prof, shell_cnt)
+    g = _fill_nan_1d(pooled)
+    measured = np.isfinite(pooled)
+    if np.any(n_sampled > 0):
+        measured &= ~(n_sampled < 0.1 * np.median(n_sampled[n_sampled > 0]))
+    exc = g - _snip_baseline(g, max(3, int(round(cfg.max_fwhm / q_step))))
+    return g, measured, exc, _measured_noise(exc, measured)
+
+
 def _peak_centre(q_grid: NDArray[np.float64], exc: NDArray[np.float64], q0: float) -> float:
     """A shell's centre refined within its bin by a parabola through the
     excess at its bin and the two beside it."""
@@ -1016,13 +1068,7 @@ def _phase_match(q_grid: NDArray[np.float64], shell_prof: NDArray[np.float64],
     widths, a line through them over |Q|, the lines' width. ``sample``, the
     input's file name, gives the composition and temperature it names.
     """
-    pooled, n_sampled = _across_stack(shell_prof, shell_cnt)
-    g = _fill_nan_1d(pooled)
-    measured = np.isfinite(pooled)
-    if np.any(n_sampled > 0):
-        measured &= ~(n_sampled < 0.1 * np.median(n_sampled[n_sampled > 0]))
-    exc = g - _snip_baseline(g, max(3, int(round(cfg.max_fwhm / q_step))))
-    noise = _measured_noise(exc, measured)
+    g, measured, exc, noise = _profile_excess(shell_prof, shell_cnt, q_step, cfg)
     cut = _KEEP_OUT_SNR_SHARE * cfg.min_snr
     kc, kf, ka = _confirm_shells_from_plane_profiles(
         q_grid, shell_prof, shell_cnt, q_step, cfg.max_fwhm, _MIN_VOXELS_PER_BIN,

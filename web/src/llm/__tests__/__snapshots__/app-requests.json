@@ -46,6 +46,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "ring_survey",
+      "description": "ring_survey.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "current_view",
       "description": "current_view.",
       "input_schema": {
@@ -349,6 +358,15 @@
      {
       "name": "describe_dataset",
       "description": "describe_dataset.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "ring_survey",
+      "description": "ring_survey.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -642,6 +660,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "ring_survey",
+      "description": "ring_survey.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "current_view",
       "description": "current_view.",
       "input_schema": {
@@ -945,6 +972,15 @@
      {
       "name": "describe_dataset",
       "description": "describe_dataset.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "ring_survey",
+      "description": "ring_survey.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -1264,6 +1300,17 @@
      {
       "type": "function",
       "function": {
+       "name": "ring_survey",
+       "description": "ring_survey.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
        "name": "current_view",
        "description": "current_view.",
        "parameters": {
@@ -1437,6 +1484,17 @@
       "function": {
        "name": "describe_dataset",
        "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "ring_survey",
+       "description": "ring_survey.",
        "parameters": {
         "type": "object",
         "properties": {}
@@ -1611,6 +1669,17 @@
      {
       "type": "function",
       "function": {
+       "name": "ring_survey",
+       "description": "ring_survey.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
        "name": "current_view",
        "description": "current_view.",
        "parameters": {
@@ -1784,6 +1853,17 @@
       "function": {
        "name": "describe_dataset",
        "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "ring_survey",
+       "description": "ring_survey.",
        "parameters": {
         "type": "object",
         "properties": {}
@@ -1974,6 +2054,17 @@
      {
       "type": "function",
       "function": {
+       "name": "ring_survey",
+       "description": "ring_survey.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
        "name": "current_view",
        "description": "current_view.",
        "parameters": {
@@ -2154,6 +2245,17 @@
      {
       "type": "function",
       "function": {
+       "name": "ring_survey",
+       "description": "ring_survey.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
        "name": "current_view",
        "description": "current_view.",
        "parameters": {
@@ -2310,6 +2412,17 @@
       "function": {
        "name": "describe_dataset",
        "description": "describe_dataset.",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "ring_survey",
+       "description": "ring_survey.",
        "parameters": {
         "type": "object",
         "properties": {}

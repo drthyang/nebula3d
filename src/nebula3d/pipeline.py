@@ -137,6 +137,7 @@ __all__ = [
     "symmetrize",
     "read_symmetry_average",
     "remove_rings",
+    "pooled_ring_config",
     "punch_bragg",
     "backfill",
     "flatten",
@@ -1766,6 +1767,30 @@ def unconfirmed_rings_notice(count: int, needs: str) -> str:
             f"not subtracted. {remedy}")
 
 
+def pooled_ring_config(p: RingParams) -> PooledRingConfig:
+    """The pooled ring model's configuration from the run's ring settings: what
+    the ring stage fits with (``ring_model="pooled"``), and what the pre-run
+    ring survey (:func:`nebula3d.preprocessing.ring_survey.survey_rings`)
+    detects with, so the two find the same shells."""
+    cfg = _SLICE_CONFIGS[p.slice_axis.strip().upper()]
+    return PooledRingConfig(
+        plane=cfg.plane,
+        q_min=p.q_min,
+        q_max=p.q_max,
+        q_step=p.q_step,
+        n_sectors=p.pooled_sectors,
+        pool_deg=p.pooled_window_deg,
+        pool_sectors=p.pooled_neighbor_sectors,
+        max_fwhm=p.ring_width,
+        min_snr=p.pooled_min_snr,
+        envelope_scale=p.pooled_envelope_scale,
+        amp_cap=p.pooled_amp_cap,
+        confirm_rings=p.pooled_confirm_rings,
+        isotropy=IsotropyConfig(direction_share=p.pooled_ring_direction_share,
+                                height_share=p.pooled_ring_height_share),
+    )
+
+
 def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
                          progress: ProgressFn | None, sample: str | None = None) -> HKLVolume:
     """The ``ring_model="pooled"`` stage: whole-volume, two passes over the stack.
@@ -1779,23 +1804,9 @@ def _remove_rings_pooled(vol: HKLVolume, p: RingParams,
     def _progress(fraction: float, message: str) -> None:
         _emit(progress, "rings", "progress", fraction, message)
 
-    isotropy = IsotropyConfig(direction_share=p.pooled_ring_direction_share,
-                              height_share=p.pooled_ring_height_share)
-    result = fit_pooled_rings(vol, PooledRingConfig(
-        plane=cfg.plane,
-        q_min=p.q_min,
-        q_max=p.q_max,
-        q_step=p.q_step,
-        n_sectors=p.pooled_sectors,
-        pool_deg=p.pooled_window_deg,
-        pool_sectors=p.pooled_neighbor_sectors,
-        max_fwhm=p.ring_width,
-        min_snr=p.pooled_min_snr,
-        envelope_scale=p.pooled_envelope_scale,
-        amp_cap=p.pooled_amp_cap,
-        confirm_rings=p.pooled_confirm_rings,
-        isotropy=isotropy,
-    ), progress=_progress, sample=sample)
+    pooled = pooled_ring_config(p)
+    isotropy = pooled.isotropy
+    result = fit_pooled_rings(vol, pooled, progress=_progress, sample=sample)
     out = result.cleaned
     # Attached transiently (as global_v2 does) so run_pipeline writes the sidecar.
     setattr(out, "_ring_diagnostics", result.diagnostics)

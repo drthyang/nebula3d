@@ -78,6 +78,99 @@ Details of this skill (read with read_skill and `section` "Details", or one part
 References of this skill (read one with read_skill and `reference`; a long one opens with its sections): bragg_cleanup.
 ```
 
+## read_skill {"name":"reduction-qc"} (on a dataset before its run: the core and its part for before a run)
+
+5213 characters sent.
+
+```text
+Skill reduction-qc
+
+# Reduction QC: is the reduced volume fit for a 3D-ΔPDF?
+
+A reduction can look clean on one cut and still be wrong in ways every later
+stage inherits. Check it first, in this order, and say what each check
+found.
+
+## Gates
+
+- `ub_check`: the UB turned at 0.05° or more, from an unsymmetrised fit.
+- `qmax_coverage`: the ΔPDF's Qmin and Qmax are where the raw counts begin
+  and end; the window's weight on unmeasured space is clean up to about 1e-3.
+- `assess_stage` rings: a powder ring rises in nearly every direction (3D): at
+  least 0.15 of its median height in 90 % of the directions, three times its
+  noise above its flanks, a quarter of its height above a curve through them.
+  A leftover or dent counts beyond three times its plane's noise. Rings
+  confirmed on data that should have none are an anomaly to report.
+- `assess_stage` flatten: a pedestal is a trend and a span both 0.8 or more,
+  over the outer half of the shells the counts reach.
+- `symmetry_check`: an operation the data were symmetrised with holds to about
+  1e-3 or better.
+- `compare_laue_classes`: a class is rejected when its `x_noise` rises above a
+  subgroup's by more than 10 % and two standard errors of the difference.
+
+## Steps
+
+1. **Know the data.** `describe_dataset`: the stages on disk, the reciprocal
+   grid and its range, and the cell. Note whether the volume is symmetrised
+   (`ub_check` says) and the symmetry the file declares (`grain_check`,
+   `declared_symmetry`).
+2. **The UB.** `ub_check` on the raw volume, with the punch cell as the Bragg
+   nodes: the turn (`orientation_change_deg`). On a symmetrised volume only
+   the symmetric part is fitted: say so, and that the orientation needs the
+   unsymmetrised file. Read the radial offsets by |Q| band and direction: an
+   offset that grows with |Q| is no UB error.
+3. **The coverage and the |Q| band.** `qmax_coverage`: `raw_counts` (the
+   edges), `suggested_band` (the band they allow), `band_check` (a set band
+   inside them) and the verdict, the share of the transform window's weight on
+   unmeasured space. The band and the magnetic ion stay with the user: suggest
+   them, never set them unasked.
+4. **Edge and unmeasured voxels.** Trim the edge before regridding or
+   symmetrising outside the pipeline. Before proposing a Laue class for the
+   symmetry average, run `compare_laue_classes` (Details: The Laue class):
+   cite the classes, rule and flags and suggest a class; never set it
+   (`update_settings` refuses it).
+5. **Powder rings.** `assess_stage` for the rings (`shells_judged`), then
+   `radial_profile`. Report leftovers and dents at the confirmed rings as
+   shares of the diffuse beside them. A ring too weak to rise in nearly every
+   direction is neither removed nor counted: if one shows by eye, say so.
+6. **The flatten floor.** `assess_stage` for the flatten: floors near zero, no
+   trend with |Q| (`floor_trend`), a span small against the diffuse level
+   (`floor_span_fraction`), over the whole volume; `pedestal_left` says
+   whether they make a pedestal. **When to turn the Q² term on:** when
+   `assess_stage` for the flatten reports `pedestal_left`, set `flattenQ2` on,
+   rerun from the flatten (`run_pipeline` with `from_stage` flatten), and read
+   `assess_stage` for the flatten again: keep the term if the pedestal is
+   gone, and report its trend and span before and after. Leave it off
+   otherwise.
+7. **Symmetry kept.** On symmetrised data, after the pipeline: `symmetry_check`
+   on the ΔPDF; a clear break means a stage broke it (delta-pdf-interpretation).
+8. **Report** the checks in order, each a verdict with the tool's numbers; what
+   you would change and why; what was not checked; what the user decides (the
+   band, the magnetic ion, whether to regrid). Mark a finding at a place (a
+   ring left over, leftover intensity at one spot) with `mark_region` on the
+   stage that shows it, resting on the call that measured it; name the mark by
+   its id where the report gives the finding.
+
+## Before a run
+
+Read with the core while the dataset has no outputs yet.
+
+- `ring_survey` first: the raw volume's powder rings as the ring stage would
+  find them, nothing removed. `al`: the Al lattice and its lines (the sample
+  environment). `phases`: a library phase whose lines may explain other
+  rings. `unrecognized`: rings no line explains, |Q| and snr. `unconfirmed`:
+  shells the 3D test could not judge. `removal`: what the ring stage would
+  remove.
+- The ring stage removes every ring the 3D test confirms, an unrecognized
+  one too, and keeps the rest. Report an unrecognized ring as a possible ring
+  with its |Q| and strength, never as a phase or a fault; ask the user about
+  the sample, its mount and its environment.
+
+---
+Details of this skill (read with read_skill and `section` "Details", or one part by its heading): Know the data; The UB; The coverage and the |Q| band; Edge and unmeasured voxels; The Laue class; Powder rings; The flatten floor; Symmetry kept; Firm rules (enforced in code); Acceptance checklist; Failure modes.
+References of this skill (read one with read_skill and `reference`; a long one opens with its sections): ub_refinement; delta_pdf; laue_compare.
+```
+
 ## read_skill {"name":"bragg-node-audit","section":"Details"}
 
 3670 characters sent.
@@ -308,6 +401,20 @@ natively and runs only when the support has unsupported voxels.
       "label": "synthetic_b"
     }
   ]
+}
+```
+
+## ring_survey {} (the raw volume before a run: its ring on no Al line, the crystal's own shell, a faint shell not judged)
+
+185 characters sent.
+
+```json
+{
+  "al": "no Al lattice fitted",
+  "phases": null,
+  "unrecognized": "3.20 (snr 42, removed)",
+  "unconfirmed": "4.31 (snr 7, flank)",
+  "removal": "would remove 1 (unrecognized 1); keep 1 (1 not rings)"
 }
 ```
 
@@ -1861,7 +1968,7 @@ Error: not marked: the box (x 19 to 21) is outside the volume: the volume spans 
 ## delete_dataset {} (a tool that does not exist)
 
 ```text
-Error: no tool named delete_dataset. Available: read_skill, describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region
+Error: no tool named delete_dataset. Available: read_skill, describe_dataset, ring_survey, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region
 ```
 
 ## measure_reciprocal_cut {plane: hk0 (arguments that are not JSON)

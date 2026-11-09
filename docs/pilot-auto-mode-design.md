@@ -180,7 +180,7 @@ still goes through the model's gated calls. The controller calls
 
 | Phase | Who | Tools | Ends when | May pause for |
 | --- | --- | --- | --- | --- |
-| Preflight | app | `qmax_coverage`, `ub_check`, `grain_check`, `compare_laue_classes` (raw, unsymmetrised only) | done | Laue class (before Run), \|Q\| band (before the ΔPDF), regrid (optional, never blocks) |
+| Preflight | app | `qmax_coverage`, `ring_survey` (THY-43: the raw volume's rings, nothing removed), `ub_check`, `grain_check`, `compare_laue_classes` (raw, unsymmetrised only) | done | Laue class (before Run), \|Q\| band (before the ΔPDF), regrid (optional, never blocks) |
 | Run | app | `run_pipeline` for missing or stale outputs | the run ends | none |
 | *Stage* check (×5) | app | `assess_stage` *stage* (+ `texture_check` for backfill; `symmetry_check` and `qmax_coverage` for the ΔPDF) | pass or attention | modulation (`off_lattice_bunching`) |
 | *Stage* fix (on attention, ≤ 2) | **model** | the stage's skill, then `update_settings` or `tune_pipeline`; then the app runs from `rerun_from` and checks again | the check passes, or 2 tries | any fact it proposes (refused → card) |

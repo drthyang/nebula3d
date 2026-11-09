@@ -252,7 +252,9 @@ describe("shorten over the real skills (.claude/skills), as read_skill returns t
   const modelCopy = async (name: string): Promise<string> => {
     const run = await callTool({ dataset, datasets: [dataset], skillsRead: new Set() }, "read_skill", { name });
     expect(run.ok, run.text).toBe(true);
-    expect(run.text).toBe(readSkill(name)); // whole: no skill is cut to fit
+    // Whole: no skill is cut to fit; this dataset has no run yet, so a skill
+    // with a part for before a run (BEFORE_A_RUN) comes with it.
+    expect(run.text).toBe(readSkill(name, undefined, undefined, { beforeRun: true }));
     return run.text;
   };
   const SKILLS = allSkills().map((s) => ({ name: s.name, gated: gatesOf(readSkill(s.name)) !== null }));

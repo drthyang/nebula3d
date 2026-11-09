@@ -60,7 +60,7 @@ does not compute them. Getting it running is in
 ## Tools
 
 With *Tools* on, a reply is an agent loop of up to twelve rounds. The model
-calls 28 tools (27 with the skills off: no `read_skill`), which run in the
+calls 29 tools (28 with the skills off: no `read_skill`), which run in the
 browser against the same API the viewers use:
 
 - **Skills:** `read_skill` reads one of the user's methods (below).
@@ -68,6 +68,19 @@ browser against the same API the viewers use:
   `measure_dpdf_cut`, `line_profile`, `bragg_peaks`, `consistency_details`,
   `compare_datasets`, `configure_settings`, `run_log`, and `run_verdict` (the
   run's verdict as `{{achieved}}` would give it now, read before writing).
+- **Before a run:** `ring_survey`, the raw volume's powder rings as the
+  ring stage would find them, nothing removed: the ring stage's own
+  detection, 3D ring test, Al lattice fit and phase match as a dry run
+  (`nebula3d.preprocessing.ring_survey`). It returns the Al lattice and its
+  lines (hkl and |Q|), the phase the match names for the other rings, as a
+  possibility with its evidence, the rings no line explains (|Q| and
+  signal-to-noise), the shells the 3D test could not judge, and what the
+  ring stage would remove and keep; the raw view draws them (AL with the
+  line, the phase and its line, "?" with the |Q|). It is offered only on a
+  dataset before its run (its facts' `preRun`), when reduction-qc's core
+  also comes with its part "Before a run", which says to run it first; a
+  reply after a run, the worst turn among them, carries neither. A call by
+  name runs all the same. Auto mode's preflight runs it.
 - **Assessing:** `assess_stage`, `radial_profile`, `texture_check`,
   `qmax_coverage`, `symmetry_check`, `grain_check`, `ub_check`, `dpdf_peaks`,
   and `compare_laue_classes`, the evidence for a Laue class: every class the

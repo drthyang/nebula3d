@@ -85,6 +85,10 @@ def load_volume(path: Path) -> HKLVolume:
 
 
 _ring_cache: dict[tuple, dict] = {}
+# One survey's record, small, keyed by its file's mtime: kept through
+# clear_cache, which the browser bridge calls before every survey to free the
+# viewers' volumes (webbridge.volume_ring_survey_json).
+_survey_cache: dict[tuple, dict] = {}
 _floors_cache: dict[tuple, dict] = {}
 _texture_cache: dict[tuple, HoleTexture] = {}
 
@@ -464,6 +468,52 @@ def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
     with _lock:
         _ring_cache.clear()  # one volume's shells at a time
         _ring_cache[key] = out
+    return out
+
+
+#: The ring stage's slice axes, the survey's only setting besides the edge trim.
+RING_SLICE_AXES = ("H", "K", "L")
+
+
+def volume_ring_survey(path: Path, *, slice_axis: str = "H", edge_trim: int = 1,
+                       precision: str = "float64") -> dict:
+    """The pre-run powder ring survey of the raw volume at *path*
+    (:func:`nebula3d.preprocessing.ring_survey.survey_rings`): the ring stage's
+    detection, 3D judgement, Al lattice fit and phase match as a dry run,
+    nothing removed. The volume is loaded as a run loads it (its coverage edge
+    trimmed by *edge_trim* layers, in *precision*), the ring stage's
+    configuration taken from the run's ring settings with *slice_axis*
+    (:func:`nebula3d.pipeline.pooled_ring_config`), and the file's name given
+    to the phase match. Cached by ``(path, mtime, slice_axis, edge_trim,
+    precision)``. Returns the survey's record with ``lines``, its few lines
+    for NEBULA Pilot (:func:`~nebula3d.preprocessing.ring_survey.survey_lines`).
+    Raises ``ValueError`` for a slice axis or edge trim out of range."""
+    from nebula3d.pipeline import PipelineParams, RingParams, load_input, pooled_ring_config
+    from nebula3d.preprocessing.ring_survey import survey_lines, survey_rings
+
+    axis = str(slice_axis).strip().upper()
+    if axis not in RING_SLICE_AXES:
+        raise ValueError(f"slice_axis must be one of {', '.join(RING_SLICE_AXES)}, "
+                         f"not {slice_axis!r}")
+    if not 0 <= int(edge_trim) <= 10 or int(edge_trim) != edge_trim:
+        raise ValueError(f"edge_trim takes 0 to 10 voxel layers, not {edge_trim!r}")
+    if precision not in ("float64", "float32"):
+        raise ValueError(f"precision must be float64 or float32, not {precision!r}")
+    key = (str(path), path.stat().st_mtime, axis, int(edge_trim), precision)
+    with _lock:
+        hit = _survey_cache.get(key)
+    if hit is not None:
+        return hit
+    p = PipelineParams(edge_trim=int(edge_trim), rings=RingParams(slice_axis=axis),
+                       precision=precision)  # type: ignore[arg-type]
+    vol = load_input(path, p)
+    record = survey_rings(vol, pooled_ring_config(p.rings), sample=path.name)
+    del vol
+    out = {**record, "slice_axis": axis, "edge_trim": int(edge_trim),
+           "lines": survey_lines(record)}
+    with _lock:
+        _survey_cache.clear()  # one volume's survey at a time
+        _survey_cache[key] = out
     return out
 
 

@@ -1068,20 +1068,40 @@ def _listed(items: list[str]) -> str:
     return ", ".join(items[:SUMMARY_ITEMS]) + more
 
 
+def supported(record: object) -> bool:
+    """Whether the candidate the record names first rests on a confirmed
+    ring: one of its matched lines sits on a ring the 3D test confirmed (one
+    the ring stage removed, ``source`` "ring", or a faint one it confirmed,
+    ``code`` "ring"). On a volume with no ring the match can fit a phase to
+    the noise's faint bumps alone (pure noise once read "possibly Si: 3 of 13
+    rings"): such a candidate stays in the record, and is named nowhere."""
+    if not isinstance(record, dict):
+        return False
+    cands = _dicts(record.get("candidates"))
+    if not cands:
+        return False
+    confirmed = [_num(r.get("q"), float("nan")) for r in _dicts(record.get("rings"))
+                 if r.get("source") == "ring" or r.get("code") == "ring"]
+    # A line's ring is the record's ring, each rounded alike (match_phases).
+    return any(abs(_num(ln.get("ring"), float("nan")) - q) <= 1e-3
+               for ln in _dicts(cands[0].get("lines")) for q in confirmed)
+
+
 def summary(record: object) -> str | None:
     """The phase match in one line, for NEBULA Pilot, or None without a
-    candidate: the best one as a possibility, its rings matched of those
-    unexplained by the Al and its lattice scale; its lines matched (hkl at
-    the ring's |Q|), hidden under another ring and missing; the rings it
-    leaves; and the next candidate, if any. Each list names at most
-    :data:`SUMMARY_ITEMS` and counts the rest."""
+    candidate a confirmed ring supports (:func:`supported`): the best one as
+    a possibility, its rings matched of those unexplained by the Al and its
+    lattice scale; its lines matched (hkl at the ring's |Q|), hidden under
+    another ring and missing; the rings it leaves; and the next candidate,
+    if any. Each list names at most :data:`SUMMARY_ITEMS` and counts the
+    rest."""
     if not isinstance(record, dict):
         return None
     cands = _dicts(record.get("candidates"))
     halos = "; ".join(f"possibly a {b.get('name')} halo at "
                       + ", ".join(f"{_num(h.get('q')):.2f}" for h in _dicts(b.get("halos")))
                       for b in _dicts(record.get("broad")))
-    if not cands:
+    if not cands or not supported(record):
         return halos or None
     c = cands[0]
     alt = c.get("or")
@@ -1120,4 +1140,4 @@ def summary(record: object) -> str | None:
 
 __all__ = ["LIBRARY_ENV", "LIBRARY_FILE", "AlReference", "Cover", "Halo", "Library", "Line",
            "Phase", "Ring", "al_reference", "elements_in_name", "load_library", "match_broad",
-           "match_phases", "rank", "summary", "temperature_in_name"]
+           "match_phases", "rank", "summary", "supported", "temperature_in_name"]

@@ -39,6 +39,7 @@ describe("the registry", () => {
       "line_profile",
       "measure_reciprocal_cut",
       "qmax_coverage",
+      "ring_survey",
       "texture_check",
       "ub_check",
     ]);

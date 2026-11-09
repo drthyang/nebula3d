@@ -77,6 +77,7 @@ describe("each handle starts fresh", () => {
 // below fails until a new such tool is given its own.
 const BACKEND_CALLS: Record<string, Record<string, unknown>> = {
   describe_dataset: {},
+  ring_survey: {},
   current_view: {},
   measure_reciprocal_cut: { plane: "h0l", value: 0 },
   measure_dpdf_cut: { plane: "xy", value: 0 },

@@ -46,6 +46,7 @@ import type {
   RegridResult,
   RingDiagnostics,
   RingIsotropy,
+  RingSurvey,
   ShellFloors,
   Slice,
   SliceHeader,
@@ -511,6 +512,9 @@ export const engine = {
   },
   volumeCoverage(volumeId: string): Promise<VolumeCoverage> {
     return jsonCall<VolumeCoverage>("volume_coverage_json", [volumeId]);
+  },
+  ringSurvey(volumeId: string, sliceAxis: string, edgeTrim: number): Promise<RingSurvey> {
+    return jsonCall<RingSurvey>("volume_ring_survey_json", [volumeId, sliceAxis, edgeTrim]);
   },
   ubCheck(volumeId: string, cell: string, qMax: number | null): Promise<UbCheck> {
     return jsonCall<UbCheck>("volume_ub_check_json", [volumeId, cell, qMax]);

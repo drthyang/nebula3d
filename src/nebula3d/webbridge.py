@@ -94,6 +94,7 @@ __all__ = [
     "volume_laue_compare_json",
     "dataset_regrid_json",
     "volume_ring_isotropy_json",
+    "volume_ring_survey_json",
     "volume_shell_floors_json",
     "volume_texture_json",
     "dpdf_meta_json",
@@ -1334,6 +1335,19 @@ def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
     GET /api/volumes/{id}/rings)."""
     stage = _resolve(volume_id, "hkl")
     m = _vol.volume_ring_isotropy(stage.path, _vol.parse_ring_shells(q, fwhm))
+    return _json({**m, "id": volume_id})
+
+
+def volume_ring_survey_json(volume_id: str, slice_axis: str = "H", edge_trim: int = 1) -> str:
+    """The pre-run powder ring survey of an HKL stage, the raw volume before a
+    run, nothing removed (mirrors GET /api/volumes/{id}/ring-survey). The
+    survey loads its own copy of the volume, as a run does, in the browser's
+    float32: the viewers' cached volumes are dropped first, as a run drops
+    them, so the heap holds one volume at a time."""
+    stage = _resolve(volume_id, "hkl")
+    _clear_caches()
+    m = _vol.volume_ring_survey(stage.path, slice_axis=slice_axis, edge_trim=int(edge_trim),
+                                precision=_BROWSER_PRECISION)
     return _json({**m, "id": volume_id})
 
 

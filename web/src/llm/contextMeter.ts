@@ -24,7 +24,7 @@
 
 import { toolsKnownUnsupported } from "./agent";
 import { costOf, priceOf, usd } from "./auto/cost";
-import { lastQuestion, toolsFor } from "./localTools";
+import { lastQuestion, offeredOn, toolsFor } from "./localTools";
 import { isAnthropicUrl } from "./provider/anthropic";
 import { isOllamaUrl, TOOLS_CONTEXT, type ChatMessage, type ModelContext, type ToolSpec } from "./provider/client";
 import { isLocalUrl } from "./provider/presets";
@@ -104,7 +104,7 @@ export function openingSpecs(
   policy: RunPolicy = runPolicyOf(settings),
 ): ToolSpec[] | undefined {
   if (!given.length || !ctx || toolsKnownUnsupported(settings)) return undefined;
-  const tools = toolsWithSkills(given, skillsOn(ctx));
+  const tools = offeredOn(toolsWithSkills(given, skillsOn(ctx)), ctx.dataset);
   return toolSpecs(policy.toolScoping === "question" ? toolsFor(lastQuestion([...messages]), tools) : tools);
 }
 

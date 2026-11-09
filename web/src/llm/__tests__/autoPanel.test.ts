@@ -36,7 +36,7 @@ describe("a plan row", () => {
     expect(rowSub(row("punch", "fixing", 1), 2)).toBe("fix 1 of 2");
     expect(rowSub(row("punch", "fixed", 1), 2)).toBe("1 fix");
     expect(rowSub(row("punch", "attention", 2), 2)).toBe("2 fixes");
-    expect(rowSub(row("preflight", "pending"), 2)).toBe("coverage, UB, Laue");
+    expect(rowSub(row("preflight", "pending"), 2)).toBe("coverage, rings, UB, Laue");
     expect(rowSub(row("preflight", "done"), 2)).toBeNull();
   });
 });
