@@ -3,7 +3,7 @@
 // sample's modulation: tune/catalog.ts, SampleParam) is one setting here, by
 // the name update_settings takes, where its first field stands.
 
-import { usePipelineStore } from "../../../state/pipelineStore";
+import { JOB_STATE_KEYS, usePipelineStore } from "../../../state/pipelineStore";
 import { SAMPLE_PARAMS } from "../../tune/catalog";
 import type { ChatTool } from "../types";
 
@@ -24,7 +24,7 @@ function shown(state: ReturnType<typeof usePipelineStore.getState>): Record<stri
   const settings: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(s)) {
     if (typeof v === "function" || UI_ONLY.test(k)) continue;
-    if (["jobId", "running", "reconnecting", "events", "times", "terminal", "lastRun"].includes(k)) continue;
+    if (JOB_STATE_KEYS.has(k)) continue;
     if (HELD.has(k)) {
       const p = COMPOSITE.find((q) => q.fields[0] === k);
       // Read as one: "default" (nothing it needs is set) shows as a blank field does.

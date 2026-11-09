@@ -173,6 +173,10 @@ interface PipelineState extends PipelineConfig {
   terminal: string | null;
   // A native run's progress stream dropped and the page is reaching the job again.
   reconnecting: boolean;
+  // The run's wall clock (runMs): when it was asked for, and when its end was
+  // heard (done, failed, cancelled); null before a run, and while it runs.
+  startedAt: number | null;
+  endedAt: number | null;
   // actions
   patch: (p: Partial<PipelineConfig>) => void;
   run: () => Promise<void>;
@@ -276,6 +280,8 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   times: [],
   terminal: null,
   reconnecting: false,
+  startedAt: null,
+  endedAt: null,
 
   patch: (p) => set(p),
 
@@ -304,7 +310,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   cancel: async () => {
     if (PYODIDE_MODE) {
       cancelPipeline();
-      set({ terminal: "cancelled", running: false });
+      set({ terminal: "cancelled", running: false, endedAt: Date.now() });
       // The worker held the outputs (in memory): they went with it.
       void queryClient.invalidateQueries();
       return;
@@ -354,6 +360,8 @@ async function start(
     events: [],
     times: [],
     terminal: null,
+    startedAt: Date.now(),
+    endedAt: null,
     running: true,
     reconnecting: false,
     jobId: null,
@@ -389,6 +397,7 @@ async function start(
     set({
       terminal: "error",
       running: false,
+      endedAt: Date.now(),
       events: [
         { type: "progress", status: "error", message: (e as Error).message },
       ],
@@ -408,7 +417,7 @@ function finish(set: Setter, get: Getter, terminal: string, message?: string): v
       times: [...get().times, Date.now()],
     });
   }
-  set({ terminal, running: false });
+  set({ terminal, running: false, endedAt: Date.now() });
   void queryClient.invalidateQueries();
 }
 
@@ -420,6 +429,24 @@ const RECONNECTS = 3;
 export const LOST_AFTER_MS = 45_000;
 // The longest pause between two looks at the job's status.
 const POLL_MAX_MS = 15_000;
+
+/** The store's job state: not settings (never remembered, saved or shown as one). */
+export const JOB_STATE_KEYS: ReadonlySet<string> = new Set(["jobId", "running", "reconnecting", "events", "times", "terminal", "lastRun", "startedAt", "endedAt"]);
+
+/**
+ * A run's time, the one definition the console uses (the Execution page's
+ * total, the Pilot's "done in"): wall clock from the run's request to its end
+ * as heard (its last line, where the end was not heard), or to now while it
+ * runs. Null before a run. The Execution page said 00:24, the Pilot 31.5 s:
+ * one timed from the first line to the last, the other to after the listings
+ * were read again.
+ */
+export function runMs(s: Pick<PipelineState, "startedAt" | "endedAt" | "running" | "times">, now = Date.now()): number | null {
+  const start = s.startedAt ?? s.times[0];
+  if (start == null) return null;
+  const end = s.running ? now : (s.endedAt ?? s.times[s.times.length - 1] ?? start);
+  return Math.max(0, end - start);
+}
 
 /** A run that lost its connection to the server while its job may still run: it holds the pipeline until the job is heard from. */
 export const pipelineBusy = (s: Pick<PipelineState, "running" | "terminal" | "jobId">): boolean =>
@@ -689,14 +716,15 @@ async function runInBrowser(
           message: ev.message,
         }),
     });
+    const endedAt = Date.now(); // the run's end, before the listings are read again
     await queryClient.invalidateQueries();
-    set({ terminal: "done", running: false });
+    set({ terminal: "done", running: false, endedAt });
   } catch (e) {
     // Cancel ended it (cancel() already said so): the engine's rejection is
     // that, not a failure.
     if (get().terminal === "cancelled") return;
     log({ type: "progress", status: "error", message: (e as Error).message });
-    set({ terminal: "error", running: false });
+    set({ terminal: "error", running: false, endedAt: Date.now() });
   }
 }
 

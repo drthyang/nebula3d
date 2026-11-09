@@ -597,13 +597,16 @@ describe("run_pipeline", () => {
     useNavStore.setState({ tab: "config" });
   });
 
-  it("times the run by the wall clock, as the Execution page times it and its stages", async () => {
+  it("times the run as the Execution page does (runMs): from its request to its end as heard, not to after the listings are read", async () => {
     let wall = 1_000_000;
     const clock = vi.spyOn(Date, "now").mockImplementation(() => wall);
     const run = fakeRun("done");
     usePipelineStore.setState({
       runStages: vi.fn(async (stages: string[], opts?: unknown) => {
+        usePipelineStore.setState({ startedAt: wall, endedAt: null });
         wall += 588_000; // a ring removal of almost ten minutes on a loaded machine
+        usePipelineStore.setState({ endedAt: wall });
+        wall += 7_000; // the listings read again after the end
         void stages;
         void opts;
         return run();
