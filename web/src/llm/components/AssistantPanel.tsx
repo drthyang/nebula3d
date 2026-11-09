@@ -5,7 +5,8 @@
 // measures and assesses, opens the viewer, runs the pipeline, and tunes it.
 // The regions it marks on the slice views are listed above the chat
 // (MarksList), while the dataset has any, and so are the changes applied from
-// its Apply cards (ChangesList). While a reply runs, the title row shows how
+// its Apply cards (ChangesList): in the room the chat gives them (ChatView's
+// `above`), so they never cover the transcript or push the dock off-screen. While a reply runs, the title row shows how
 // long it has worked (ReplyClock).
 
 import { useMemo, useState } from "react";
@@ -95,9 +96,6 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
         />
       )}
 
-      <MarksList datasetId={datasetId} />
-      <ChangesList datasetId={datasetId} folded={mode === "sheet"} />
-
       <ChatView
         assistant={contextQuery.data}
         connected={connected}
@@ -106,6 +104,12 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
         contextLoading={contextQuery.isFetching}
         contextNote={settings.useTools ? contextWarning(modelContext, settings.model) : null}
         modelContext={modelContext}
+        above={
+          <>
+            <MarksList datasetId={datasetId} />
+            <ChangesList datasetId={datasetId} folded={mode === "sheet"} />
+          </>
+        }
       />
     </div>
   );

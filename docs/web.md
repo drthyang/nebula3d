@@ -476,6 +476,27 @@ side by side on a wide card, and on a narrow one a stage's one-line summary
 moves under its title. The Configure preview answers to its card's width too:
 its three planes side by side from 1100 px, tabs below.
 
+The NEBULA Pilot panel is one screen and never scrolls as a whole: its title
+row, the connection row, then one room shared by the marked regions, the
+Changes list, the Auto panel and the transcript, and the dock (the chips, the
+context meter, the composer) pinned at its foot, whole at every height. In
+that room the lists give up their height first (down to their head and a
+row, their rows scrolling), then the Auto panel's plan and activity log,
+while the transcript keeps a floor of 120 px (96 px beside an auto run). In
+the bottom sheet the chips share one row that scrolls sideways, over the
+composer; a short sheet gives the connection row's line to the conversation
+while connected, an auto run's panel takes a short sheet's room, and the
+lowest sheet is the title row and the dock.
+`scripts/pilot_layout_check.mjs` walks the panel through its busy states on
+the synthetic demo with the scripted model (idle, marked regions, a reply
+with Apply cards and 10 changes, the context meter's details, an auto run
+running, paused, done and stopped) at 1440 × 900, 1280 × 800 and on a
+390 × 844 touch screen at the lowest, default and highest sheet, and checks
+by measurement that the dock is whole and on screen, that nothing covers the
+composer or the transcript, and that the boxes above the transcript do not
+overlap (`PW=<playwright-core> node scripts/pilot_layout_check.mjs <url>
+<out-dir> --model=<scripted model URL> [--engines=chromium,webkit] [--demo]`).
+
 ### Memory bar
 
 Under the API status at the foot of the sidebar (at the end of each page in

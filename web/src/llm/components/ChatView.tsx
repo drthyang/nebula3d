@@ -6,7 +6,7 @@
 // rendered slice image when the vision opt-in is on.
 // The reply itself is driven by session.ts, so it outlives this component.
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useDatasets } from "../../api/hooks";
 import { BrandGlyph } from "../../components/ui";
@@ -325,6 +325,7 @@ export function ChatView({
   contextLoading = false,
   contextNote = null,
   modelContext = null,
+  above = null,
 }: {
   assistant: AssistantContext | undefined;
   connected: boolean;
@@ -335,6 +336,9 @@ export function ChatView({
   contextNote?: string | null;
   // The context length LM Studio loaded the model with (useAssistant), for the meter.
   modelContext?: ModelContext | null;
+  // The panel's lists (marked regions, Changes): above the Auto panel and the
+  // transcript, in the room they share (.ai-body), never over the dock.
+  above?: ReactNode;
 }) {
   const turns = useChatStore((s) => s.turns);
   const draft = useChatStore((s) => s.draft);
@@ -477,6 +481,11 @@ export function ChatView({
           />
         );
       })()}
+      {/* The lists, the Auto panel and the transcript share the room between the
+          connection row and the dock: each takes its own space and scrolls
+          inside it, and the dock under them is always whole (index.css .ai-body). */}
+      <div className="ai-body">
+      {above}
       {tools && <AutoPanel ctx={toolContext} />}
       <div className="ai-transcript" ref={scrollRef} onScroll={onScroll}>
         {empty && (
@@ -562,6 +571,7 @@ export function ChatView({
           </div>
         )}
         {error && <div className="ai-conn-alert">{error}</div>}
+      </div>
       </div>
 
       <div className="ai-dock">

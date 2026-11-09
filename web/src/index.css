@@ -4282,13 +4282,15 @@ body.ai-resizing iframe {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
+  /* One screen, never a scroll pane: the title row, the connection row, the
+     room the lists, the Auto panel and the transcript share (.ai-body), and the
+     dock pinned at the foot. Each long part scrolls inside its own box. Its
+     height is the `pilot` container's, for the short-panel rules below. */
+  overflow: hidden;
+  container: pilot / size;
 }
-/* stays in view (with the close button) while long tuning results scroll */
 .ai-panel-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4345,6 +4347,7 @@ body.ai-resizing iframe {
 
 /* — compact connection toolbar — */
 .ai-topbar {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -4490,6 +4493,12 @@ body.ai-resizing iframe {
 
 /* — settings drawer — */
 .ai-settings {
+  /* the connection drawer: as tall as it needs, at most half the panel, so
+     the transcript and the dock keep their room */
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -4560,19 +4569,51 @@ body.ai-resizing iframe {
   background: var(--border-strong);
 }
 
-/* — chat column — */
+/* — chat column: the shared room (.ai-body) over the dock — */
 .ai-chat {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+/* The marked regions, the Changes list, the Auto panel and the transcript, in
+   that order, each in its own space: the boxes above give up their height
+   first (their lists scroll inside them), down to their heads, so the
+   transcript keeps a readable floor. Nothing in here overflows onto the dock:
+   at the very shortest the transcript's foot is clipped, never the composer. */
+/* under a box, the transcript's top edge fades: a line scrolled past it reads
+   as scrolled, not as hidden behind the box */
+.ai-body > * + .ai-transcript {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px);
+  mask-image: linear-gradient(to bottom, transparent, #000 14px);
+  padding-top: 12px;
+}
+/* The same for the lists that scroll in a box (the marks, the Changes, the
+   activity log): rows fade at the box's edges instead of being sliced, and the
+   divider over them (the 1px border) stays. */
+:is(.ai-mark-list, .auto-body > .auto-all) {
+  --edge: linear-gradient(to bottom, #000 1px, transparent 1px, #000 14px, #000 calc(100% - 12px), transparent);
+  -webkit-mask-image: var(--edge);
+  mask-image: var(--edge);
+}
+.ai-body:has(> .auto-panel) > .ai-transcript {
+  min-height: 96px; /* the run's panel and its report reply share the room */
+}
+.ai-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
 }
 /* contain: size keeps a long conversation from counting toward the page's
-   content height (it scrolls here instead); min-height is the chat area kept
-   free when the settings drawer takes the rest. */
+   content height (it scrolls here instead); min-height is the floor it keeps
+   while the boxes above it shrink. */
 .ai-transcript {
-  flex: 1;
-  min-height: 160px;
+  flex: 1 1 0;
+  min-height: 120px;
   contain: size;
   overflow-y: auto;
   display: flex;
@@ -4888,13 +4929,23 @@ body.ai-resizing iframe {
 
 /* — the Pilot's marked regions (MarksList): one row each, click to show — */
 .ai-marks {
-  flex: none;
+  /* On a short panel the lists give up their height first, to their head and
+     a row (their list scrolls), before the Auto panel or the transcript. */
+  flex: 0 100 auto;
+  min-height: var(--pilot-list-head, 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   font-size: 12px;
 }
+.ai-marks:has(> .ai-mark-list) {
+  min-height: calc(var(--pilot-list-head, 32px) + 30px);
+}
 .ai-marks-head {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -4938,6 +4989,8 @@ body.ai-resizing iframe {
   color: var(--red);
 }
 .ai-mark-list {
+  flex: 0 1 auto;
+  min-height: 0;
   list-style: none;
   margin: 0;
   padding: 4px 6px 6px;
@@ -5418,6 +5471,9 @@ body.ai-resizing iframe {
 }
 /* the "?" line under the toggles row, with the other action where there is one */
 .ai-meter-detail {
+  /* opened in the dock: a few lines at most, so the composer stays in view */
+  max-height: 30cqh;
+  overflow-y: auto;
   font-size: 12px;
   line-height: 1.45;
   color: var(--text-3);
@@ -5559,8 +5615,10 @@ body.ai-resizing iframe {
   border-left-color: var(--amber);
 }
 
-/* — dock: review chips + composer, pinned under the transcript — */
+/* — dock: review chips + composer, pinned under the transcript; never
+   shrinks, so it is whole at every panel height — */
 .ai-dock {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -7448,7 +7506,32 @@ h6.md-h {
    transcript takes what is left, so the composer stays at the sheet's foot
    however short it is dragged. Docked on a short screen (a phone held
    landscape) the chips get the same row. */
+/* In the sheet the transcript keeps 96 px while the sheet has them (the lists
+   above give theirs up first, to nothing on a sheet dragged low); while an
+   auto run is open its panel comes first and the transcript takes the rest. */
 .ai-side[data-mode="sheet"] .ai-transcript {
+  min-height: min(96px, 100%);
+}
+.ai-side[data-mode="sheet"] .ai-body:has(> .auto-panel) > .ai-transcript {
+  min-height: min(96px, 100%);
+}
+/* A short sheet with an auto run open: the run's panel has the room, the
+   transcript waits under it (no sliver of it), back when the sheet is raised. */
+@container pilot (max-height: 559px) {
+  .ai-side[data-mode="sheet"] .ai-body:has(> .auto-panel) > .ai-transcript {
+    flex: 0 0 0;
+    min-height: 0;
+    padding-block: 0;
+  }
+  .ai-side[data-mode="sheet"] .ai-body:has(> .auto-panel) > .ai-marks {
+    display: none;
+  }
+  /* and the connection row's line too, while connected (as on any short panel) */
+  .ai-side[data-mode="sheet"] .ai-panel:has(.auto-panel) .ai-topbar:has(.ai-conn-status.ok):not(:has(.ai-gear.on)) {
+    display: none;
+  }
+}
+.ai-side[data-mode="sheet"] :is(.ai-marks, .ai-marks:has(> .ai-mark-list)) {
   min-height: 0;
 }
 .ai-side[data-mode="sheet"] .ai-reviews {
@@ -7464,6 +7547,66 @@ h6.md-h {
 }
 .ai-side[data-mode="sheet"] .ai-reviews > * {
   flex: none;
+}
+/* In the sheet the dock is two lines: the chips in one row that scrolls
+   sideways ("Run auto analysis" or "Pause auto analysis" first, then Tools,
+   Follow, Highlights, Vision, the context meter and Clear), and the composer.
+   A warning or the meter's details take a line of their own between them. */
+.ai-side[data-mode="sheet"] .ai-dock {
+  flex-flow: row wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ai-side[data-mode="sheet"] .ai-dock > * {
+  flex: 1 0 100%;
+  min-width: 0;
+}
+.ai-side[data-mode="sheet"] .ai-dock > .ai-reviews {
+  flex: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.ai-side[data-mode="sheet"] .ai-dock > .ai-toggles {
+  flex: 1 1 0;
+  flex-wrap: nowrap;
+  justify-content: flex-start; /* a row that scrolls must start at its start */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.ai-side[data-mode="sheet"] .ai-dock > .ai-toggles::-webkit-scrollbar {
+  display: none;
+}
+.ai-side[data-mode="sheet"] .ai-dock > .ai-toggles > * {
+  flex: none;
+}
+/* A short panel (a phone's sheet at its default height or lower, a phone held
+   landscape): the connection row gives its line to the conversation while the
+   model is connected and its settings are closed; the dock stays whole. */
+@container pilot (max-height: 400px) {
+  .ai-topbar:has(.ai-conn-status.ok):not(:has(.ai-gear.on)) {
+    display: none;
+  }
+}
+/* Lower still (a sheet at its lowest), too short for a readable line of the
+   conversation: the panel is its title row and the dock, the meter's details
+   a scrolling line or two. Dragged up, the conversation comes back. */
+@container pilot (max-height: 250px) {
+  .ai-panel-head {
+    padding-bottom: 0;
+  }
+  .ai-body {
+    display: none;
+  }
+  .ai-dock {
+    gap: 6px;
+    padding-top: 0;
+  }
+  .ai-meter-detail {
+    max-height: 34px;
+  }
 }
 @media (max-height: 600px) {
   /* there the panel scrolls (to the chips and the composer) rather than
@@ -8088,21 +8231,27 @@ html.kb-open .ai-side {
 }
 
 /* The Auto panel (llm/components/AutoPanel.tsx; docs/pilot-auto-mode-design.md §2.6):
-   above the chat while an auto run is open. In the sheet layout it folds to one line. */
+   above the chat while an auto run is open, in its own space (.ai-body). In
+   the sheet layout it folds to one line. Its header, Now line and bar, a fact
+   it waits for and its Report / Undo row always show; the plan and the
+   activity log give up the height (the log scrolls in its own box), and only
+   on a very short panel does the plan scroll too (.auto-body). */
 .auto-panel {
-  flex: none;
+  flex: 0 1 auto;
+  min-height: min(var(--auto-min, 132px), 100%);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 0 0 8px;
   padding: 10px 12px 9px;
   border: 1px solid rgba(79, 143, 247, 0.45);
   border-radius: var(--radius);
   background: linear-gradient(var(--accent-soft), transparent 70%), var(--surface);
-  max-height: 62%;
-  overflow-y: auto;
+  overflow-y: auto; /* only when even its fixed parts do not fit (a fact it waits for, on a phone) */
 }
-/* the header, the Now line and the bar stay in view as the panel scrolls */
+.auto-panel > * {
+  flex: none;
+}
+/* the header, the Now line and the bar stay in view should the panel scroll */
 .auto-top {
   position: sticky;
   top: -10px;
@@ -8127,15 +8276,22 @@ html.kb-open .ai-side {
   border-color: var(--border-strong);
   background: var(--surface);
 }
-.auto-body {
+.auto-panel > .auto-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+.auto-body > * {
+  flex: none;
+}
 .auto-head {
   display: flex;
+  flex-wrap: wrap; /* a narrow panel: Pause / Resume and Stop go to a line of their own, not out of view */
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
 }
 .auto-title {
   white-space: nowrap;
@@ -8397,7 +8553,9 @@ html.kb-open .ai-side {
   flex-direction: column;
   gap: 1px;
 }
-.auto-all {
+.auto-body > .auto-all {
+  flex: 0 1 auto;
+  min-height: min(48px, 100%);
   max-height: 170px;
   overflow-y: auto;
   border-top: 1px solid var(--border);
@@ -8494,8 +8652,14 @@ html.kb-open .ai-side {
   cursor: pointer;
 }
 .ai-side[data-mode="sheet"] .auto-panel {
+  --auto-min: 150px; /* its head, the Now line, the bar and "The plan and all … steps" */
   gap: 6px;
-  max-height: 70%;
+}
+/* the last steps give up their height first in a short sheet */
+.auto-panel > .auto-recent {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .ai-side[data-mode="sheet"] .auto-recent,
 .ai-side[data-mode="sheet"] .auto-more {
@@ -8510,8 +8674,17 @@ html.kb-open .ai-side {
 .ai-side[data-mode="sheet"] .auto-panel.is-open .auto-body {
   display: flex;
 }
-.ai-side[data-mode="sheet"] .auto-head {
-  flex-wrap: wrap;
+/* opened on a phone, the plan and the whole log scroll with the panel, one
+   scroll box under its header */
+.ai-side[data-mode="sheet"] .auto-panel.is-open > .auto-body {
+  flex: none;
+  overflow: visible;
+}
+.ai-side[data-mode="sheet"] .auto-panel.is-open .auto-body > .auto-all {
+  max-height: none;
+  overflow: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 .auto-refused {
   align-self: center;
