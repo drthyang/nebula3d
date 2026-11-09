@@ -91,6 +91,7 @@ export function proposeFromReply(turn: number, steps: readonly AgentStep[], answ
     dataset,
     tune: useTuneStore.getState().stages,
     firstId: nextProposalNumber(),
+    earlierSteps: toolStepsIn(useChatStore.getState().turns.filter((t) => t.id !== turn)),
   });
   // A card an open one makes already (an earlier reply's): none twice, its evidence joining that card's.
   addProposals(ps.filter((p) => p.kind === "run" || !mergeIntoTwin(p)));

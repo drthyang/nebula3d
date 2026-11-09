@@ -43,7 +43,7 @@ import {
 import type { StageRun } from "../tune/tuner";
 import { USER_SETTINGS } from "../tune/userSettings";
 import { settingLabel } from "../../pages/configSections";
-import { methodTitle } from "./settingTitle";
+import { methodTitle, settingTitle } from "./settingTitle";
 import type { PipelineConfig } from "../../state/pipelineStore";
 
 export type ProposalKind = "setting" | "fact" | "run" | "trial";
@@ -203,6 +203,41 @@ export interface BuildInput {
   dataset: string;
   tune?: readonly StageRun[]; // the tuning run, when the reply ran one
   firstId: number; // the number the first new proposal takes ("P<n>")
+  // The conversation's earlier steps (its tunings among them): a setting the
+  // answer names with a value a tuning tried and did not keep gets no card.
+  earlierSteps?: readonly AgentStep[];
+}
+
+/**
+ * The trials the conversation's tunings ran and did not keep, each as the
+ * form fields its changes set: from each tune_pipeline step's result, every
+ * trial with a result but the chosen one, by its stage.
+ */
+export function rejectedTrials(steps: readonly AgentStep[]): Partial<PipelineConfig>[] {
+  const out: Partial<PipelineConfig>[] = [];
+  for (const s of steps) {
+    if (s.name !== "tune_pipeline" || s.status !== "done" || !s.result) continue;
+    let result: unknown;
+    try {
+      result = JSON.parse(s.result);
+    } catch {
+      continue;
+    }
+    const stages = (result as { stages?: unknown }).stages;
+    if (!Array.isArray(stages)) continue;
+    for (const r of stages as { stage?: TuneStage; chosen_trial?: number; trials?: { n: number; changes?: Record<string, ParamValue>; result?: string }[] }[]) {
+      if (!r.stage || !Array.isArray(r.trials)) continue;
+      for (const t of r.trials) {
+        if (r.chosen_trial == null || t.n === r.chosen_trial || t.result === undefined || !t.changes || !Object.keys(t.changes).length) continue;
+        try {
+          out.push(proposalToPatch(r.stage, t.changes));
+        } catch {
+          // a trial the catalogue no longer reads: nothing to compare
+        }
+      }
+    }
+  }
+  return out;
 }
 
 type Draft = Omit<Proposal, "id" | "turn" | "dataset" | "status">;
@@ -370,11 +405,17 @@ export function buildProposals(input: BuildInput): Proposal[] {
     }
   }
 
-  // The settings the answer names with a value that no call set.
+  // The settings the answer names with a value that no call set; none a
+  // tuning in this conversation tried and did not keep (the run's suggestions
+  // offered the ring stack window and the punch footprint its tunings had
+  // just rejected).
   const named = new Set<string>();
+  const rejected = settingsInAnswer(input.answer).length ? rejectedTrials([...(input.earlierSteps ?? []), ...steps]) : [];
+  const triedAndDropped = (fields: Partial<PipelineConfig>): boolean => rejected.some((r) => JSON.stringify(r) === JSON.stringify(fields));
   for (const { key, value } of settingsInAnswer(input.answer)) {
     if (setByCall.has(key) || named.has(key)) continue;
     const d = settingDraft(key, value, "answer", null);
+    if (d && triedAndDropped(d.fields)) continue;
     if (d) {
       drafts.push(d);
       named.add(key);
@@ -401,7 +442,7 @@ export function buildProposals(input: BuildInput): Proposal[] {
           change: { ...t.settings },
           fields,
           from: pick(config, Object.keys(fields)),
-          shown: { from: "", to: t.n === 1 ? "your settings" : changed.map(([k, v]) => `${k}=${String(v)}`).join(", ") },
+          shown: { from: "", to: t.n === 1 ? "your settings" : changed.map(([k, v]) => `${settingTitle(k)} ${String(v)}`).join(", ") },
           runFrom: run.stage,
           source: { via: "trial" },
           evidence: [],
