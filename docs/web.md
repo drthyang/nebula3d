@@ -496,6 +496,18 @@ by measurement that the dock is whole and on screen, that nothing covers the
 composer or the transcript, and that the boxes above the transcript do not
 overlap (`PW=<playwright-core> node scripts/pilot_layout_check.mjs <url>
 <out-dir> --model=<scripted model URL> [--engines=chromium,webkit] [--demo]`).
+`scripts/pilot_memory_check.mjs` runs a whole scripted auto run (the "fix"
+scenario, Follow on) on a running console and samples the tab every 5 s: the
+JS, Blink (Oilpan) and ArrayBuffer heaps, the renderer's and GPU process's
+memory, DOM nodes (collected or not, and those in the document), layout
+objects, live canvases and ImageData, DOM changes and the CSS animations
+running. Once the run is done it leaves the page idle (2 minutes by default)
+and fails when, between a forced garbage collection at each end of that
+window, the renderer's memory or the DOM nodes grow, the page keeps changing
+its DOM or burning CPU, or any passes its bound
+(`PW=<playwright-core> node scripts/pilot_memory_check.mjs <url> <out-dir>
+--model=<scripted model URL>`; its header lists the limits). Use it on a
+synthetic volume of a realistic size, such as 401 × 401 × 301.
 
 ### Memory bar
 
