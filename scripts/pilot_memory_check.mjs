@@ -10,7 +10,8 @@
 //     [--model=http://127.0.0.1:18790] [--scenario=fix] [--follow=on|off]
 //     [--idle=120] [--interval=5] [--run-limit=1800]
 //     [--max-mb=3000] [--max-nodes=20000] [--grow-mb=150] [--grow-nodes=2000]
-//     [--max-cpu=0.5] [--max-mutations=200] [--shell] [--profile] [--snapshot]
+//     [--config='{"punchMinSig":"60"}']
+//     [--max-cpu=0.5] [--max-mutations=200] [--max-layouts=10] [--shell] [--profile] [--snapshot]
 //
 // <base-url> is a running console: the native server with a synthetic volume
 // (a realistic size is 401 × 401 × 301, which scripts/demo/synthetic_volume.py
@@ -26,6 +27,10 @@
 //             collected count too: a page that rebuilds its DOM shows here),
 //             and the nodes in the document now ("in DOM")
 //   layout    CDP Performance.getMetrics: layout objects
+//   lay/s     layouts a second (Performance.getMetrics LayoutCount): a page
+//             at rest lays out a few times a second at most (a clock); one
+//             caught in a layout loop does it hundreds of times with no DOM
+//             change and no script, and its renderer's memory grows
 //   rss, gpu  the renderer's and the GPU process's resident memory (MB), by
 //             their pids from CDP SystemInfo.getProcessInfo
 //   cpu       the renderer's CPU over the last interval (1 = one core)
@@ -47,7 +52,15 @@
 //   - DOM nodes grow by no more than --grow-nodes, and stay under --max-nodes;
 //   - the renderer's CPU averages under --max-cpu of a core;
 //   - the DOM changes at no more than --max-mutations nodes a second (a clock
-//     ticking is a few; a view drawn again and again is thousands).
+//     ticking is a few; a view drawn again and again is thousands);
+//   - the page lays out no more than --max-layouts times a second (a CSS
+//     layout loop shows here even when the DOM and the scripts are still).
+// --config seeds the Configure form of every dataset the server lists (a
+// stage set to need attention, so the auto run fixes or tunes it: with
+// --scenario=tune its fix is a tuning run, whose card the transcript keeps).
+// A run with tuning cards, as the Pilot's idle layout loop needed (on the
+// synthetic volume a punch threshold of 60 leaves the punch needing attention):
+//   ... --scenario=tune --config='{"punchMinSig":"60"}'
 // --shell runs Playwright's headless shell instead of Chromium (its default
 // for headless runs); --profile writes a CPU profile of the idle window, and
 // --snapshot a heap snapshot at its end.
@@ -78,11 +91,18 @@ const GROW_MB = num("grow-mb", 150);
 const GROW_NODES = num("grow-nodes", 2000);
 const MAX_CPU = num("max-cpu", 0.5);
 const MAX_MUT = num("max-mutations", 200);
+const MAX_LAYOUTS = num("max-layouts", 10);
 const demo = args.includes("--demo");
 const shell = args.includes("--shell");
 const profile = args.includes("--profile");
 const snapshot = args.includes("--snapshot");
 mkdirSync(out, { recursive: true });
+const CONFIG = JSON.parse(flag("config", "null") ?? "null");
+const configs = {};
+if (CONFIG && !demo) {
+  const list = await fetch(new URL("api/datasets", base)).then((r) => r.json());
+  for (const d of list) configs[d.id] = CONFIG;
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SETTINGS = { baseUrl: `${MODEL}/v1`, model: "scripted-pilot", apiKey: "", temperature: 0.2, attachImages: false, useTools: true, followViews: FOLLOW };
@@ -194,15 +214,16 @@ const rssOf = (pids) =>
 
 const browser = await pw.chromium.launch(shell ? {} : { channel: "chromium", args: ["--enable-precise-memory-info"] });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-await ctx.addInitScript(([s]) => {
+await ctx.addInitScript(([s, c]) => {
   try {
     if (!sessionStorage.getItem("pilot-memory-init")) {
       localStorage.clear();
       localStorage.setItem("nebula3d-llm-settings-v1", JSON.stringify(s));
+      if (Object.keys(c).length) localStorage.setItem("nebula3d.configByDataset.v1", JSON.stringify(c));
       sessionStorage.setItem("pilot-memory-init", "1");
     }
   } catch {}
-}, [SETTINGS]);
+}, [SETTINGS, configs]);
 await ctx.addInitScript(instrument);
 const page = await ctx.newPage();
 let crashed = false;
@@ -266,6 +287,8 @@ async function sample(phase) {
     rss: MB(renderers.reduce((a, x) => a + (rss[x.id] ?? 0), 0)),
     gpu: MB(gpu.reduce((a, x) => a + (rss[x.id] ?? 0), 0)),
     cpu: last ? Math.round(((cpuTime - last.cpuTime) / ((now - last.now) / 1000)) * 100) / 100 : null,
+    layouts: metric("LayoutCount"),
+    lps: last && metric("LayoutCount") != null && last.layouts != null ? Math.round(((metric("LayoutCount") - last.layouts) / ((now - last.now) / 1000)) * 10) / 10 : null,
     canvases: p.canvases,
     canvasesInDom: p.canvasesInDom,
     canvasMB: MB(p.canvasBytes),
@@ -280,11 +303,11 @@ async function sample(phase) {
     slow: Object.keys(slow).length ? { ...slow } : undefined,
   };
   for (const k of Object.keys(slow)) delete slow[k];
-  last = { cpuTime, now, mutations: p.mutations };
+  last = { cpuTime, now, mutations: p.mutations, layouts: metric("LayoutCount") };
   samples.push(s);
   console.log(
     `[${clock()}] ${phase.padEnd(5)} ${String(s.auto ?? "-").padEnd(9)} rss=${s.rss}MB gpu=${s.gpu}MB js=${s.js}/${s.jsTotal}MB oilpan=${s.oilpan}MB buffers=${s.buffers}MB ` +
-      `nodes=${s.nodes}(${s.inDom} in DOM) layout=${s.layout} listeners=${s.listeners} cpu=${s.cpu} canvases=${s.canvases}(${s.canvasesInDom} in DOM, ${s.canvasMB}MB) ` +
+      `nodes=${s.nodes}(${s.inDom} in DOM) layout=${s.layout} listeners=${s.listeners} cpu=${s.cpu} lay/s=${s.lps} canvases=${s.canvases}(${s.canvasesInDom} in DOM, ${s.canvasMB}MB) ` +
       `images=${s.images}(${s.imageMB}MB) made=${s.madeCanvases}/${s.madeImages} mut/s=${s.mut} anim=${s.animations}${s.running ? `(${s.running.join(" ")})` : ""}${s.slow ? ` slow=${Object.keys(s.slow).join(",")}` : ""}`,
   );
   return s;
@@ -391,6 +414,11 @@ if (outcome === "done" && !crashed) {
     const muts = idle.map((s) => s.mut).filter((m) => m != null);
     const mut = muts.length ? muts.reduce((a, m) => a + m, 0) / muts.length : 0;
     if (mut > MAX_MUT) problems.push(`the DOM changed ${Math.round(mut)} nodes a second while idle (limit ${MAX_MUT})`);
+    // Layouts a second over the whole idle window (its ends' counts, so a gap in the samples does not hide them).
+    const idleS = (end.t - start.t) || 1;
+    const lps = start.layouts != null && end.layouts != null ? (end.layouts - start.layouts) / idleS : null;
+    if (lps == null) problems.push("the page did not report its layout count while idle");
+    else if (lps > MAX_LAYOUTS) problems.push(`the page laid out ${lps.toFixed(1)} times a second while idle (limit ${MAX_LAYOUTS}): a layout loop`);
   }
   // And the run itself kept within the bound.
   const peak = Math.max(0, ...samples.map((s) => s.rss ?? 0));

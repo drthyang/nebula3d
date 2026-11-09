@@ -22,6 +22,8 @@
 //   "cards"       assesses the punch, asks to set the punch's supercell along
 //                 L (refused: a sample-fact card), then names two settings
 //                 with values (two setting cards).
+//   "tune"        reads the punch's skill and tunes the punch (tune_pipeline,
+//                 two trials: a tuning card under the reply), then answers.
 //   "long N"      N characters of plain prose, to fill the context meter.
 //   The context-meter story (believable turns that fill the window; paste the
 //   notes after the question's first line, as a user would):
@@ -35,6 +37,9 @@
 // the scenario first:
 //   curl 'http://127.0.0.1:18790/scenario?name=fix'    (one ring fix)
 //   curl 'http://127.0.0.1:18790/scenario?name=clean'  (no fix, the default)
+//   curl 'http://127.0.0.1:18790/scenario?name=tune'   (each stage the run asks
+//                 to fix is tuned: tune_pipeline with two trials, the tuning's
+//                 proposal one setting changed, its judgement the user's settings)
 // GET /log lists the requests it has served.
 import { createServer } from "node:http";
 const PORT = Number(process.argv[2] ?? 18790);
@@ -42,12 +47,17 @@ const PAUSE = Number(process.argv[3] ?? 600);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
 const STAGE_SKILL = { "the ring removal": "reduction-qc", "the Bragg punch": "bragg-node-audit", "the backfill": "bragg-node-audit", "the flatten": "reduction-qc", "the 3D-ΔPDF": "delta-pdf-interpretation" };
-const SCENARIOS = { clean: {}, fix: { "the ring removal": [{ ringPooledSectors: 36 }] } };
+const SCENARIOS = { clean: {}, fix: { "the ring removal": [{ ringPooledSectors: 36 }] }, tune: {} };
+// The tune scenario: each stage the run asks to fix is tuned (tune_pipeline),
+// one trial besides the user's settings, which the judgement keeps.
+const TUNE_STAGE = { "the ring removal": "rings", "the Bragg punch": "punch", "the backfill": "backfill", "the flatten": "flatten", "the 3D-ΔPDF": "pdf" };
+const TUNE_TRY = { rings: { ringPooledSectors: 36 }, punch: { punchMinSig: 6 }, backfill: { backfillMethod: "local" }, flatten: { flattenFitQMax: 9 }, pdf: { pdfApod: "hann" } };
 const HIGHLIGHTS = [
   ["assess_stage", { stage: "rings" }], ["assess_stage", { stage: "punch" }], ["assess_stage", { stage: "backfill" }],
   ["assess_stage", { stage: "flatten" }], ["assess_stage", { stage: "pdf" }], ["ub_check", {}], ["dpdf_peaks", {}],
   ["consistency_details", {}], ["qmax_coverage", {}],
 ];
+const TUNE_CHAT = [["read_skill", { name: "bragg-node-audit" }], ["tune_pipeline", { stages: ["punch"], trials_per_stage: 2 }]];
 const CARDS = [["assess_stage", { stage: "punch" }], ["update_settings", { changes: { punchSupercellL: 2 } }]];
 // The context-meter story: generic and true for the synthetic demo volume; no
 // number is written (the checks above carry them).
@@ -135,13 +145,29 @@ createServer(async (req, res) => {
     const lastUser = msg.messages.map((m) => m.role).lastIndexOf("user");
     const calls = msg.messages.slice(lastUser + 1).filter((m) => m.role === "assistant" && m.tool_calls).flatMap((m) => m.tool_calls).filter((c) => !c.id.startsWith("seed_"));
     const fix = /^Change or tune (.+?) so /.exec(last);
+    // The tuning run's own questions (llm/tune/prompts.ts): what to try, and which trial won.
+    const propose = /^Stage: (.+?)\.\n[\s\S]*Propose up to/.exec(last);
+    const judge = /^Stage: (.+?)\.\n[\s\S]*Pick the trial/.exec(last);
     const report = last.startsWith("Report on this auto run");
     const entry = { at: new Date().toISOString(), last: last.slice(0, 60), calls: calls.length, chars: body.length, phase: fix ? `fix ${fix[1]}` : report ? "report" : "chat" };
     log.push(entry);
     console.log(JSON.stringify(entry));
     res.writeHead(200, { ...cors, "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
     await sleep(PAUSE);
-    if (fix) {
+    if (propose || judge) {
+      const label = (propose ?? judge)[1];
+      const stage = { "Ring removal": "rings", "Bragg punch": "punch", "Backfill": "backfill", "Flatten": "flatten", "Background correction": "flatten", "3D-ΔPDF": "pdf" }[label] ?? "punch";
+      const answer = propose
+        ? { candidates: [{ changes: TUNE_TRY[stage], why: "One setting changed, to see whether the stage's check moves." }] }
+        : { best: 1, why: "Trial 1 meets the goal as well as trial 2. A small change in one number is not worth a change." };
+      await say(res, JSON.stringify(answer));
+    } else if (fix && scenario === "tune") {
+      const stage = TUNE_STAGE[fix[1]];
+      if (!stage) await say(res, "No setting change would help this stage: its check above reads as it is.");
+      else if (calls.length === 0) await toolCall(res, "read_skill", { name: STAGE_SKILL[fix[1]] });
+      else if (calls.length === 1) await toolCall(res, "tune_pipeline", { stages: [stage], trials_per_stage: 2 });
+      else await say(res, "I tuned this stage with two trials; the tuning kept your settings, and its card above has each trial's numbers.");
+    } else if (fix) {
       const plan = SCENARIOS[scenario]?.[fix[1]];
       if (!plan) await say(res, "No setting change would help this stage: its check above reads as it is.");
       else if (calls.length === 0) await toolCall(res, "read_skill", { name: STAGE_SKILL[fix[1]] });
@@ -156,6 +182,9 @@ createServer(async (req, res) => {
     } else if (/highlights/i.test(last)) {
       if (calls.length < HIGHLIGHTS.length) await toolCall(res, ...HIGHLIGHTS[calls.length]);
       else await say(res, "Each stage's check is above, with its highlights on the views.");
+    } else if (/^tune\b/i.test(last)) {
+      if (calls.length < TUNE_CHAT.length) await toolCall(res, ...TUNE_CHAT[calls.length]);
+      else await say(res, ["I tuned the Bragg punch with two trials. The tuning kept your settings: the card above has each trial's numbers and why.", "", "- **Trial 1** is your settings.", "- **Trial 2** changed one setting; its check did not read better.", "", "Nothing changed: your processed files and settings stand."].join("\n"));
     } else if (/cards/i.test(last)) {
       if (calls.length < CARDS.length) await toolCall(res, ...CARDS[calls.length]);
       else await say(res, "The punch cell along L is yours to state, so I did not change it: its card is below. You could also set `punchMinSig` to 6, or `flattenFitQMax` to 9.");

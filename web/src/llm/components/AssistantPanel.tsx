@@ -9,7 +9,7 @@
 // `above`), so they never cover the transcript or push the dock off-screen. While a reply runs, the title row shows how
 // long it has worked (ReplyClock).
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { useDatasets } from "../../api/hooks";
 import type { DockMode } from "../../state/dockLayout";
@@ -23,6 +23,7 @@ import { ChatView } from "./ChatView";
 import { ConnectionBar } from "./ConnectionBar";
 import { ConnectionSettings } from "./ConnectionSettings";
 import { MarksList } from "./MarksList";
+import { usePanelShort } from "./panelShort";
 import { ReplyClock } from "./ReplyClock";
 
 export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollapse: () => void }) {
@@ -33,6 +34,9 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
 
   const { settings, connection, connected, runTest, contextQuery, modelContext } = useAssistant(dataset);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Its height, for the short-panel rules (data-short; panelShort.ts).
+  const panelRef = useRef<HTMLDivElement>(null);
+  usePanelShort(panelRef);
   const ready = Boolean(contextQuery.data);
   const toolContext = useMemo<ToolContext | null>(
     () => (dataset ? { dataset, datasets } : null),
@@ -40,7 +44,7 @@ export function AssistantPanel({ mode, onCollapse }: { mode: DockMode; onCollaps
   );
 
   return (
-    <div className="ai-panel">
+    <div className="ai-panel" ref={panelRef}>
       <div className="ai-panel-head">
         <span className="ai-panel-title">
           <BrandGlyph size={16} />
