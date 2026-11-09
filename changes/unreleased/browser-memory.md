@@ -13,3 +13,5 @@
   animations sampled every 5 s, then the finished run left idle. It fails when
   memory or DOM nodes keep growing once the run is done, the page keeps
   rebuilding its DOM or burning CPU, or any passes a bound.
+  `scripts/demo/synthetic_volume.py` writes the synthetic demo at such a size
+  (401 × 401 × 301 by default) for it.
