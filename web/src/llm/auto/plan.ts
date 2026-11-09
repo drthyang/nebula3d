@@ -43,6 +43,10 @@ export interface PlanRow {
   detail?: string; // one plain line, result first
   outcome?: Kind; // a stage's verdict from its latest check
   evidence?: { step: string; label: string; text: string }[]; // the latest checks' own lines
+  // A stage's checks as the run first found them, before its fixes: the report
+  // sets them beside the latest (the run's report, read from the trimmed
+  // context alone, said it did not have the flatten's numbers from before).
+  before?: { step: string; label: string; text: string }[];
 }
 
 export const ROW_TITLES: Record<RowId, string> = {

@@ -838,7 +838,8 @@ async function stageRow(stage: Stage): Promise<void> {
     checks = await judgeSensed(checks);
     kind = stageKind(stage, checks);
   }
-  patchRow(stage, { outcome: kind, evidence: evidenceOf(checks) });
+  // The checks before any fix, kept beside the latest for the report (auto/report.ts).
+  patchRow(stage, { outcome: kind, evidence: evidenceOf(checks), before: evidenceOf(checks) });
   if (kind !== "attention") {
     patchRow(stage, { status: STATUS_OF[kind], detail: kind === "pass" ? "passed" : "not judged" });
     return;

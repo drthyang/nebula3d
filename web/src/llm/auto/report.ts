@@ -23,13 +23,23 @@ import type { AutoRun } from "./store";
 
 const ANSWER = { open: "not answered", applied: "applied by you", declined: "declined by you: an open question" } as const;
 
+type Lines = { label: string; text: string }[] | undefined;
+const linesOf = (ev: Lines): string => (ev ?? []).map((e) => (e.text ? `${e.label}: ${e.text}` : e.label)).join(" · ");
+
+/** A row's checks: the latest, and for a stage the run fixed, how they read before its fixes. */
+export function evidenceText(latest: Lines, before?: Lines): string {
+  const now = linesOf(latest);
+  const then = linesOf(before);
+  return then && then !== now ? `Before its fixes: ${then}. After: ${now}` : now;
+}
+
 /** The run's section of its report. */
 export function autoReportSection(r: AutoRun, now: number): ReportAuto {
   return {
     plan: r.plan.map((row) => ({
       row: row.title,
       outcome: row.detail ?? row.status,
-      evidence: (row.evidence ?? []).map((e) => (e.text ? `${e.label}: ${e.text}` : e.label)).join(" · "),
+      evidence: evidenceText(row.evidence, row.tries && row.before ? row.before : undefined),
     })),
     ...(r.problems !== undefined ? { problems: problemLines(r.problems) } : {}),
     facts: r.facts.map((f) => ({ fact: `${f.title}: ${f.shown}`, answer: ANSWER[f.status] })),
