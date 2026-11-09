@@ -87,13 +87,14 @@ function measure() {
   };
   if (shown(composer)) covered(composer, "the composer");
   // The room over the dock: its boxes in order, none over the next or past the room.
-  const body = panel.querySelector(".ai-body");
+  // (.ai-chat: the panel before it had a room of its own, to compare.)
+  const body = panel.querySelector(".ai-body") ?? panel.querySelector(".ai-chat");
   const transcript = panel.querySelector(".ai-transcript");
   const br = box(body);
   // On a very short panel the room is put away (the title row and the dock only).
   if (!shown(body)) return { problems: P, sheet: true, panel: Math.round(pr.height), transcript: 0, boxes: [], dock: shown(dock) ? Math.round(box(dock).height) : 0 };
-  if (shown(dock) && br.bottom > box(dock).top + 1) P.push("the transcript's room runs under the dock");
-  const boxes = [...body.children].filter(shown);
+  if (shown(dock) && !body.contains(dock) && br.bottom > box(dock).top + 1) P.push("the transcript's room runs under the dock");
+  const boxes = [...body.children].filter((el) => shown(el) && el !== dock);
   for (let i = 1; i < boxes.length; i++) {
     if (box(boxes[i]).top < box(boxes[i - 1]).bottom - 1) P.push(`${cls(boxes[i])} overlaps ${cls(boxes[i - 1])}`);
   }
@@ -223,8 +224,10 @@ async function run(engine, vp) {
     await openPanel();
     if (STATES.includes("idle")) await check("idle");
     if (STATES.includes("marks")) {
-      // Three marks on the selected dataset, as the store keeps them, then a reload.
-      await page.evaluate(() => {
+      // Three marks on the selected dataset, as the store keeps them: put in
+      // the store itself on a dev server (the Pyodide build's engine empties
+      // on a reload), else saved where the store reads them and the page reloaded.
+      const live = await page.evaluate(async () => {
         const id = localStorage.getItem("nebula3d.dataset.v1");
         const frame = { target: { x0: -0.5, x1: 0.5, y0: -0.5, y1: 0.5 }, fit: { cx: 0, cy: 0, half: 1 }, data: { x0: -6, x1: 6, y0: -6, y1: 6 }, minHalf: 0.5, maxHalf: 6 };
         const mark = (n, label, where, center) => ({
@@ -232,12 +235,21 @@ async function run(engine, vp) {
           created: new Date().toISOString(), view: { page: "cleanup", axis: "L", value: center[2], frame },
         });
         const marks = [mark(1, "Leftover intensity at a Bragg node", "punch", [2, 0, 0]), mark(2, "Ring residue at |Q| 2.7", "rings", [1, 1, 0]), mark(3, "Diffuse streak along H", "flatten", [1.5, 0.5, 0])];
-        sessionStorage.setItem("nebula3d.marks.v1", JSON.stringify({ marks, next: 4, showAll: true }));
+        try {
+          const store = await import(/* @vite-ignore */ `${location.origin}/src/state/markStore.ts`);
+          store.useMarkStore.getState().restore(marks);
+          return true;
+        } catch {
+          sessionStorage.setItem("nebula3d.marks.v1", JSON.stringify({ marks, next: 4, showAll: true }));
+          return false;
+        }
       });
-      await page.reload({ waitUntil: "load" });
-      await page.locator("nav button").first().waitFor({ timeout: 60000 });
-      await sleep(1500);
-      await openPanel();
+      if (!live) {
+        await page.reload({ waitUntil: "load" });
+        await page.locator("nav button").first().waitFor({ timeout: 60000 });
+        await sleep(1500);
+        await openPanel();
+      }
       await check("marks");
     }
     if (STATES.includes("cards")) {

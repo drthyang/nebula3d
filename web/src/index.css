@@ -7526,6 +7526,10 @@ h6.md-h {
   .ai-side[data-mode="sheet"] .ai-body:has(> .auto-panel) > .ai-marks {
     display: none;
   }
+  /* and the connection row's line too, while connected (as on any short panel) */
+  .ai-side[data-mode="sheet"] .ai-panel:has(.auto-panel) .ai-topbar:has(.ai-conn-status.ok):not(:has(.ai-gear.on)) {
+    display: none;
+  }
 }
 .ai-side[data-mode="sheet"] :is(.ai-marks, .ai-marks:has(> .ai-mark-list)) {
   min-height: 0;
