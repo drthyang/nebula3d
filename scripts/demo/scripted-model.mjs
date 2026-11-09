@@ -23,6 +23,13 @@
 //                 L (refused: a sample-fact card), then names two settings
 //                 with values (two setting cards).
 //   "long N"      N characters of plain prose, to fill the context meter.
+//   The context-meter story (believable turns that fill the window; paste the
+//   notes after the question's first line, as a user would):
+//   "Assess the run."             the check on each stage, then how to read them.
+//   "These are the ring-removal notes …"   (docs/algorithms/powder_rings.md pasted)
+//                 the ring check, then an answer about the rings.
+//   "These are the 3D-ΔPDF notes …"        (docs/algorithms/delta_pdf.md pasted)
+//                 the ΔPDF's peaks and its consistency check, then what to look for.
 //   anything else one short line.
 // Auto mode ("Run auto analysis"): the stage fixes and the report. Choose
 // the scenario first:
@@ -42,6 +49,58 @@ const HIGHLIGHTS = [
   ["consistency_details", {}], ["qmax_coverage", {}],
 ];
 const CARDS = [["assess_stage", { stage: "punch" }], ["update_settings", { changes: { punchSupercellL: 2 } }]];
+// The context-meter story: generic and true for the synthetic demo volume; no
+// number is written (the checks above carry them).
+const STORY = [
+  {
+    match: /^Assess the run\.?$/,
+    calls: [["assess_stage", { stage: "rings" }], ["assess_stage", { stage: "punch" }], ["assess_stage", { stage: "backfill" }], ["assess_stage", { stage: "flatten" }], ["assess_stage", { stage: "pdf" }]],
+    answer: [
+      "I ran the stage check on each of the five stages. Each one's verdict, and the planes it read, are in its step above, and its highlights are on the Reciprocal cleanup views.",
+      "",
+      "How to read them on this volume:",
+      "",
+      "- **Ring removal.** The aluminium powder rings sit at the same |Q| on every plane, so anything left of them shows as arcs at one radius in the ring-removed view.",
+      "- **Bragg punch.** The rock-salt lattice puts its Bragg peaks on integer nodes: look for counts left at a node, and for sharp maxima away from the lattice.",
+      "- **Backfill.** A good fill carries the diffuse texture through where the hole was; a flat disc or a bright rim marks a fill that does not follow it.",
+      "- **Background correction.** It takes out the smooth radial background and keeps the diffuse; what is left between the nodes should be the crystal's own scattering.",
+      "- **3D-ΔPDF.** The transform of what the cleanup kept; ask me about it next.",
+      "",
+      "The verdict under this reply is computed from those checks, not written by me.",
+    ].join("\n"),
+  },
+  {
+    match: /^These are the ring-removal notes/,
+    calls: [["assess_stage", { stage: "rings" }]],
+    answer: [
+      "It works the way the notes describe: the ring removal subtracts only the shells it confirms as powder rings and leaves every other shell to the crystal. On this volume the rings come from the aluminium in the sample environment, so they sit at fixed |Q| and are easy to tell from the rock-salt's diffuse, which follows the lattice.",
+      "",
+      "The ring check is in the step above, with its verdict and the shells it read. To see it for yourself:",
+      "",
+      "- Open **Reciprocal cleanup** and put **Raw** and **Ring-removed** side by side.",
+      "- Step the cut along L. A leftover ring is an arc at one radius that stays put while the lattice features move.",
+      "- Where a ring crosses a Bragg node, look at the node in **Bragg-punched** too: the punch, not the ring removal, takes the peak.",
+      "",
+      "If an arc remains, the ring model's azimuthal sectors are the setting to try: fewer sectors pool more counts in each, which steadies a weak ring's fit. Change it, run from the ring removal, and ask me to check again.",
+    ].join("\n"),
+  },
+  {
+    match: /^These are the 3D-ΔPDF notes/,
+    calls: [["dpdf_peaks", {}], ["consistency_details", {}]],
+    answer: [
+      "The 3D-ΔPDF is the Fourier transform of what the cleanup kept: the diffuse alone, with the Bragg peaks and the smooth background gone. Its features are the pair correlations that differ from the average structure, so read them as positive and negative lobes at interatomic vectors, not as atoms.",
+      "",
+      "On this volume, look for:",
+      "",
+      "- **Alternating shells around the origin.** The demo's planted short-range order shows as correlations that change sign from one neighbour shell to the next. The strongest features are listed in the dpdf_peaks step above.",
+      "- **Lobes on the rock-salt's interatomic vectors.** A lobe off those vectors is worth a look in the cleanup views before you read it as order.",
+      "- **The consistency check.** Its back-FFT is compared with the data in the step above; a faithful transform follows the data's even part closely.",
+      "",
+      "The 3D-ΔPDF page shows three linked sections in a diverging colour scale, one colour for each sign. Step a cut through a lobe to follow it along the third axis.",
+    ].join("\n"),
+  },
+];
+const story = (text) => STORY.find((t) => t.match.test(text.split("\n")[0].trim()));
 const SENTENCE = "This note walks through the reduction in words only and makes no claim about any stage. ";
 let scenario = "clean";
 const log = [];
@@ -90,6 +149,10 @@ createServer(async (req, res) => {
       else await say(res, "I halved the ring model's azimuthal sectors so each pools more counts; the run from the punch will show whether it helped.");
     } else if (report) {
       await say(res, "The auto run is done. Each stage's verdict is in its check above, and the changes the run made are in its decision log.");
+    } else if (story(last)) {
+      const t = story(last);
+      if (calls.length < t.calls.length) await toolCall(res, ...t.calls[calls.length]);
+      else await say(res, t.answer);
     } else if (/highlights/i.test(last)) {
       if (calls.length < HIGHLIGHTS.length) await toolCall(res, ...HIGHLIGHTS[calls.length]);
       else await say(res, "Each stage's check is above, with its highlights on the views.");
