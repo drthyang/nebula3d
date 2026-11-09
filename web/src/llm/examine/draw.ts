@@ -323,7 +323,8 @@ function computeDraw(set: OverlaySet, v: ViewContext): ViewDraw {
         break;
       }
       case "footprint": {
-        // On the cut while it passes within the fit's width along the cut's axis.
+        // On the cut while it passes within the fit's width along the cut's axis (on its own plane's views, where it names one).
+        if (item.plane && item.plane !== v.plane) break;
         if (Math.abs(item.at[ic] - v.cut) > Math.max(tol, Math.abs(item.widths[ic]))) break;
         const fit = fittedEllipse({ principal_directions_hkl: item.dirs ?? [], principal_width_hkl: item.principal ?? undefined, width_hkl: item.widths } as Parameters<typeof fittedEllipse>[0], ix, iy);
         const e = mapEllipse(item.at[ix], item.at[iy], fit.rx, fit.ry, fit.angle ?? 0, g);

@@ -277,9 +277,11 @@ run's search left alone. The labels are read from the run's punch record, on
 the cut's own grid (`GET /api/modulation/{id}/labels`, the bridge's
 `modulation_labels_slice`), never from the form, which may have changed since
 the run. They are counted in `n_on_protected`, and by the punch's assessment
-in `leftover_on_protected_planes` and `leftover_on_protected_planes_sharp`,
-which its verdict leaves out (D5). A record from before the punch kept its
-declaration marks none, and the context says so.
+in `leftover_on_protected_planes_sharp`, which its verdict leaves out (D5). A
+maximum in a protected position is never a Bragg tail either, even beside a
+punch hole (THY-43): a declared satellite stays out of every count the verdict
+judges. A record from before the punch kept its declaration marks none, and
+the context says so.
 
 **The question.** When the record's `bunching` fired, the punch's assessment
 (`assess_stage`) and `run_pipeline` carry `off_lattice_bunching`:

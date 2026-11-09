@@ -78,6 +78,7 @@ describe("each handle starts fresh", () => {
 const BACKEND_CALLS: Record<string, Record<string, unknown>> = {
   describe_dataset: {},
   ring_survey: {},
+  bragg_sense: {},
   current_view: {},
   measure_reciprocal_cut: { plane: "h0l", value: 0 },
   measure_dpdf_cut: { plane: "xy", value: 0 },

@@ -74,11 +74,13 @@ describe("evaluateStage", () => {
     expect(Object.keys(e.per_plane as object)).toEqual(["h0l", "0kl"]);
     expect(api.fetchSlice).not.toHaveBeenCalledWith(expect.anything(), "hk0", expect.anything());
     expect(e.mean_punched_fraction).toBe(0.04);
-    expect(e.total_leftover_peaks).toBe(0);
     expect(e.leftover_at_nodes).toBe(0);
+    // With the cut before the punch, the rims are judged (THY-43): none here.
+    expect([e.leftover_bragg_tails, e.leftover_beside_holes]).toEqual([0, 0]);
+    // No backfilled output: nothing scanned after the fill.
+    expect(e).not.toHaveProperty("left_after_backfill");
     expect(e.fitted_peaks).toBe(12);
-    expect(e.leftover_on_protected_planes).toBe(0);
-    expect(headline("punch", e)).toBe("0 missed at nodes · 0 sharp off-lattice · 0 broad maxima kept · punched 0.04");
+    expect(headline("punch", e)).toBe("0 missed at nodes · 0 Bragg tails · 0 sharp off-lattice · 0 broad maxima kept · punched 0.04");
     expect(e).not.toHaveProperty("sigma_note");
   });
 
@@ -100,7 +102,7 @@ describe("evaluateStage", () => {
     protectThirds();
     punched({ h0l: satellites, "0kl": [] });
     const e = await evaluateStage("punch", dataset);
-    expect([e.leftover_at_nodes, e.leftover_off_lattice_sharp, e.leftover_on_protected_planes, e.leftover_on_protected_planes_sharp]).toEqual([0, 12, 12, 12]);
+    expect([e.leftover_at_nodes, e.leftover_off_lattice_sharp, e.leftover_on_protected_planes_sharp]).toEqual([0, 12, 12]);
     expect(judge("punch", e)).toMatchObject({ kind: "pass", reasons: [] });
     // The chat's context still lists the strongest eight; the counts hold all twelve.
     const { context } = await loadPipelineContext(dataset, { recip: { plane: "h0l", value: 0 }, dpdf: null, records: false });
@@ -145,7 +147,7 @@ describe("evaluateStage", () => {
     satellitesOnTheThirds();
     api.fetchProtectedLabels.mockImplementation(async () => labelsOn(CUT_GRID, () => 1, { recorded: false }));
     const e = await evaluateStage("punch", dataset);
-    expect([e.leftover_off_lattice_sharp, e.leftover_on_protected_planes, e.leftover_on_protected_planes_sharp]).toEqual([12, 0, 0]);
+    expect([e.leftover_off_lattice_sharp, e.leftover_on_protected_planes_sharp]).toEqual([12, 0]);
     const { context } = await loadPipelineContext(dataset, { recip: { plane: "h0l", value: 0 }, dpdf: null, records: false });
     expect(context.bragg_punch?.leftover).not.toHaveProperty("n_on_protected");
     expect(context.notes).toContain(`bragg punch: ${UNRECORDED_PROTECTION_NOTE}`);

@@ -2,7 +2,7 @@
 
 `buildChatMessages(context, [], TASK, null, { tools: true, skills: false })`, as `armSetup("C")` builds them (evals/validation.ts): the skills' switch off (skills.ts), so the system prompt is built without its skills' section and the core without its inference (inference.ts; 6-inference.md lists each span left out), and read_skill is not offered. The context, the dataset's summary, and the rest are arm B's.
 
-Tools offered (27): describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region. Before the ring stage has run, also: ring_survey (offeredOn).
+Tools offered (27): describe_dataset, current_view, measure_reciprocal_cut, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, symmetry_check, dpdf_contrast, dpdf_peaks, grain_check, ub_check, compare_laue_classes, radial_profile, line_profile, bragg_peaks, consistency_details, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer, mark_region. Before the ring stage has run, also: ring_survey, bragg_sense (offeredOn).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 

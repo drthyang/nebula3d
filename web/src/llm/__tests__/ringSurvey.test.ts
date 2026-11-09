@@ -116,7 +116,7 @@ describe("ring_survey's result", () => {
 
 describe("the offer: before a run only", () => {
   it("is a pre-run tool, offered on a dataset with its raw volume alone", () => {
-    expect(CHAT_TOOLS.filter((t) => factsOf(t.name).preRun).map((t) => t.name)).toEqual(["ring_survey"]);
+    expect(CHAT_TOOLS.filter((t) => factsOf(t.name).preRun).map((t) => t.name)).toEqual(["ring_survey", "bragg_sense"]);
     expect([ranOn(BEFORE), ranOn(DATASET)]).toEqual([false, true]);
     expect(offeredOn(CHAT_TOOLS, BEFORE)).toHaveLength(CHAT_TOOLS.length);
     expect(offeredOn(CHAT_TOOLS, DATASET).map((t) => t.name)).not.toContain("ring_survey");

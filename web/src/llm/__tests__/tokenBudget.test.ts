@@ -130,6 +130,7 @@ const api = vi.hoisted(() => ({
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingSurvey: vi.fn(),
+  fetchBraggSense: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -565,7 +566,7 @@ describe("NEBULA Pilot's worst turn against a 32k window", () => {
     expect(run.sent).toHaveLength(ORDERS.method.length + 1);
     expect(run.peak).toBe(run.sent.length - 1);
     const b = breakdown(run.sent[run.peak], run.key);
-    // Every tool but the pre-run ones (offeredOn: ring_survey), which a reply
+    // Every tool but the pre-run ones (offeredOn: ring_survey, bragg_sense), which a reply
     // on a dataset after its run is not offered.
     expect(b.offered).toBe(offeredOn(CHAT_TOOLS, DATASET).length);
     expect(CHAT_TOOLS.length - b.offered).toBe(PRE_RUN_TOOLS.length);
@@ -724,7 +725,7 @@ const LONGEST_SURVEY_LINES = {
 
 describe("before a run: the pre-run survey (THY-43), held off the worst turn", () => {
   it("is offered on a dataset before its ring stage runs only, and its definition and result keep to their own ceiling", async () => {
-    expect(PRE_RUN_TOOLS).toEqual(["ring_survey"]);
+    expect(PRE_RUN_TOOLS).toEqual(["ring_survey", "bragg_sense"]);
     const before = { ...DATASET, stages: DATASET.stages.map((st) => (st.name === "raw" ? st : { ...st, exists: false })) };
     expect(offeredOn(CHAT_TOOLS, before).map((t) => t.name)).toEqual(CHAT_TOOLS.map((t) => t.name));
     expect(offeredOn(CHAT_TOOLS, DATASET).map((t) => t.name)).toEqual(CHAT_TOOLS.filter((t) => !PRE_RUN_TOOLS.includes(t.name)).map((t) => t.name));
@@ -751,6 +752,86 @@ describe("before a run: the pre-run survey (THY-43), held off the worst turn", (
         `on the synthetic crystal, ${n(longest)} at its longest. Were a reply after a run ever to carry both, the worst local turn would be ${n(withSurvey)} with the reply reserve, ` +
         `against the 20 % target's ${n(HEADROOM_TARGET)}: ${withSurvey > HEADROOM_TARGET ? `over by ${n(withSurvey - HEADROOM_TARGET)}` : "met"}; it never is (offeredOn, readSkill's beforeRun).`,
     );
+  }, TURN_TIMEOUT);
+});
+
+// The pre-run Bragg sensing (THY-43: bragg_sense), held off the worst turn the
+// same way: offered before a run only, its definition on every request of a
+// reply that starts before one, its result once, and bragg-node-audit's part
+// for before a run with that skill's core. Its own ceilings, measured
+// 2026-11-08 on feat/bragg-sensing: the definition 140 est. tokens, the result
+// at its longest 653 (every line at its longest: a symmetry to declare, the
+// |Q| line, the recommendation), the synthetic crystal's 549, the skill's part
+// 123. A reply that starts before the run (the validation TASK on a fresh
+// dataset) carries both pre-run tools' definitions and both skills' parts.
+const SENSE_CEILING = { definition: 140, result: 653, skill: 123 };
+// The sensing's lines at their longest (nebula3d.analysis.bragg_sense.sense_lines).
+const LONGEST_SENSE_LINES = {
+  shape: "1999 strong nodes on 6 sections: 100.0 % tilted and elongated, 100.0 % with several lobes; the fit's cap binds on 100.0 %",
+  left: "median share each footprint leaves: own 100.0 %, ellipsoid 100.0 % (1.59× own's area), ellipsoid_unc 100.0 % (1.59× own's area)",
+  footprint: "punchFootprint own (keep): the ellipsoid unconstrained leaves 100.0 points more than own; tilted + lobed 200.0 %; 1.59× own's area",
+  constraints: "punchFitUnconstrained true: the cap binds on 100.0 %; unconstrained leaves 100.0 points less, 1.24× the constrained area",
+  q: "own leaves 100.0 % in the lowest |Q| quarter, 100.0 % in the highest (core FWHM 0.1234 → 0.1234 Å⁻¹): a reach growing with |Q|, which no setting follows",
+  symmetry: "declares none, yet every axis mirror holds to 1.0e-03 of the spread: symmetrised already; declaring mmm is the user's",
+  recommend: { punchFootprint: "ellipsoid", punchFitUnconstrained: true },
+};
+
+describe("before a run: the pre-run Bragg sensing (THY-43), held off the worst turn", () => {
+  it("is offered before a run only, and its definition, result and skill part keep to their own ceiling", async () => {
+    const before = { ...DATASET, stages: DATASET.stages.map((st) => (st.name === "raw" ? st : { ...st, exists: false })) };
+    expect(offeredOn(CHAT_TOOLS, DATASET).map((t) => t.name)).not.toContain("bragg_sense");
+    expect(offeredOn(CHAT_TOOLS, before).map((t) => t.name)).toContain("bragg_sense");
+    const sense = CHAT_TOOLS.find((t) => t.name === "bragg_sense")!;
+    const definition = baseTokens([], toolSpecs([sense]));
+    const asResult = (text: string) => baseTokens([{ role: "tool", tool_call_id: "s", content: text }]) - baseTokens([{ role: "tool", tool_call_id: "s", content: "" }]);
+    const r = await callTool({ dataset: before, datasets: DATASETS }, "bragg_sense", {});
+    expect(r.ok, r.text).toBe(true);
+    const crystal = asResult(r.text);
+    const longest = asResult(JSON.stringify(LONGEST_SENSE_LINES));
+    // bragg-node-audit's part for before a run (BEFORE_A_RUN), read with its core on a dataset before its run.
+    const skill = (readSkill("bragg-node-audit", undefined, undefined, { beforeRun: true }).length - readSkill("bragg-node-audit").length) / MARKDOWN_CHARS_PER_TOKEN;
+    room.push({ what: "bragg-node-audit's part for before a run", measured: skill, ceiling: SENSE_CEILING.skill });
+    room.push({ what: "the pre-run sensing's definition", measured: definition, ceiling: SENSE_CEILING.definition });
+    room.push({ what: "the pre-run sensing's result, at its longest", measured: longest, ceiling: SENSE_CEILING.result });
+    expectWithin("bragg-node-audit's part for before a run", skill, SENSE_CEILING.skill);
+    expectWithin("the pre-run sensing's definition (bragg_sense)", definition, SENSE_CEILING.definition);
+    expectWithin("the pre-run sensing's result at its longest", longest, SENSE_CEILING.result);
+    expect(crystal).toBeLessThan(longest);
+  }, TURN_TIMEOUT);
+});
+
+// THE PRE-RUN EXCEPTION (THY-43, accepted by the user 2026-11-08). A reply
+// that starts on a dataset before its run is offered both pre-run tools
+// (ring_survey, bragg_sense: their definitions on every request), reads both
+// skills' parts for before a run with their cores, and may hold both tools'
+// results. No reply after a run carries any of it, so the 20 % target, held
+// above on the worst turn after a run, does not hold this one: here it is
+// TRACKED against the target (printed, over or under), and ENFORCED under the
+// run policy's 32k window with POLICY_SPARE free, as the worst turn is (both
+// skills' cores at their cap included). Built as an upper bound: the worst
+// local turn after a run, before compaction, with all of it added on top,
+// each result at its longest. Measured 2026-11-08: 28,014 with the reply
+// reserve, 1,800 over the target, 4,754 under 32k (4,595 with both cores at
+// their cap, 1,523 past the spare).
+describe("before a run: the pre-run tools together (THY-43), a tracked exception", () => {
+  it("is tracked against the 20 % target and fits 32k with POLICY_SPARE free, both cores at the cap included", async () => {
+    expect(PRE_RUN_TOOLS).toEqual(["ring_survey", "bragg_sense"]);
+    const asResult = (text: string) => baseTokens([{ role: "tool", tool_call_id: "s", content: text }]) - baseTokens([{ role: "tool", tool_call_id: "s", content: "" }]);
+    const definitions = baseTokens([], toolSpecs(CHAT_TOOLS.filter((t) => PRE_RUN_TOOLS.includes(t.name))));
+    const part = (name: string) => (readSkill(name, undefined, undefined, { beforeRun: true }).length - readSkill(name).length) / MARKDOWN_CHARS_PER_TOKEN;
+    const skills = part("reduction-qc") + part("bragg-node-audit");
+    const results = asResult(JSON.stringify(LONGEST_SURVEY_LINES)) + asResult(JSON.stringify(LONGEST_SENSE_LINES));
+    const { before: worst } = await localTurn();
+    const turn = worst.prompts[worst.peak] + definitions + skills + results + REPLY_RESERVE;
+    const coreGrowth = LARGEST.skills.reduce((sum, name) => sum + Math.max(0, SKILL_CORE_MAX - allSkills().find((sk) => sk.name === name)!.core.length), 0);
+    const gated = turn + estimateTokens(coreGrowth / MARKDOWN_CHARS_PER_TOKEN, worst.key);
+    target.push(
+      `Before a run (THY-43, a tracked exception): both pre-run tools' definitions ${n(definitions)}, both skills' parts for before a run ${n(skills)}, both results at their longest ${n(results)}: ` +
+        `the turn is ${n(turn)} with the reply reserve, against the 20 % target's ${n(HEADROOM_TARGET)}: ${turn > HEADROOM_TARGET ? `over by ${n(turn - HEADROOM_TARGET)} (tracked, not held)` : "met"}; ` +
+        `against 32k with ${n(POLICY_SPARE)} free (held): ${n(POLICY_MIN - turn)} left, ${n(POLICY_MIN - gated)} with both cores at the cap.`,
+    );
+    expect(POLICY_MIN - turn, `the pre-run turn, ${n(turn)} tokens, leaves ${n(POLICY_MIN - turn)} under ${n(POLICY_MIN)}`).toBeGreaterThanOrEqual(POLICY_SPARE);
+    expect(POLICY_MIN - gated, `the pre-run turn with both cores at the cap, ${n(gated)} tokens, leaves ${n(POLICY_MIN - gated)} under ${n(POLICY_MIN)}`).toBeGreaterThanOrEqual(POLICY_SPARE);
   }, TURN_TIMEOUT);
 });
 

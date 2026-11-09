@@ -64,7 +64,7 @@ your device. More in [QUICKSTART.md](QUICKSTART.md).
 | --- | --- |
 | ![Reciprocal cleanup: raw, ring-removed, Bragg-punched, backfilled and background-corrected views of one H plane](docs/media/reciprocal-cleanup.jpg) | ![Bragg profile: fitted peak widths against abs Q, the UB turn line and the selected peak's three slices](docs/media/bragg-profile.jpg) |
 | **Reciprocal cleanup:** every stage on one plane and colour range. The *HKL grid* switch draws dashed lines at integer h, k, l. | **Bragg profile:** peak widths against \|Q\|, the UB turn the punch read, and the selected peak's slices. |
-| ![3D-ΔPDF: three orthogonal real-space sections](docs/media/delta-pdf.jpg) | ![Q–R Band Transform: the pipeline's ΔPDF row offering Use in pipeline for the applied abs Q band](docs/media/qr-use-in-pipeline.jpg) |
+| ![3D-ΔPDF: three orthogonal real-space sections](docs/media/delta-pdf.jpg) | ![Q–R Band Transform: the data, 3D-ΔPDF, back-FFT and residual views with an abs Q band of 0.50 to 5.00 per Å applied, and the pipeline's ΔPDF row offering Use in pipeline for it](docs/media/qr-use-in-pipeline.jpg) |
 | **3D-ΔPDF:** three linked real-space sections. | **Q–R Band Transform:** a \|Q\| band applied here goes to the pipeline with *Use in pipeline*, then *Run from ΔPDF*. |
 
 ## NEBULA Pilot: how it works

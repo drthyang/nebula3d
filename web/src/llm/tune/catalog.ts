@@ -453,7 +453,7 @@ export const TUNE_PARAMS: TuneParam[] = [
     stage: "punch",
     kind: "boolean",
     defaultValue: false,
-    help: "ellipsoid footprint only: do not floor/cap the Bragg covariance-fit radii at the resolution limits. The profile footprint replaces those radii with the profile's, so there it changes nothing.",
+    help: "Acts only with the ellipsoid footprint: with own or profile it changes nothing. Do not floor/cap the Bragg covariance-fit radii at the resolution limits.",
     appliesWhen: (s) => s.punchFootprint === "ellipsoid",
   },
   // — backfill —

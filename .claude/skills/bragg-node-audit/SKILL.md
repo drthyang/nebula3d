@@ -79,6 +79,15 @@ all three.
 skill of the same name, from its NeXus Viewer and NEXPLAN tools to the
 console's own.
 
+### Before a run
+
+Read with the core while the dataset has no outputs yet.
+
+- `bragg_sense` first. Set what `recommend` names with `update_settings`,
+  citing `footprint` and `constraints`; "keep the defaults": change nothing.
+- `q`: a reach growing with |Q|, which no setting follows: say so.
+- `symmetry`: declaring it is the user's (a card). Never set it yourself.
+
 ### Settle the nodes
 
 - No modulation is declared by default: the search then leaves no position

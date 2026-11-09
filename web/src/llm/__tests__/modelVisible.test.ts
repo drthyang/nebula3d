@@ -78,6 +78,7 @@ const api = vi.hoisted(() => ({
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingSurvey: vi.fn(),
+  fetchBraggSense: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -338,7 +339,7 @@ describe("2. the tools, as sent to the model", () => {
     await expect(
       doc(
         "Tools offered to a local model",
-        "`toolsFor(question, CHAT_TOOLS)` (localTools.ts): a model on a local server is offered these with its first request; a tool it calls by name all the same runs and stays offered. Their definitions are in 2-tools.md. The pre-run tools (ring_survey) only before the ring stage has run (offeredOn).",
+        "`toolsFor(question, CHAT_TOOLS)` (localTools.ts): a model on a local server is offered these with its first request; a tool it calls by name all the same runs and stays offered. Their definitions are in 2-tools.md. The pre-run tools (ring_survey, bragg_sense) only before a run (offeredOn).",
         body,
       ),
     ).toMatchFileSnapshot(`${SNAPSHOTS}/2-local-tools.md`);
@@ -512,6 +513,7 @@ const SAMPLES: Sample[] = [
   },
   { name: "describe_dataset", args: {} },
   { name: "ring_survey", args: {}, note: "the raw volume before a run: its ring on no Al line, the crystal's own shell, a faint shell not judged" },
+  { name: "bragg_sense", args: {}, note: "the raw volume before a run: tilted and lobed peaks the ellipsoid, unconstrained, leaves least of; a reach growing with |Q|" },
   { name: "current_view", args: {} },
   { name: "measure_reciprocal_cut", args: { plane: "h0l", value: 1 } },
   { name: "measure_dpdf_cut", args: { plane: "xz", value: 0 } },

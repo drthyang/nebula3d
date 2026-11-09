@@ -197,6 +197,9 @@ Diagnostic context for this reduction (metrics computed from the current cut):
    "n_off_nodes": 0,
    "n_on_protected": 0,
    "n_broad_off_nodes": 0,
+   "n_bragg_tails": 0,
+   "n_beside_holes": 0,
+   "n_faint": 0,
    "n_skipped_noisy": 0,
    "scan_sigma_threshold": 8
   },

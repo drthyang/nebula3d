@@ -55,6 +55,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "bragg_sense",
+      "description": "bragg_sense.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "current_view",
       "description": "current_view.",
       "input_schema": {
@@ -367,6 +376,15 @@
      {
       "name": "ring_survey",
       "description": "ring_survey.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "bragg_sense",
+      "description": "bragg_sense.",
       "input_schema": {
        "type": "object",
        "properties": {}
@@ -669,6 +687,15 @@
       "eager_input_streaming": true
      },
      {
+      "name": "bragg_sense",
+      "description": "bragg_sense.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
       "name": "current_view",
       "description": "current_view.",
       "input_schema": {
@@ -981,6 +1008,15 @@
      {
       "name": "ring_survey",
       "description": "ring_survey.",
+      "input_schema": {
+       "type": "object",
+       "properties": {}
+      },
+      "eager_input_streaming": true
+     },
+     {
+      "name": "bragg_sense",
+      "description": "bragg_sense.",
       "input_schema": {
        "type": "object",
        "properties": {}

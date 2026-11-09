@@ -16,10 +16,17 @@
 //  - The controller never changes a setting on its own. Settings change only
 //    through the model's own calls under every guard (the skill gate, the
 //    ring gate, the sample-fact guard, update_settings' checks) or through
-//    your click on a card. The one exception, accepted 2026-11-07 (design
-//    §8, question 3): a fix that made its stage's check worse (plan.ts,
+//    your click on a card. Two exceptions. Accepted 2026-11-07 (design §8,
+//    question 3): a fix that made its stage's check worse (plan.ts,
 //    madeWorse) is put back, exactly as an Undo puts it back, logged as auto
-//    mode's, and never a change a click made.
+//    mode's, and never a change a click made. Accepted 2026-11-08 (THY-43):
+//    the method settings the pre-run Bragg sensing recommends (bragg_sense's
+//    `recommend`: the punch footprint and its fit's constraints) are applied
+//    before the run, through update_settings' own checks, logged as auto
+//    mode's with the sensing's line as their evidence; the punch's row then
+//    judges them against the defaults and puts them back if they made its
+//    check worse (applySensed, judgeSensed). A fact the sensing finds (a
+//    symmetry to declare) still pauses for your click.
 //  - A sample fact pauses the run just before the row it holds back
 //    (plan.ts, factRow); it applies on your own click alone (a click grant,
 //    llm/consent.ts, through the card's own Apply), which the run never
@@ -47,6 +54,7 @@ import { dismissCard, applyOnClick, undoable, undoDecision } from "../apply/acti
 import { addProposals, logDecision, nextProposalNumber, updateProposal, useDecisionStore, type Decision } from "../apply/decisions";
 import { buildProposals, cardSetting, runProposal, runStageFor, SETTING_KEYS, type Proposal } from "../apply/proposals";
 import { marksMade } from "../answerChecks";
+import { found } from "../readings";
 import { useChatStore } from "../chatStore";
 import { overLimit, pauseClock, resumeClock, startClock, stopClock } from "../clock";
 import type { ClickEvent } from "../consent";
@@ -141,7 +149,7 @@ const settingsNow = (): Partial<PipelineConfig> => configOf(usePipelineStore.get
 // The tools a fix reply holds: all but the run (the app runs from the change)
 // and the regrid (only the user asks for one). The report's: the reading
 // ones, and the console's view.
-// Every reply comes after the run: the pre-run tools (preRun: ring_survey) are none of theirs.
+// Every reply comes after the run: the pre-run tools (preRun: ring_survey, bragg_sense) are none of theirs.
 const AFTER_RUN: AgentTool[] = CHAT_TOOLS.filter((t) => !factsOf(t.name).preRun);
 export const FIX_TOOLS: AgentTool[] = AFTER_RUN.filter((t) => !factsOf(t.name).startsRuns || t.name === "tune_pipeline").filter((t) => factsOf(t.name).acts !== "dataset");
 export const REPORT_TOOLS: AgentTool[] = AFTER_RUN.filter((t) => !factsOf(t.name).actsOnPipeline && factsOf(t.name).acts !== "dataset");
@@ -602,10 +610,13 @@ async function appStep(call: Call): Promise<AgentStep> {
     ...(out.outcomes ? { outcomes: out.outcomes } : {}),
   };
   patchRun((x) => ({ steps: [...x.steps, keptStep(step)] }));
-  useAutoStore.setState({ live: out.overlay ? { ...step, overlay: out.overlay } : step, work: s.work.dataset });
+  const whole = out.overlay ? { ...step, overlay: out.overlay } : step;
+  useAutoStore.setState({ live: whole, work: s.work.dataset });
   // Follow, as a reply's steps do (agent.ts): the console goes to the figure the step looked at.
   if (step.status === "done" && step.view && s.settings.followViews) openView(step.view);
-  return step;
+  // Whole, its overlay data with it, for the cards it leads to (a symmetry to
+  // declare rides there: apply/proposals.ts); the record keeps it without.
+  return whole;
 }
 
 /** The page a check examines (examine/overlays.ts, examining): the Bragg page, the ΔPDF's, or the cleanup page; none for a run. */
@@ -627,6 +638,10 @@ async function preflight(): Promise<void> {
     // The raw volume's powder rings, nothing removed (THY-43): the Al lines,
     // the phase their neighbours may be, the rings no line explains.
     ...(hklVolumeId(d) ? [{ name: "ring_survey", args: {} }] : []),
+    // The raw volume's Bragg peaks, nothing punched (THY-43): their shapes and
+    // what each punch footprint would leave; a card declares a symmetry the
+    // data were averaged with but do not declare.
+    ...(hklVolumeId(d) ? [{ name: "bragg_sense", args: {} }] : []),
     ...(hklVolumeId(d) ? [{ name: "ub_check", args: {} }] : []),
     ...(stageVolumeId(d, "braggpunched") ? [{ name: "grain_check", args: {} }] : []),
     // The Laue classes compared on the raw volume, only where it is not symmetrised already.
@@ -635,7 +650,94 @@ async function preflight(): Promise<void> {
   const steps: AgentStep[] = [];
   for (const c of calls) steps.push(await appStep(c));
   cardsFrom(steps);
-  patchRow("preflight", { status: "done", detail: `${countWord(steps.filter((s) => s.status === "done").length)} checks ran`, evidence: evidenceOf(steps) });
+  // The method settings the sensing recommends, before the run (THY-43).
+  const set = await applySensed(steps);
+  patchRow("preflight", {
+    status: "done",
+    detail: `${countWord(steps.filter((s) => s.status === "done").length)} checks ran${set ? `; ${set}` : ""}`,
+    evidence: evidenceOf(steps),
+  });
+}
+
+// ---------------------------------------------------------------- the sensed settings (THY-43)
+
+const lowerFirst = (t: string): string => (/^[A-Z][a-z]/.test(t) ? t[0].toLowerCase() + t.slice(1) : t);
+
+/** The settings of bragg_sense's `recommend` auto mode applies: method settings, never a fact. */
+export const SENSED_KEYS: readonly string[] = ["punchFootprint", "punchFitUnconstrained"];
+
+/** What the pre-run sensing recommends, as update_settings' changes (only SENSED_KEYS), and the line it rests on. */
+export function sensedChanges(step: AgentStep | undefined): { changes: Record<string, unknown>; why: string } | null {
+  const r = step && step.status === "done" ? found(step) : null;
+  const rec = r?.recommend;
+  if (!r || !rec || typeof rec !== "object" || Array.isArray(rec)) return null;
+  const changes = Object.fromEntries(Object.entries(rec as Record<string, unknown>).filter(([k]) => SENSED_KEYS.includes(k)));
+  if (!Object.keys(changes).length) return null;
+  const why = [r.footprint, r.constraints].filter((x): x is string => typeof x === "string").join("; ");
+  return { changes, why };
+}
+
+/**
+ * Apply what the sensing recommends, through update_settings (its checks: a
+ * method setting it can set, at a value it takes), as the app's own step;
+ * each setting logged as auto mode's decision, the sensing's line its
+ * evidence, so Undo of auto changes puts it back. Returns the preflight's
+ * words for it, or null when the sensing recommends keeping the defaults.
+ */
+async function applySensed(steps: readonly AgentStep[]): Promise<string | null> {
+  const sense = steps.find((x) => x.name === "bragg_sense");
+  const want = sensedChanges(sense);
+  if (!sense || !want) return null;
+  const ds = await setSensed(sense, want);
+  if (!ds.length) return null;
+  patchRun({ sensed: { decisions: ds.map((d) => d.id), judged: false } });
+  return `set ${ds.map((d) => `${lowerFirst(d.title)} to ${d.shown.to}`).join(", ")} from the sensing`;
+}
+
+/** The sensed changes, made and logged: the decisions, none when nothing changed. */
+async function setSensed(sense: AgentStep, want: { changes: Record<string, unknown>; why: string }): Promise<Decision[]> {
+  const before = settingsNow();
+  const step = await appStep({ name: "update_settings", args: { changes: want.changes } });
+  if (step.status !== "done") return [];
+  const n = run().steps.findIndex((x) => x.id === sense.id) + 1;
+  return logChanges(before, 0, { step: step.id, evidence: [{ step: sense.id, n, label: factsOf("bragg_sense").label, text: want.why }] });
+}
+
+/**
+ * The punch's row, its check with the sensed settings needing attention:
+ * judge them against the defaults, once. They are put back (as an Undo puts
+ * them back, logged as auto mode's) and the punch run again from its stage;
+ * when the defaults' check is better (madeWorse: the sensed settings made it
+ * worse), they stay put back; else the sensed settings are set again and run.
+ * Returns the punch's checks as they then stand.
+ */
+async function judgeSensed(checks: AgentStep[]): Promise<AgentStep[]> {
+  const sensed = run().sensed;
+  if (!sensed || sensed.judged) return checks;
+  patchRun({ sensed: { ...sensed, judged: true } });
+  const { decisions } = useDecisionStore.getState();
+  const mine = sensed.decisions.flatMap((id) => decisions.filter((d) => d.id === id && !d.undoneBy));
+  if (!mine.length) return checks;
+  for (const d of [...mine].reverse()) {
+    if (undoDecision(d, undefined, "auto")) {
+      const undo = useDecisionStore.getState().decisions.find((x) => x.undoes === d.id);
+      if (undo) patchRun((x) => ({ decisions: [...x.decisions, undo.id] }));
+    }
+  }
+  await appRun("punch");
+  const defaults = await checkStage("punch");
+  if (madeWorse("punch", defaults, checks)) {
+    patchRow("punch", { detail: "the sensed settings made its check worse: put back" });
+    return defaults;
+  }
+  // The sensing's step as the run keeps it: its result is all the changes need.
+  const sense = run().steps.find((x) => x.name === "bragg_sense");
+  const want = sensedChanges(sense);
+  if (!sense || !want) return defaults;
+  const ds = await setSensed(sense, want);
+  patchRun({ sensed: { decisions: ds.map((d) => d.id), judged: true } });
+  await appRun("punch");
+  return checkStage("punch");
 }
 
 /** A run of the pipeline by the app: from `from`, or (null) what is missing or stale; logged as auto mode's. */
@@ -692,6 +794,11 @@ async function stageRow(stage: Stage): Promise<void> {
   if (pending) await appRun(pending);
   let checks = await checkStage(stage);
   let kind = stageKind(stage, checks);
+  // The sensed settings, needing attention: judged against the defaults once (THY-43).
+  if (stage === "punch" && kind === "attention" && run().sensed && !run().sensed!.judged) {
+    checks = await judgeSensed(checks);
+    kind = stageKind(stage, checks);
+  }
   patchRow(stage, { outcome: kind, evidence: evidenceOf(checks) });
   if (kind !== "attention") {
     patchRow(stage, { status: STATUS_OF[kind], detail: kind === "pass" ? "passed" : "not judged" });
@@ -778,8 +885,8 @@ function limitBeforeFix(): LimitHit | null {
   return null;
 }
 
-/** The settings a fix reply changed, logged as auto mode's decisions, one a setting. */
-function logChanges(before: Partial<PipelineConfig>, turn: number): Decision[] {
+/** The settings a fix reply (or the app's own step, `by`) changed, logged as auto mode's decisions, one a setting. */
+function logChanges(before: Partial<PipelineConfig>, turn: number, by: { step?: string; evidence?: Proposal["evidence"] } = {}): Decision[] {
   const after = settingsNow();
   const changed = new Set(Object.keys(after).filter((k) => before[k as keyof PipelineConfig] !== after[k as keyof PipelineConfig]));
   if (!changed.size) return [];
@@ -820,8 +927,8 @@ function logChanges(before: Partial<PipelineConfig>, turn: number): Decision[] {
       from: pick(before, g.fields),
       shown,
       ...(runFrom ? { runFrom } : {}),
-      source: { via: "auto" },
-      evidence: [],
+      source: { ...(by.step ? { step: by.step } : {}), via: "auto" },
+      evidence: by.evidence ?? [],
       dataset: s.work.dataset.id,
       status: "applied",
     };
