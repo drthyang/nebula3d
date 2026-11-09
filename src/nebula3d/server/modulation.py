@@ -211,6 +211,7 @@ def bragg_profile_payload(cfg: ServerConfig, dataset_id: str) -> dict[str, Any] 
             "has_profile": False, "schema_version": 1,
             "width_labels": [], "hkl_width_labels": [], "width_units": {},
             "n_peaks": 0, "fit_covariance": False, "punch_frame": None,
+            "punch_footprint": None, "fit_unconstrained": None,
             "peaks": [], "node_test": None, "modulation": None,
             "misorientation": None, "tail_sweep": None,
         }
@@ -226,6 +227,9 @@ def bragg_profile_payload(cfg: ServerConfig, dataset_id: str) -> dict[str, Any] 
         "n_peaks": int(data.get("n_peaks", 0)),
         "fit_covariance": bool(data.get("fit_covariance", False)),
         "punch_frame": data.get("punch_frame"),
+        # How the holes were cut (None in a record written before it kept them).
+        "punch_footprint": data.get("punch_footprint"),
+        "fit_unconstrained": data.get("fit_unconstrained"),
         "peaks": list(data.get("peaks", [])),
         "node_test": node_test_out(data.get("node_test")),
         "modulation": record_out(data.get("modulation")),

@@ -205,6 +205,20 @@ def test_nothing_measured_and_bad_arguments():
     other = HKLVolume.from_arrays(np.zeros((9, 9, 10)), (-1, 1), (-1, 1), (-1, 1))
     with pytest.raises(ValueError, match="grid"):
         shell_floors(vol, before=other)
+    off = dataclasses.replace(vol, k_axis=vol.k_axis + 0.5 * (vol.k_axis[1] - vol.k_axis[0]))
+    with pytest.raises(ValueError, match="grid"):
+        shell_floors(vol, before=off)
+
+
+def test_a_float32_ulp_between_the_axes_is_one_grid():
+    """A stage written before the reader kept its exact centres moved them by
+    a float32 ulp on every reload (a 422 from GET .../shell-floors after the
+    flatten ran again on its own): the same voxels, one grid."""
+    vol = _skewed()
+    nudged = dataclasses.replace(vol, k_axis=vol.k_axis + 1.2e-7, l_axis=vol.l_axis - 4.8e-7)
+    a, b = shell_floors(vol, before=vol), shell_floors(vol, before=nudged)
+    # The shells are binned on the input's |Q|: a voxel on a shell's edge may change sides.
+    np.testing.assert_allclose(a.floors_before, b.floors_before, rtol=1e-3)
 
 
 # ---------------------------------------------------------------------------

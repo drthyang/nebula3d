@@ -342,6 +342,7 @@ const punchEvaluation = obj({
   strongest_leftover: nullable(strongestLeftover),
   mean_punched_fraction: maybeNum,
   fitted_peaks: maybeNum,
+  footprint: optional(str),
   // Only when the run's punch record says its sharp peaks off the lattice bunch (plan 4.15).
   off_lattice_bunching: optional(offLatticeBunching),
   per_plane: optional(

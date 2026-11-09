@@ -690,6 +690,11 @@ export interface BraggProfile {
   n_peaks: number;
   fit_covariance: boolean;
   punch_frame: string | null;
+  // The punch footprint the run cut its holes with ("own", "profile",
+  // "ellipsoid") and whether its shape fit ran without its constraints;
+  // null in a record written before the punch kept them, absent from an older server's.
+  punch_footprint?: string | null;
+  fit_unconstrained?: boolean | null;
   peaks: BraggPeakWidth[];
   // What the punch's search left alone, and the bunching it measured
   // (nebula3d.server.modulation.record_out): null for a record written
@@ -806,6 +811,12 @@ export interface Bunching {
   centres: number[][];
   mean_distance: number;
   others: string[];
+  // The hits on the lattice in the other coordinates, as satellites of k along
+  // the coordinate are, and whether one k stands out (at least twice chance,
+  // at least half the hits on the lattice: nebula3d.modulation.Bunching.clear).
+  // Absent from records written before they were kept.
+  on_lattice?: number;
+  clear?: boolean;
   where: string; // "H ≡ ±1/3 (mod 1)"
 }
 

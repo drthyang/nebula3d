@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentStep } from "../agent";
 import { overallContradiction, evidenceGaps } from "../answerChecks";
 import { recomputedAt } from "../evidence";
-import { fillReferences, resolveReference } from "../references";
+import { dropRepeatedLead, fillReferences, resolveReference } from "../references";
 import { verdictLine } from "../verdict";
 import { verdicts } from "../verdicts";
 
@@ -257,5 +257,27 @@ describe("what the tool found, read whole where the model read it fitted (readin
     const rings = readFitted(step("assess_stage", { rings: stage("rings", ATTENTION) }, { stage: "rings" }), {});
     expect(verdicts({ reply: [rings] }).checks.rings).toBe("attention");
     expect(computedVerdict([rings])?.attention).toEqual(["the ring removal"]);
+  });
+});
+
+describe("a filled reference reads as the app writes numbers and text", () => {
+  it("shows a number the tool handed over whole without its float noise", () => {
+    const cov = step("qmax_coverage", { window_weight_on_unmeasured: 0.000003141592653589793, full_coverage_q: 6.5 });
+    const { text } = fillReferences("It puts {{qmax_coverage.window_weight_on_unmeasured}} of the window's weight past the counts, reaching {{qmax_coverage.full_coverage_q}} Å⁻¹.", [cov]);
+    expect(text).toBe("It puts 3.142e-6 of the window's weight past the counts, reaching 6.5 Å⁻¹.");
+    // A number the tool rounded keeps its figures; a tiny one reads in exponent form.
+    expect(fillReferences("{{qmax_coverage.w}}", [step("qmax_coverage", { w: 0.00000271 })]).text).toBe("2.71e-6");
+  });
+
+  it("drops the lead-in the model wrote when the value starts with it", () => {
+    const rings = step("assess_stage", { rings: { stage_phases: "likely Cu: 4 of 5 rings matched, scale +0.2 %" } }, { stage: "rings" });
+    expect(fillReferences("The stage also reports likely Cu: {{assess_stage.rings.stage_phases}}.", [rings]).text).toBe(
+      "The stage also reports likely Cu: 4 of 5 rings matched, scale +0.2 %.",
+    );
+    expect(fillReferences('It reports likely Cu: "{{assess_stage.rings.stage_phases}}"', [rings]).text).toBe('It reports "likely Cu: 4 of 5 rings matched, scale +0.2 %"');
+    expect(fillReferences("Likely Cu:{{assess_stage.rings.stage_phases}}", [rings]).text).toBe("likely Cu: 4 of 5 rings matched, scale +0.2 %");
+    // A word that only ends like the value's first word, or a lead-in under 8 characters, stays.
+    expect(dropRepeatedLead("unlikely Cu: ", "likely Cu: x")).toBe("unlikely Cu: ");
+    expect(dropRepeatedLead("ring ratio ", "ratio 0.12")).toBe("ring ratio ");
   });
 });

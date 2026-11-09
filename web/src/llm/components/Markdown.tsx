@@ -34,7 +34,7 @@ function renderInline(nodes: Inline[]): ReactNode[] {
 const alignStyle = (a: Align): React.CSSProperties | undefined =>
   a ? { textAlign: a } : undefined;
 
-function renderBlock(block: Block, key: number): ReactNode {
+function renderBlock(block: Block, key: number | string): ReactNode {
   switch (block.type) {
     case "heading": {
       const H = `h${Math.min(block.level + 2, 6)}` as "h3" | "h4" | "h5" | "h6";
@@ -52,20 +52,27 @@ function renderBlock(block: Block, key: number): ReactNode {
           <code>{block.value}</code>
         </pre>
       );
-    case "list":
+    case "list": {
+      // An item's sub-list inside it; an ordered list from its own first number.
+      const items = block.items.map((it, i) => {
+        const sub = block.nested?.[i];
+        return (
+          <li key={i}>
+            {renderInline(it)}
+            {sub && renderBlock(sub, `${key}-${i}`)}
+          </li>
+        );
+      });
       return block.ordered ? (
-        <ol key={key} className="md-list">
-          {block.items.map((it, i) => (
-            <li key={i}>{renderInline(it)}</li>
-          ))}
+        <ol key={key} className="md-list" start={block.start}>
+          {items}
         </ol>
       ) : (
         <ul key={key} className="md-list">
-          {block.items.map((it, i) => (
-            <li key={i}>{renderInline(it)}</li>
-          ))}
+          {items}
         </ul>
       );
+    }
     case "table":
       return (
         <div key={key} className="md-table-wrap">

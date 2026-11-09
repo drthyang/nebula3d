@@ -157,7 +157,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       // against the data loses to counting noise on unsymmetrised data.
       back_fft_pearson_r_even: m?.pearson_r_even != null ? roundSig(m.pearson_r_even, 6) : null,
       back_fft_odd_share: m?.odd_share != null ? roundSig(m.odd_share, 3) : null,
-      back_fft_per_plane_r: m?.per_plane_r ?? null,
+      // Each plane's r to the round trip's own figures (back_fft_pearson_r's), not float noise.
+      back_fft_per_plane_r: m?.per_plane_r ? Object.fromEntries(Object.entries(m.per_plane_r).map(([k, r]) => [k, typeof r === "number" ? roundSig(r, 5) : r])) : null,
       mean_feature_snr: mean(Object.values(perPlane).map((p) => p?.feature_snr)),
       // The share of the window's weight on unmeasured reciprocal space
       // (qmax_coverage's verdict), shown to three figures, and the window's shape.
@@ -408,6 +409,8 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       strongest_leftover: strongest,
       mean_punched_fraction: mean(fractions),
       fitted_peaks: profile?.has_profile ? profile.n_peaks : null,
+      // How the run cut the holes, as its record says: what an answer cites, not the form's settings now.
+      ...(profile?.punch_footprint ? { footprint: `${profile.punch_footprint}${profile.fit_unconstrained ? ", fit constraints dropped" : ""}` } : {}),
       // Only when the run's record says so (metrics/bunching.ts).
       ...(bunching ? { off_lattice_bunching: bunching } : {}),
       ...(ubTurn ? { ub_turn: ubTurn } : {}),

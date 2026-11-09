@@ -22,6 +22,7 @@ from nebula3d.analysis.bragg import BraggRemover
 from nebula3d.core import HKLVolume
 from nebula3d.modulation import (
     ALPHA,
+    CLEAR_ON_LATTICE,
     Bunching,
     Modulation,
     detect_commensurate,
@@ -429,6 +430,28 @@ def test_bunching_fires_on_a_planted_thirds_family():
     record = found.to_json()
     assert record["where"] == "H ≡ ±1/3 (mod 1)" and record["denominator"] == 3
     assert record["expected"] == pytest.approx(found.peaks * found.p0, abs=1e-3)
+    # The 30 satellites of k = (1/3, 0, 0) lie on the lattice in K and L (the
+    # random peaks in the bands do not), well over chance: k stands out.
+    assert found.on_lattice == 30 and found.clear and record["clear"] is True
+
+
+def test_bragg_lobes_beside_the_nodes_bunch_but_name_no_k():
+    """A split Bragg peak's lobes sit a few voxels off their node in every
+    direction: they crowd the small fractions of H, but neither lie on the
+    lattice in K and L nor reach twice chance there, so the bunching names
+    no k (and the console offers no card)."""
+    rng = np.random.default_rng(11)
+    lobes = []
+    for _ in range(300):
+        g = rng.integers(-3, 4, 3).astype(float)
+        off = np.array([rng.choice([-1, 1]) * rng.integers(1, 4), rng.integers(-3, 4),
+                        rng.integers(-3, 4)]) * 0.05
+        lobes.append(_voxel(g + off))
+    found = detect_commensurate(lobes, (AX, AX, AX))
+    assert found is not None and found.coordinate == "H"
+    assert not found.clear and found.to_json()["clear"] is False
+    assert found.on_lattice < CLEAR_ON_LATTICE * found.hits
+    assert "so no one k stands out" in found.describe()
 
 
 def test_bunching_needs_three_hits_and_leaves_out_the_declared_and_the_nodes():
@@ -537,7 +560,7 @@ def test_the_log_line_says_none_of_the_words_arm_a_reads():
     found = Bunching(coordinate="H", equivalents=("K", "H+K"), period=1, denominator=3,
                      values=(("1/3", 4), ("2/3", 3)), hits=7, peaks=9, p0=0.13,
                      p_value=3.1e-6, alpha=ALPHA, tests=16, half_width=0.05,
-                     centres=((1.35, 0.0, 0.0),))
+                     centres=((1.35, 0.0, 0.0),), on_lattice=7)
     line = found.describe()
     assert line == (
         "sharp peaks off the lattice bunch at H ≡ ±1/3 (mod 1) (and the equivalent K, H+K): "
@@ -552,3 +575,6 @@ def test_the_log_line_says_none_of_the_words_arm_a_reads():
                                     others=("L ≡ ±1/4 (mod 2)", "L ≡ ±2/9 (mod 2)"))
         assert "; the grid also fits L ≡ ±1/4 (mod 2), L ≡ ±2/9 (mod 2);" in other.describe()
         assert not any(says.search(other.describe()) for says in _SAYS.values())
+    for weak in (dataclasses.replace(found, p0=0.5), dataclasses.replace(found, on_lattice=3)):
+        assert not weak.clear and ", so no one k stands out; no modulation" in weak.describe()
+        assert not any(says.search(weak.describe()) for says in _SAYS.values())

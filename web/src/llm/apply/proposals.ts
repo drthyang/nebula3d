@@ -49,7 +49,9 @@ export type ProposalKind = "setting" | "fact" | "run" | "trial";
 // "auto": a change or a run auto mode made (auto/controller.ts), logged as its own.
 // "qr": no reply's; the Q–R page's "Use in pipeline" (qrBand.ts).
 export type ProposalVia = "refused" | "rerun" | "ask_user" | "suggestion" | "answer" | "trial" | "apply" | "undo" | "auto" | "qr";
-export type ProposalStatus = "open" | "applied" | "dismissed" | "undone";
+// "covered": its change already holds, applied with another card (the Bragg
+// sensing's and the Laue comparison's Laue class): no Apply left to give.
+export type ProposalStatus = "open" | "applied" | "dismissed" | "undone" | "covered";
 
 /** Why a card needs the user's own click (a click grant) to apply: theirs to set (a fact, the edge trim, the symmetry average, the |Q| band, the ion), or held by the ring gate. */
 export type Held = "fact" | "choice" | "symmetry" | "ring" | "user-only";
@@ -77,6 +79,9 @@ export interface Proposal {
   status: ProposalStatus;
   held?: Held;
   trial?: { stage: TuneStage; n: number };
+  // What Apply does, said plainly where it is more than the change reads
+  // (declaring a Laue class turns the symmetry average on and runs again).
+  what?: string;
 }
 
 // --------------------------------------------------------------- settings
@@ -206,6 +211,32 @@ export interface BuildInput {
 
 type Draft = Omit<Proposal, "id" | "turn" | "dataset" | "status">;
 
+/**
+ * Declaring a Laue class: the symmetry average over it switched on, and a run
+ * from it (runStageFor), so the class reaches what reads it: every stage's
+ * output declares it, and the symmetry check judges against it. Null when the
+ * class cannot be read, or is declared already.
+ */
+function declareDraft(declare: string, config: PipelineConfig): Omit<Draft, "source" | "evidence"> | null {
+  const avg = checked("symmetryAverageEnabled", true);
+  const cls = checked("symmetryLaue", declare);
+  if (!avg || !cls || sameFields({ ...avg, ...cls }, config)) return null;
+  const fields = { ...avg, ...cls };
+  const runFrom = runStageFor(["symmetryAverageEnabled", "symmetryLaue"], null, { ...config, ...fields } as PipelineConfig);
+  const label = String(cls.symmetryLaue ?? declare);
+  return {
+    kind: "fact",
+    title: `Declare ${label} (symmetry average)`,
+    change: { symmetryAverageEnabled: true, symmetryLaue: declare },
+    fields,
+    from: pick(config, Object.keys(fields)),
+    shown: { from: config.symmetryAverageEnabled && config.symmetryLaue ? config.symmetryLaue : "none declared", to: label },
+    ...(runFrom ? { runFrom } : {}),
+    held: "symmetry",
+    what: `Apply averages the volume over ${label} and runs again from the start; the outputs then declare ${label}, which the stages and the symmetry check read.`,
+  };
+}
+
 /** The proposals a reply leads to, in the order the reply met them; none twice. */
 export function buildProposals(input: BuildInput): Proposal[] {
   const { steps, config } = input;
@@ -304,44 +335,21 @@ export function buildProposals(input: BuildInput): Proposal[] {
         if (d) drafts.push({ ...d, evidence: [{ ...evidenceOf(s), text: bunching.ask_user.replace(/\s*Does the sample.*$/, "") }] });
       }
     }
-    // The Laue class compare_laue_classes suggests.
-    const laue = typeof r.suggestion === "string" && r.suggestion ? checked("symmetryLaue", r.suggestion) : null;
-    if (s.name === "compare_laue_classes" && laue && !sameFields(laue, config)) {
-      drafts.push({
-        kind: "fact",
-        title: settingLabel("symmetryLaue"),
-        change: { symmetryLaue: r.suggestion as string },
-        fields: laue,
-        from: pick(config, ["symmetryLaue"]),
-        shown: { from: config.symmetryLaue || "none", to: r.suggestion as string },
-        source: { step: s.id, via: "suggestion" },
-        evidence: [evidenceOf(s)],
-        held: "symmetry",
-      });
-    }
-    // The symmetry the pre-run Bragg sensing found the data symmetrised with,
-    // declaring none (THY-43): the symmetry average over it, which on data
-    // averaged already changes nothing but the declaration the stages after
-    // it read. The user's, as every symmetry is.
-    const declare = s.name === "bragg_sense" ? s.overlay?.braggDeclare : undefined;
-    const avg = declare ? checked("symmetryAverageEnabled", true) : null;
-    const cls = declare ? checked("symmetryLaue", declare) : null;
-    if (declare && avg && cls && !sameFields({ ...avg, ...cls }, config)) {
-      const fields = { ...avg, ...cls };
-      const runFrom = runStageFor(["symmetryAverageEnabled", "symmetryLaue"], null, { ...config, ...fields } as PipelineConfig);
-      drafts.push({
-        kind: "fact",
-        title: `Declare ${declare} (symmetry average)`,
-        change: { symmetryAverageEnabled: true, symmetryLaue: declare },
-        fields,
-        from: pick(config, Object.keys(fields)),
-        shown: { from: config.symmetryAverageEnabled && config.symmetryLaue ? config.symmetryLaue : "none declared", to: declare },
-        ...(runFrom ? { runFrom } : {}),
-        source: { step: s.id, via: "suggestion" },
-        evidence: [evidenceOf(s)],
-        held: "symmetry",
-      });
-    }
+    // The Laue class compare_laue_classes suggests, and the symmetry the
+    // pre-run Bragg sensing found the data symmetrised with, declaring none
+    // (THY-43): declared through the symmetry average, the one way a class
+    // reaches the run (the Laue class is the average's setting, and the
+    // stages and the symmetry check read the symmetry a file declares). On
+    // data averaged already it changes nothing but the declaration the stages
+    // after it read. The user's, as every symmetry is.
+    const declare =
+      s.name === "compare_laue_classes" && typeof r.suggestion === "string" && r.suggestion
+        ? r.suggestion
+        : s.name === "bragg_sense"
+          ? s.overlay?.braggDeclare
+          : undefined;
+    const d = declare ? declareDraft(declare, config) : null;
+    if (d) drafts.push({ ...d, source: { step: s.id, via: "suggestion" }, evidence: [evidenceOf(s)] });
     // The |Q| band qmax_coverage suggests, when its band check flags the band in use.
     const band = r.suggested_band;
     if (s.name === "qmax_coverage" && Array.isArray(band) && band.length === 2 && band.every((x) => typeof x === "number") && typeof r.band_check === "string" && !/stays inside the counts/.test(r.band_check)) {
@@ -407,12 +415,17 @@ export function buildProposals(input: BuildInput): Proposal[] {
     }
   }
 
-  // None twice: the first of the same change.
-  const seen = new Set<string>();
+  // None twice: the first of the same change, resting on the evidence of each
+  // (a Laue class the Bragg sensing and the Laue comparison both found).
+  const seen = new Map<string, Draft>();
   const kept = drafts.filter((d) => {
     const key = `${d.kind}|${d.trial ? `${d.trial.stage}#${d.trial.n}` : ""}|${d.kind === "run" ? d.runFrom : JSON.stringify(d.fields) + JSON.stringify(d.change)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
+    const first = seen.get(key);
+    if (first) {
+      for (const e of d.evidence) if (!first.evidence.some((x) => x.step === e.step)) first.evidence.push(e);
+      return false;
+    }
+    seen.set(key, d);
     return true;
   });
   return kept.map((d, i) => ({ ...d, id: `P${input.firstId + i}`, turn: input.turn, dataset: input.dataset, status: "open" as const }));

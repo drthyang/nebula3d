@@ -5,6 +5,8 @@
 // to React elements (never to raw HTML, so there is no XSS surface).  Greek and
 // other Unicode pass through untouched as plain text.
 
+import { tidyNumbers } from "./numberText";
+
 export type Inline =
   | { type: "text"; value: string }
   | { type: "strong"; children: Inline[] }
@@ -63,7 +65,9 @@ export type Block =
   | { type: "heading"; level: number; inline: Inline[] }
   | { type: "paragraph"; inline: Inline[] }
   | { type: "code"; lang: string | null; value: string }
-  | { type: "list"; ordered: boolean; items: Inline[][] }
+  // `start`: an ordered list's first number ("4." after a break in the list
+  // goes on at 4, not 1); `nested`: each item's sub-list, indented under it.
+  | { type: "list"; ordered: boolean; start?: number; items: Inline[][]; nested?: (Block | null)[] }
   | { type: "table"; header: Inline[][]; align: Align[]; rows: Inline[][][] }
   | { type: "blockquote"; inline: Inline[] }
   | { type: "hr" };
@@ -93,7 +97,7 @@ export function parseInline(text: string): Inline[] {
   for (;;) {
     const m = re.exec(text);
     if (!m) {
-      if (pos < text.length) out.push({ type: "text", value: text.slice(pos) });
+      if (pos < text.length) out.push({ type: "text", value: tidyNumbers(text.slice(pos)) });
       break;
     }
     // An underscore run that opens inside a word is a literal: search again
@@ -102,7 +106,9 @@ export function parseInline(text: string): Inline[] {
       re.lastIndex = m.index + 1;
       continue;
     }
-    if (m.index > pos) out.push({ type: "text", value: text.slice(pos, m.index) });
+    // Float noise a model copied (0.000003141592653589793) is shown rounded;
+    // code spans keep what was written.
+    if (m.index > pos) out.push({ type: "text", value: tidyNumbers(text.slice(pos, m.index)) });
     const tok = m[0];
     if (m[1]) {
       out.push({ type: "code", value: tok.slice(1, -1) });
@@ -136,6 +142,65 @@ const alignOf = (cell: string): Align => {
   if (l) return "left";
   return null;
 };
+
+const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+const indentOf = (line: string): number => /^\s*/.exec(line)![0].replace(/\t/g, "    ").length;
+
+/**
+ * The list that starts at line `i`: its items at its own indent, one kind
+ * (ordered or not); an item's continuation lines (indented, no marker) join
+ * it; a list indented under an item is that item's sub-list; a blank line
+ * between items keeps the list going. An ordered list keeps its first number
+ * (`start`), so a list a model broke with a sub-list it did not indent goes
+ * on at its number.
+ */
+function parseList(lines: readonly string[], i: number): { block: Block & { type: "list" }; next: number } {
+  const first = LIST_ITEM.exec(lines[i])!;
+  const indent = indentOf(first[1]);
+  const ordered = /\d/.test(first[2]);
+  const texts: string[] = [];
+  const nested: (Block | null)[] = [];
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j += 1;
+      const after = j < lines.length ? LIST_ITEM.exec(lines[j]) : null;
+      // Goes on: an item of this list, or one of a sub-list under its last item.
+      if (after && texts.length && (indentOf(after[1]) > indent || (indentOf(after[1]) === indent && /\d/.test(after[2]) === ordered))) {
+        i = j;
+        continue;
+      }
+      break;
+    }
+    const m = LIST_ITEM.exec(line);
+    const at = indentOf(line);
+    if (m && at === indent) {
+      if (/\d/.test(m[2]) !== ordered) break;
+      texts.push(m[3]);
+      nested.push(null);
+      i += 1;
+    } else if (m && at > indent && texts.length) {
+      const sub = parseList(lines, i);
+      nested[nested.length - 1] = sub.block;
+      i = sub.next;
+    } else if (!m && at > indent && texts.length && !nested[nested.length - 1]) {
+      texts[texts.length - 1] += ` ${line.trim()}`;
+      i += 1;
+    } else break;
+  }
+  const start = ordered ? Number(/\d+/.exec(first[2])![0]) : undefined;
+  return {
+    block: {
+      type: "list",
+      ordered,
+      ...(start !== undefined && start !== 1 ? { start } : {}),
+      items: texts.map(parseInline),
+      ...(nested.some(Boolean) ? { nested } : {}),
+    },
+    next: i,
+  };
+}
 
 export function parseBlocks(md: string): Block[] {
   const lines = (md ?? "").replace(/\r\n?/g, "\n").split("\n");
@@ -205,19 +270,11 @@ export function parseBlocks(md: string): Block[] {
       continue;
     }
 
-    // List (consecutive item lines of the same kind).
-    const listItem = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(line);
-    if (listItem) {
-      const ordered = /\d/.test(listItem[1]);
-      const items: Inline[][] = [];
-      while (i < lines.length) {
-        const m = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(lines[i]);
-        if (!m) break;
-        if (/\d/.test(m[1]) !== ordered) break;
-        items.push(parseInline(m[2]));
-        i += 1;
-      }
-      blocks.push({ type: "list", ordered, items });
+    // List (consecutive item lines of the same kind, a sub-list indented under an item).
+    if (LIST_ITEM.test(line)) {
+      const { block, next } = parseList(lines, i);
+      blocks.push(block);
+      i = next;
       continue;
     }
 

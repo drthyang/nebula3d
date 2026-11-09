@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { frameIn, MARGIN, MIN_VIEW_SHARE, type Frame, type MarkRegion } from "../../components/regionMark";
+import { useExamineStore } from "../../llm/examine/store";
 import { openView } from "../../llm/tools/openView";
 import { useDatasetStore } from "../datasetStore";
 import { useDpdfStore } from "../dpdfStore";
@@ -179,6 +180,17 @@ describe("showing a mark", () => {
     expect(useMarkStore.getState().revealed).toEqual({ id: "M1", seq: 1 });
     showMark(mark, "ds1");
     expect(useMarkStore.getState().revealed).toEqual({ id: "M1", seq: 2 });
+  });
+
+  it("scales the views from the mark's own stage, and the Highlights bar no longer names the step shown before", () => {
+    useViewerStore.getState().setScaleRef("raw");
+    useExamineStore.setState({ current: "grain_check|{}" });
+    const s = spec("punch", { shape: "box", center: [1, 1, 0.5], half: [0.05, 0.05, 0.05] });
+    const plan = planMark(s, RECIP, NOW);
+    if (!plan.ok) throw new Error(plan.reason);
+    placeMark(s, plan, "ds1");
+    expect(useViewerStore.getState().scaleRef).toBe("braggpunched");
+    expect(useExamineStore.getState().current).toBeNull();
   });
 
   it("opens the 3D-ΔPDF page with its three cuts and the zoom of each section", () => {

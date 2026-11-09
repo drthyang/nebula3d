@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import { usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
 import { buildProposals, settingsInAnswer, type BuildInput } from "../apply/proposals";
+import { offLatticeBunching } from "../metrics/bunching";
 import type { StageRun } from "../tune/tuner";
+import { BUNCHED_AT_THIRDS, LOBES_NEAR_NODES, recordOf } from "./helpers";
 
 const step = (name: string, args: Record<string, unknown>, result: unknown, id = name, status: AgentStep["status"] = "done"): AgentStep => ({
   id,
@@ -98,18 +100,38 @@ describe("the proposals a reply's tools lead to", () => {
     expect(p.evidence[0].text).toBe("7 of the 31 sharp peaks off the lattice sit at K = n ± 1/3, where about 0.4 would by chance.");
   });
 
+  it("no modulation card where no one k stands out: Bragg lobes bunched beside the nodes (the record's clear)", () => {
+    const lobes = offLatticeBunching(recordOf({ bunching: LOBES_NEAR_NODES }))!;
+    expect(lobes.ask_user).not.toMatch(/k = \(/);
+    expect(lobes.ask_user).toContain("they fit H ≡ ±1/7, ±2/7, ±3/7 (mod 1), H ≡ ±1/8, ±3/8 (mod 1), H ≡ ±1/10, ±3/10 (mod 1) about as well, and no one k stands out.");
+    expect(lobes.facts).toContain("That is under twice chance, so no one k stands out.");
+    expect(build({ steps: [step("run_pipeline", {}, { ended: "done", off_lattice_bunching: lobes })] })).toEqual([]);
+    // Over twice chance but off the lattice in K and L: none either.
+    const off = offLatticeBunching(recordOf({ bunching: { ...LOBES_NEAR_NODES, expected: 100 } }))!;
+    expect(off.facts).toContain("Only 28 of them lie on the lattice in the other coordinates, as satellites of one k would, so no one k stands out.");
+    expect(build({ steps: [step("run_pipeline", {}, { ended: "done", off_lattice_bunching: off })] })).toEqual([]);
+    // A record without the verdict reads it from chance alone.
+    const weak = offLatticeBunching(recordOf({ bunching: { ...BUNCHED_AT_THIRDS, expected: 8, clear: undefined, on_lattice: undefined } }))!;
+    expect(weak.facts).toContain("That is under twice chance, so no one k stands out.");
+    expect(build({ steps: [step("run_pipeline", {}, { ended: "done", off_lattice_bunching: weak })] })).toEqual([]);
+    const thirds = offLatticeBunching(recordOf({ bunching: { ...BUNCHED_AT_THIRDS, clear: undefined } }))!;
+    expect(thirds.ask_user).toMatch(/Does the sample have a modulation with k = \(1\/3, 0, 0\)\?$/);
+  });
+
   it("the Laue class compare_laue_classes suggests, and a |Q| band the band check flags", () => {
     const laue = step("compare_laue_classes", {}, { suggestion: "m-3m", classes: [], flag: null });
     const flagged = step("qmax_coverage", {}, { suggested_band: [0.5, 7.2], band_check: "no |Q| band is set: the transform takes every voxel" });
     const fine = step("qmax_coverage", {}, { suggested_band: [0.5, 7.2], band_check: "the band 0.5–7.2 Å⁻¹ stays inside the counts" }, "q2");
     const ps = build({ steps: [laue, flagged] });
     expect(ps.map((p) => [p.title, p.held, p.shown.to])).toEqual([
-      ["Laue class", "symmetry", "m-3m"],
+      ["Declare m-3m (symmetry average)", "symmetry", "m-3m"],
       ["|Q| band", "user-only", "0.5–7.2 Å⁻¹"],
     ]);
     expect(build({ steps: [fine] })).toEqual([]);
-    // The class already set: no card.
-    expect(build({ steps: [laue], config: CONFIG({ symmetryLaue: "m-3m" }) })).toEqual([]);
+    // The class declared already (the average over it on): no card. Set with the
+    // average off, it reaches nothing: the card offers to declare it.
+    expect(build({ steps: [laue], config: CONFIG({ symmetryLaue: "m-3m", symmetryAverageEnabled: true }) })).toEqual([]);
+    expect(build({ steps: [laue], config: CONFIG({ symmetryLaue: "m-3m" }) }).map((p) => [p.title, p.shown.from])).toEqual([["Declare m-3m (symmetry average)", "none declared"]]);
   });
 
   it("a setting the answer names with a value no call set: a card marked as the answer's", () => {

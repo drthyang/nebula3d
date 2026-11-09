@@ -50,6 +50,7 @@ import { openView } from "../tools/openView";
 import { loadSettings } from "../settings";
 import { goToStep } from "./goToStep";
 import { PinnedCard } from "./ProposalCards";
+import { goToTurn, openRunReport } from "./goToTurn";
 import { ReportView } from "./ReportView";
 
 /** The time now, each second until the clock stops (while it waits for you too: the paused time grows). */
@@ -274,7 +275,12 @@ function Log({ rows, run, className }: { rows: ActivityRow[]; run: AutoRun; clas
   );
 }
 
-export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
+/**
+ * The Auto panel. `onReport` opens a reply's report document, as the reply's
+ * own Report button does (ChatView): the run's "Report ↗" opens the report
+ * its report reply wrote, not only the chat at it.
+ */
+export function AutoPanel({ ctx, onReport }: { ctx: ToolContext | null; onReport?: (turn: number) => void }) {
   const run = useAutoStore((s) => s.run);
   const decisions = useDecisionStore((s) => s.decisions);
   const act = useActivity();
@@ -350,7 +356,12 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
             </button>
           )}
           {run.state === "done" && run.reportTurn !== null && (
-            <button type="button" className="auto-btn" onClick={() => goToTurn(run.reportTurn!)} title="Show the report reply in the chat">
+            <button
+              type="button"
+              className="auto-btn"
+              onClick={() => openRunReport(run.reportTurn!, onReport)}
+              title="Open the run's report: the document its report reply wrote"
+            >
               Report ↗
             </button>
           )}
@@ -390,19 +401,6 @@ export function AutoPanel({ ctx }: { ctx: ToolContext | null }) {
       )}
     </section>
   );
-}
-
-/** Scroll the chat to a reply. */
-function goToTurn(turn: number): void {
-  useNavStore.getState().setDockOpen(true);
-  requestAnimationFrame(() => {
-    const el = document.getElementById(`ai-turn-${turn}`);
-    if (!el) return;
-    el.scrollIntoView({ block: "start", behavior: "smooth" });
-    el.classList.remove("is-pulsed");
-    void el.offsetWidth;
-    el.classList.add("is-pulsed");
-  });
 }
 
 /**

@@ -10,7 +10,7 @@ import { usePipelineStore, type RunOptions } from "../../state/pipelineStore";
 import { DEFAULT_SETTINGS } from "../settings";
 import { currentStageSettings, proposalToPatch, ProposalError, sampleParam, toFormValue } from "../tune/catalog";
 import { parseJsonReply, STAGE_GOALS, STAGE_GOALS_WITHOUT_SKILLS } from "../tune/prompts";
-import { startTuning, stopTuning, useTuneStore } from "../tune/tuner";
+import { stageTimeLeft, startTuning, stopTuning, useTuneStore } from "../tune/tuner";
 
 const llm = vi.hoisted(() => ({ completeChat: vi.fn() }));
 vi.mock("../provider/client", async (importOriginal) => ({
@@ -317,5 +317,68 @@ describe("startTuning", () => {
     expect(active).toBe(false);
     expect(finishedNote).toMatch(/^Stopped/);
     expect(stages[0].trials.map((t) => [t.n, t.status])).toEqual([[1, "done"], [2, "stopped"], [3, "skipped"]]);
+  });
+
+  it("under auto mode's budget, starts no trial that would end past the stage's time, judges those that ran, and counts the time", async () => {
+    // Each trial's run takes a minute of the clock; the stage may take two and a half in all.
+    let clock = 0;
+    const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    usePipelineStore.setState({
+      runStages: vi.fn(async () => {
+        clock += 60_000;
+        return "done";
+      }),
+    });
+    llm.completeChat
+      .mockResolvedValueOnce('{"candidates": [{"changes": {"punchMinSig": 4}}, {"changes": {"punchMinSig": 6}}]}')
+      .mockResolvedValueOnce('{"best": 1, "why": "no better"}');
+    const budget = { trials: 3, stageMs: 150_000, spentMs: {} as Record<string, number> };
+    try {
+      await startTuning({ dataset, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS, budget });
+    } finally {
+      now.mockRestore();
+    }
+    const [punch] = useTuneStore.getState().stages;
+    // Trial 3 would start at 2:00 and end at 3:00, past 2:30: not run.
+    expect(punch.trials.map((t) => [t.n, t.status])).toEqual([[1, "done"], [2, "done"], [3, "skipped"]]);
+    expect(punch.message).toBe("1 of the 2 proposed trials not run: auto mode's time for tuning this stage was spent");
+    expect(punch.best).toBe(1);
+    expect(budget.spentMs.punch).toBe(120_000);
+  });
+
+  it("keeps a ring tuning on a full-size volume (trials of about a minute) within four minutes and a judging, and leaves no time for a second", async () => {
+    // Made-up timings of the size a full-size volume gives: trials of about a minute, a proposal and a judging some 20 s each.
+    for (const durations of [[70, 95, 50], [95, 95, 95], [50, 50, 50]]) {
+      let clock = 0;
+      let n = 0;
+      const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+      usePipelineStore.setState({
+        ringsEnabled: true,
+        runStages: vi.fn(async () => {
+          clock += durations[n++] * 1000;
+          return "done";
+        }),
+      });
+      llm.completeChat.mockReset();
+      llm.completeChat
+        .mockImplementationOnce(async () => {
+          clock += 20_000;
+          return '{"candidates": [{"changes": {"ringPooledSectors": 48}}, {"changes": {"ringPooledSectors": 96}}]}';
+        })
+        .mockImplementationOnce(async () => {
+          clock += 20_000;
+          return '{"best": 1, "why": "no better"}';
+        });
+      const budget = { trials: 3, stageMs: 4 * 60_000, spentMs: {} as Record<string, number> };
+      try {
+        await startTuning({ dataset, stages: ["rings"], trialsPerStage: 3, llm: DEFAULT_SETTINGS, budget });
+      } finally {
+        now.mockRestore();
+      }
+      expect(useTuneStore.getState().error).toBeNull();
+      // Never past the four minutes but for the judging, and none left for a second tuning of the rings.
+      expect(budget.spentMs.rings).toBeLessThanOrEqual(4 * 60_000 + 20_000);
+      expect(stageTimeLeft(budget, "rings")).toBeLessThanOrEqual(0);
+    }
   });
 });

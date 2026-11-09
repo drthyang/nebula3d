@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deLatex, parseBlocks, parseInline } from "../markdown";
+import { deLatex, parseBlocks, parseInline, type Block } from "../markdown";
 
 describe("deLatex", () => {
   it("converts LaTeX Greek/math to Unicode and strips $ delimiters", () => {
@@ -20,6 +20,17 @@ describe("deLatex", () => {
 });
 
 describe("parseInline", () => {
+  it("shows float noise a model copied rounded, and leaves code spans and ordinary numbers alone", () => {
+    expect(parseInline("puts 0.000003141592653589793 of its weight, r 0.99985, v0.4.0")).toEqual([
+      { type: "text", value: "puts 3.142e-6 of its weight, r 0.99985, v0.4.0" },
+    ]);
+    expect(parseInline("at `1.1920928955078125e-7` and 0.9938291760644302")).toEqual([
+      { type: "text", value: "at " },
+      { type: "code", value: "1.1920928955078125e-7" },
+      { type: "text", value: " and 0.9938" },
+    ]);
+  });
+
   it("parses bold, italic, and inline code with Greek text intact", () => {
     const nodes = parseInline("The **σ** is *high* per `feature_snr` (Δ)");
     expect(nodes).toEqual([
@@ -81,6 +92,37 @@ describe("parseBlocks", () => {
     const blocks = parseBlocks("1. first\n2. second\n3. third");
     expect(blocks[0]).toMatchObject({ type: "list", ordered: true });
     expect((blocks[0] as { items: unknown[] }).items).toHaveLength(3);
+  });
+
+  it("keeps a numbered list's numbers: sub-lists nest under their item, blank lines and a later start go on", () => {
+    // A report's summary as a model writes it: bullets under some items.
+    const md = [
+      "1. **Ring removal:** needs attention.",
+      "2. **Bragg punch:** needs attention.",
+      "3. **Backfill:** meets its goal.",
+      "   - **Fill bias:** not judged.",
+      "   - **Texture added:** none.",
+      "4. **Flatten:** not judged; the largest floor",
+      "   is reported, not judged.",
+      "",
+      "5. **3D-ΔPDF:** meets its goal.",
+      "   - Back-FFT r 0.9999.",
+    ].join("\n");
+    const blocks = parseBlocks(md);
+    expect(blocks).toHaveLength(1);
+    const list = blocks[0] as Extract<Block, { type: "list" }>;
+    expect(list).toMatchObject({ type: "list", ordered: true });
+    expect(list.start).toBeUndefined();
+    expect(list.items).toHaveLength(5);
+    expect(list.items[3]).toEqual([{ type: "strong", children: [{ type: "text", value: "Flatten:" }] }, { type: "text", value: " not judged; the largest floor is reported, not judged." }]);
+    expect(list.nested?.map((b) => (b && b.type === "list" ? b.items.length : 0))).toEqual([0, 0, 2, 0, 1]);
+    // A list broken by bullets the model did not indent goes on at its number.
+    const broken = parseBlocks("1. a\n2. b\n\n- x\n- y\n\n3. c\n4. d");
+    expect(broken.map((b) => (b.type === "list" ? [b.ordered, b.start ?? 1, b.items.length] : b.type))).toEqual([
+      [true, 1, 2],
+      [false, 1, 2],
+      [true, 3, 2],
+    ]);
   });
 
   it("parses a GFM table with alignment", () => {

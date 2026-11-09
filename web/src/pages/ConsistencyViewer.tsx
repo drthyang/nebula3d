@@ -49,6 +49,7 @@ import {
   useViewerStore,
 } from "../state/viewerStore";
 import { useStructureStore } from "../state/structureStore";
+import { snapToGrid } from "../components/regionMark";
 import {
   markersNear,
   structureBlockedText,
@@ -251,7 +252,7 @@ export function ConsistencyViewer() {
   );
 
   const idx = axisInfo ? Math.min(cutIndex, axisInfo.n - 1) : 0;
-  const value = axisInfo ? axisInfo.min + idx * axisInfo.step : 0;
+  const value = axisInfo ? snapToGrid(axisInfo.min + idx * axisInfo.step, axisInfo.step) : 0;
   // The Q slice as a section of reciprocal space, so the |Q| band is drawn as
   // its true contour: a tilted ellipse for a non-orthogonal cell.
   const lattice = meta?.lattice;
@@ -261,7 +262,7 @@ export function ConsistencyViewer() {
   }, [lattice, qx, qy, value, qGeom]);
   const plane = AXIS_TO_PLANE[fixedAxis];
   const dpdfIdx = dpdfAxisInfo ? Math.min(dpdfCutIndex, dpdfAxisInfo.n - 1) : 0;
-  const dpdfValue = dpdfAxisInfo ? dpdfAxisInfo.min + dpdfIdx * dpdfAxisInfo.step : 0;
+  const dpdfValue = dpdfAxisInfo ? snapToGrid(dpdfAxisInfo.min + dpdfIdx * dpdfAxisInfo.step, dpdfAxisInfo.step) : 0;
   const dpdfPlane = REAL_AXIS_TO_PLANE[dpdfFixedAxis];
   const seqLut = COLORMAPS[colormap] ?? COLORMAPS.inferno;
   const divLut = COLORMAPS[dpdfColormap] ?? COLORMAPS[DIVERGING_NAME];
@@ -282,12 +283,12 @@ export function ConsistencyViewer() {
 
   // Current Q slices, and the centre-cut ones that set Auto (so the scale holds
   // still while the cut is dragged).
-  const qCentre = axisInfo ? axisInfo.min + Math.floor(axisInfo.n / 2) * axisInfo.step : 0;
+  const qCentre = axisInfo ? snapToGrid(axisInfo.min + Math.floor(axisInfo.n / 2) * axisInfo.step, axisInfo.step) : 0;
   const qResults = useQueries({ queries: Q_PANELS.map((k) => sliceQuery(k, plane, value, Boolean(axisInfo))) });
   const qCentreResults = useQueries({
     queries: Q_PANELS.map((k) => sliceQuery(k, plane, qCentre, Boolean(axisInfo), true)),
   });
-  const rCentre = dpdfAxisInfo ? dpdfAxisInfo.min + Math.floor(dpdfAxisInfo.n / 2) * dpdfAxisInfo.step : 0;
+  const rCentre = dpdfAxisInfo ? snapToGrid(dpdfAxisInfo.min + Math.floor(dpdfAxisInfo.n / 2) * dpdfAxisInfo.step, dpdfAxisInfo.step) : 0;
   const rResult = useQuery(sliceQuery("dpdf", dpdfPlane, dpdfValue, Boolean(dpdfAxisInfo)));
   const rCentreResult = useQuery(sliceQuery("dpdf", dpdfPlane, rCentre, Boolean(dpdfAxisInfo), true));
 

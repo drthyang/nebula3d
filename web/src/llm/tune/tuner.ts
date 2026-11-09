@@ -119,6 +119,28 @@ const snapshot = (stage: TuneStage): Partial<PipelineConfig> => {
 /** The model the tuning asks, the output cap it asks for, and where each request's token counts go (TuneOptions). */
 type TuneModel = Pick<TuneOptions, "llm" | "onUsage" | "maxTokens">;
 
+/**
+ * A cap on the tuning's time, stage by stage, over a whole auto run (auto
+ * mode's AUTO_TUNING): `stageMs` of tuning a stage may take in all, and
+ * `spentMs` what its tunings took so far, which each tuning adds to. A trial
+ * is not started once its stage's time is spent: the trials that ran are
+ * judged, the current settings among them.
+ */
+export interface TuneBudget {
+  trials: number; // the most trials a tuned stage runs, the current settings included
+  stageMs: number;
+  spentMs: Partial<Record<TuneStage, number>>;
+  longestMs?: Partial<Record<TuneStage, number>>; // the longest trial of each stage so far
+}
+
+/**
+ * The time a stage's tuning has left under `budget` (Infinity without one),
+ * less its longest trial so far: a tuning that could not end one more trial
+ * within it has none left.
+ */
+export const stageTimeLeft = (budget: TuneBudget | undefined, stage: TuneStage): number =>
+  budget ? budget.stageMs - (budget.spentMs[stage] ?? 0) - (budget.longestMs?.[stage] ?? 0) : Infinity;
+
 // The model's reply as JSON, from one request read whole, as the validation
 // frozen at 812e686 runs its tuning (docs/evals.md, "The freeze"): only the
 // user's Stop ends it. Its tokens count into the reply that runs the tuning
@@ -212,6 +234,30 @@ async function tuneStage(
   model: TuneModel,
   skills: boolean,
   signal: AbortSignal,
+  budget?: TuneBudget,
+): Promise<void> {
+  const t0 = performance.now();
+  try {
+    await tuneStageTrials(stage, dataset, run, trialsPerStage, earlier, model, skills, signal, budget && (t0 + budget.stageMs - (budget.spentMs[stage] ?? 0)));
+  } finally {
+    if (budget) {
+      budget.spentMs[stage] = (budget.spentMs[stage] ?? 0) + (performance.now() - t0);
+      const longest = Math.max(0, ...getStage(stage).trials.map((t) => (t.seconds ?? 0) * 1000));
+      budget.longestMs = { ...budget.longestMs, [stage]: Math.max(budget.longestMs?.[stage] ?? 0, longest) };
+    }
+  }
+}
+
+async function tuneStageTrials(
+  stage: TuneStage,
+  dataset: Dataset,
+  run: TuningRun,
+  trialsPerStage: number,
+  earlier: Record<string, Record<string, ParamValue>>,
+  model: TuneModel,
+  skills: boolean,
+  signal: AbortSignal,
+  deadline: number | undefined,
 ): Promise<void> {
   const base = snapshot(stage);
   const baseSettings = currentStageSettings(stage, pipeline());
@@ -288,9 +334,21 @@ async function tuneStage(
         ),
       }));
     }
+    let outOfTime = 0;
     for (const [i, cand] of accepted.entries()) {
+      // Past its time (auto mode's budget), or a trial as long as the longest so far
+      // would end past it: the trials not started stay out; those that ran are judged.
+      const longest = Math.max(0, ...getStage(stage).trials.map((t) => (t.seconds ?? 0) * 1000));
+      if (deadline !== undefined && performance.now() + longest > deadline) {
+        setTrial(stage, i + 2, { status: "skipped", error: "not run: the stage's tuning time was spent" });
+        outOfTime += 1;
+        continue;
+      }
       pipeline().patch({ ...base, ...cand.patch });
       await runTrial(stage, i + 2, dataset, run, signal);
+    }
+    if (outOfTime) {
+      setStage(stage, { message: `${outOfTime} of the ${accepted.length} proposed trials not run: auto mode's time for tuning this stage was spent` });
     }
 
     // Pick the best trial.  A trial past a hard limit of its stage (a ΔPDF
@@ -357,9 +415,11 @@ export interface TuneOptions {
   // The skills' switch of the conversation that asked (skills.ts): on unless
   // false. Off, the prompts give each stage's goal and settings without a skill's step.
   skills?: boolean;
+  // Auto mode's cap on the tuning's trials and time (TuneBudget); none in the chat.
+  budget?: TuneBudget;
 }
 
-export async function startTuning({ dataset, stages, trialsPerStage, llm, onUsage, maxTokens, skills = true }: TuneOptions): Promise<void> {
+export async function startTuning({ dataset, stages, trialsPerStage, llm, onUsage, maxTokens, skills = true, budget }: TuneOptions): Promise<void> {
   if (useTuneStore.getState().active || pipelineBusy(pipeline())) return;
   const abort = new AbortController();
   controller = abort;
@@ -402,7 +462,7 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm, onUsag
         continue;
       }
       if (stages.includes(stage)) {
-        await tuneStage(stage, dataset, run, trialsPerStage, earlier, { llm, onUsage, maxTokens }, skills, abort.signal);
+        await tuneStage(stage, dataset, run, trialsPerStage, earlier, { llm, onUsage, maxTokens }, skills, abort.signal, budget);
         const kept = useTuneStore.getState().stages.find((r) => r.stage === stage)?.best ?? 1;
         if (kept !== 1) changed = true;
       } else {

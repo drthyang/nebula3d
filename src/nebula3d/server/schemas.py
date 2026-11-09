@@ -638,6 +638,10 @@ class BraggProfileOut(BaseModel):
     n_peaks: int = 0
     fit_covariance: bool = False
     punch_frame: str | None = None
+    # The punch footprint the run cut its holes with, and whether the shape fit
+    # ran without its constraints; None in a record written before it kept them.
+    punch_footprint: str | None = None
+    fit_unconstrained: bool | None = None
     peaks: list[BraggPeakWidthOut] = []
     # The nodes the node test could not judge, if any (pipeline.node_test_notice).
     node_test: NodeTestOut | None = None

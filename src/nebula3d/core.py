@@ -219,6 +219,28 @@ class HKLVolume:
         return out
 
 
+#: How far two axes' samples may differ, in steps of the axis, and still be one
+#: grid: far under any step, and over the float32 ulp by which stages written
+#: before the reader kept their exact centres (io/mantid_nxs.dim_centers) moved
+#: theirs on every reload.
+SAME_AXES_STEPS = 1e-3
+
+
+def same_axes(a: HKLVolume, b: HKLVolume) -> bool:
+    """Whether *a* and *b* lie on one grid: the same shape, and each axis's
+    samples equal to within :data:`SAME_AXES_STEPS` of its step."""
+    if a.data.shape != b.data.shape:
+        return False
+    for u, v in ((a.h_axis, b.h_axis), (a.k_axis, b.k_axis), (a.l_axis, b.l_axis)):
+        x, y = np.asarray(u, dtype=np.float64), np.asarray(v, dtype=np.float64)
+        if x.shape != y.shape:
+            return False
+        step = abs(float(x[-1] - x[0])) / (x.size - 1) if x.size > 1 else 0.0
+        if not np.allclose(x, y, rtol=0.0, atol=SAME_AXES_STEPS * step):
+            return False
+    return True
+
+
 def sigma_note(vol: HKLVolume, max_samples: int = 1_000_000) -> str | None:
     """Why *vol*'s σ counts for little, or None when it is fine.
 

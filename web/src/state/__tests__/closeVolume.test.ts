@@ -38,7 +38,7 @@ vi.mock("../../api/client", async (importOriginal) => ({
 import type { Dataset } from "../../api/types";
 import { queryClient } from "../../api/queryClient";
 import { useChatStore } from "../../llm/chatStore";
-import { closeNeedsConfirm, closeVolume } from "../closeVolume";
+import { CLOSE_CONFIRM, closeNeedsConfirm, closeVolume } from "../closeVolume";
 import { useDatasetStore } from "../datasetStore";
 import { useMarkStore } from "../markStore";
 import { usePipelineStore } from "../pipelineStore";
@@ -145,6 +145,12 @@ describe("asking first", () => {
   it("the settings alone do not ask (they are remembered per dataset)", () => {
     usePipelineStore.getState().patch({ punchMinSig: "4" });
     expect(closeNeedsConfirm(DATASET)).toBe(false);
+  });
+
+  it("says what Close does: the session's state goes, the settings stay remembered (no 'unsaved settings will be lost')", () => {
+    expect(CLOSE_CONFIRM).not.toMatch(/settings will be lost/i);
+    expect(CLOSE_CONFIRM).toMatch(/conversation, the marks and the run's record go unless you save the session/);
+    expect(CLOSE_CONFIRM).toMatch(/settings stay remembered for this dataset/);
   });
 });
 

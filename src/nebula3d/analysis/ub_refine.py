@@ -309,13 +309,33 @@ def _windowed_centre(q: NDArray[np.float64], excess: NDArray[np.float64],
     """The fixed point of the centroid of *excess* at *q* under a Gaussian
     window of σ *width* centred on it, from *start*; the window is cut at
     three σ.  None when the window's weight is not positive, or the centre
-    moves more than *reach* from *start* or does not settle."""
+    moves more than *reach* from *start* or does not settle.
+
+    Each round reads only the voxels within three σ and a margin of one σ of
+    where the candidates were last gathered, gathering them again once the
+    centre moves farther than the margin: the window never holds a voxel
+    outside them, and they keep their order, so the result is the one a pass
+    over every voxel of *q* gives, to the bit, in a fraction of the time (the
+    node's box holds many times the window's voxels)."""
     x = np.asarray(start, dtype=np.float64).copy()
+    margin = width
+    gather = (3.0 * width + margin) ** 2 * (1.0 + 1e-6)
+
+    def candidates(at: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        dc = q - at
+        keep = np.sum(dc * dc, axis=1) <= gather
+        return q[keep], excess[keep]
+
+    at = x.copy()
+    q_near, e_near = candidates(at)
     for _round in range(100):
-        d = q - x
+        if float(np.linalg.norm(x - at)) > margin:
+            at = x.copy()
+            q_near, e_near = candidates(at)
+        d = q_near - x
         r2 = np.sum(d * d, axis=1)
         near = r2 <= 9.0 * width * width
-        w = excess[near] * np.exp(-r2[near] / (2.0 * width * width))
+        w = e_near[near] * np.exp(-r2[near] / (2.0 * width * width))
         total = float(w.sum())
         if total <= 0:
             return None

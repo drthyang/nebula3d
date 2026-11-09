@@ -10,6 +10,7 @@ import type { AgentStep } from "../agent";
 import { clockText, currentRow, pausedText, progressOf, rowMeta, rowSub, rowTone } from "../auto/panel";
 import { freshPlan, type PlanRow } from "../auto/plan";
 import { newRun, type AutoRun } from "../auto/store";
+import { nowLine, tuningAdoptedNothing } from "../auto/activity";
 import { autoTranscript, stepElementId } from "../auto/transcript";
 import type { ChatTurn } from "../chatStore";
 import { pauseClock, resumeClock, startClock, stopClock } from "../clock";
@@ -98,5 +99,34 @@ describe("the run's own steps in the chat", () => {
 
   it("shows nothing for a run with no steps of its own", () => {
     expect(autoTranscript(runWith({}), turns).blocks).toEqual([]);
+  });
+});
+
+describe("the done run's Report ↗", () => {
+  it("opens its report reply's document through the chat's own Report handler, not only the chat at it", async () => {
+    const { openRunReport } = await import("../components/goToTurn");
+    const opened: number[] = [];
+    openRunReport(7, (turn) => opened.push(turn));
+    expect(opened).toEqual([7]);
+  });
+});
+
+describe("a fix whose tuning kept the current settings", () => {
+  const tuned = (changes: Record<string, unknown>): AgentStep => ({
+    id: "t1",
+    name: "tune_pipeline",
+    args: { stages: ["rings"] },
+    status: "done",
+    result: JSON.stringify({ minutes: 4.1, stages: [{ stage: "rings", status: "done", tuned: true, chosen_trial: changes.ringPooledSectors ? 2 : 1, of: 3, changes }] }),
+    summary: "4.1 min · settings changed on 0 of 1 stages",
+  });
+
+  it("says in the Now line that the tuning adopted no change, while the fix's reply goes on", () => {
+    const r = runWith({ state: "running", at: "rings", plan: freshPlan().map((x) => (x.id === "rings" ? { ...x, status: "fixing" as const, tries: 1 } : x)) });
+    const input = (steps: AgentStep[]) => ({ run: r, live: null, turns: [], replying: true, replySteps: steps, decisions: [], proposals: [], tune: { active: false, stages: [] } });
+    expect(nowLine(input([tuned({})]))).toBe("Fixing the ring removal, try 1 of 2: the tuning adopted no change");
+    expect(nowLine(input([tuned({ ringPooledSectors: 48 })]))).toBe("Fixing the ring removal, try 1 of 2");
+    expect(nowLine(input([]))).toBe("Fixing the ring removal, try 1 of 2");
+    expect([tuningAdoptedNothing(tuned({})), tuningAdoptedNothing(tuned({ ringPooledSectors: 48 }))]).toEqual([true, false]);
   });
 });

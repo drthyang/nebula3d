@@ -154,6 +154,18 @@ export function meterReading(prompt: number, w: ContextWindow): MeterReading {
 const n = (x: number): string => x.toLocaleString("en-US");
 
 /**
+ * The meter's label: the share of the window, to a tenth of a per cent under
+ * 10 % (a long chat on a 1M window grows a few tenths a reply, and whole per
+ * cents read the same at every point of it), else whole; the tokens where the
+ * window is not known.
+ */
+export function meterText(r: MeterReading): string {
+  if (r.share === null || r.percent === null) return `Context ≈ ${r.prompt >= 1000 ? `${Math.round(r.prompt / 1000)}k` : r.prompt} tokens`;
+  if (r.percent >= 10) return `Context ${r.percent}%`;
+  return `Context ${(Math.floor(r.share * 1000 + 1e-9) / 10).toFixed(1)}%`;
+}
+
+/**
  * The meter's detail, one plain line: the tokens used of the window, the
  * reply's room, and on a priced model what the conversation has cost.
  */

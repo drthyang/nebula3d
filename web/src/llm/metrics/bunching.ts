@@ -57,6 +57,25 @@ function waveVector(b: Bunching): string | null {
 /** About how many hits chance gives, as the question says it. */
 const aboutChance = (expected: number): string => (expected >= 1 ? String(Math.round(expected)) : String(roundSig(expected, 1)));
 
+/** How many times chance a bunching's hits must reach to point to one k: nebula3d.modulation.CLEAR_ENRICHMENT. */
+export const CLEAR_ENRICHMENT = 2;
+
+/**
+ * Whether one k stands out: the record's own verdict (Bunching.clear: at
+ * least twice chance, at least half the hits on the lattice in the other
+ * coordinates, as satellites of that k are); for a record written before it
+ * kept one, twice chance alone. Bragg lobes beside the nodes crowd the small
+ * fractions of a coordinate and fit many of them about as well: the card
+ * once offered a k for a doublet's lobes.
+ */
+export const bunchingIsClear = (b: Bunching): boolean => b.clear ?? b.hits >= CLEAR_ENRICHMENT * b.expected;
+
+/** Why no one k stands out, in the facts' words. */
+const notClear = (b: Bunching): string =>
+  b.hits < CLEAR_ENRICHMENT * b.expected
+    ? "That is under twice chance, so no one k stands out."
+    : `Only ${b.on_lattice ?? 0} of them lie on the lattice in the other coordinates, as satellites of one k would, so no one k stands out.`;
+
 /**
  * The facts and the question for the user when the run's punch record says
  * its sharp peaks off the lattice bunch at one commensurate fraction; null when
@@ -66,13 +85,17 @@ export function offLatticeBunching(record: ModulationRecord | null | undefined):
   const b = record?.bunching;
   if (!b) return null;
   const others = b.others.length ? `; the grid also fits ${b.others.join(", ")}` : "";
+  const clear = bunchingIsClear(b);
   const facts =
     `${b.hits} of the ${b.peaks} sharp peaks the search punched off the lattice (each symmetry orbit once) lie within ${b.half_width} r.l.u. of ${b.where}, ` +
     `where chance puts ${roundSig(b.expected, 2)} (binomial tail ${b.p_value.toPrecision(2)}, under ${b.alpha} over ${b.tests} tests)${others}. ` +
-    `No modulation is declared there, so the search punched them.${BUNCHING_REMEDY.text}`;
+    `${clear ? "" : `${notClear(b)} `}No modulation is declared there, so the search punched them.${BUNCHING_REMEDY.text}`;
   const k = waveVector(b);
-  const ask =
-    `${b.hits} of the ${b.peaks} sharp peaks off the lattice sit at ${positions(b.where)}, where about ${aboutChance(b.expected)} would by chance. ` +
-    (k ? `Does the sample have a modulation with k = ${k}?` : `Does the sample have a modulation there?`);
+  const where = `${b.hits} of the ${b.peaks} sharp peaks off the lattice sit at ${positions(b.where)}, where about ${aboutChance(b.expected)} would by chance`;
+  // A k only when one stands out: else the alternatives, and the question
+  // names none (the console's card offers a k only where the question does).
+  const ask = clear
+    ? `${where}. ${k ? `Does the sample have a modulation with k = ${k}?` : "Does the sample have a modulation there?"}`
+    : `${where}; ${b.others.length ? `they fit ${b.others.slice(0, 3).join(", ")} about as well, and ` : ""}no one k stands out. Does the sample have a modulation, and with which k?`;
   return { facts, ask_user: ask };
 }

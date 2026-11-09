@@ -153,6 +153,17 @@ describe("evaluateStage", () => {
     expect(context.notes).toContain(`bragg punch: ${UNRECORDED_PROTECTION_NOTE}`);
   });
 
+  it("names the footprint the run cut its holes with, from its record, and nothing for a record without it", async () => {
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, punch_footprint: "ellipsoid", fit_unconstrained: true });
+    const e = await evaluateStage("punch", dataset);
+    expect(e.footprint).toBe("ellipsoid, fit constraints dropped");
+    expect(judge("punch", e)).toEqual(judge("punch", { ...e, footprint: undefined }));
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, punch_footprint: "own", fit_unconstrained: false });
+    expect((await evaluateStage("punch", dataset)).footprint).toBe("own");
+    api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12 });
+    expect(await evaluateStage("punch", dataset)).not.toHaveProperty("footprint");
+  });
+
   it("puts the run's sharp peaks off the lattice bunched at one fraction to the user, beside the verdict it leaves as it was (plan 4.15)", async () => {
     api.fetchBraggProfile.mockResolvedValue({ has_profile: true, n_peaks: 12, modulation: recordOf({ declared: THIRDS_AS_PLANES, bunching: BUNCHED_AT_THIRDS }) });
     const e = await evaluateStage("punch", dataset);

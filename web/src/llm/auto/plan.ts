@@ -74,6 +74,20 @@ export interface AutoLimits {
 }
 
 export const AUTO_LIMITS: AutoLimits = { minutes: 30, fixesPerStage: 2, replies: 12, costUsd: 2, fixRounds: 6, reportRounds: 4 };
+
+/**
+ * What a tuning in a fix may take (tune/tuner.ts, TuneBudget): at most three
+ * trials of a tuned stage, the current settings and two alternatives, and at
+ * most four minutes of tuning a stage over the whole run, its trials not
+ * started once they are spent, the stage not tuned again. A ring-removal
+ * trial on a full-size volume (some 50 million voxels) takes about a minute,
+ * so one tuning of three trials with its proposing and judging fits, and a
+ * second one, after a first that adopted nothing, gets what is left; on a
+ * small volume, whose trials take seconds, it never binds. Uncapped, the two
+ * fixes of the ring removal each ran a tuning of four trials, some eleven
+ * minutes with nothing adopted.
+ */
+export const AUTO_TUNING = { trials: 3, stageMinutes: 4 } as const;
 export const MINUTES_RANGE = [10, 60] as const;
 
 /** The limits as given, each held to its range. */
@@ -206,7 +220,8 @@ const rank = (k: Kind): number => (k === "attention" ? 1 : 0);
  * before it (`before`), by the stage's own rules: a check that passed or
  * could not judge now needs attention; a check needs attention for a reason
  * it did not have; or, for the same reasons, every number those reasons rest
- * on is no better and one is worse. A fix that left the stage as it was, or
+ * on is no better and one is worse; or, for the ring removal, its worst ring
+ * residual (left or dent) grew. A fix that left the stage as it was, or
  * better on one number and worse on another, is not worse: it is kept, and
  * the next fix starts from it.
  */
@@ -224,6 +239,14 @@ export function madeWorse(stage: Stage, before: readonly AgentStep[], after: rea
   const m0 = stageNumbers(stage, before);
   const m1 = stageNumbers(stage, after);
   if (!m0 || !m1) return false;
+  // A ring left and a ring dent are one residual at the rings, above or below
+  // the diffuse: a fix that trades a dent for a larger ring left (a model
+  // change that subtracts less) is worse by its worst residual, whatever the
+  // smaller one did.
+  if (stage === "rings" && own.reasons.some((r) => r === "ring left" || r === "ring dent")) {
+    const worst = (m: Readonly<Record<string, unknown>>) => Math.max(num(m.max_ring_left) ?? 0, num(m.max_ring_dent) ?? 0);
+    if (worst(m1) > worst(m0)) return true;
+  }
   let worse = false;
   for (const r of own.reasons) {
     const rule = MEASURES[r];

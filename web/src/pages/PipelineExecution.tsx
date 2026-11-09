@@ -24,7 +24,7 @@ import { laueSpecOf } from "../state/laue";
 import { STAGES, STAGE_LABELS, usePipelineStore } from "../state/pipelineStore";
 import { PYODIDE_MODE } from "../api/pyodideEngine";
 import { litStage, useHighlightKeys } from "../llm/highlight";
-import { logClass, runOutputs, runPhase, stageInfo as infoOf, stageStates, warns, windowSupportFailed, type Phase } from "./executionLog";
+import { logClass, runOutputs, runPhase, stageInfo as infoOf, stageMs, stageStates, warns, windowSupportFailed, type Phase } from "./executionLog";
 
 // The output a stage writes (the consistency check's is the ΔPDF's).
 const STAGE_OUTPUT: Record<string, string> = {
@@ -285,7 +285,7 @@ export function PipelineExecution({ onNavigate }: { onNavigate: (tab: Tab) => vo
     let meta: string;
     switch (ns) {
       case "done":
-        statusLabel = fmtDur(info!.lastT - info!.firstT);
+        statusLabel = fmtDur(stageMs(info!));
         meta = info?.message ?? "complete";
         break;
       case "active":

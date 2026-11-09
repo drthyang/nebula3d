@@ -24,6 +24,7 @@ import { NO_USAGE, type Usage } from "../usage";
 import type { SeedForm } from "../agent";
 import { RUN_STAGES, type RunStage } from "../tune/catalog";
 import { AUTO_LIMITS, freshPlan, ROW_IDS, type AutoLimits, type LimitHit, type PlanRow, type RowId, type RowStatus } from "./plan";
+import type { TuneStage } from "../tune/catalog";
 
 export type AutoState = "running" | "paused" | "stopped" | "done";
 
@@ -81,6 +82,8 @@ export interface AutoRun {
   // the run as auto mode's own (controller.ts, applySensed): their decisions,
   // and whether the punch's row has judged them against the defaults yet.
   sensed?: { decisions: string[]; judged: boolean };
+  // The tuning time each stage took in the run's fixes, ms (AUTO_TUNING's budget), kept across a Resume.
+  tuneSpentMs?: Partial<Record<TuneStage, number>>;
 }
 
 interface AutoStore {

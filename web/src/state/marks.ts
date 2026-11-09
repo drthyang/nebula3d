@@ -240,10 +240,14 @@ export function planMark(spec: MarkSpec, volume: MarkVolume, now: ViewsNow): Mar
  */
 export function showMark(mark: Mark, datasetId: string | undefined): boolean {
   if (mark.datasetId !== datasetId) return false;
+  // Revealed: the views show the mark, and the Highlights bar no longer names
+  // the step it showed before (examine/store.ts follows the reveal).
   useMarkStore.getState().reveal(mark.id);
   const v = mark.view;
   if (v.page === "cleanup") {
     const vs = useViewerStore.getState();
+    // The shared colour scale from the mark's own stage, where what it marks stands out.
+    vs.setScaleRef(WHERE_OUTPUT[mark.where]);
     // The cleanup page snaps the focus to its grid once its metadata is in (openView does the same).
     vs.setFocus({ axis: v.axis, value: v.value });
     vs.setFixedAxis(v.axis);

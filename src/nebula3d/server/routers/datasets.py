@@ -40,7 +40,8 @@ def _data_root_out(cfg: ServerConfig) -> DataRootOut:
         data_root=str(cfg.data_root),
         raw_exists=cfg.raw_dir.is_dir(),
         processed_exists=cfg.processed_dir.is_dir(),
-        n_datasets=len(ds_mod.discover_datasets(cfg)),
+        # The folder's own datasets: a tuning run's view of one is no dataset of its own.
+        n_datasets=sum(1 for d in ds_mod.discover_datasets(cfg) if d.artifacts is None),
     )
 
 

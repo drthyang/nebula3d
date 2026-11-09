@@ -88,7 +88,35 @@ export const BUNCHED_AT_THIRDS: Bunching = {
   centres: [[0.3333, 0.5, 0]],
   mean_distance: 0.004,
   others: [],
+  on_lattice: 14,
+  clear: true,
   where: "H ≡ ±1/3 (mod 1)",
+};
+
+/**
+ * A split Bragg peak's lobes beside the nodes, bunched at the small fractions
+ * of H under twice chance, few of them on the lattice in K and L (made up):
+ * no one k stands out.
+ */
+export const LOBES_NEAR_NODES: Bunching = {
+  ...BUNCHED_AT_THIRDS,
+  denominator: 12,
+  values: [
+    { value: "1/12", hits: 165 },
+    { value: "11/12", hits: 165 },
+  ],
+  hits: 330,
+  peaks: 420,
+  expected: 220,
+  p0: 0.524,
+  p_value: 1e-30,
+  tests: 23,
+  half_width: 0.0333,
+  centres: [[1.0833, 0.1, 0.35]],
+  others: ["H ≡ ±1/7, ±2/7, ±3/7 (mod 1)", "H ≡ ±1/8, ±3/8 (mod 1)", "H ≡ ±1/10, ±3/10 (mod 1)", "L ≡ 1/2 (mod 1)"],
+  on_lattice: 28,
+  clear: false,
+  where: "H ≡ ±1/12 (mod 1)",
 };
 
 /** A punch record: what the search left alone (by default, nothing declared) and what it found. */

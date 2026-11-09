@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 
 import type { Dataset } from "../../api/types";
+import { useMarkStore } from "../../state/markStore";
 import { resetsWithVolume } from "../../state/volumeReset";
 import type { AgentStep } from "../agent";
 import { useAutoStore } from "../auto/store";
@@ -204,6 +205,9 @@ export function useExamine(dataset: Dataset | undefined): void {
         seen.add(s.id);
         const set = overlaysOf(s);
         if (set) addSet(set, listed, i + 1);
+        // A step that moved the views and draws no set (a page opened, a view shown): the bar
+        // no longer names the set it showed before, which the views no longer show.
+        else if (s.view) useExamineStore.setState({ current: null });
       });
     };
     update();
@@ -231,6 +235,7 @@ export function useExamine(dataset: Dataset | undefined): void {
         const set = overlaysOf(step);
         // Measured against the dataset as the run left it: the listing may not have caught up with its run yet.
         if (set) addSet(set, s.work ?? listed, n, null);
+        else if (step.view) useExamineStore.setState({ current: null });
       }),
     [],
   );
@@ -238,3 +243,9 @@ export function useExamine(dataset: Dataset | undefined): void {
 
 // The open dataset as the app lists it (useExamine keeps it).
 let listed: Dataset | undefined;
+
+// A mark shown (the Pilot's mark_region, or the Marked regions list): the
+// views show the mark, so the bar no longer names the set shown before it.
+useMarkStore.subscribe((s, prev) => {
+  if (s.revealed !== prev.revealed && s.revealed) useExamineStore.setState({ current: null });
+});

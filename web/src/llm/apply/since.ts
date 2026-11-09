@@ -44,9 +44,11 @@ const fieldChanges = (d: Decision): string =>
     .join(", ");
 
 // What the card changes, by update_settings' name: one setting's key, else
-// the card's own name (the |Q| band, which is two).
+// the card's own name (the |Q| band, which is two). A Laue class declared
+// through the symmetry average is the class's: symmetryLaue.
 const nameOf = (d: Decision, p: Proposal | undefined): string => {
   const keys = p ? Object.keys(p.change) : [];
+  if (keys.includes("symmetryLaue")) return "symmetryLaue";
   return keys.length === 1 ? keys[0] : d.title;
 };
 

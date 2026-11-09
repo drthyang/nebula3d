@@ -83,6 +83,22 @@ function tuningWords(tune: ActivityInput["tune"]): string | null {
   return `Tuning ${name}`;
 }
 
+/** Whether a tune_pipeline step finished with every tuned stage on its current settings (nothing adopted). */
+export function tuningAdoptedNothing(s: AgentStep): boolean {
+  if (s.name !== "tune_pipeline" || s.status !== "done") return false;
+  try {
+    const r = JSON.parse(s.result ?? "") as { stages?: { changes?: Record<string, unknown> }[] };
+    if (Array.isArray(r.stages)) return !r.stages.some((x) => x.changes && Object.keys(x.changes).length);
+  } catch {
+    // a result that is no JSON: its summary says
+  }
+  return /settings changed on 0 of/.test(s.summary ?? "");
+}
+
+/** The words for a fix that adopted nothing, after a tuning that kept the current settings or with no tuning. */
+export const NO_CHANGE = "No change adopted";
+const NO_CHANGE_TUNED = `${NO_CHANGE}: the tuning kept the current settings`;
+
 /** The "Now" line: what the run is doing at this moment. */
 export function nowLine(a: ActivityInput): string {
   const { run, live } = a;
@@ -108,7 +124,12 @@ export function nowLine(a: ActivityInput): string {
   if (at.id === "preflight") return "Preflight: checking the raw volume…";
   if (at.id === "run") return "Running the pipeline…";
   if (at.id === "report") return "Writing the report";
-  if (stage && at.status === "fixing") return tuningWords(a.tune) ?? `Fixing ${STAGE_NAMES[stage]}, try ${at.tries} of ${run.limits.fixesPerStage}`;
+  if (stage && at.status === "fixing") {
+    const fixing = `Fixing ${STAGE_NAMES[stage]}, try ${at.tries} of ${run.limits.fixesPerStage}`;
+    // A tuning in this fix that ended keeping the current settings: said, while the reply goes on.
+    const kept = a.replying && a.replySteps.some(tuningAdoptedNothing) && !a.replySteps.some((s) => s.name === "tune_pipeline" && s.status === "running");
+    return tuningWords(a.tune) ?? (kept ? `${fixing}: the tuning adopted no change` : fixing);
+  }
   if (stage) return `Checking ${STAGE_NAMES[stage]} (${stageNumber(stage)})…`;
   return cap(run.now || "Working…");
 }
@@ -165,7 +186,8 @@ function replyLine(turn: number, a: ActivityInput, report: boolean): { line: str
   const said = (t?.content ?? "").replace(/\s+/g, " ").trim();
   const detail = [...steps, ...(said ? [`Said: ${said.length > 400 ? `${said.slice(0, 400)}…` : said}`] : []), ...(t?.note ? [t.note] : [])];
   if (report) return { line: t?.note ? `Written, kept with marks: ${t.note}` : "Written", detail };
-  const line = changed.length ? `Changed ${changed.join("; ")}` : asked.length ? `Asked you: ${asked.join("; ")} (a fact about the sample)` : steps.some((s) => s.startsWith(factsOf("tune_pipeline").label)) ? "Tuned the stage" : "No change";
+  // A tuning that adopted something changed a setting, which `changed` lists; one that kept the settings changed none.
+  const line = changed.length ? `Changed ${changed.join("; ")}` : asked.length ? `Asked you: ${asked.join("; ")} (a fact about the sample)` : steps.some((s) => s.startsWith(factsOf("tune_pipeline").label)) ? NO_CHANGE_TUNED : NO_CHANGE;
   return { line, detail };
 }
 

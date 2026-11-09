@@ -17,7 +17,11 @@ import { closeStream, pipelineBusy, usePipelineStore } from "./pipelineStore";
 import { sessionUnsaved } from "./session";
 import { resetVolumeState } from "./volumeReset";
 
-export const CLOSE_CONFIRM = "Close this volume? Unsaved settings will be lost.";
+// What Close does, said as it is: the session's state goes (closeNeedsConfirm
+// asks only then, or while something runs); the Configure settings do not,
+// remembered for the dataset in this browser (configMemory.ts).
+export const CLOSE_CONFIRM =
+  "Close this volume? What runs now stops, and the conversation, the marks and the run's record go unless you save the session first. Its settings stay remembered for this dataset in this browser.";
 
 // How long Close waits for a cancelled native run to be heard to end, and
 // for the requests already sent to finish.

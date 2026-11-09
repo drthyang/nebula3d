@@ -13,6 +13,7 @@ import type { LlmSettings } from "../settings";
 import type { Outcome } from "../verdicts/rules";
 import type { ToolFacts } from "./facts";
 import type { ViewTarget } from "./openView";
+import type { TuneBudget } from "../tune/tuner";
 
 /** A call's arguments, as the model sent them: a JSON object. */
 export type Args = Record<string, unknown>;
@@ -74,6 +75,10 @@ export interface ToolContext {
   // Unset (the app), tune_pipeline asks the model on the console's settings
   // (settings.ts), and nothing counts its tokens.
   readonly model?: RunModel;
+  // Auto mode's cap on tune_pipeline's trials and time, stage by stage over
+  // the run (tune/tuner.ts, TuneBudget; auto/plan.ts, AUTO_TUNING). Unset in
+  // the chat: the call's own trials, no time cap.
+  readonly tuneBudget?: TuneBudget;
 }
 
 export interface ToolOutcome {

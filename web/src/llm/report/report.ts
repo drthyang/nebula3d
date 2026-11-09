@@ -218,7 +218,10 @@ function ringsCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
       ["Largest over-subtraction fraction", fmt(m.max_over_subtraction_fraction)],
       ["Deepest ring dent", `${fmt(dent)}${where(m.worst_ring_dent)}`],
       ["Largest ring left", `${fmt(left)}${where(m.worst_ring_left)}`],
-      ["Bumps that are not rings (the crystal's own scattering, kept)", String(notRings.length)],
+      // The check's own 3D judgement: an Al line a doublet left fails it as the
+      // crystal's own scattering does, so the row claims neither (the ring
+      // stage's record names them, stage_shells).
+      ["Bumps the 3D test judged not rings (kept)", String(notRings.length)],
       // A grid too coarse for the 3D test: the rings are not judged, and why.
       ...(isTooCoarse(m.ring_rule) ? ([["Not judged", String(m.ring_rule).replace(/^not judged: /, "")]] as [string, string][]) : []),
     ],
@@ -262,6 +265,8 @@ function punchCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
       ...(m.left_after_backfill !== undefined ? ([["Missed at nodes or tails on the backfilled planes", fmt(m.left_after_backfill)]] as [string, string][]) : []),
       ["Mean punched fraction", fmt(m.mean_punched_fraction)],
       ["Fitted Bragg peaks", fmt(m.fitted_peaks)],
+      // How the run cut the holes, from its record.
+      ...(typeof m.footprint === "string" ? ([["Punch footprint", m.footprint]] as [string, string][]) : []),
     ],
   };
 }

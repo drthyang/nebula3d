@@ -61,11 +61,25 @@ export const snapIndex = (g: Pick<VolumeGrid, "ranges" | "shape">, axis: Axis, v
   return Math.max(0, Math.min(g.shape[axis] - 1, i));
 };
 
-/** The coordinate of sample `index` along an axis; the sample at the origin is exactly 0, not float noise beside it. */
+/**
+ * A coordinate on an axis of step `step`, rounded to a thousandth of the
+ * step's leading decimal: what the axis can mean, without the float noise of
+ * a float32 grid's samples (a few 1e-7 for 0, −3.2500001192092896 for −3.25).
+ * It moves the value by under a ten-thousandth of a step, so it names the
+ * same sample.
+ */
+export function snapToGrid(value: number, step: number): number {
+  const s = Math.abs(step);
+  if (!(s > 0) || !Number.isFinite(value)) return value;
+  const decimals = Math.max(0, 3 - Math.floor(Math.log10(s)));
+  const r = Number(value.toFixed(Math.min(decimals, 15)));
+  return r === 0 ? 0 : r; // never −0
+}
+
+/** The coordinate of sample `index` along an axis, snapped to the grid (snapToGrid): the sample at the origin is 0, not float noise beside it. */
 export const gridValue = (g: Pick<VolumeGrid, "ranges" | "shape">, axis: Axis, index: number): number => {
   const step = gridStep(g, axis);
-  const v = g.ranges[axis][0] + index * step;
-  return Math.abs(v) < Math.abs(step) * 1e-9 ? 0 : v;
+  return snapToGrid(g.ranges[axis][0] + index * step, step);
 };
 
 /** The extent the voxels cover along an axis: the samples' range, half a step past each end. */

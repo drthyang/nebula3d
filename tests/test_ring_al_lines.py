@@ -396,3 +396,58 @@ def test_the_record_names_four_shells_left_and_counts_the_rest():
     assert shell_summary({"algorithm": "global_v2"}) is None
     empty = {"algorithm": "pooled", "shells": [], "rejected_shells": []}
     assert shell_summary(empty) == "removed 0"
+
+
+def _left_shell(q, verdict, hkl=None):
+    return {"q_center": q, "fwhm": 0.1, "isotropy": verdict,
+            **({"match": {"phase": "Al", "hkl": hkl, "q": q}} if hkl else {})}
+
+
+def test_a_shell_left_is_named_by_the_records_code():
+    """The log names a shell left as the record does: its Al line and why,
+    a cluster's member as its doublet; the crystal's own is counted apart."""
+    from nebula3d.preprocessing.pooled_rings import left_shell_words
+
+    doublet = {"is_ring": False, "fails": ["member"],
+               "lines": [{"q": 6.763}, {"q": 6.939}]}
+    assert left_shell_words(_left_shell(6.76, doublet, "331")) == \
+        "6.76 Å⁻¹ Al331, member of a doublet"
+    triplet = {**doublet, "lines": [{"q": 1.0}, {"q": 1.1}, {"q": 1.2}]}
+    assert left_shell_words(_left_shell(1.1, triplet, "111")) == \
+        "1.10 Å⁻¹ Al111, member of a cluster"
+    assert left_shell_words(_left_shell(5.0, {"is_ring": False, "fails": ["snr", "curve"]})) == \
+        "5.00 Å⁻¹, snr"
+    assert left_shell_words({"isotropy": {"is_ring": False, "fails": ["isotropy"]}}) is None
+
+
+def test_the_ring_log_calls_al_lines_left_what_the_record_calls_them(monkeypatch):
+    """Al lines a doublet left were logged as 'the crystal's own scattering',
+    while the Pilot and the ring record called them Al lines left: the log
+    now names them by the record's code, and counts the others apart."""
+    from types import SimpleNamespace
+
+    from nebula3d import pipeline
+    from nebula3d.demo import demo_volume
+
+    doublet = {"is_ring": False, "fails": ["member"], "lines": [{"q": 6.763}, {"q": 6.939}]}
+    shells = [_left_shell(6.94, doublet, "420"), _left_shell(6.76, doublet, "331"),
+              _left_shell(4.0, {"is_ring": False, "fails": ["isotropy"]})]
+    vol = demo_volume(21, extent=2.0)
+
+    def fake(v, cfg, progress=None, sample=None):
+        return SimpleNamespace(cleaned=v, diagnostics={
+            "status": "ok", "shells": [{"q_center": 3.1}] * 15, "rejected_shells": shells,
+            "n_planes_fitted": 21, "n_planes": 21, "removed_fraction": 0.0123})
+
+    monkeypatch.setattr(pipeline, "fit_pooled_rings", fake)
+    lines: list[str] = []
+    pipeline.remove_rings(vol, pipeline.RingParams(ring_model="pooled"),
+                          progress=lambda stage, status, frac, msg: lines.append(msg or ""))
+    assert lines[-1] == (
+        "pooled ring removal ok: 15 shells confirmed as rings, 3 not (1 the crystal's own "
+        "scattering, kept; 6.76 Å⁻¹ Al331, member of a doublet, left; 6.94 Å⁻¹ Al420, "
+        "member of a doublet, left) (of 21/21 planes fitted), removed 1.23% of |I|")
+    shells[:] = shells[2:]
+    pipeline.remove_rings(vol, pipeline.RingParams(ring_model="pooled"),
+                          progress=lambda stage, status, frac, msg: lines.append(msg or ""))
+    assert "1 not (the crystal's own scattering, kept) (of 21" in lines[-1]

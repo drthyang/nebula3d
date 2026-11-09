@@ -149,6 +149,7 @@ def test_the_punch_says_when_sharp_peaks_off_the_lattice_bunch_at_a_fraction():
     assert bunching["mean_distance"] == pytest.approx(0.0, abs=1e-9)
     assert "H ≡ ±1/4 (mod 1)" in bunching["others"]
     assert bunching["hits"] == bunching["peaks"] >= 150 and bunching["p_value"] < 1e-12
+    assert bunching["on_lattice"] == bunching["hits"] and bunching["clear"] is True
     said = [m for m in lines if m.startswith("sharp peaks off the lattice bunch")]
     assert len(said) == 1 and said[0].startswith(
         "sharp peaks off the lattice bunch at H ≡ ±1/5 (mod 1): ")
@@ -341,3 +342,20 @@ def test_an_undeclared_thirds_family_raises_the_question(tmp_path):
                                                               flatten_enabled=False))
     assert declared["modulation"]["bunching"] is None
     assert not any(m.startswith("sharp peaks off the lattice") for m in lines)
+
+
+def test_the_punch_records_and_logs_its_footprint_and_fit_constraints():
+    """The assessment could not tell which footprint made the punched file
+    although the settings were applied before the run: the punch's record
+    (the profile the console reads) and the run log name it, and whether the
+    shape fit ran without its constraints."""
+    vol = _satellites()
+    for params, words in ((PunchParams(), "footprint=own)"),
+                          (PunchParams(punch_footprint="ellipsoid", integer_fit_unconstrained=True),
+                           "footprint=ellipsoid, fit constraints dropped)")):
+        lines: list[str] = []
+        out = punch_bragg(vol, params, progress=lambda s, st, f, m: lines.append(m or ""))
+        assert lines[0].startswith("Bragg punch (mode=") and lines[0].endswith(words), lines[0]
+        record = out._bragg_profile
+        assert record["punch_footprint"] == params.punch_footprint
+        assert record["fit_unconstrained"] is params.integer_fit_unconstrained

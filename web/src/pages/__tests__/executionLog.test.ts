@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import deltaPdfSource from "../../../../src/nebula3d/analysis/delta_pdf.py?raw";
 
-import { logClass, runOutputs, runPhase, stageInfo, stageStates, WINDOW_SUPPORT_MARK, windowSupportFailed, warns, type Phase } from "../executionLog";
+import { logClass, runOutputs, runPhase, stageInfo, stageMs, stageStates, WINDOW_SUPPORT_MARK, windowSupportFailed, warns, type Phase } from "../executionLog";
 
 const NOTICE =
   "4 ring candidates (shells that may be powder rings or the crystal's own scattering) detected but not confirmed at this grid (needs ≥ 1 voxel across 0.16 Å⁻¹); not subtracted. Use a finer grid, or, from the Python API, set pooled_confirm_rings=False to subtract every candidate, the crystal's own shells included.";
@@ -183,6 +183,14 @@ describe("a stage that adds a note after its done line", () => {
     const r = stageStates({ visible: run, info, phase: "error", runStages: run, hasOutput: () => true });
     expect(r.states).toMatchObject({ symmetry_average: "done", rings: "done", punch: "done", pdf: "failed", pdf_check: "pending" });
     expect(r.doneCount).toBe(3);
+  });
+
+  it("is timed to its done line: a note after it, however late, adds nothing", () => {
+    // The note on the symmetry lands after the whole run's later stages: seconds, not minutes, of the ring removal.
+    const times = [0, 10_000, 70_000, 600_000, 610_000, 620_000, 630_000];
+    const info = stageInfo(events, times);
+    expect(stageMs(info.rings)).toBe(60_000);
+    expect(stageMs(info.pdf)).toBe(10_000); // no end line: its last
   });
 
   it("is failed when an error of its own comes after its done line", () => {

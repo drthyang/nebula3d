@@ -184,7 +184,7 @@ const isValue = (v: unknown): v is ParamValue => isStr(v) || isNum(v) || typeof 
 const oneOf = <T extends string>(v: unknown, xs: readonly T[]): v is T => isStr(v) && (xs as readonly string[]).includes(v);
 
 const KINDS: readonly ProposalKind[] = ["setting", "fact", "run", "trial"];
-const STATUSES: readonly ProposalStatus[] = ["open", "applied", "dismissed", "undone"];
+const STATUSES: readonly ProposalStatus[] = ["open", "applied", "dismissed", "undone", "covered"];
 const VIAS: readonly ProposalVia[] = ["refused", "rerun", "ask_user", "suggestion", "answer", "trial", "apply", "undo", "auto", "qr"];
 const HELD: readonly Held[] = ["fact", "choice", "symmetry", "ring", "user-only"];
 const ACTIONS: readonly DecisionAction[] = ["apply", "edit-apply", "dismiss", "undo"];

@@ -486,7 +486,7 @@ export function ChatView({
           inside it, and the dock under them is always whole (index.css .ai-body). */}
       <div className="ai-body">
       {above}
-      {tools && <AutoPanel ctx={toolContext} />}
+      {tools && <AutoPanel ctx={toolContext} onReport={setReportFor} />}
       <div className="ai-transcript" ref={scrollRef} onScroll={onScroll}>
         {empty && (
           <div className="ai-placeholder">
