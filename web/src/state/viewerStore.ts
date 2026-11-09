@@ -57,6 +57,11 @@ interface ViewerState {
   scale: ScaleKind;
   levels: ManualLevels | null; // null → Auto
   scaleRef: string; // cleanup: the stage that sets the shared scale, or "panel"
+  // cleanup: the stage output a shown mark rests on, whose view takes its own
+  // Auto scale (where what the mark marks stands out); the other views keep the
+  // shared scale, which the mark's would saturate (a punch residual's 0–0.24
+  // on the raw views). Cleared when the user picks the scale.
+  markScale: string | null;
   views: Record<string, Viewport>; // per plane, in Å⁻¹; absent → the whole slice
   colormap: string;
   divColormap: string;
@@ -72,6 +77,7 @@ interface ViewerState {
   setScale: (s: ScaleKind) => void;
   setLevels: (l: ManualLevels | null) => void;
   setScaleRef: (r: string) => void;
+  setMarkScale: (stage: string | null) => void;
   setView: (plane: string, v: Viewport | null) => void;
   setColormap: (c: string) => void;
   setDivColormap: (c: string) => void;
@@ -87,6 +93,7 @@ export const useViewerStore = create<ViewerState>((set) => ({
   scale: "lin",
   levels: null,
   scaleRef: "flattened",
+  markScale: null,
   views: {},
   colormap: "inferno",
   divColormap: "RdBu_r",
@@ -98,7 +105,8 @@ export const useViewerStore = create<ViewerState>((set) => ({
   setPeakFocus: (peakFocus) => set({ peakFocus }),
   setScale: (scale) => set({ scale }),
   setLevels: (levels) => set({ levels }),
-  setScaleRef: (scaleRef) => set({ scaleRef }),
+  setScaleRef: (scaleRef) => set({ scaleRef, markScale: null }),
+  setMarkScale: (markScale) => set({ markScale }),
   setView: (plane, v) =>
     set((s) => {
       const views = { ...s.views };
