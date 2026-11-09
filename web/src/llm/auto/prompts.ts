@@ -49,10 +49,13 @@ export function fixPrompt(stage: Stage): string {
  * reports ran their revision to the output cap. This is PR 7's wording, with
  * no false alarm in its eight runs. Its words name no tool's topic, so a
  * local model's offer (localTools.ts) stays the reading tools every question
- * gets. Held to its ceiling in tokenBudget.test.ts.
+ * gets. Its last sentence: the report reads no skill (reduction-qc's "name
+ * settings by console labels" never reached it), and the run's reports named
+ * settings, checks and tools by their keys (punchFootprint, pedestal_left,
+ * assess_stage). Held to its ceiling in tokenBudget.test.ts.
  */
 export const REPORT_PROMPT =
-  "Report on this auto run from the checks above, its final ones: each stage's verdict with the numbers it rests on, what changed during the run and why, and what is left for the user to decide.";
+  "Report on this auto run from the checks above, its final ones: each stage's verdict with the numbers it rests on, what changed during the run and why, and what is left for the user to decide. Use the console's names, not keys or tool names.";
 
 /** The transcript's line for a fix reply (the user turn before it): the app's words, never the user's. */
 export const fixLabel = (stage: Stage, n: number, of: number): string => `Auto · fix ${STAGE_NAMES[stage]}, ${ordinal(n)} of ${countWord(of)}`;

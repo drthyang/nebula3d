@@ -23,6 +23,7 @@ import type { BraggSense, StageParamsIn } from "../../../api/types";
 import { formToParams, usePipelineStore } from "../../../state/pipelineStore";
 import { hklVolumeId, stageVolumeId } from "../../context/loadContext";
 import { cleanupView, RECIP_FIXED, RECIP_PLANES, recipMeta, recipRange } from "../shared/cuts";
+import { settingTitle } from "../../apply/settingTitle";
 import type { ChatTool } from "../types";
 
 /** The run's settings the sensing reads: how the raw volume is loaded (its edge trim) and how each footprint is modelled (the punch's). */
@@ -64,7 +65,8 @@ function senseSummary(s: BraggSense): string {
   const set = recommended(s);
   return [
     `${s.n_nodes} strong nodes`,
-    Object.keys(set).length ? Object.entries(set).map(([k, v]) => `${k} ${String(v)}`).join(", ") : "keep the default footprint",
+    // The settings by their console names (the line is the app's, not the model's: its result keeps the keys).
+    Object.keys(set).length ? Object.entries(set).map(([k, v]) => `${settingTitle(k)} ${String(v)}`).join(", ") : "keep the default footprint",
     p?.q_dependent_reach ? "reach grows with |Q|" : null,
     s.mirrors.declare ? `symmetrised, declares none (${s.mirrors.declare})` : null,
   ]

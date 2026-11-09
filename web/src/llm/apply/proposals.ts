@@ -43,6 +43,7 @@ import {
 import type { StageRun } from "../tune/tuner";
 import { USER_SETTINGS } from "../tune/userSettings";
 import { settingLabel } from "../../pages/configSections";
+import { methodTitle } from "./settingTitle";
 import type { PipelineConfig } from "../../state/pipelineStore";
 
 export type ProposalKind = "setting" | "fact" | "run" | "trial";
@@ -97,11 +98,6 @@ interface CardSetting {
 
 // A stage's word before a setting's label on a card: "Punch min σ" (the
 // Configure page shows the label inside its stage's section).
-const STAGE_WORD: Record<TuneStage, string> = { rings: "Ring", punch: "Punch", backfill: "Backfill", flatten: "Background", pdf: "ΔPDF" };
-const lowerFirst = (s: string): string => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
-
-/** A method setting's name on a card: its stage's word and its Configure label (pages/configSections.ts). */
-export const methodTitle = (key: string, stage: TuneStage): string => `${STAGE_WORD[stage]} ${lowerFirst(settingLabel(key))}`;
 
 /** A fact's or a user-only setting's name on a card: its Configure label; the modulation, four fields there, as one. */
 const factTitle = (key: string): string => (key === "modulation" ? "Modulation" : settingLabel(key));
@@ -493,3 +489,4 @@ export function settingsInAnswer(answer: string): { key: string; value: string }
   }
   return out;
 }
+

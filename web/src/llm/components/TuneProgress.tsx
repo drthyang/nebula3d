@@ -7,6 +7,7 @@
 import { queryClient } from "../../api/queryClient";
 import { useDatasetStore } from "../../state/datasetStore";
 import { useNavStore } from "../../state/navStore";
+import { settingTitle } from "../apply/settingTitle";
 import { TUNE_STAGE_TITLES } from "../tune/catalog";
 import { headline } from "../tune/evaluate";
 import { useTuneStore, type StageRun } from "../tune/tuner";
@@ -43,8 +44,8 @@ function StageCard({ run, turn, ctx }: { run: StageRun; turn: number | null; ctx
                   {t.n === 1
                     ? "your settings"
                     : Object.entries(t.changes).map(([k, v]) => (
-                        <code key={k}>
-                          {k}={String(v)}
+                        <code key={k} title={k}>
+                          {settingTitle(k)} {String(v)}
                         </code>
                       ))}
                 </span>
