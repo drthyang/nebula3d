@@ -7,7 +7,10 @@
 import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy, fetchShellFloors } from "../../api/client";
 import type { Dataset, RingDiagnostics } from "../../api/types";
 import { declaringMeta, dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
+import { PLANE_HKL_AXES } from "../context/pipelineContext";
+import { metricFromUb, qNorm, reciprocalMetric } from "../../components/reciprocal";
 import { offLatticeBunching } from "../metrics/bunching";
+import { scanLeftoverPeaks } from "../metrics/punch";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
 import { roundSig } from "../metrics/sliceStats";
@@ -321,8 +324,36 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const fractions = contexts.map((c) =>
       punchedFraction(c.slices.ringremoved?.data, c.slices.braggpunched?.data),
     );
-    const total = (key: "n_suspicious" | "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_broad_off_nodes" | "n_skipped_noisy") =>
+    // The backfilled cuts scanned the same way, their holes the punch's
+    // (THY-43): the Bragg peaks and tails the fill left in the data the 3D-ΔPDF
+    // reads, missed at a node or beside a hole. Reported, not judged.
+    const G = metricFromUb(meta?.ub_matrix) ?? reciprocalMetric(meta?.lattice);
+    const qOf = G ? (v: [number, number, number]) => qNorm(G, v) : undefined;
+    const afterFill = contexts.map((c, i) => {
+      const { ringremoved, braggpunched, backfilled } = c.slices;
+      if (!ringremoved || !braggpunched || !backfilled) return null;
+      const axes = PLANE_HKL_AXES[cuts[i].plane];
+      const toHkl = (x: number, y: number): [number, number, number] => {
+        const hkl: [number, number, number] = [cuts[i].value, cuts[i].value, cuts[i].value];
+        hkl[axes[0]] = x;
+        hkl[axes[1]] = y;
+        return hkl;
+      };
+      const scan = scanLeftoverPeaks(backfilled, {
+        toHkl,
+        supercell: c.scan?.supercell,
+        protectedLabels: c.scan?.protectedLabels ?? null,
+        before: ringremoved,
+        punched: braggpunched,
+        qOf,
+        topK: 0,
+      });
+      return (scan.n_at_nodes ?? 0) + (scan.n_bragg_tails ?? 0);
+    });
+    const total = (key: "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_broad_off_nodes" | "n_bragg_tails" | "n_beside_holes") =>
       leftovers.reduce((s, l) => s + (l?.[key] ?? 0), 0);
+    // Whether the scan judged the rims (the cut before the punch was read on every plane).
+    const rimsJudged = leftovers.some((l) => l?.n_bragg_tails !== undefined);
     // The sharp off-lattice leftovers in the positions the run's search left
     // alone, from each peak's marks (the run's record, read as labels on each
     // cut: context/loadContext.ts): they stay by design.
@@ -332,10 +363,15 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     const bunching = offLatticeBunching(profile?.modulation);
     // A UB turned in the reduction, as the run's record has it: only when significant (metrics/ubTurn.ts).
     const ubTurn = ubTurnFacts(profile?.misorientation, profile?.tail_sweep);
-    // The strongest leftover over the planes, with its plane.
+    // The strongest leftover over the planes, with its plane, a faint rim
+    // aside: where it is, how strong and wide, and its class.
     const strongest = cuts.reduce<Record<string, unknown> | null>((best, c, i) => {
-      const p = leftovers[i]?.suspicious_peaks[0];
-      return p && (!best || p.sigma > (best.sigma as number)) ? { plane: c.plane, ...p } : best;
+      const p = leftovers[i]?.suspicious_peaks.find((q) => !q.faint);
+      if (!p || (best && p.sigma <= (best.sigma as number))) return best;
+      // Its place in H K L, not the slice's x y; its σ, not its raw intensity and level.
+      const shown: Record<string, unknown> = { plane: c.plane, ...p };
+      for (const k of ["xy", "intensity", "local_background", "contrast"]) delete shown[k];
+      return shown;
     }, null);
     // Every leftover on each plane, and round 2's voxels, for the overlays (examine/data.ts).
     const drawn: LeftoverPeak[] = cuts.flatMap((c, i) =>
@@ -348,26 +384,28 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
         broad: p.broad,
         ...(p.at_node !== undefined ? { at_node: p.at_node } : {}),
         ...(p.on_protected_plane !== undefined ? { on_protected_plane: p.on_protected_plane } : {}),
+        ...(p.bragg_tail ? { bragg_tail: true } : {}),
+        ...(p.faint ? { faint: true } : {}),
         ...(p.hkl ? { hkl: p.hkl } : {}),
       })),
     );
     const sweep = profile?.tail_sweep?.voxels_hkl;
+    const filled = afterFill.filter((n): n is number => n !== null);
     return withOverlayData({
       // The significance test counts σ: say so when σ is √|I| of normalized data.
       ...(rawMeta?.sigma_note ? { sigma_note: rawMeta.sigma_note } : {}),
-      total_leftover_peaks: total("n_suspicious"),
       leftover_at_nodes: total("n_at_nodes"),
-      leftover_off_lattice: total("n_off_nodes"),
-      // Of those, in the positions the run's search left alone (the declared
-      // modulation's planes or satellites), and broad enough to be diffuse
-      // maxima rather than reflections.
-      leftover_on_protected_planes: total("n_on_protected"),
-      // The sharp ones of those, on their own line: by design, as the punch's goal says, and out of its verdict (verdicts/rules.ts, D5).
+      // Beside a punched Bragg peak (or within reach of it), holding 3 % or
+      // more of its height: what a footprint that does not follow the peak's
+      // shape leaves (THY-43). With the cut before the punch only.
+      ...(rimsJudged ? { leftover_bragg_tails: total("n_bragg_tails"), leftover_beside_holes: total("n_beside_holes") } : {}),
+      // Off the lattice, in the positions the run's search left alone (the
+      // declared modulation's planes or satellites), sharp: they stay by design.
       leftover_on_protected_planes_sharp: sharpOnProtected,
       leftover_off_lattice_broad: total("n_broad_off_nodes"),
       leftover_off_lattice_sharp: total("n_off_nodes") - total("n_broad_off_nodes"),
+      ...(filled.length ? { left_after_backfill: filled.reduce((a, b) => a + b, 0) } : {}),
       strongest_leftover: strongest,
-      noisy_spikes_skipped: total("n_skipped_noisy"),
       mean_punched_fraction: mean(fractions),
       fitted_peaks: profile?.has_profile ? profile.n_peaks : null,
       // Only when the run's record says so (metrics/bunching.ts).
@@ -376,9 +414,11 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
       per_plane: per((i) => ({
         leftover_peaks: leftovers[i]?.n_suspicious ?? null,
         at_nodes: leftovers[i]?.n_at_nodes ?? null,
+        ...(leftovers[i]?.n_bragg_tails !== undefined ? { bragg_tails: leftovers[i]!.n_bragg_tails, beside_holes: leftovers[i]!.n_beside_holes } : {}),
         off_lattice: leftovers[i]?.n_off_nodes ?? null,
         on_protected_planes: leftovers[i]?.n_on_protected ?? null,
         off_lattice_broad: leftovers[i]?.n_broad_off_nodes ?? null,
+        ...(afterFill[i] !== null ? { left_after_backfill: afterFill[i] } : {}),
         strongest_leftover: leftovers[i]?.suspicious_peaks[0] ?? null,
         punched_fraction: fractions[i],
       })),
@@ -438,7 +478,9 @@ export function headline(stage: TuneStage, e: StageEvaluation | undefined): stri
       // A turn the punch acted on, named (metrics/ubTurn.ts).
       const turn = e.ub_turn as { verdict?: string; deg?: number | null; sd?: number | null } | undefined;
       const turned = turn?.verdict?.startsWith("acted on") ? ` · UB turned ${turn.deg}° ± ${turn.sd}°` : "";
-      return `${v("leftover_at_nodes")} missed at nodes · ${off} sharp off-lattice${onProtected} · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}${turned}`;
+      // The Bragg tails, where the evaluation judged the rims (THY-43).
+      const tails = typeof e.leftover_bragg_tails === "number" ? ` · ${e.leftover_bragg_tails} Bragg tails` : "";
+      return `${v("leftover_at_nodes")} missed at nodes${tails} · ${off} sharp off-lattice${onProtected} · ${v("leftover_off_lattice_broad")} broad maxima kept · punched ${v("mean_punched_fraction")}${turned}`;
     }
     case "backfill":
       return `seam ${v("mean_median_seam_sigma")}σ · bright ≤ ${v("max_bright_fill_fraction")}`;

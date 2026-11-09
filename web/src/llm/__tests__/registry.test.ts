@@ -36,6 +36,7 @@ describe("the registry", () => {
       "read_skill",
       "describe_dataset",
       "ring_survey",
+      "bragg_sense",
       "current_view",
       "measure_reciprocal_cut",
       "measure_dpdf_cut",

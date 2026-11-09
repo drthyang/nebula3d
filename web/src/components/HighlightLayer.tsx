@@ -53,10 +53,11 @@ function onEllipse(p: DisplayEllipse, a: number): [number, number] {
 }
 
 // The classes whose strongest mark carries its σ: the punch's leftovers.
-const SIGMA_CHIP = new Set<ClassId>(["node", "sharp", "broad", "protected"]);
+const SIGMA_CHIP = new Set<ClassId>(["node", "tail", "sharp", "broad", "protected"]);
 
 const DASH: Partial<Record<ClassId, string>> = {
   fpNone: "1 2.5",
+  faint: "1 2",
   broad: "4 3",
   AL: "5 3",
   RM: "2 2",
@@ -333,13 +334,16 @@ export function HighlightLayer({ draw, tones, codes, off, viewport, sx, sy, angl
           if (x < -12 || x > w + 12 || y < -12 || y > h + 12) return null;
           const c = color(p.cls);
           const faint = p.style === "faint";
-          const dash = faint || p.cls === "broad" || p.cls === "fpBroad" ? "3 2" : p.cls === "fpNone" ? "1 2.5" : undefined;
+          const dash = faint || p.cls === "broad" || p.cls === "fpBroad" ? "3 2" : p.cls === "fpNone" || p.cls === "faint" ? "1 2.5" : undefined;
           const sw = faint ? 1.2 : p.cls === "broad" ? 1.3 : 1.8;
           const r = spotRadius(p.cls, p.sigma);
           const shape = (stroke: string, width: number) => {
             switch (p.cls) {
               case "sharp":
                 return <path d={`M${x} ${y - 6}L${x + 6} ${y}L${x} ${y + 6}L${x - 6} ${y}Z`} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} />;
+              // A Bragg tail beside a punch hole: a square, red as a missed node.
+              case "tail":
+                return <rect x={x - 5} y={y - 5} width={10} height={10} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} />;
               case "fillUp":
                 return <path d={`M${x} ${y - 7}L${x + 6.5} ${y + 5}H${x - 6.5}Z`} fill="none" stroke={stroke} strokeWidth={width} strokeDasharray={dash} strokeLinejoin="round" />;
               case "fillDown":

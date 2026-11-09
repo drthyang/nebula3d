@@ -304,6 +304,19 @@ turn within 32,768 without compaction) were tracked with `it.fails` until met,
 and are plain tests now (THY-63 R3 to R5): a change that takes the worst turn
 past either fails, and the test prints the room left.
 
+**The pre-run exception (THY-43, accepted 2026-11-08).** The pre-run tools
+(`ring_survey`, `bragg_sense`: their facts' `preRun`) are offered only on a
+dataset before its run, and the skills' parts for before a run
+(`### Before a run` in reduction-qc and bragg-node-audit) are read with their
+cores there only, so no reply after a run carries them and the worst turn
+above is unchanged. A reply that starts before a run does carry them. Each has
+its own ceilings (its definition, its result at its longest, its skill part),
+and one case drives them together on top of the worst turn: that pre-run turn
+is tracked against the 20 % target (printed, over or under, not held) and held
+under the 32k window with `POLICY_SPARE` free, both skills' cores at their cap
+included. Measured 2026-11-08: 28,014 tokens with the reply reserve, 1,800 over
+the target and 4,754 under 32k. A new pre-run addition joins that same case.
+
 The "since the last reply" line (`apply/since.ts`) is never on the worst turn:
 only the reply after a decision on a change card carries it. Its own case
 drives the worst turn with the line for three decisions all the same: the line

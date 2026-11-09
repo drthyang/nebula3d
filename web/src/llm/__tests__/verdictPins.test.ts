@@ -145,7 +145,7 @@ describe("D1–D10, kept and named", () => {
     expect(judge("punch", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 4, leftover_on_protected_planes: 3, leftover_on_protected_planes_sharp: 3 })).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
     // An evaluation recorded without their own count (before 2.4.5) counts every sharp one, as it did.
     expect(judge("punch", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3 })).toMatchObject({ kind: "attention", reasons: ["sharp off-lattice"] });
-    expect(WORDS.goal.punch).toMatch(/leftover_on_protected_planes of them sit on protected planes and stay by design/);
+    expect(WORDS.goal.punch).toMatch(/leftover_on_protected_planes_sharp of them sit on protected planes and stay by design/);
     // The criterion says it too (2.4.5b).
     expect(WORDS.criterion.punch).toMatch(/no sharp peak left off the lattice outside the protected planes/);
   });

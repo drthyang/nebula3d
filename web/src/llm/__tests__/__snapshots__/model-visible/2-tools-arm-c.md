@@ -1,6 +1,6 @@
 # Tool definitions with the skills off (validation arm C)
 
-`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (28 tools, 20350 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
+`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (29 tools, 20839 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -10,7 +10,7 @@ read_skill: it works only with the skills on (its facts' `needsSkills`).
 
 ## As in arm B (2-tools.md)
 
-18 tools, their definitions as 2-tools.md has them: describe_dataset, ring_survey, current_view, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, grain_check, bragg_peaks, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer.
+19 tools, their definitions as 2-tools.md has them: describe_dataset, ring_survey, bragg_sense, current_view, measure_dpdf_cut, assess_stage, texture_check, qmax_coverage, grain_check, bragg_peaks, run_log, compare_datasets, run_verdict, configure_settings, update_settings, run_pipeline, tune_pipeline, regrid_refined_ub, show_in_viewer.
 
 ## measure_reciprocal_cut: its description with the skills off
 

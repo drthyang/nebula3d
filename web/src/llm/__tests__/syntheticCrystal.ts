@@ -20,6 +20,7 @@ import type {
   RingDiagnostics,
   RingIsotropy,
   RingSurvey,
+  BraggSense,
   ShellFloors,
   Slice,
   UbCheck,
@@ -42,9 +43,10 @@ import { shellFloorsOf } from "./shellFloors";
  * them. The regrid's (regridDataset) is optional: only a file that runs
  * regrid_refined_ub's gate open mocks it; so is the Laue comparison's
  * (compareLaueClasses), mocked by the files that run compare_laue_classes,
- * and the pre-run ring survey's (fetchRingSurvey), by those that run ring_survey.
+ * and the pre-run ring survey's (fetchRingSurvey), by those that run ring_survey,
+ * and the pre-run Bragg sensing's (fetchBraggSense), by those that run bragg_sense.
  */
-export type BackendMocks = { regridDataset?: Mock; compareLaueClasses?: Mock; fetchRingSurvey?: Mock } & Record<
+export type BackendMocks = { regridDataset?: Mock; compareLaueClasses?: Mock; fetchRingSurvey?: Mock; fetchBraggSense?: Mock } & Record<
   | "fetchBraggProfile"
   | "fetchConsistencyCheck"
   | "fetchDataset"
@@ -562,6 +564,79 @@ const ringSurvey = (id: string): RingSurvey => ({
   },
 });
 
+// The pre-run Bragg sensing of the raw volume (nebula3d.analysis.bragg_sense),
+// as it reads a synthetic volume of the sensing's tests (tests/test_bragg_sense.py,
+// thin(): a 4.5 Å cell, 0.05 r.l.u. steps) with two peak shapes, tilted
+// Gaussians gauss(1.8, 0.5, 45) and doublets doublet(0.8, 3.5, 0.5, grows=True):
+// the fit's cap binding on most peaks, so the ellipsoid, unconstrained, leaves
+// least of them; what the default footprint leaves grows with |Q|. The crystal
+// declares its symmetry: nothing to declare. Its lines as sense_lines writes them.
+export const BRAGG_SENSE_LINES: BraggSense["lines"] = {
+  shape: "195 strong nodes on 6 sections: 31.3 % tilted and elongated, 24.6 % with several lobes; the fit's cap binds on 86.7 %",
+  left: "median share each footprint leaves: own 20.0 %, ellipsoid 21.7 % (0.88× own's area), ellipsoid_unc 10.8 % (1.09× own's area)",
+  footprint: "punchFootprint ellipsoid: the ellipsoid unconstrained leaves 9.2 points less than own; tilted + lobed 55.9 %; 1.09× own's area",
+  constraints: "punchFitUnconstrained true: the cap binds on 86.7 %; unconstrained leaves 10.9 points less, 1.24× the constrained area",
+  q: "own leaves 17.8 % in the lowest |Q| quarter, 21.1 % in the highest (core FWHM 0.1269 → 0.1091 Å⁻¹): a reach growing with |Q|, which no setting follows",
+};
+export const braggSense = (id: string): BraggSense => ({
+  id,
+  version: 1,
+  sections: [
+    { plane: "0kl", cut: 0, voxel_q: 0.0698 },
+    { plane: "h0l", cut: 0, voxel_q: 0.0698 },
+    { plane: "hk0", cut: 0, voxel_q: 0.0698 },
+    { plane: "0kl", cut: 1, voxel_q: 0.0698 },
+    { plane: "h0l", cut: 1, voxel_q: 0.0698 },
+    { plane: "hk0", cut: 1, voxel_q: 0.0698 },
+  ],
+  n_nodes: 195,
+  mirrors: { tested: 12, worst_share: 0.958, exact: false, declared: true, declare: null },
+  not_judged: null,
+  evidence: { tilted_elongated_share: 0.313, multi_lobe_share: 0.246, cap_binds_share: 0.867, median_elongation: 1.03, resolved_share: 0.877 },
+  footprints: {
+    own: { median_left: 0.1997, share_residual: 0.872, area_vs_own: 1, left_by_q: { "0-3": 0.1681, "3-5": 0.2, "5-7": 0.3401, "7-9": 0.3114, "9-14": null }, left_low_q: 0.178, left_high_q: 0.2106 },
+    ellipsoid: { median_left: 0.2171, share_residual: 0.692, area_vs_own: 0.88, left_by_q: { "0-3": 0.1526, "3-5": 0.2421, "5-7": 0.3395, "7-9": 0.3601, "9-14": null }, left_low_q: 0.1611, left_high_q: 0.2861 },
+    ellipsoid_unc: { median_left: 0.108, share_residual: 0.477, area_vs_own: 1.09, left_by_q: { "0-3": 0.0715, "3-5": 0.089, "5-7": 0.3367, "7-9": 0.258, "9-14": null }, left_low_q: 0.0862, left_high_q: 0.1094 },
+  },
+  width_q: { low: [2.42, 0.1269], high: [6.4, 0.1091], ratio: 0.86 },
+  prediction: {
+    footprint: "ellipsoid",
+    drop_fit_constraints: true,
+    q_dependent_reach: true,
+    compared: { ellipsoid_gain: 0.0917, shape_share: 0.559, ellipsoid_area: 1.09, cap_binds_share: 0.867, drop_gain: 0.109, drop_residual_gain: 0.215, drop_area: 1.24, own_rise: 0.033, own_high_q: 0.211 },
+  },
+  flagged: [
+    { plane: "0kl", cut: 0, hkl: [0, 1.9999, -0.0001], tilted: true, lobes: 1, elongation: 3.24, tilt_deg: 38.1, z: 98, dirs: [[0, 0.6166, 0.7872], [0, -0.7872, 0.6166], [1, 0, 0]], widths: [0.2186, 0.0847, 0.05] },
+    { plane: "0kl", cut: 0, hkl: [0, 2.0002, -1], tilted: false, lobes: 2, elongation: 1, tilt_deg: 0.1, z: 88, dirs: [[0, -0.0009, 1], [0, -1, -0.0009], [1, 0, 0]], widths: [0.1325, 0.1322, 0.05] },
+  ],
+  seconds: 0.06,
+  lines: BRAGG_SENSE_LINES,
+});
+
+/**
+ * The same sensing where the peaks ask for nothing, as it reads the tests'
+ * round peaks (thin(gauss(0.8, 0.8), noise=0.083)): "keep the defaults". Auto
+ * mode's tests default to it, so a run changes nothing it is not scripted to
+ * (auto/controller.ts, applySensed).
+ */
+export const braggSenseKeeping = (id: string): BraggSense => ({
+  ...braggSense(id),
+  mirrors: { tested: 12, worst_share: 0.924, exact: false, declared: true, declare: null },
+  evidence: { tilted_elongated_share: 0, multi_lobe_share: 0, cap_binds_share: 0.841, median_elongation: 1.015, resolved_share: 1 },
+  prediction: {
+    footprint: "own",
+    drop_fit_constraints: false,
+    q_dependent_reach: false,
+    compared: { ellipsoid_gain: 0.0011, shape_share: 0, ellipsoid_area: 1.01, cap_binds_share: 0.841, drop_gain: 0.0042, drop_residual_gain: 0, drop_area: 1.1, own_rise: 0.004, own_high_q: 0.06 },
+  },
+  flagged: [],
+  lines: {
+    shape: "195 strong nodes on 6 sections: 0.0 % tilted and elongated, 0.0 % with several lobes; the fit's cap binds on 84.1 %",
+    left: "median share each footprint leaves: own 5.7 %, ellipsoid 5.6 % (1.01× own's area), ellipsoid_unc 5.1 % (1.11× own's area)",
+    footprint: "punchFootprint own (keep): the ellipsoid leaves 0.1 points less than own; tilted + lobed 0.0 %; 1.01× own's area",
+  },
+});
+
 // The whole volume's shell floors of a dataset's flattened stage, on the
 // flatten's shells, with its input's level (the server's shell-floors): once per dataset.
 const floorsByStem = new Map<string, ShellFloors>();
@@ -611,6 +686,7 @@ export function installBackend(api: BackendMocks): void {
   // The grid is fine (0.0625 r.l.u., 0.098 Å⁻¹ a voxel): the ring removal left no ring unconfirmed.
   api.fetchRingDiagnostics.mockImplementation(async (id: string) => ringDiagnostics(id));
   api.fetchRingSurvey?.mockImplementation(async (id: string) => ringSurvey(id));
+  api.fetchBraggSense?.mockImplementation(async (id: string) => braggSense(id));
   api.fetchDataset.mockImplementation(async (id: string) => DATASETS.find((d) => d.id === stemOf(id)));
   api.regridDataset?.mockImplementation(async (id: string) => regridAnswer(id));
   // The Laue classes compared on the demo crystal (the backend's own result,

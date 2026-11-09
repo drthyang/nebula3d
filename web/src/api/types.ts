@@ -243,6 +243,40 @@ export interface RingSurvey {
   lines: { al: string; phases: string | null; unrecognized: string; unconfirmed?: string; removal: string; grid?: string } | null;
 }
 
+/** A Bragg peak the pre-run sensing flagged (tilted and elongated, or with several lobes), as the Highlights draw it. */
+export interface SensedPeak {
+  plane: string;
+  cut: number;
+  hkl: number[]; // its fitted centre (r.l.u.)
+  tilted: boolean;
+  lobes: number;
+  elongation: number;
+  tilt_deg: number;
+  z: number;
+  // The unconstrained fit's ellipse: its principal directions (H K L) and
+  // widths (r.l.u.), the long axis first, the cut's own axis last, a voxel thin.
+  dirs: number[][];
+  widths: number[];
+}
+
+/** The pre-run Bragg sensing of a raw volume, nothing punched (POST /api/volumes/{id}/bragg-sense; nebula3d.analysis.bragg_sense). */
+export interface BraggSense {
+  id: string;
+  version: number;
+  sections: { plane: string; cut: number; voxel_q?: number }[];
+  n_nodes: number;
+  mirrors: { tested: number; worst_share: number; exact: boolean; declared: boolean; declare: string | null };
+  not_judged: string | null;
+  evidence: Record<string, number> | null;
+  footprints: Record<string, { median_left: number; share_residual: number; area_vs_own: number; left_by_q: Record<string, number | null>; left_low_q: number | null; left_high_q: number | null }> | null;
+  width_q: { low: number[]; high: number[]; ratio: number | null } | null;
+  prediction: { footprint: "own" | "ellipsoid"; drop_fit_constraints: boolean; q_dependent_reach: boolean; compared: Record<string, number | null> } | null;
+  flagged: SensedPeak[];
+  seconds: number;
+  // NEBULA Pilot's lines (bragg_sense.sense_lines).
+  lines: { shape: string; left?: string; footprint?: string; constraints?: string; q?: string; symmetry?: string };
+}
+
 export interface UbCheck {
   id: string;
   fit: "orientation" | "lattice" | "both" | "symmetric";

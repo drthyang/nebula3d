@@ -15,7 +15,7 @@ Remove powder/Al rings: mean_ring_energy_ratio as low as the trials reach on eve
 ### punch
 
 ```text
-Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) must reach 0 on every plane; off-lattice sharp peaks (leftover_off_lattice) are satellites or spurious peaks the search punches unless their H planes are protected: leftover_on_protected_planes of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest are peaks the search left, so fewer of those is better where they are spurious. leftover_off_lattice splits into leftover_off_lattice_sharp (punch candidates) and leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch). Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.
+Remove every sharp peak that should go while punching as little as possible (punched_fraction small): every punched voxel is diffuse signal thrown away and later backfilled. Missed lattice peaks (leftover_at_nodes) and Bragg tails (leftover_bragg_tails: maxima beside a punched Bragg peak's hole, or within 0.25 Å⁻¹ of it, holding 3 % or more of its height; a footprint that does not follow the peaks' shape leaves them) must reach 0 on every plane; leftover_beside_holes counts every maximum at a hole's rim, the faint ones under 3 % included. Off-lattice sharp peaks are satellites or spurious peaks the search punches unless their positions are protected: leftover_on_protected_planes_sharp of them sit on protected planes and stay by design (whether they are real is the user's call), while the rest of leftover_off_lattice_sharp are peaks the search left, so fewer of those is better where they are spurious; leftover_off_lattice_broad (FWHM ≥ 5 voxels along a slice axis: diffuse maxima such as short-range order, which are the signal, not peaks to punch) stay. left_after_backfill: the peaks at nodes and Bragg tails on the backfilled planes, reported. Fewer leftovers win only if the punched fraction does not grow substantially; lowering the significance or the search floor punches noise and diffuse maxima, raising them leaves weak peaks.
 ```
 
 ### backfill
@@ -47,7 +47,7 @@ No powder ring left above, or dented below, three times its plane's noise. A bum
 ### punch
 
 ```text
-No Bragg peak missed at a lattice node, and no sharp peak left off the lattice outside the protected planes. Broad maxima are diffuse scattering, and stay.
+No Bragg peak missed at a lattice node or left as a tail beside its hole (3 % or more of its height), and no sharp peak left off the lattice outside the protected planes. Broad maxima are diffuse scattering, and stay.
 ```
 
 ### grains

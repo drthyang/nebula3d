@@ -95,6 +95,7 @@ __all__ = [
     "dataset_regrid_json",
     "volume_ring_isotropy_json",
     "volume_ring_survey_json",
+    "volume_bragg_sense_json",
     "volume_shell_floors_json",
     "volume_texture_json",
     "dpdf_meta_json",
@@ -1349,6 +1350,22 @@ def volume_ring_survey_json(volume_id: str, slice_axis: str = "H", edge_trim: in
     m = _vol.volume_ring_survey(stage.path, slice_axis=slice_axis, edge_trim=int(edge_trim),
                                 precision=_BROWSER_PRECISION)
     return _json({**m, "id": volume_id})
+
+
+def volume_bragg_sense_json(volume_id: str, params_json: str = "{}") -> str:
+    """The pre-run Bragg sensing of an HKL stage, the raw volume before a run,
+    nothing punched (mirrors POST /api/volumes/{id}/bragg-sense). *params_json*
+    is the run's curated ``StageParamsIn`` (its edge trim and punch settings).
+    The sensing loads its own copy of the volume, as a run does, in the
+    browser's float32: the viewers' cached volumes are dropped first, as a run
+    drops them, so the heap holds one volume at a time."""
+    from nebula3d.server.bragg import volume_bragg_sense
+
+    stage = _resolve(volume_id, "hkl")
+    params = build_params(_make_request(params_json, True))
+    _apply_browser_precision(params, params_json)
+    _clear_caches()
+    return _json({**volume_bragg_sense(stage.path, params), "id": volume_id})
 
 
 def volume_shell_floors_json(volume_id: str, q_step: float | None = None,

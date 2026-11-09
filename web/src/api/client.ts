@@ -20,6 +20,7 @@ import type {
   RingDiagnostics,
   RingIsotropy,
   RingSurvey,
+  BraggSense,
   ServerMemory,
   ShellFloors,
   Slice,
@@ -173,6 +174,16 @@ export function fetchRingSurvey(volumeId: string, sliceAxis = "H", edgeTrim = 1)
   if (PYODIDE_MODE) return engine.ringSurvey(volumeId, sliceAxis, edgeTrim);
   const q = new URLSearchParams({ slice_axis: sliceAxis, edge_trim: String(edgeTrim) });
   return getJSON<RingSurvey>(`/api/volumes/${encodeURIComponent(volumeId)}/ring-survey?${q}`);
+}
+
+/**
+ * The pre-run Bragg sensing of a raw volume (before a run): the peaks' shapes
+ * on a few raw sections and the punch settings they ask for, with the run's
+ * `params` (its edge trim and punch settings), nothing punched.
+ */
+export function fetchBraggSense(volumeId: string, params: StageParamsIn): Promise<BraggSense> {
+  if (PYODIDE_MODE) return engine.braggSense(volumeId, JSON.stringify(params));
+  return postJSON<BraggSense>(`/api/volumes/${encodeURIComponent(volumeId)}/bragg-sense`, { params });
 }
 
 /** Whether the volume's UB puts its Bragg peaks (nodes every `cell`) on their nodes. */

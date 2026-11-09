@@ -40,6 +40,9 @@ export const STAGE_VARIANTS: Record<GridStage, Variant[]> = {
     v("protected sharp", { leftover_at_nodes: 0, leftover_off_lattice_sharp: 3, leftover_on_protected_planes: 3, leftover_off_lattice_broad: 0 }, "attention"),
     v("no sharp count", { leftover_at_nodes: 0, mean_punched_fraction: 0.02 }, "pass"),
     v("no node count", { leftover_off_lattice_sharp: 3 }, "info"),
+    // THY-43: the rims judged: a Bragg tail needs attention; faint rims alone do not.
+    v("Bragg tails", { leftover_at_nodes: 0, leftover_bragg_tails: 3, leftover_beside_holes: 5, leftover_off_lattice_sharp: 0, mean_punched_fraction: 0.03 }, "attention"),
+    v("faint rims", { leftover_at_nodes: 0, leftover_bragg_tails: 0, leftover_beside_holes: 5, leftover_off_lattice_sharp: 0, mean_punched_fraction: 0.03 }, "pass"),
   ],
   backfill: [
     v("clean", { mean_median_seam_sigma: 0.5, max_bright_fill_fraction: 0 }, "pass"),

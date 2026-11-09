@@ -70,6 +70,7 @@ const api = vi.hoisted(() => ({
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingSurvey: vi.fn(),
+  fetchBraggSense: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -107,6 +108,7 @@ const SOURCES = repoKeyed(
       "../metrics/rings.ts",
       "../../api/types.ts",
       "../tools/defs/compare_laue_classes.ts",
+      "../tools/defs/bragg_sense.ts",
       "../tune/evaluate.ts",
     ],
     { query: "?raw", import: "default", eager: true },
@@ -380,6 +382,13 @@ const OTHER_NAMES: { name: string; what: string; holds: () => boolean }[] = [
   { name: "flag", what: "compare_laue_classes' flag (the diffuse supports less)", holds: () => has("compare_laue_classes", "flag") },
   // The pre-run ring survey's lines (THY-43), one word each.
   ...["al", "phases", "unrecognized", "unconfirmed", "removal"].map((name) => ({ name, what: `ring_survey's ${name}`, holds: () => has("ring_survey", name) })),
+  // The pre-run Bragg sensing's lines (THY-43), one word each.
+  ...["footprint", "constraints", "q", "recommend"].map((name) => ({ name, what: `bragg_sense's ${name}`, holds: () => has("bragg_sense", name) })),
+  {
+    name: "symmetry",
+    what: "bragg_sense's symmetry, only for data symmetrised already that declare none, which the synthetic crystal does not",
+    holds: () => source("web/src/llm/tools/defs/bragg_sense.ts").includes("{ symmetry: l.symmetry }"),
+  },
   { name: "chi2", what: "compare_laue_classes' χ²/dof of each class", holds: () => has("compare_laue_classes", "chi2") },
   {
     name: "common_flag",
@@ -608,6 +617,7 @@ const SAMPLES: { name: string; args: Record<string, unknown>; before?: () => voi
   { name: "read_skill", args: { name: "reduction-qc" } },
   { name: "describe_dataset", args: {} },
   { name: "ring_survey", args: {} },
+  { name: "bragg_sense", args: {} },
   { name: "current_view", args: {} },
   { name: "measure_reciprocal_cut", args: { plane: "h0l", value: 1 } },
   { name: "measure_dpdf_cut", args: { plane: "xz", value: 0 } },

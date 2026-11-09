@@ -235,13 +235,21 @@ function punchCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
   // line. An evaluation without them split out counts every sharp one.
   const protectedSharp = num(m.leftover_on_protected_planes_sharp);
   const counted = sharp != null && protectedSharp != null ? sharp - protectedSharp : sharp;
+  // The Bragg tails beside the holes, where the evaluation judged the rims (THY-43).
+  const tails = num(m.leftover_bragg_tails);
   return {
     title: "Bragg punch",
     verdict,
-    headline: `${fmt(atNodes)} missed at nodes · ${fmt(counted)} sharp off-lattice${protectedSharp ? ` (${fmt(protectedSharp)} more on protected planes, kept)` : ""} · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
+    headline: `${fmt(atNodes)} missed at nodes${tails != null ? ` · ${fmt(tails)} Bragg tails` : ""} · ${fmt(counted)} sharp off-lattice${protectedSharp ? ` (${fmt(protectedSharp)} more on protected planes, kept)` : ""} · ${fmt(m.leftover_off_lattice_broad)} broad maxima kept · punched ${fmt(m.mean_punched_fraction)}`,
     criterion,
     details: [
       ["Missed lattice peaks (at nodes)", fmt(atNodes)],
+      ...(tails != null
+        ? ([
+            ["Bragg tails beside the holes (3 % or more of the peak)", fmt(tails)],
+            ["Maxima beside the holes (faint rims included)", fmt(m.leftover_beside_holes)],
+          ] as [string, string][])
+        : []),
       ...(protectedSharp != null
         ? ([
             ["Sharp off-lattice leftovers (outside the protected planes)", fmt(counted)],
@@ -249,7 +257,9 @@ function punchCheck(measured: Obj | null | undefined, verdict: Verdict | undefin
           ] as [string, string][])
         : ([["Sharp off-lattice leftovers", fmt(sharp)]] as [string, string][])),
       ["Broad maxima kept (diffuse, by width)", fmt(m.leftover_off_lattice_broad)],
-      ["On protected planes (kept by design)", fmt(m.leftover_on_protected_planes)],
+      // An evaluation from before THY-43 counted those on protected planes, broad ones included.
+      ...(m.leftover_on_protected_planes !== undefined ? ([["On protected planes (kept by design)", fmt(m.leftover_on_protected_planes)]] as [string, string][]) : []),
+      ...(m.left_after_backfill !== undefined ? ([["Missed at nodes or tails on the backfilled planes", fmt(m.left_after_backfill)]] as [string, string][]) : []),
       ["Mean punched fraction", fmt(m.mean_punched_fraction)],
       ["Fitted Bragg peaks", fmt(m.fitted_peaks)],
     ],

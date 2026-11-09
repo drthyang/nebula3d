@@ -24,7 +24,7 @@ import { interrupted, readAutoRun, useAutoStore, type AutoRun } from "../auto/st
 import { useChatStore } from "../chatStore";
 import { CLAUDE_URL } from "./scriptedTransports";
 import { call, clock, CTX, fixWith, freshAuto, model, outputs, say, SCRIPTED, scriptedStream, SCRIPTED_CLICK, TRUSTED } from "./autoHarness";
-import { installBackend } from "./syntheticCrystal";
+import { braggSenseKeeping, installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -37,6 +37,7 @@ const api = vi.hoisted(() => ({
   fetchProtectedLabels: vi.fn(),
   fetchRingDiagnostics: vi.fn(),
   fetchRingSurvey: vi.fn(),
+  fetchBraggSense: vi.fn(),
   fetchRingIsotropy: vi.fn(),
   fetchShellFloors: vi.fn(),
   fetchSlice: vi.fn(),
@@ -78,6 +79,8 @@ const settingCalls = () => run().steps.filter((s) => s.name === "update_settings
 
 beforeEach(() => {
   installBackend(api);
+  // The peaks ask for nothing unless a test says so (THY-43: auto mode applies what the sensing recommends).
+  api.fetchBraggSense.mockImplementation(async (id: string) => braggSenseKeeping(id));
   freshAuto();
   stream.fn.mockImplementation(scriptedStream);
   usePipelineStore.getState().patch({ symmetryLaue: "4/mmm", pdfQMin: "0.25", pdfQMax: "4.4" });
@@ -253,7 +256,7 @@ describe("a stop leaves a consistent record", () => {
     expect(run().state).toBe("stopped");
     expect(status()).toMatchObject({ preflight: "stopped", run: "pending" });
     expect(run().decisions).toEqual([]);
-    expect(run().steps.map((s) => s.name)).toEqual(["qmax_coverage", "ring_survey"]);
+    expect(run().steps.map((s) => s.name)).toEqual(["qmax_coverage", "ring_survey", "bragg_sense"]);
   });
 
   it("comes back from a reload stopped, its clock paused, Resume restarting its row; from a file, its steps never evidence", async () => {

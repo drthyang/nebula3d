@@ -113,7 +113,7 @@ export const UNRECORDED_PROTECTION_NOTE =
   "the punch's record does not say what its search left alone (a run from before it kept that), so no leftover is marked as in a protected position";
 
 // The in-plane (x, y) reciprocal axes of each plane alias, as H/K/L indices.
-const PLANE_HKL_AXES: Record<string, [number, number]> = {
+export const PLANE_HKL_AXES: Record<string, [number, number]> = {
   hk0: [0, 1],
   h0l: [0, 2],
   "0kl": [1, 2],
@@ -193,9 +193,20 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
       : undefined;
     const labels = input.protectedLabels;
     const recorded = labels?.header.recorded !== false;
+    // |Q| of a reciprocal vector, for the Bragg tails' reach and the beam (metrics/punch.ts).
+    const G = metricFromUb(hklMeta?.ub_matrix) ?? reciprocalMetric(lat);
+    const qOf = G ? (v: [number, number, number]) => qNorm(G, v) : undefined;
     ctx.bragg_punch = {
       leftover: punchSlice
-        ? scanLeftoverPeaks(punchSlice, { toHkl, supercell: input.supercell, protectedLabels: recorded ? labels : null, topK: input.leftoverTopK })
+        ? scanLeftoverPeaks(punchSlice, {
+            toHkl,
+            supercell: input.supercell,
+            protectedLabels: recorded ? labels : null,
+            topK: input.leftoverTopK,
+            // The cut before the punch: the maxima beside its holes are judged too (THY-43).
+            before: slices.ringremoved ?? null,
+            qOf,
+          })
         : { suspicious_peaks: [], n_suspicious: 0, n_skipped_noisy: 0, scan_sigma_threshold: 8 },
       peak_profile: summarizePeakProfile(braggProfile),
     };
