@@ -933,7 +933,10 @@ describe("the headroom target (docs/pilot-context-design.md §5.8), enforced sin
 // smoke showed a fix needs); the report 13,048 + 6,144 = 19,192, 7,022
 // under it (estimated about 21.5k). Each phase prompt's growth is held by its
 // own ceiling; the target holds either reply whatever the ceilings allow.
-const AUTO_FIX_CEILING = 10_733;
+// Raised 10,733 -> 10,800 (feat/mdpdf-skill-reading, 67 asked): the ΔPDF
+// skill's core, which the worst fix reads, carries the magnetic reading of the
+// signs (201 characters); 10,800 + 6,144 = 16,944, 9,270 under the target.
+const AUTO_FIX_CEILING = 10_800;
 // Raised 13,048 -> 13,064 with the user's yes (fix/run3-bugs, about 20 asked):
 // the report's digest names the checks the chat ran before the run, which an
 // auto reply does not see (one line, 18 est. tokens with the Laue comparison;
