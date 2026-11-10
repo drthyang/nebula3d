@@ -110,13 +110,17 @@ Interpret only a ΔPDF that passes the trust checks.
   the reading. How to state the contrast for each probe
   (to confirm with the user).
 - **Magnetic map.** A feature is the correlation of the moments separated by
-  that vector: positive, parallel on average; negative, antiparallel. Its
-  size follows the moments' sizes, how strongly they are correlated and how
-  many such pairs there are, not the nuclear scattering contrasts. So it
-  shows no "more pairs" or "fewer pairs", no vacancies, and no clustering or
-  ordering of species, and a positive and a negative lobe side by side are
-  not read as a displacement. Word a feature by its separation vector; name
-  the sites only when the user has said which carry the moments.
+  that vector: positive, parallel on average; negative, antiparallel. That is
+  exact only without long-range magnetic order: in an ordered state, with the
+  magnetic Bragg peaks punched and backfilled, the map shows only the
+  departure from the average ordered structure (positive, more parallel at
+  that vector than the order gives; negative, less). Its size follows the
+  moments' sizes, how strongly they are correlated and how many such pairs
+  there are, not the nuclear scattering contrasts. So it shows no "more
+  pairs" or "fewer pairs", no vacancies, and no clustering or ordering of
+  species, and a positive and a negative lobe side by side are not read as a
+  displacement. Word a feature by its separation vector; name the sites only
+  when the user has said which carry the moments.
 - **Magnetic map, unpolarised neutrons.** They see only the moment components
   perpendicular to Q. The sign still says parallel or antiparallel on average
   (moments at more than a right angle to each other also read negative), but
