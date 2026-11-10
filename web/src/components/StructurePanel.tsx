@@ -12,6 +12,8 @@ import { bestPermutation, CELL_TOLERANCE, cellMatches, permLabel, PERMUTATIONS }
 import {
   countsText,
   FILL_ABOVE,
+  MAP_KINDS,
+  SIGN_WORDS,
   signalCounts,
   signalText,
   sourceProblem,
@@ -159,6 +161,8 @@ export function StructurePanel({
   const fadeQuiet = useStructureStore((s) => s.fadeQuiet);
   const setFillAbove = useStructureStore((s) => s.setFillAbove);
   const setFadeQuiet = useStructureStore((s) => s.setFadeQuiet);
+  const mapKind = useStructureStore((s) => s.mapKind);
+  const setMapKind = useStructureStore((s) => s.setMapKind);
   const fileRef = useRef<HTMLInputElement>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [opsDraft, setOpsDraft] = useState<string | null>(null);
@@ -390,10 +394,26 @@ export function StructurePanel({
                 checked={fadeQuiet}
                 onChange={setFadeQuiet}
               />
+              <div className="field">
+                <span className="field-label" id="struct-map-kind">ΔPDF type</span>
+                <div className="segmented" role="group" aria-labelledby="struct-map-kind">
+                  {MAP_KINDS.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      className={k === mapKind ? "on" : ""}
+                      aria-pressed={k === mapKind}
+                      title={SIGN_WORDS[k].title}
+                      onClick={() => setMapKind(k)}
+                    >
+                      {SIGN_WORDS[k].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <span className="struct-hint">
-                A marker is filled where the ΔPDF at its own vector reaches the threshold, in units of the volume's
-                robust σ: in the map's positive colour where the pair is more common than in the average structure, in
-                its negative colour where it is rarer.
+                A marker is filled where the {SIGN_WORDS[mapKind].map} at its own vector reaches the threshold, in
+                units of the volume's robust σ: {SIGN_WORDS[mapKind].fills}
               </span>
             </div>
           </div>
@@ -514,18 +534,20 @@ export function StructureLegend({ model, signal }: { model: StructureModel; sign
           <span className="field-label struct-fill-label">Fill</span>
           <span className="struct-key">
             <FillIcon color={signal.colors[0]} />
-            more common
+            {SIGN_WORDS[signal.kind].pos}
           </span>
           <span className="struct-key">
             <FillIcon color={signal.colors[1]} />
-            rarer
+            {SIGN_WORDS[signal.kind].neg}
           </span>
           <span className="struct-key">
             <FillIcon color={null} />
             no signal
           </span>
           <span className="struct-sub struct-count" title={counts ? COUNT_TITLE : undefined} aria-live="polite">
-            {counts ? countsText(counts, threshold) : signalText({ value: null, why: sourceProblem(source) }, threshold)}
+            {counts
+              ? countsText(counts, threshold, signal.kind)
+              : signalText({ value: null, why: sourceProblem(source) }, threshold, null, signal.kind)}
           </span>
         </>
       )}
