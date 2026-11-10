@@ -439,14 +439,23 @@ absolute deviation outside the origin's disk, the same σ as the ΔPDF's
 features. A marker off the cut, inside *depth*, therefore reads the volume at
 its own vector, not the plane under it. At or above *Fill above* (2–6σ,
 default 3σ) the marker is filled, in the active colour map's positive colour
-where the pair is more common than in the average structure and in its
-negative colour where it is rarer; a white ring keeps the fill apart from the
-glyph's own colour. A plus or a cross cannot hold a fill, so a filled one is
+where the ΔPDF is positive and in its negative colour where it is negative; a
+white ring keeps the fill apart from the glyph's own colour. A plus or a cross cannot hold a fill, so a filled one is
 drawn over a filled disc. Below the threshold the marker stays hollow, and
 with *Fade pairs without signal* on (the default) it is drawn smaller and
 fainter, so the vectors that carry signal stand out at ±40 Å. This fade
 multiplies the depth fade. A vector inside the origin's disk, or outside the
 volume, has no value and is drawn as no signal.
+
+What a sign means depends on the kind of map, which the app cannot tell, so
+*ΔPDF type* says it. *Atomic* (the default): positive is a pair more common
+than in the average structure, negative a rarer one. *Magnetic* (a 3D-mΔPDF):
+positive is moments parallel at that separation, negative antiparallel. The
+setting changes the words only, in the legend, the count line and the hover
+line ("mΔPDF +6.2σ: moments at this separation are parallel"); the values and
+the fills are the same. The magnetic words are about the separation vector,
+not the two atoms of a pair, because the app does not know which species
+carry a moment.
 
 The legend names the three states and counts the vectors at or above the
 threshold in the whole volume, not only on the cuts shown ("Above 3σ: 12 of

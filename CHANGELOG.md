@@ -26,7 +26,8 @@ release folds them in here; no release is cut yet.
 - **HKL grid**, not Unit cell, on the r.l.u. views
   ([hkl-grid-name](changes/unreleased/hkl-grid-name.md)).
 - 3D-ΔPDF: the structure overlay's **pair-vector markers are filled where the
-  ΔPDF has signal**, with a threshold and a fade for the rest
+  ΔPDF has signal**, with a threshold, a fade for the rest, and a *ΔPDF type*
+  that words the signs for an atomic or a magnetic map
   ([pair-vector-signal](changes/unreleased/pair-vector-signal.md)).
 - Fixes: a run from a stage remakes a stale earlier output, and the ring gate
   no longer takes a verdict from before a run

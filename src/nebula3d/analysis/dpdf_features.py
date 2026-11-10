@@ -3,12 +3,17 @@
 
 """The strongest features of a 3D-ΔPDF: where they are, their sign and size.
 
-A pair correlation shows in the ΔPDF as an extremum at its interatomic vector:
-positive where such pairs are more common than in the average structure,
-negative where they are rarer. This module lists the local extrema of the
-volume (not of a section, which can miss a feature off its plane) that stand
-out from the volume's own spread, so that an answer can name each feature's
-vector and sign from a measurement instead of reading them off a figure.
+A pair correlation shows in the ΔPDF as an extremum at its interatomic vector.
+What its sign means depends on the kind of map, which this module does not
+know: in an atomic ΔPDF, positive is pairs more common than in the average
+structure and negative rarer; in a magnetic one (3D-mΔPDF), positive is
+moments parallel at that separation and negative antiparallel. What is
+reported here is the sign of the ΔPDF.
+
+This module lists the local extrema of the volume (not of a section, which
+can miss a feature off its plane) that stand out from the volume's own spread,
+so that an answer can name each feature's vector and sign from a measurement
+instead of reading them off a figure.
 
 - **Size.** In units of the robust σ (1.4826 × the median absolute deviation)
   of the ΔPDF outside the origin's disk: most of the volume is ripple and noise
