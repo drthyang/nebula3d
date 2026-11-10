@@ -56,3 +56,53 @@ export function shapePath(shape: Shape, x: number, y: number, r: number): string
     }
   }
 }
+
+/** Shapes whose outline is open strokes: nothing to fill, and nothing they enclose. */
+export function isOpenShape(shape: Shape): boolean {
+  return shape === "plus" || shape === "cross";
+}
+
+/**
+ * The disc behind a filled plus or cross, as a multiple of the glyph's radius:
+ * the strokes hold no fill, so the fill is a disc they are drawn on, a little
+ * wider than their reach so it shows between the arms.
+ */
+export const OPEN_DISC = 1.27;
+
+// How far a shape of radius 1 reaches from its centre (out), and the largest
+// circle that fits inside it (in): what one glyph needs to sit inside another.
+// An open shape reaches as far as the disc it may be drawn on.
+const REACH: Record<Shape, { in: number; out: number }> = {
+  circle: { in: 1, out: 1 },
+  square: { in: 0.85, out: 0.85 * Math.SQRT2 },
+  diamond: { in: 1.15 / Math.SQRT2, out: 1.15 },
+  triangle: { in: 0.57, out: Math.hypot(1, 0.6) },
+  invtriangle: { in: 0.57, out: Math.hypot(1, 0.6) },
+  hexagon: { in: Math.sqrt(3) / 2, out: 1 },
+  plus: { in: 1, out: OPEN_DISC },
+  cross: { in: 1, out: OPEN_DISC },
+};
+
+/** Radius (px) of a lone glyph that carries a fill, and the step from one nested glyph to the next. */
+export const NEST_RADIUS = 5.5;
+export const NEST_STEP = 5;
+const NEST_CLEAR = 3.4; // least gap (px) between two outlines of different shapes
+
+/**
+ * Radii (px) of glyphs drawn around one point, innermost first: each a step
+ * larger than the one inside it, or more where its shape needs it to clear the
+ * inner one (a triangle around a circle).
+ */
+export function nestRadii(shapes: readonly Shape[]): number[] {
+  const out: number[] = [];
+  shapes.forEach((shape, i) => {
+    if (i === 0) {
+      out.push(NEST_RADIUS);
+      return;
+    }
+    const inner = shapes[i - 1], r = out[i - 1];
+    const fit = inner === shape ? 0 : (r * REACH[inner].out + NEST_CLEAR) / REACH[shape].in;
+    out.push(Math.round(Math.max(r + NEST_STEP, fit) * 100) / 100);
+  });
+  return out;
+}
