@@ -15,6 +15,12 @@ than in the average structure; negative means fewer. References: Weber &
 Simonov, *Z. Kristallogr.* **227**, 238 (2012); Simonov, Weber & Steurer,
 *J. Appl. Cryst.* **47**, 2011 (2014).
 
+That reading is for nuclear or X-ray diffuse scattering. The same transform of
+magnetic diffuse scattering gives a magnetic map (a 3D-mΔPDF), read differently:
+positive at **r** means the moments separated by **r** are parallel on average,
+negative means antiparallel. The transform does not know which kind of
+scattering it was given.
+
 API: `nebula3d.analysis.compute_delta_pdf`. Drivers: `examples/delta_pdf.py`
 (full 3D), `examples/delta_pdf_plane.py` (single reciprocal H-plane 2D),
 `examples/explore_delta_pdf.py` (interactive y_K–z_L viewer with x_H slider).

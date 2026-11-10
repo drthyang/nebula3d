@@ -52,14 +52,18 @@ Interpret only a ΔPDF that passes the trust checks.
 6. **Read the signs**, and relate each feature to the structure: which average
    interatomic vector it sits on (a CIF in the 3D-ΔPDF page's structure
    overlay marks them).
-   - **Positive:** more pairs of scattering density at that vector than the
-     average structure has; for occupational disorder on one site, like pairs
-     are more common than random there (clustering).
+   - **Magnetic map** (the user says so, never the picture; not told, ask or
+     state the reading used): positive, moments separated by that vector are
+     parallel on average; negative, antiparallel. No reading below applies
+     (Details).
+   - **Atomic, positive:** more pairs of scattering density at that vector
+     than the average structure has; for occupational disorder on one site,
+     like pairs are more common than random (clustering).
    - **Negative:** fewer pairs; for occupational disorder, unlike pairs are
      preferred (ordering).
-   - **A positive and a negative lobe straddling an average interatomic
-     vector:** a displacement correlation. The pair's distance differs on
-     average from the average structure's, toward the positive lobe.
+   - **A positive and a negative lobe straddling such a vector:** a
+     displacement correlation, the pair's distance shifted on average toward
+     the positive lobe.
    - The weight can flip the reading (Details).
 7. **Show it.** For a feature the user should look at, `mark_region` on the
    ΔPDF: an ellipsoid about the feature, in Å along a, b, c, resting on the
@@ -92,12 +96,37 @@ Interpret only a ΔPDF that passes the trust checks.
 
 ### What the signs mean
 
-- **Weight.** A feature's weight is the product of the two sites' scattering
-  contrasts. For disorder on one site it is a square, so positive. For pairs
-  of different sites, or for displacements of an atom with a negative neutron
-  scattering length, the product can be negative and flips the reading. How to
-  state the contrast for each probe (to confirm with the user).
-- **An example.** The synthetic demo volume (`nebula3d.demo`: rock-salt type,
+- **Which kind of map.** A map of nuclear or X-ray diffuse scattering is
+  atomic; a map of magnetic diffuse scattering is magnetic (a 3D-mΔPDF). No
+  tool result says which, and they look alike. The user says. A magnetic ion
+  among the settings (`flattenIon`, in `configure_settings`) is a hint only:
+  the sample has one and the flatten subtracts its single-ion term, which
+  does not make the features left magnetic. Data that hold both kinds give a
+  map that mixes both readings: say so.
+- **Weight, atomic map.** A feature's weight is the product of the two sites'
+  scattering contrasts. For disorder on one site it is a square, so positive.
+  For pairs of different sites, or for displacements of an atom with a
+  negative neutron scattering length, the product can be negative and flips
+  the reading. How to state the contrast for each probe
+  (to confirm with the user).
+- **Magnetic map.** A feature is the correlation of the moments separated by
+  that vector: positive, parallel on average; negative, antiparallel. That is
+  exact only without long-range magnetic order: in an ordered state, with the
+  magnetic Bragg peaks punched and backfilled, the map shows only the
+  departure from the average ordered structure (positive, more parallel at
+  that vector than the order gives; negative, less). Its size follows the
+  moments' sizes, how strongly they are correlated and how many such pairs
+  there are, not the nuclear scattering contrasts. So it shows no "more
+  pairs" or "fewer pairs", no vacancies, and no clustering or ordering of
+  species, and a positive and a negative lobe side by side are not read as a
+  displacement. Word a feature by its separation vector; name the sites only
+  when the user has said which carry the moments.
+- **Magnetic map, unpolarised neutrons.** They see only the moment components
+  perpendicular to Q. The sign still says parallel or antiparallel on average
+  (moments at more than a right angle to each other also read negative), but
+  never the direction the moments point along.
+- **An atomic example.** The synthetic demo volume (`nebula3d.demo`:
+  rock-salt type,
   a = 4.2 Å). Its planted Warren–Cowley correlations appear as alternating
   shells: negative at the nearest-neighbour cation vector ⟨½ ½ 0⟩a (unlike
   pairs preferred), positive at ⟨1 ½ ½⟩a and ⟨2 0 0⟩a. Its order inside each

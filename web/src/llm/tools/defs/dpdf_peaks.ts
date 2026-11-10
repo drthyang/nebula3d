@@ -21,7 +21,7 @@ export const dpdf_peaks: ChatTool = {
   name: "dpdf_peaks",
   facts: { label: "Listed the ΔPDF's strongest features", acts: null, offeredFor: ["pdf"], settles: ["features"] },
   ...described(
-    description("dpdf_peaks")`The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed: + more pairs than the average structure, − fewer), n_vectors of one sign, length and size${evidence(" (likely symmetry copies)")}, up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). ${reading("Use it after the trust checks (qmax_coverage, symmetry_check, assess_stage pdf). ")} What a feature means is the user's call.`,
+    description("dpdf_peaks")`The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed; atomic map: + more pairs than average, − fewer), n_vectors of one sign, length and size${evidence(" (likely symmetry copies)")}, up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). ${reading("Use it after the trust checks (qmax_coverage, symmetry_check, assess_stage pdf). ")} What a feature means is the user's call.`,
   ),
   parameters: {
     type: "object",
