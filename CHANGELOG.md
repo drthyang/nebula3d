@@ -25,6 +25,9 @@ release folds them in here; no release is cut yet.
   ([qr-band-use-in-pipeline](changes/unreleased/qr-band-use-in-pipeline.md)).
 - **HKL grid**, not Unit cell, on the r.l.u. views
   ([hkl-grid-name](changes/unreleased/hkl-grid-name.md)).
+- 3D-ΔPDF: the structure overlay's **pair-vector markers are filled where the
+  ΔPDF has signal**, with a threshold and a fade for the rest
+  ([pair-vector-signal](changes/unreleased/pair-vector-signal.md)).
 - Fixes: a run from a stage remakes a stale earlier output, and the ring gate
   no longer takes a verdict from before a run
   ([run-from-refreshes-stale](changes/unreleased/run-from-refreshes-stale.md),
