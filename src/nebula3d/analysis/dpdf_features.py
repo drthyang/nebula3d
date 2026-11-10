@@ -50,6 +50,12 @@ vector and sign from a measurement instead of reading them off a figure.
 Either way the groups are listed by their strongest extremum, and the limit
 counts groups, not extrema.
 
+:func:`pair_vector_signal` asks the other way round: given a structure's
+interatomic vectors, what the ΔPDF holds at each, in the same σ and with the
+same origin's disk left out (:func:`sigma_outside_origin` is the one
+definition of both). The ΔPDF page fills its structure overlay's markers
+from it.
+
 How large a feature must be to interpret it, and what it means, is the
 user's to decide (the delta-pdf-interpretation skill); the threshold here only
 bounds the list.
@@ -67,7 +73,8 @@ from scipy import ndimage
 from nebula3d.analysis.delta_pdf import real_space_radius
 from nebula3d.symmetry import _group_closure, _triplet
 
-__all__ = ["DpdfFeatures", "FeatureGroup", "ORIGIN_EXCLUDED", "strongest_features"]
+__all__ = ["DpdfFeatures", "FeatureGroup", "ORIGIN_EXCLUDED", "PairSignal", "TooManyVectors",
+           "pair_vector_signal", "sigma_outside_origin", "strongest_features"]
 
 #: The origin's disk left out, as a share of the volume's largest half-width.
 ORIGIN_EXCLUDED = 0.05
@@ -99,6 +106,10 @@ BY_SHAPE = "sign, length and size (no symmetry declared)"
 #: a regular subsample of about this many of a larger one (a 405³ ΔPDF: every
 #: third voxel along each axis), which pins a median to a fraction of a per cent.
 SIGMA_VOXELS = 8_000_000
+
+#: :func:`pair_vector_signal` reads this many positions at a time: its working
+#: arrays stay near 10 MB however many vectors a structure has.
+SAMPLE_CHUNK = 65_536
 
 Vector = tuple[float, float, float]
 _Found = tuple[float, int, Vector, float]  # (|value|, sign, vector, length)
@@ -138,6 +149,39 @@ class DpdfFeatures:
 def _robust_sigma(values: NDArray[np.floating]) -> float:
     centre = float(np.median(values))
     return 1.4826 * float(np.median(np.abs(values - centre)))
+
+
+def sigma_outside_origin(
+    data: NDArray[np.floating],
+    x_axis: NDArray[np.floating],
+    y_axis: NDArray[np.floating],
+    z_axis: NDArray[np.floating],
+    cell_angles: tuple[float, float, float] = (90.0, 90.0, 90.0),
+) -> tuple[float, float]:
+    """The ΔPDF's robust σ outside the origin's disk, and the disk's radius (Å).
+
+    σ is 1.4826 × the median absolute deviation, from every voxel up to
+    ``SIGMA_VOXELS`` of them, else from a regular subsample of about that many;
+    a voxel that is not finite counts as 0. The disk's radius is
+    ``ORIGIN_EXCLUDED`` of the volume's largest half-width, as a true length.
+    σ is NaN when no voxel lies outside the disk. This is the one definition:
+    the features' sizes (:func:`strongest_features`) and the pair vectors'
+    values (:func:`pair_vector_signal`) are in units of it.
+    """
+    d = np.asarray(data)
+    axes = [np.asarray(a, dtype=np.float64) for a in (x_axis, y_axis, z_axis)]
+    half = max(max(abs(float(a[0])), abs(float(a[-1]))) for a in axes)
+    origin_radius = ORIGIN_EXCLUDED * half
+    step = max(1, int(np.ceil((d.size / SIGMA_VOXELS) ** (1 / 3))))
+    sub = d[::step, ::step, ::step]
+    if not np.isfinite(sub).all():
+        sub = np.where(np.isfinite(sub), sub, 0)
+    r_sub = real_space_radius(axes[0][::step][:, None, None], axes[1][::step][None, :, None],
+                              axes[2][::step][None, None, :], cell_angles)
+    values = sub[r_sub >= origin_radius].astype(np.float64)
+    if not values.size:
+        return float("nan"), origin_radius
+    return _robust_sigma(values), origin_radius
 
 
 def _refine(data: NDArray[np.floating], idx: NDArray[np.integer]) -> NDArray[np.float64]:
@@ -332,20 +376,8 @@ def strongest_features(
     if not np.isfinite(d).all():
         d = np.where(np.isfinite(d), d, 0)
     axes = [np.asarray(a, dtype=np.float64) for a in (x_axis, y_axis, z_axis)]
-    half = max(max(abs(float(a[0])), abs(float(a[-1]))) for a in axes)
-    origin_radius = ORIGIN_EXCLUDED * half
-    # σ outside the origin's disk, from every voxel up to SIGMA_VOXELS of them,
-    # else from a regular subsample of about that many.
-    step = max(1, int(np.ceil((d.size / SIGMA_VOXELS) ** (1 / 3))))
-    sub = d[::step, ::step, ::step]
-    r_sub = real_space_radius(axes[0][::step][:, None, None], axes[1][::step][None, :, None],
-                              axes[2][::step][None, None, :], cell_angles)
-    values = sub[r_sub >= origin_radius].astype(np.float64)
-    if not values.size:
-        return DpdfFeatures(sigma=float("nan"), min_sigma=min_sigma, origin_radius=origin_radius,
-                            n_extrema=0, groups=(), grouped_by=grouping.text)
-    sigma = _robust_sigma(values)
-    del values, r_sub, sub
+    # σ outside the origin's disk (NaN when the disk covers the volume).
+    sigma, origin_radius = sigma_outside_origin(d, axes[0], axes[1], axes[2], cell_angles)
     if not sigma > 0:
         return DpdfFeatures(sigma=sigma, min_sigma=min_sigma, origin_radius=origin_radius,
                             n_extrema=0, groups=(), grouped_by=grouping.text)
@@ -376,3 +408,119 @@ def strongest_features(
                               limit, max_vectors)
     return DpdfFeatures(sigma=sigma, min_sigma=min_sigma, origin_radius=origin_radius,
                         n_extrema=len(found), groups=groups, grouped_by=grouping.text)
+
+
+class TooManyVectors(ValueError):
+    """A structure's pair vectors in a volume outnumber the caller's limit."""
+
+    def __init__(self, n_values: int, max_values: int) -> None:
+        super().__init__(
+            f"{n_values} pair vectors lie in the volume; at most {max_values} are sampled")
+        self.n_values = n_values
+        self.max_values = max_values
+
+
+@dataclass(frozen=True)
+class PairSignal:
+    """:func:`pair_vector_signal`'s result: the ΔPDF at a structure's pair vectors.
+
+    Difference *k* has ``count[k]`` lattice translations along a, b, c inside
+    the volume, the first of them ``first[k]``; its values are a block of
+    ``count[k].prod()`` in ``values``, after the blocks of the differences
+    before it, with translation ``n`` at
+    ``((n[0] − first[k, 0])·count[k, 1] + n[1] − first[k, 1])·count[k, 2] + n[2] − first[k, 2]``.
+    """
+
+    sigma: float  # robust σ of the ΔPDF outside the origin's disk
+    origin_radius: float  # the origin's disk, Å
+    first: NDArray[np.int32]  # (n, 3)
+    count: NDArray[np.int32]  # (n, 3)
+    values: NDArray[np.float32]  # ΔPDF/σ; NaN inside the origin's disk
+
+
+def pair_vector_signal(
+    data: NDArray[np.floating],
+    x_axis: NDArray[np.floating],
+    y_axis: NDArray[np.floating],
+    z_axis: NDArray[np.floating],
+    cell_angles: tuple[float, float, float],
+    differences: ArrayLike,
+    lengths: Sequence[float],
+    *,
+    floor: tuple[float, float] | None = None,
+    max_values: int | None = None,
+) -> PairSignal:
+    """The ΔPDF at each interatomic vector of a structure, in robust σ.
+
+    *differences* are the structure's pair differences r_j − r_i as fractions
+    of its cell, an (n, 3) array along the ΔPDF's a, b, c. Every lattice
+    translation of each that lies inside the volume is the vector
+    ``(d + n)·lengths`` (Å along a, b, c: *lengths* are the cell lengths the
+    vectors are drawn at), and its value is the volume read there: between
+    voxels, linearly along each of the three (oblique) axes from the eight
+    around it, so a vector off the grid points, or off a displayed section,
+    reads the volume at its own position. A voxel that is not finite counts
+    as 0, as it does for σ.
+
+    Values are divided by σ (:func:`sigma_outside_origin`, or *floor*, its
+    result for this volume when the caller keeps it). A vector inside the
+    origin's disk has no value (NaN): the disk holds the self-correlation, not
+    a pair correlation. With no σ (not positive, or NaN) every value is NaN.
+
+    Nothing volume-sized is allocated: positions are read ``SAMPLE_CHUNK`` at
+    a time. With more vectors than *max_values*, :class:`TooManyVectors` is
+    raised before any is read.
+    """
+    d = np.asarray(data)
+    if d.ndim != 3:
+        raise ValueError("the ΔPDF must be a 3-D array")
+    axes = [np.asarray(a, dtype=np.float64) for a in (x_axis, y_axis, z_axis)]
+    diffs = np.asarray(differences, dtype=np.float64).reshape(-1, 3)
+    lat = np.asarray(lengths, dtype=np.float64).reshape(3)
+    if not (np.isfinite(diffs).all() and np.isfinite(lat).all() and (lat > 0).all()):
+        raise ValueError("pair differences must be finite and the cell lengths positive")
+    sigma, origin_radius = floor if floor is not None else sigma_outside_origin(
+        d, axes[0], axes[1], axes[2], cell_angles)
+
+    start = np.array([float(a[0]) for a in axes])
+    steps = np.array([float(a[-1] - a[0]) / (a.size - 1) if a.size > 1 else 1.0 for a in axes])
+    end = np.array([float(a[-1]) for a in axes])
+    lo, hi = np.minimum(start, end), np.maximum(start, end)
+    slack = 1e-6 * np.abs(steps)  # a vector on the volume's face is inside it
+    first = np.ceil((lo - slack) / lat - diffs).astype(np.int64)
+    last = np.floor((hi + slack) / lat - diffs).astype(np.int64)
+    count = np.maximum(last - first + 1, 0)
+    count[(count == 0).any(axis=1)] = 0
+    sizes = count.prod(axis=1)
+    starts = np.concatenate([[0], np.cumsum(sizes)])
+    total = int(starts[-1])
+    if max_values is not None and total > max_values:
+        raise TooManyVectors(total, max_values)
+
+    values = np.full(total, np.nan, dtype=np.float32)
+    usable = bool(sigma > 0)
+    top = [max(n - 2, 0) for n in d.shape]
+    for s in range(0, total if usable else 0, SAMPLE_CHUNK):
+        flat = np.arange(s, min(total, s + SAMPLE_CHUNK))
+        k = np.searchsorted(starts, flat, side="right") - 1
+        local = flat - starts[k]
+        c1, c2 = count[k, 1], count[k, 2]
+        n = np.stack([local // (c1 * c2), (local // c2) % c1, local % c2], axis=1)
+        pos = (diffs[k] + first[k] + n) * lat  # Å along a, b, c
+        t = (pos - start) / steps  # in voxels
+        i0 = np.clip(np.floor(t).astype(np.int64), 0, top)
+        w = np.clip(t - i0, 0.0, 1.0)
+        i1 = np.minimum(i0 + 1, np.array(d.shape) - 1)
+        out = np.zeros(flat.size)
+        for corner in range(8):
+            pick = [(corner >> a) & 1 for a in range(3)]
+            idx = tuple(np.where(pick[a], i1[:, a], i0[:, a]) for a in range(3))
+            weight = np.prod([w[:, a] if pick[a] else 1.0 - w[:, a] for a in range(3)], axis=0)
+            v = d[idx].astype(np.float64)
+            out += weight * np.where(np.isfinite(v), v, 0.0)
+        out /= sigma
+        r = real_space_radius(pos[:, 0], pos[:, 1], pos[:, 2], cell_angles)
+        out[r < origin_radius] = np.nan
+        values[s:s + flat.size] = out
+    return PairSignal(sigma=float(sigma), origin_radius=float(origin_radius),
+                      first=first.astype(np.int32), count=count.astype(np.int32), values=values)
