@@ -142,6 +142,9 @@ export interface PairDiff {
   to: string;
   key: string; // unordered element pair, e.g. "Na–Cl"
   count: number;
+  // Which of the structure's distinct differences this is (pairVectors): pairs
+  // of different sites that give one difference share it, and its ΔPDF value.
+  vec: number;
 }
 
 /** Elements in the order their sites first appear. */
@@ -162,7 +165,9 @@ export function pairKey(e1: string, e2: string, order: string[]): string {
  * anything: pairs are taken site pair by site pair, a site pair with one atom
  * at each end (every pair of a P1 supercell) is one difference as it stands,
  * and the others are grouped on a number key (the difference to 1e-5 of the
- * cell), not a string.
+ * cell), not a string.  Each difference also gets the index of its vector
+ * among the distinct ones of the whole structure (`vec`), in order of first
+ * appearance.
  */
 export function pairDifferences(atoms: Atom[]): PairDiff[] {
   const order = elementOrder(atoms);
@@ -175,6 +180,7 @@ export function pairDifferences(atoms: Atom[]): PairDiff[] {
   }
   const sites = [...bySite.values()];
   const out: PairDiff[] = [];
+  const vecs = new Map<number, number>();
   for (const from of sites) {
     for (const to of sites) {
       const key = pairKey(from[0].atom.element, to[0].atom.element, order);
@@ -190,7 +196,9 @@ export function pairDifferences(atoms: Atom[]): PairDiff[] {
             hit.count++;
             continue;
           }
-          const p: PairDiff = { d: [n0 / S, n1 / S, n2 / S], from: ai.atom.label, to: aj.atom.label, key, count: 1 };
+          let vec = vecs.get(k);
+          if (vec === undefined) vecs.set(k, (vec = vecs.size));
+          const p: PairDiff = { d: [n0 / S, n1 / S, n2 / S], from: ai.atom.label, to: aj.atom.label, key, count: 1, vec };
           groups?.set(k, p);
           out.push(p);
         }
@@ -200,12 +208,27 @@ export function pairDifferences(atoms: Atom[]): PairDiff[] {
   return out;
 }
 
+/**
+ * The structure's distinct pair differences, three fractions of the cell each
+ * (along the ΔPDF's a, b, c), at the index its PairDiffs carry as `vec`: what
+ * the ΔPDF is read at, once for the whole volume (api/client fetchPairSignal).
+ */
+export function pairVectors(diffs: readonly PairDiff[]): Float64Array {
+  let n = 0;
+  for (const p of diffs) n = Math.max(n, p.vec + 1);
+  const out = new Float64Array(3 * n);
+  for (const p of diffs) out.set(p.d, 3 * p.vec);
+  return out;
+}
+
 /** A marker on one ΔPDF slice: one vector of one element pair. */
 export interface Marker {
   h: number; // in-plane coordinates on the slice's oblique grid (Å)
   v: number;
   off: number; // distance from the cut plane along the cut axis (Å)
   u: Vec3; // the vector along a, b, c (Å)
+  vec: number; // its pair difference (PairDiff.vec) and the lattice translation
+  n: Vec3; // added to it along a, b, c: where the ΔPDF's value for it is kept
   key: string; // element pair
   mult: number; // pairs per cell at this vector
   pairs: { from: string; to: string; count: number }[];
@@ -247,7 +270,11 @@ export function sliceMarkers(diffs: PairDiff[], s: SliceSpec): Marker[] {
             u[ih] = h;
             u[iv] = v;
             u[ic] = c;
-            m = { h, v, off: c - s.cut, u, key: p.key, mult: 0, pairs: [] };
+            const n: Vec3 = [0, 0, 0];
+            n[ih] = nh;
+            n[iv] = nv;
+            n[ic] = nc;
+            m = { h, v, off: c - s.cut, u, vec: p.vec, n, key: p.key, mult: 0, pairs: [] };
             out.set(k, m);
           }
           m.mult += p.count;

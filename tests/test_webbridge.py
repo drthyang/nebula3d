@@ -195,6 +195,28 @@ def test_dpdf_features_json(ran_pipeline):
         webbridge.dpdf_features_json(vid, 0.0, 4)
 
 
+def test_dpdf_pair_signal_is_the_servers_answer(ran_pipeline):
+    """The browser build reads the ΔPDF at a structure's pair vectors as the
+    native route does: the same bytes for the same request."""
+    from nebula3d.server import deltapdf as dpdf_mod
+
+    dataset_id, _datasets, _events = ran_pipeline
+    vid = f"{dataset_id}.delta_pdf"
+    request = {"diffs": [[0.5, 0.5, 0.0], [0.25, 0.0, 0.5]], "lat": [4.0, 4.0, 4.0]}
+    env = bytes(webbridge.dpdf_pair_signal(vid, json.dumps(request)))
+    (n,) = struct.unpack_from("<I", env, 0)
+    header = json.loads(env[4:4 + n].decode("utf-8"))
+    assert header["sigma"] > 0 and header["n_vectors"] == 2 and header["skipped"] is None
+    values = np.frombuffer(env, dtype="<f4", offset=4 + n + 4 * 6 * 2)
+    assert values.size == header["n_values"] > 0 and np.isfinite(values).any()
+    stage = webbridge._resolve(vid, "delta_pdf")
+    assert env == dpdf_mod.dpdf_pair_signal_envelope(stage.path, request["diffs"], request["lat"])
+    for bad in ("[]", json.dumps({"diffs": [[0.5, 0.5]], "lat": [4.0, 4.0, 4.0]}),
+                json.dumps({"diffs": [[0.5, 0.5, 0.0]], "lat": [4.0, 4.0]})):
+        with pytest.raises(ValueError):
+            webbridge.dpdf_pair_signal(vid, bad)
+
+
 @pytest.mark.parametrize("declared", [True, False])
 def test_dpdf_features_json_is_the_servers_response(tmp_path, declared):
     """The browser build's features are the native server's, field for field,

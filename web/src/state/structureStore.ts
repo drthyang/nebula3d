@@ -7,6 +7,7 @@ import { create } from "zustand";
 
 import { resetsWithVolume } from "./volumeReset";
 import type { Cell, Site } from "../structure/cif";
+import { FILL_ABOVE, mapKindOr, type MapKind } from "../structure/signal";
 import type { Centering } from "../structure/symops";
 
 export interface StructureDef {
@@ -25,6 +26,9 @@ interface StructureState {
   origin: string | null; // only pairs starting on this site
   hidden: string[]; // element pairs not drawn
   depth: number | null; // slab half-thickness (Å); null = half a voxel
+  fillAbove: number; // a marker is filled where |ΔPDF| at its vector reaches this many σ
+  fadeQuiet: boolean; // markers below it are drawn smaller and fainter
+  mapKind: MapKind; // "ΔPDF type": what the two signs are called (atomic, or magnetic: 3D-mΔPDF)
   setDef: (def: StructureDef | null) => void;
   editDef: (edit: (def: StructureDef) => Partial<StructureDef>) => void; // on the current def
   setShow: (b: boolean) => void;
@@ -32,10 +36,20 @@ interface StructureState {
   setOrigin: (s: string | null) => void;
   toggleHidden: (key: string) => void;
   setDepth: (d: number | null) => void;
+  setFillAbove: (sigma: number) => void;
+  setFadeQuiet: (b: boolean) => void;
+  setMapKind: (kind: MapKind) => void;
 }
 
 const KEY = "nebula3d.structure";
-type Saved = Pick<StructureState, "def" | "show" | "perm" | "origin" | "hidden" | "depth">;
+type Saved = Pick<StructureState, "def" | "show" | "perm" | "origin" | "hidden" | "depth" | "fillAbove" | "fadeQuiet" | "mapKind">;
+
+/** A "Fill above" value on the slider's steps, or its default for anything else (an older or edited store). */
+export function fillAboveOr(v: unknown): number {
+  const { min, max, step, initial } = FILL_ABOVE;
+  if (typeof v !== "number" || !Number.isFinite(v)) return initial;
+  return Math.min(max, Math.max(min, Math.round(v / step) * step));
+}
 
 function load(): Partial<Saved> {
   try {
@@ -49,7 +63,17 @@ function load(): Partial<Saved> {
 const saved = load();
 
 // No structure: the state without one saved, and after Close.
-const EMPTY: Saved = { def: null, show: true, perm: 0, origin: null, hidden: [], depth: null };
+const EMPTY: Saved = {
+  def: null,
+  show: true,
+  perm: 0,
+  origin: null,
+  hidden: [],
+  depth: null,
+  fillAbove: FILL_ABOVE.initial,
+  fadeQuiet: true,
+  mapKind: "atomic",
+};
 
 export const useStructureStore = create<StructureState>((set) => ({
   def: saved.def ?? EMPTY.def,
@@ -58,6 +82,9 @@ export const useStructureStore = create<StructureState>((set) => ({
   origin: saved.origin ?? EMPTY.origin,
   hidden: saved.hidden ?? EMPTY.hidden,
   depth: saved.depth ?? EMPTY.depth,
+  fillAbove: fillAboveOr(saved.fillAbove),
+  fadeQuiet: typeof saved.fadeQuiet === "boolean" ? saved.fadeQuiet : EMPTY.fadeQuiet,
+  mapKind: mapKindOr(saved.mapKind),
   // A new structure starts with every pair shown, from every site.
   setDef: (def) => set({ def, origin: null, hidden: [], show: true }),
   editDef: (edit) => set((s) => (s.def ? { def: { ...s.def, ...edit(s.def) } } : {})),
@@ -67,10 +94,23 @@ export const useStructureStore = create<StructureState>((set) => ({
   toggleHidden: (key) =>
     set((s) => ({ hidden: s.hidden.includes(key) ? s.hidden.filter((k) => k !== key) : [...s.hidden, key] })),
   setDepth: (depth) => set({ depth }),
+  setFillAbove: (sigma) => set({ fillAbove: fillAboveOr(sigma) }),
+  setFadeQuiet: (fadeQuiet) => set({ fadeQuiet }),
+  setMapKind: (kind) => set({ mapKind: mapKindOr(kind) }),
 }));
 
 useStructureStore.subscribe((s) => {
-  const snapshot: Saved = { def: s.def, show: s.show, perm: s.perm, origin: s.origin, hidden: s.hidden, depth: s.depth };
+  const snapshot: Saved = {
+    def: s.def,
+    show: s.show,
+    perm: s.perm,
+    origin: s.origin,
+    hidden: s.hidden,
+    depth: s.depth,
+    fillAbove: s.fillAbove,
+    fadeQuiet: s.fadeQuiet,
+    mapKind: s.mapKind,
+  };
   try {
     localStorage.setItem(KEY, JSON.stringify(snapshot));
   } catch {

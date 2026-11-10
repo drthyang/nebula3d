@@ -8,20 +8,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from nebula3d.server.config import ServerConfig
-from nebula3d.server.deps import get_config
+from nebula3d.server.deps import etag_matches, get_config
 from nebula3d.server.modulation import bragg_profile_etag, bragg_profile_payload
 from nebula3d.server.schemas import BraggProfileOut
 
 router = APIRouter(prefix="/api/bragg", tags=["bragg"])
-
-
-def _matches(request: Request, tag: str) -> bool:
-    """Whether the request's If-None-Match names *tag* (or ``*``)."""
-    header = request.headers.get("if-none-match")
-    if not header:
-        return False
-    names = {t.strip().removeprefix("W/") for t in header.split(",")}
-    return tag in names or "*" in names
 
 
 @router.get("/{dataset_id}/profile", response_model=BraggProfileOut)
@@ -42,7 +33,7 @@ def profile(
     if tag is None:
         raise HTTPException(404, f"unknown dataset id {dataset_id!r}")
     headers = {"ETag": tag, "Cache-Control": "no-cache"}
-    if _matches(request, tag):
+    if etag_matches(request, tag):
         return Response(status_code=304, headers=headers)
     try:
         out = bragg_profile_payload(cfg, dataset_id)

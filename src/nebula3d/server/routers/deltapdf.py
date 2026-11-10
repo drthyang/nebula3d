@@ -5,13 +5,20 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import StageStatus, resolve_volume, symmetry_declared_by
-from nebula3d.server.deltapdf import DPDF_PLANES, dpdf_features, dpdf_meta, dpdf_slice_envelope
-from nebula3d.server.deps import get_config
-from nebula3d.server.schemas import DeltaPdfMetaOut, DpdfFeaturesOut, LatticeOut
+from nebula3d.server.deltapdf import (
+    DPDF_PLANES,
+    dpdf_features,
+    dpdf_meta,
+    dpdf_pair_signal_envelope,
+    dpdf_pair_signal_etag,
+    dpdf_slice_envelope,
+)
+from nebula3d.server.deps import etag_matches, get_config
+from nebula3d.server.schemas import DeltaPdfMetaOut, DpdfFeaturesOut, LatticeOut, PairSignalIn
 
 router = APIRouter(prefix="/api/deltapdf", tags=["deltapdf"])
 
@@ -67,3 +74,30 @@ def features(
     stage = _resolve_dpdf(cfg, volume_id)
     return DpdfFeaturesOut(id=volume_id, **dpdf_features(
         stage.path, min_sigma, limit, declared_by=symmetry_declared_by(cfg, volume_id)))
+
+
+@router.post("/{volume_id}/pair-signal")
+def pair_signal(
+    volume_id: str,
+    body: PairSignalIn,
+    request: Request,
+    cfg: ServerConfig = Depends(get_config),
+) -> Response:
+    """The ΔPDF at each of a structure's pair vectors, in robust σ, for the
+    page's structure overlay (the binary answer is described at
+    :func:`~nebula3d.server.deltapdf.dpdf_pair_signal_envelope`).
+
+    One request covers a structure in a volume: every vector inside it, so
+    the page asks once and moves its cuts without asking again. It carries an
+    ETag for the request and the file: asked again with it in If-None-Match,
+    it answers 304 without reading the volume."""
+    stage = _resolve_dpdf(cfg, volume_id)
+    try:
+        tag = dpdf_pair_signal_etag(stage.path, body.diffs, body.lat)
+        headers = {"ETag": tag, "Cache-Control": "no-cache"}
+        if etag_matches(request, tag):
+            return Response(status_code=304, headers=headers)
+        out = dpdf_pair_signal_envelope(stage.path, body.diffs, body.lat)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return Response(content=out, media_type="application/octet-stream", headers=headers)

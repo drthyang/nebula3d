@@ -247,6 +247,20 @@ describe("values from a file that could hold anything", () => {
     expect([typeof st.setShow, typeof st.setDef]).toEqual(["function", "function"]);
     expect(st.def?.sites).toEqual([{ label: "Na1", element: "Na", x: 0, y: 0, z: 0, occ: 1 }]);
     expect([st.show, st.perm, st.origin, st.hidden, st.depth]).toEqual([false, 0, null, ["Na-Cl"], null]);
+    // A file from before the fill settings takes their defaults.
+    expect([st.fillAbove, st.fadeQuiet]).toEqual([3, true]);
+    restoreSession(parseSession(file({ structure: { def, fillAbove: 4.5, fadeQuiet: false } })), [dataset(["raw"])]);
+    expect([useStructureStore.getState().fillAbove, useStructureStore.getState().fadeQuiet]).toEqual([4.5, false]);
+    restoreSession(parseSession(file({ structure: { def, fillAbove: "high", fadeQuiet: 0 } })), [dataset(["raw"])]);
+    expect([useStructureStore.getState().fillAbove, useStructureStore.getState().fadeQuiet]).toEqual([3, true]);
+    // A file from before the ΔPDF type is atomic, as is one that holds anything but the two choices.
+    expect(useStructureStore.getState().mapKind).toBe("atomic");
+    restoreSession(parseSession(file({ structure: { def, mapKind: "magnetic" } })), [dataset(["raw"])]);
+    expect(useStructureStore.getState().mapKind).toBe("magnetic");
+    restoreSession(parseSession(file({ structure: { def } })), [dataset(["raw"])]);
+    expect(useStructureStore.getState().mapKind).toBe("atomic");
+    restoreSession(parseSession(file({ structure: { def, mapKind: "spin" } })), [dataset(["raw"])]);
+    expect(useStructureStore.getState().mapKind).toBe("atomic");
     st.setShow(true); // the action still works
     expect(useStructureStore.getState().show).toBe(true);
 

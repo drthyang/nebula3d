@@ -4,6 +4,7 @@
 
 import { useMemo } from "react";
 
+import { usePairSignal } from "../api/hooks";
 import type { Lattice } from "../api/types";
 import { toDisplay } from "../components/oblique";
 import { useStructureStore, type StructureDef } from "../state/structureStore";
@@ -16,6 +17,7 @@ import {
   elementOrder,
   expandSites,
   pairDifferences,
+  pairVectors,
   permuteAtoms,
   PERMUTATIONS,
   sliceMarkers,
@@ -24,6 +26,7 @@ import {
   type Marker,
   type PairDiff,
 } from "./pairs";
+import { fillColors, type OverlaySignal, type SignalSource } from "./signal";
 import { symmetryGroup, type Vec3 } from "./symops";
 
 export interface StructureModel {
@@ -32,6 +35,10 @@ export interface StructureModel {
   nOps: number;
   atoms: Atom[];
   diffs: PairDiff[]; // empty when nothing can be drawn (see `blocked`)
+  // The distinct pair differences (three fractions each, at PairDiff.vec) the
+  // ΔPDF is read at, and a key that names them (the request's cache key).
+  vectors: Float64Array;
+  vectorsKey: string;
   elements: string[]; // in site order
   keys: string[]; // element pairs present, A–A, A–B, …
   fit: CellFit | null; // the CIF cell (axes permuted) against the ΔPDF's
@@ -70,6 +77,18 @@ export const MAX_PAIR_ATOMS = 500;
  * a slice can draw: 300 atoms in a 4.2 Å cell blocked the page for 7 s.
  */
 export const MAX_ATOM_DENSITY = 0.3;
+
+/** A short name for a list of pair differences: their count and two 32-bit hashes of them on the 1e-5 grid. */
+export function vectorsKey(vectors: Float64Array): string {
+  let a = 0x811c9dc5, b = 0x9747b28c;
+  for (let i = 0; i < vectors.length; i++) {
+    const v = Math.round(vectors[i] * 1e5);
+    a = Math.imul(a ^ v, 0x01000193);
+    b = Math.imul(b ^ (v + i), 0x5bd1e995);
+    b ^= b >>> 15;
+  }
+  return `${vectors.length / 3}:${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}`;
+}
 
 /** A cell's volume (Å³). */
 export function cellVolume(c: Cell): number {
@@ -110,6 +129,7 @@ export function buildModel(def: StructureDef, perm: number, data: Cell | null): 
   const density = vol > 0 ? atoms.length / vol : null;
   const tooDense = density !== null && density > MAX_ATOM_DENSITY;
   const diffs = data && !tooMany && !tooDense ? pairDifferences(atoms) : [];
+  const vectors = pairVectors(diffs);
   const cif = def.cell ? [def.cell.a, def.cell.b, def.cell.c] : null;
   const drawLat: Vec3 | null = !data
     ? null
@@ -127,6 +147,8 @@ export function buildModel(def: StructureDef, perm: number, data: Cell | null): 
     nOps: ops.length,
     atoms,
     diffs,
+    vectors,
+    vectorsKey: vectorsKey(vectors),
     elements,
     keys,
     fit,
@@ -222,6 +244,33 @@ export function usePlaneMarkers(
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ranges are compared by value
   }, [model, show, origin, hidden, a, b, c, p.h, p.v, p.cut, p.value, depth, h0, h1, v0, v1]);
+}
+
+/**
+ * What the overlay's markers say about the ΔPDF of `volumeId`: its value at
+ * each pair vector (read once per structure and volume, and only while the
+ * overlay is `on`), the panel's threshold, fade and ΔPDF type, and the fills
+ * of the colormap `lut`.
+ */
+export function useOverlaySignal(
+  volumeId: string | undefined,
+  model: StructureModel | null,
+  lut: Uint8ClampedArray,
+  on: boolean,
+): OverlaySignal {
+  const threshold = useStructureStore((s) => s.fillAbove);
+  const fade = useStructureStore((s) => s.fadeQuiet);
+  const kind = useStructureStore((s) => s.mapKind);
+  const vectors = useMemo(
+    () => (on && model && model.vectors.length ? { diffs: model.vectors, key: model.vectorsKey } : null),
+    [on, model],
+  );
+  const read = usePairSignal(volumeId, vectors, model?.drawLat ?? null);
+  const source: SignalSource = read.data ?? (read.isError ? "failed" : "pending");
+  return useMemo(
+    () => ({ source, threshold, fade, colors: fillColors(lut), kind }),
+    [source, threshold, fade, lut, kind],
+  );
 }
 
 /** The markers drawn nearest a display point (all those at that spot), within `radius` Å. */

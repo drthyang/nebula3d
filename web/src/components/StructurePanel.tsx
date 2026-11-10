@@ -3,12 +3,23 @@
 // and choose what to draw.  Also the legend row (one chip per element pair,
 // click to hide) that sits in the workspace header while the overlay is on.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Lattice } from "../api/types";
 import { useStructureStore, type StructureDef } from "../state/structureStore";
 import { cifCentering, parseCif, parseCoordinate, type Site } from "../structure/cif";
 import { bestPermutation, CELL_TOLERANCE, cellMatches, permLabel, PERMUTATIONS } from "../structure/pairs";
+import {
+  countsText,
+  FILL_ABOVE,
+  MAP_KINDS,
+  SIGN_WORDS,
+  signalCounts,
+  signalText,
+  sourceProblem,
+  visibleVectors,
+  type OverlaySignal,
+} from "../structure/signal";
 import { CENTERINGS, hasCentring, symmetryGroup, type Centering } from "../structure/symops";
 import {
   activeOrigin,
@@ -17,8 +28,8 @@ import {
   structureWarningText,
   type StructureModel,
 } from "../structure/useStructure";
-import { Slider } from "./ui";
-import { GlyphIcon } from "./StructureOverlay";
+import { Slider, Switch } from "./ui";
+import { FillIcon, GlyphIcon } from "./StructureOverlay";
 
 const fmt = (v: number) => Number(v.toFixed(5)).toString();
 
@@ -146,6 +157,12 @@ export function StructurePanel({
   const setPerm = useStructureStore((s) => s.setPerm);
   const setOrigin = useStructureStore((s) => s.setOrigin);
   const setDepth = useStructureStore((s) => s.setDepth);
+  const fillAbove = useStructureStore((s) => s.fillAbove);
+  const fadeQuiet = useStructureStore((s) => s.fadeQuiet);
+  const setFillAbove = useStructureStore((s) => s.setFillAbove);
+  const setFadeQuiet = useStructureStore((s) => s.setFadeQuiet);
+  const mapKind = useStructureStore((s) => s.mapKind);
+  const setMapKind = useStructureStore((s) => s.setMapKind);
   const fileRef = useRef<HTMLInputElement>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [opsDraft, setOpsDraft] = useState<string | null>(null);
@@ -362,6 +379,42 @@ export function StructurePanel({
                 A vector is marked on a slice when it lies within ± depth of the cut along the cut axis; it fades
                 with its distance from the plane.
               </span>
+              <Slider
+                label="Fill above"
+                readout={`${fillAbove}σ`}
+                min={FILL_ABOVE.min}
+                max={FILL_ABOVE.max}
+                step={FILL_ABOVE.step}
+                value={fillAbove}
+                onChange={setFillAbove}
+              />
+              <Switch
+                label="Fade pairs without signal"
+                title="Draw the markers below the threshold smaller and fainter"
+                checked={fadeQuiet}
+                onChange={setFadeQuiet}
+              />
+              <div className="field">
+                <span className="field-label" id="struct-map-kind">ΔPDF type</span>
+                <div className="segmented" role="group" aria-labelledby="struct-map-kind">
+                  {MAP_KINDS.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      className={k === mapKind ? "on" : ""}
+                      aria-pressed={k === mapKind}
+                      title={SIGN_WORDS[k].title}
+                      onClick={() => setMapKind(k)}
+                    >
+                      {SIGN_WORDS[k].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <span className="struct-hint">
+                A marker is filled where the {SIGN_WORDS[mapKind].map} at its own vector reaches the threshold, in
+                units of the volume's robust σ: {SIGN_WORDS[mapKind].fills}
+              </span>
             </div>
           </div>
         </>
@@ -421,12 +474,26 @@ function CellCheck({
   );
 }
 
-/** One chip per element pair: the glyph, the pair and a click to hide it. */
-export function StructureLegend({ model }: { model: StructureModel }) {
+/** Shown where the count of filled vectors would be: it covers the whole volume, not one slice. */
+const COUNT_TITLE =
+  "Of the pair vectors shown that lie in the ΔPDF volume (all cuts, outside the origin peak): how many reach the Fill above threshold";
+
+/**
+ * One chip per element pair (the glyph, the pair and a click to hide it), and
+ * with `signal` what a marker's fill says and how many vectors carry one.
+ */
+export function StructureLegend({ model, signal }: { model: StructureModel; signal?: OverlaySignal }) {
   const hidden = useStructureStore((s) => s.hidden);
   const toggle = useStructureStore((s) => s.toggleHidden);
   const stored = useStructureStore((s) => s.origin);
   const origin = activeOrigin(model, stored);
+  // The count walks every value read (not one slice's), so only when the
+  // values, the pairs shown or the threshold change.
+  const source = signal?.source;
+  const threshold = signal?.threshold ?? FILL_ABOVE.initial;
+  const table = source && typeof source === "object" && !sourceProblem(source) ? source : null;
+  const shown = useMemo(() => visibleVectors(model.diffs, origin, new Set(hidden)), [model.diffs, origin, hidden]);
+  const counts = useMemo(() => (table ? signalCounts(table, shown, threshold) : null), [table, shown, threshold]);
   const keys = origin ? model.keys.filter((k) => model.diffs.some((d) => d.from === origin && d.key === k)) : model.keys;
   const blocked = structureBlockedText(model);
   if (blocked) {
@@ -462,6 +529,28 @@ export function StructureLegend({ model }: { model: StructureModel }) {
           </button>
         );
       })}
+      {signal && source && (
+        <>
+          <span className="field-label struct-fill-label">Fill</span>
+          <span className="struct-key">
+            <FillIcon color={signal.colors[0]} />
+            {SIGN_WORDS[signal.kind].pos}
+          </span>
+          <span className="struct-key">
+            <FillIcon color={signal.colors[1]} />
+            {SIGN_WORDS[signal.kind].neg}
+          </span>
+          <span className="struct-key">
+            <FillIcon color={null} />
+            no signal
+          </span>
+          <span className="struct-sub struct-count" title={counts ? COUNT_TITLE : undefined} aria-live="polite">
+            {counts
+              ? countsText(counts, threshold, signal.kind)
+              : signalText({ value: null, why: sourceProblem(source) }, threshold, null, signal.kind)}
+          </span>
+        </>
+      )}
     </div>
   );
 }

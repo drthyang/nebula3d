@@ -33,11 +33,12 @@ import type { Proposal } from "../llm/apply/proposals";
 import { useChatStore } from "../llm/chatStore";
 import { CENTERINGS } from "../structure/symops";
 import { PERMUTATIONS } from "../structure/pairs";
+import { mapKindOr, type MapKind } from "../structure/signal";
 import { configOf } from "./configMemory";
 import { readMarks, useMarkStore, type Mark } from "./markStore";
 import { useDatasetStore } from "./datasetStore";
 import { enabledStages, formToParams, pipelineBusy, STAGE_LABELS, STAGES, usePipelineStore, type PipelineConfig, type RunRecord } from "./pipelineStore";
-import { useStructureStore, type StructureDef } from "./structureStore";
+import { fillAboveOr, useStructureStore, type StructureDef } from "./structureStore";
 
 export const SESSION_FORMAT = "nebula3d-session";
 // 2: the raw file's size and date, the outputs' dates, the app version.
@@ -66,6 +67,10 @@ export interface SessionStructure {
   origin: string | null;
   hidden: string[];
   depth: number | null;
+  // How the markers show the ΔPDF at their vectors; the defaults in a file from before them.
+  fillAbove: number;
+  fadeQuiet: boolean;
+  mapKind: MapKind; // "ΔPDF type"; atomic in a file from before it
 }
 
 export interface Session {
@@ -130,7 +135,9 @@ export function captureSession(dataset: Dataset | undefined, now = new Date()): 
     marks: dataset ? useMarkStore.getState().marks.filter((m) => m.datasetId === dataset.id) : [],
     decisions: decisionsForFile(),
     auto: autoForFile(),
-    structure: st.def ? { def: st.def, show: st.show, perm: st.perm, origin: st.origin, hidden: st.hidden, depth: st.depth } : null,
+    structure: st.def
+      ? { def: st.def, show: st.show, perm: st.perm, origin: st.origin, hidden: st.hidden, depth: st.depth, fillAbove: st.fillAbove, fadeQuiet: st.fadeQuiet, mapKind: st.mapKind }
+      : null,
   };
 }
 
@@ -203,6 +210,9 @@ function readStructure(v: unknown): SessionStructure | null {
     origin: isStr(v.origin) ? v.origin : null,
     hidden: strings(v.hidden),
     depth: isNum(v.depth) && v.depth > 0 ? v.depth : null,
+    fillAbove: fillAboveOr(v.fillAbove),
+    fadeQuiet: typeof v.fadeQuiet === "boolean" ? v.fadeQuiet : true,
+    mapKind: mapKindOr(v.mapKind),
   };
 }
 

@@ -7296,11 +7296,42 @@ h6.md-h {
   opacity: 0.45;
   text-decoration: line-through;
 }
-.ws-readout .struct-hit {
+/* What a marker's fill says: not a control, so no pill. */
+.struct-fill-label {
+  margin-left: 8px;
+}
+.struct-key {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  font: 12px var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.struct-count {
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.ws-readout .struct-hit {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 5px;
   color: var(--text);
+}
+.ws-readout .struct-hit-pair,
+.ws-readout .struct-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ws-readout .struct-signal {
+  margin-left: 6px;
+  color: var(--text-2);
+}
+.ws-readout .struct-signal.on {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* A narrower page (a smaller screen, or NEBULA Pilot docked beside it): five

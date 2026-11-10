@@ -298,7 +298,9 @@ export function ConsistencyViewer() {
   const rCentreData = rCentreResult.data;
   const rSamples = useMemo(() => (rCentreData ? [rCentreData.data] : null), [rCentreData]);
 
-  // The 3D-ΔPDF page's structure overlay, on this page's ΔPDF view.
+  // The 3D-ΔPDF page's structure overlay, on this page's ΔPDF view.  The
+  // markers stay hollow here: the fill reads the stored ΔPDF, and this view
+  // may show it through a Q or r band.
   const structure = useStructureModel(meta?.lattice);
   const showStructure = useStructureStore((s) => s.show) && structure !== null;
   // Why the overlay draws nothing (too many atoms, too dense), or the caution
@@ -785,6 +787,7 @@ export function ConsistencyViewer() {
                     <StructureOverlay
                       markers={rMarkers}
                       elements={structure.elements}
+                      order={structure.keys}
                       angle={s.header.axes_angle ?? 90}
                       viewport={rViewport}
                       depth={rDepth}
@@ -864,6 +867,7 @@ export function ConsistencyViewer() {
                     <StructureHits
                       hits={markersNear(rMarkers, rCursor[0], rCursor[1], s?.header.axes_angle ?? 90, rViewport.half * 0.035)}
                       elements={structure.elements}
+                      order={structure.keys}
                       lat={[a, b, c]}
                       angles={[meta?.lattice.alpha ?? 90, meta?.lattice.beta ?? 90, meta?.lattice.gamma ?? 90]}
                     />

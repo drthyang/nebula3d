@@ -11,6 +11,7 @@ import {
   fetchDpdfSlice,
   fetchHealth,
   fetchMeta,
+  fetchPairSignal,
   fetchRingDiagnostics,
 } from "./client";
 import { getBootStatus, subscribeBoot, type BootStatus } from "./pyodideEngine";
@@ -52,6 +53,27 @@ export function useDpdfMeta(volumeId: string | undefined) {
     queryKey: ["dpdfMeta", volumeId],
     queryFn: () => fetchDpdfMeta(volumeId as string),
     enabled: Boolean(volumeId),
+  });
+}
+
+/**
+ * The ΔPDF at a structure's pair vectors (fetchPairSignal): one read per
+ * volume and structure, whatever the cuts, the pairs hidden or the fill
+ * threshold. `vectors.key` names the differences and `lat` the lengths they
+ * are drawn at. No placeholder from the structure before: its table would be
+ * read with this one's indices.
+ */
+export function usePairSignal(
+  volumeId: string | undefined,
+  vectors: { diffs: Float64Array; key: string } | null,
+  lat: readonly [number, number, number] | null,
+) {
+  const key = vectors && lat ? `${vectors.key}@${lat.join(",")}` : "";
+  return useQuery({
+    queryKey: ["dpdfPairSignal", volumeId, key],
+    queryFn: () => fetchPairSignal(volumeId as string, vectors!.diffs, lat!, key),
+    enabled: Boolean(volumeId && vectors && lat && vectors.diffs.length > 0),
+    retry: false,
   });
 }
 
