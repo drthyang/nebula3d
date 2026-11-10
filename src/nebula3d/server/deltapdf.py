@@ -48,6 +48,19 @@ _CACHE_MAX = 3  # keep several DeltaPDF volumes resident for the comparison view
 _cache: OrderedDict[tuple[str, float], DeltaPdfData] = OrderedDict()
 _lock = threading.Lock()
 
+#: The most pair-vector values one request reads (32 MB of float32): about 200
+#: atoms a cell in a volume ±40 Å wide. A structure with more gets no values
+#: (the page draws its markers hollow and says why).
+PAIR_SIGNAL_MAX_VALUES = 8_000_000
+
+#: The most pair differences a request may carry: the page draws structures of
+#: up to 500 atoms a cell (``MAX_PAIR_ATOMS`` in ``web/src/structure/useStructure.ts``).
+PAIR_SIGNAL_MAX_DIFFS = 250_000
+
+# (σ, origin's radius) of the volumes read last, by (path, mtime): a few numbers each.
+_FLOOR_MAX = 16
+_floors: OrderedDict[tuple[str, float], tuple[float, float]] = OrderedDict()
+
 
 def set_cache_max(n: int) -> None:
     """Cap the ΔPDF cache (evicting oldest); the browser build shrinks it."""
@@ -128,6 +141,7 @@ def _float_log(logs: dict, key: str) -> float | None:
 def clear_cache() -> None:
     with _lock:
         _cache.clear()
+        _floors.clear()
 
 
 def dpdf_meta(path: Path) -> dict:
@@ -268,3 +282,109 @@ def dpdf_features(path: Path, min_sigma: float = 5.0, limit: int = 12, *,
             for g in f.groups
         ],
     }
+
+
+def dpdf_floor(path: Path) -> tuple[float, float]:
+    """The ΔPDF's robust σ outside the origin's disk and the disk's radius (Å)
+    (:func:`nebula3d.analysis.dpdf_features.sigma_outside_origin`), kept by
+    ``(path, mtime)`` so that a second structure does not take the median of
+    the volume again."""
+    from nebula3d.analysis.dpdf_features import sigma_outside_origin
+
+    key = (str(path), path.stat().st_mtime)
+    with _lock:
+        hit = _floors.get(key)
+    if hit is not None:
+        return hit
+    d = load_dpdf(path)
+    floor = sigma_outside_origin(d.data, d.x_axis, d.y_axis, d.z_axis, d.cell_angles)
+    with _lock:
+        _floors[key] = floor
+        while len(_floors) > _FLOOR_MAX:
+            _floors.popitem(last=False)
+    return floor
+
+
+def _pair_request(diffs: object, lengths: object) -> tuple[np.ndarray, np.ndarray]:
+    """A pair-signal request's differences (n, 3) and cell lengths (3,), checked."""
+    try:
+        d = np.asarray(diffs, dtype="<f8")
+        lat = np.asarray(lengths, dtype="<f8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("diffs must be a list of [u, v, w] and lat three lengths") from exc
+    if d.size == 0:
+        d = d.reshape(0, 3)
+    if d.ndim != 2 or d.shape[1] != 3 or lat.shape != (3,):
+        raise ValueError("diffs must be a list of [u, v, w] and lat three lengths")
+    if len(d) > PAIR_SIGNAL_MAX_DIFFS:
+        raise ValueError(f"at most {PAIR_SIGNAL_MAX_DIFFS} pair differences are read")
+    if not (np.isfinite(d).all() and np.isfinite(lat).all() and (lat > 0).all()):
+        raise ValueError("pair differences must be finite and the cell lengths positive")
+    return np.ascontiguousarray(d), np.ascontiguousarray(lat)
+
+
+def dpdf_pair_signal_etag(path: Path, diffs: object, lengths: object) -> str:
+    """A validator (an HTTP ETag) for :func:`dpdf_pair_signal_envelope`'s answer
+    to one request: it changes with the ΔPDF file (its path, mtime, size and
+    inode), the request (the differences and the lengths) and this package's
+    version. Asked again with it, the route answers 304 without reading the
+    volume. Raises ``ValueError`` for a malformed request."""
+    import hashlib
+
+    from nebula3d import __version__
+
+    d, lat = _pair_request(diffs, lengths)
+    st = path.stat()
+    asked = hashlib.sha256(d.tobytes() + lat.tobytes()).hexdigest()
+    key = f"{path}|{st.st_mtime_ns}:{st.st_size}:{st.st_ino}|{__version__}|{asked}"
+    return '"' + hashlib.sha256(key.encode("utf-8")).hexdigest()[:32] + '"'
+
+
+def dpdf_pair_signal_envelope(path: Path, diffs: object, lengths: object) -> bytes:
+    """The ΔPDF at a structure's pair vectors
+    (:func:`nebula3d.analysis.dpdf_features.pair_vector_signal`), for the
+    page's structure overlay: one answer per structure and volume, which the
+    page keeps while the cuts move.
+
+    *diffs* are the structure's distinct pair differences as fractions of its
+    cell along the ΔPDF's a, b, c, and *lengths* the cell lengths (Å) the
+    page draws them at. The answer is ``[uint32 LE header length][JSON header,
+    padded with spaces to a multiple of 4 bytes][int32 LE table][float32 LE
+    values]``. The table holds six numbers per difference, in the request's
+    order: its first lattice translation inside the volume along a, b, c and
+    how many there are along each. The values are ΔPDF/σ, each difference's
+    block after the one before it, translation ``n`` at
+    ``((n0 − first0)·count1 + n1 − first1)·count2 + n2 − first2``; NaN inside
+    the origin's disk (``origin_radius`` in the header, with ``sigma``). A
+    translation outside the table is outside the volume.
+
+    With more than ``PAIR_SIGNAL_MAX_VALUES`` values the header says
+    ``"skipped": "too_many"`` and nothing follows it. Raises ``ValueError``
+    for a malformed request.
+    """
+    from nebula3d.analysis.dpdf_features import TooManyVectors, pair_vector_signal
+
+    d, lat = _pair_request(diffs, lengths)
+    vol = load_dpdf(path)
+    sigma, origin_radius = dpdf_floor(path)
+    header: dict[str, object] = {
+        "sigma": float(sigma) if sigma > 0 else None,
+        "origin_radius": float(origin_radius),
+        "n_vectors": int(len(d)),
+        "max_values": PAIR_SIGNAL_MAX_VALUES,
+        "skipped": None,
+    }
+    body = b""
+    try:
+        sig = pair_vector_signal(vol.data, vol.x_axis, vol.y_axis, vol.z_axis, vol.cell_angles,
+                                 d, lat, floor=(sigma, origin_radius),
+                                 max_values=PAIR_SIGNAL_MAX_VALUES)
+    except TooManyVectors as exc:
+        header.update(n_values=exc.n_values, skipped="too_many")
+    else:
+        header["n_values"] = int(sig.values.size)
+        table = np.concatenate([sig.first, sig.count], axis=1).astype("<i4")
+        body = table.tobytes() + sig.values.astype("<f4", copy=False).tobytes()
+    hb = json.dumps(header).encode("utf-8")
+    hb += b" " * (-(4 + len(hb)) % 4)
+    return struct.pack("<I", len(hb)) + hb + body

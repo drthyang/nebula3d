@@ -101,6 +101,7 @@ __all__ = [
     "dpdf_meta_json",
     "dpdf_slice",
     "dpdf_features_json",
+    "dpdf_pair_signal",
     "consistency_meta_json",
     "consistency_check_json",
     "consistency_slice",
@@ -1435,6 +1436,17 @@ def dpdf_features_json(volume_id: str, min_sigma: float = 5.0, limit: int = 12) 
     m = _dpdf.dpdf_features(stage.path, float(min_sigma), int(limit),
                             declared_by=_ds.symmetry_declared_by(_require_cfg(), volume_id))
     return _json({**m, "id": volume_id})
+
+
+def dpdf_pair_signal(volume_id: str, body_json: str) -> bytes:
+    """The ΔPDF at each of a structure's pair vectors, in robust σ (mirrors
+    POST /api/deltapdf/{id}/pair-signal): *body_json* holds ``diffs`` and
+    ``lat``, as the endpoint's body does."""
+    body = json.loads(body_json or "{}")
+    if not isinstance(body, dict):
+        raise ValueError("the request is a JSON object with diffs and lat")
+    stage = _resolve(volume_id, "delta_pdf")
+    return _dpdf.dpdf_pair_signal_envelope(stage.path, body.get("diffs"), body.get("lat"))
 
 
 # ---------------------------------------------------------------------------

@@ -509,6 +509,15 @@ class DpdfFeaturesOut(BaseModel):
     groups: list[DpdfFeatureGroupOut]
 
 
+class PairSignalIn(BaseModel):
+    """A structure's pair vectors to read the ΔPDF at
+    (``POST /api/deltapdf/{id}/pair-signal``)."""
+    # Distinct pair differences r_j − r_i as fractions of the structure's
+    # cell, along the ΔPDF's a, b, c.
+    diffs: list[tuple[float, float, float]]
+    lat: tuple[float, float, float]  # the cell lengths the vectors are drawn at, Å
+
+
 class DeltaPdfMetaOut(BaseModel):
     id: str
     shape: list[int]

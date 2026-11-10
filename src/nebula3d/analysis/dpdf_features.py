@@ -445,7 +445,7 @@ def pair_vector_signal(
     z_axis: NDArray[np.floating],
     cell_angles: tuple[float, float, float],
     differences: ArrayLike,
-    lengths: Sequence[float],
+    lengths: ArrayLike,
     *,
     floor: tuple[float, float] | None = None,
     max_values: int | None = None,

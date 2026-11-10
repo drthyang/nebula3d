@@ -979,6 +979,108 @@ def test_dpdf_features_are_grouped_by_the_symmetry_the_raw_file_declares(tmp_pat
     assert axial["length"] == pytest.approx(4.0, abs=0.05)
 
 
+def _decode_pair_signal(buf: bytes):
+    """[uint32 header length][JSON header][int32 table (n, 6)][float32 values]."""
+    (n,) = struct.unpack_from("<I", buf, 0)
+    header = json.loads(buf[4:4 + n].decode("utf-8"))
+    assert (4 + n) % 4 == 0  # the numbers after the header are aligned
+    if header["skipped"]:
+        return header, None, None
+    table = np.frombuffer(buf, dtype="<i4", count=6 * header["n_vectors"], offset=4 + n)
+    values = np.frombuffer(buf, dtype="<f4", offset=4 + n + table.nbytes)
+    return header, table.reshape(-1, 6), values
+
+
+def test_dpdf_pair_signal_reads_the_volume_at_a_structures_vectors(dpdf_env):
+    """The ΔPDF at each pair vector, in robust σ (analysis.dpdf_features),
+    served for the page's structure overlay: every vector inside the volume in
+    one answer, as the analysis reads them."""
+    from nebula3d.analysis.dpdf_features import pair_vector_signal
+
+    client, data, x, y, z = dpdf_env
+    url = f"/api/deltapdf/{SLUG}.delta_pdf/pair-signal"
+    body = {"diffs": [[0.5, 0.5, 0.0], [0.0, 0.0, 0.0], [0.25, 0.1, 0.4]], "lat": [5.8, 10.4, 24.7]}
+    r = client.post(url, json=body)
+    assert r.status_code == 200, r.text
+    header, table, values = _decode_pair_signal(r.content)
+    want = pair_vector_signal(data, x, y, z, (90.0, 90.0, 90.0), body["diffs"], body["lat"])
+    assert header["sigma"] == pytest.approx(want.sigma) and header["sigma"] > 0
+    assert header["origin_radius"] == pytest.approx(0.75)  # 5 % of ±15 Å
+    assert header["n_vectors"] == 3 and header["n_values"] == values.size and not header["skipped"]
+    np.testing.assert_array_equal(table[:, :3], want.first)
+    np.testing.assert_array_equal(table[:, 3:], want.count)
+    np.testing.assert_array_equal(values, want.values)
+    # (0.5 + n)·5.8 within ±10 Å: n = −2 … 1; n·24.7 within ±15 Å: n = 0.
+    assert table[0].tolist() == [-2, -1, 0, 4, 2, 1]
+    # u = 0 is in the origin's disk: no value.
+    zero = int(table[0, 3:].prod()) + (1 * table[1, 4] + 1) * table[1, 5] + 0
+    assert table[1].tolist() == [-1, -1, 0, 3, 3, 1] and np.isnan(values[zero])
+    assert np.isfinite(values[: int(table[0, 3:].prod())]).all()
+
+    # No vectors: an empty table.
+    empty = _decode_pair_signal(client.post(url, json={"diffs": [], "lat": body["lat"]}).content)
+    assert empty[0]["n_values"] == 0 and empty[1].shape == (0, 6) and empty[2].size == 0
+    # Malformed: a length that is not positive; a body that is not the request.
+    assert client.post(url, json={**body, "lat": [5.8, 0.0, 24.7]}).status_code == 400
+    assert client.post(url, json={"diffs": [[0.5, 0.5]], "lat": body["lat"]}).status_code == 422
+    assert client.post(f"/api/deltapdf/{SLUG}.nope/pair-signal", json=body).status_code == 404
+
+
+def test_dpdf_pair_signal_answers_304_while_the_file_and_the_request_stand(tmp_path):
+    """One answer covers a structure in a volume and can be tens of MB: asked
+    again with its ETag, the route answers 304 without reading the volume,
+    and afresh for another structure or once the ΔPDF is written again."""
+    import os
+
+    client, *_ = _dpdf_client(tmp_path)
+    paths = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs", proc_dir=tmp_path / "processed")
+    url = f"/api/deltapdf/{SLUG}.delta_pdf/pair-signal"
+    body = {"diffs": [[0.5, 0.5, 0.0]], "lat": [5.8, 10.4, 24.7]}
+    first = client.post(url, json=body)
+    tag = first.headers["etag"]
+    assert first.status_code == 200 and tag.startswith('"')
+    assert first.headers["cache-control"] == "no-cache"
+    again = client.post(url, json=body, headers={"If-None-Match": tag})
+    assert again.status_code == 304 and again.content == b"" and again.headers["etag"] == tag
+
+    # Another structure, or other lengths: another answer under another tag.
+    for other in ({**body, "diffs": [[0.5, 0.25, 0.0]]}, {**body, "lat": [5.8, 10.4, 12.0]}):
+        r = client.post(url, json=other, headers={"If-None-Match": tag})
+        assert r.status_code == 200 and r.headers["etag"] != tag
+
+    # The ΔPDF written again (a later mtime): read again.
+    st = paths.delta_pdf.stat()
+    os.utime(paths.delta_pdf, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
+    fresh = client.post(url, json=body, headers={"If-None-Match": tag})
+    assert fresh.status_code == 200 and fresh.headers["etag"] != tag
+    assert fresh.content == first.content
+
+
+def test_dpdf_pair_signal_skips_a_structure_with_too_many_vectors(tmp_path, monkeypatch):
+    client, *_ = _dpdf_client(tmp_path)
+    monkeypatch.setattr(dpdf_mod, "PAIR_SIGNAL_MAX_VALUES", 5)
+    r = client.post(f"/api/deltapdf/{SLUG}.delta_pdf/pair-signal",
+                    json={"diffs": [[0.5, 0.5, 0.0]], "lat": [5.8, 10.4, 24.7]})
+    assert r.status_code == 200
+    header, table, values = _decode_pair_signal(r.content)
+    assert header["skipped"] == "too_many" and header["n_values"] == 8 and header["max_values"] == 5
+    assert table is None and values is None
+
+
+def test_dpdf_pair_signal_reads_an_oblique_cell_with_its_angles(tmp_path):
+    """The origin's disk is a true length: on a hexagonal cell (γ = 120°) a
+    vector along a + b is shorter than its components suggest."""
+    client, *_ = _dpdf_client(tmp_path, angles=(90.0, 90.0, 120.0))
+    body = {"diffs": [[0.1, 0.1, 0.0], [0.1, -0.1, 0.0]], "lat": [6.0, 6.0, 24.7]}
+    r = client.post(f"/api/deltapdf/{SLUG}.delta_pdf/pair-signal", json=body)
+    header, table, values = _decode_pair_signal(r.content)
+    assert header["origin_radius"] == pytest.approx(0.75)
+    at = [int((0 - t[0]) * t[4] * t[5] + (0 - t[1]) * t[5] + (0 - t[2])) for t in table]
+    n0 = int(table[0, 3:].prod())
+    # (0.6, 0.6, 0) Å is 0.6 Å long at 120° (inside the disk); (0.6, −0.6, 0) Å is 1.04 Å.
+    assert np.isnan(values[at[0]]) and np.isfinite(values[n0 + at[1]])
+
+
 def test_dpdf_bad_plane_400(dpdf_env):
     client, *_ = dpdf_env
     r = client.get(f"/api/deltapdf/{SLUG}.delta_pdf/slice", params={"plane": "hk"})
