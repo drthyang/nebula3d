@@ -1,5 +1,6 @@
 // Typed fetch wrappers for the nebula3d API, including the binary slice envelope.
 
+import { decodePairSignal, type PairSignal } from "./pairSignal";
 import { engine, PYODIDE_MODE } from "./pyodideEngine";
 import type {
   BraggProfile,
@@ -339,6 +340,56 @@ export function fetchDpdfSlice(
   return fetchEnvelope(
     `/api/deltapdf/${encodeURIComponent(volumeId)}/slice?${params.toString()}`,
   );
+}
+
+// The ΔPDF at a structure's pair vectors, with the ETag it came under, for the
+// last few (volume, structure) read. One request covers the whole volume, so
+// the cuts move without another; a later read (the page opened again, a run
+// finished) asks with the tag, and a 304 (the same volume file, the same
+// vectors) reuses the table kept here.
+const PAIR_SIGNALS_KEPT = 2;
+const pairSignals = new Map<string, { etag: string; value: PairSignal }>();
+
+/**
+ * The ΔPDF, in robust σ, at every lattice translation inside the volume of
+ * each pair difference. `diffs` holds three fractions of the cell per
+ * difference, along the ΔPDF's a, b, c; `lat` the lengths (Å) they are drawn
+ * at; `key` names the pair (diffs, lat) for the copy kept.
+ */
+export async function fetchPairSignal(volumeId: string, diffs: Float64Array, lat: readonly number[], key: string): Promise<PairSignal> {
+  const rows: number[][] = [];
+  for (let i = 0; i + 2 < diffs.length; i += 3) rows.push([diffs[i], diffs[i + 1], diffs[i + 2]]);
+  const body = JSON.stringify({ diffs: rows, lat });
+  if (PYODIDE_MODE) return engine.dpdfPairSignal(volumeId, body);
+  const url = `/api/deltapdf/${encodeURIComponent(volumeId)}/pair-signal`;
+  const id = `${volumeId}|${key}`;
+  const kept = pairSignals.get(id);
+  // no-store: a 304 reaches this code, and the table kept here is the one copy.
+  const r = await fetch(url, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", ...(kept ? { "If-None-Match": kept.etag } : {}) },
+    body,
+  });
+  if (r.status === 304 && kept) {
+    pairSignals.delete(id);
+    pairSignals.set(id, kept);
+    return kept.value;
+  }
+  pairSignals.delete(id);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${url}`);
+  const value = decodePairSignal(new Uint8Array(await r.arrayBuffer()));
+  const etag = r.headers.get("ETag");
+  if (etag) {
+    pairSignals.set(id, { etag, value });
+    for (const old of [...pairSignals.keys()].slice(0, Math.max(0, pairSignals.size - PAIR_SIGNALS_KEPT))) pairSignals.delete(old);
+  }
+  return value;
+}
+
+/** Forget the kept pair-vector tables (closing the volume lets go of what it read). */
+export function forgetPairSignals(): void {
+  pairSignals.clear();
 }
 
 export function fetchConsistencyMeta(

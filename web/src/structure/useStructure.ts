@@ -16,6 +16,7 @@ import {
   elementOrder,
   expandSites,
   pairDifferences,
+  pairVectors,
   permuteAtoms,
   PERMUTATIONS,
   sliceMarkers,
@@ -32,6 +33,10 @@ export interface StructureModel {
   nOps: number;
   atoms: Atom[];
   diffs: PairDiff[]; // empty when nothing can be drawn (see `blocked`)
+  // The distinct pair differences (three fractions each, at PairDiff.vec) the
+  // ΔPDF is read at, and a key that names them (the request's cache key).
+  vectors: Float64Array;
+  vectorsKey: string;
   elements: string[]; // in site order
   keys: string[]; // element pairs present, A–A, A–B, …
   fit: CellFit | null; // the CIF cell (axes permuted) against the ΔPDF's
@@ -70,6 +75,18 @@ export const MAX_PAIR_ATOMS = 500;
  * a slice can draw: 300 atoms in a 4.2 Å cell blocked the page for 7 s.
  */
 export const MAX_ATOM_DENSITY = 0.3;
+
+/** A short name for a list of pair differences: their count and two 32-bit hashes of them on the 1e-5 grid. */
+export function vectorsKey(vectors: Float64Array): string {
+  let a = 0x811c9dc5, b = 0x9747b28c;
+  for (let i = 0; i < vectors.length; i++) {
+    const v = Math.round(vectors[i] * 1e5);
+    a = Math.imul(a ^ v, 0x01000193);
+    b = Math.imul(b ^ (v + i), 0x5bd1e995);
+    b ^= b >>> 15;
+  }
+  return `${vectors.length / 3}:${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}`;
+}
 
 /** A cell's volume (Å³). */
 export function cellVolume(c: Cell): number {
@@ -110,6 +127,7 @@ export function buildModel(def: StructureDef, perm: number, data: Cell | null): 
   const density = vol > 0 ? atoms.length / vol : null;
   const tooDense = density !== null && density > MAX_ATOM_DENSITY;
   const diffs = data && !tooMany && !tooDense ? pairDifferences(atoms) : [];
+  const vectors = pairVectors(diffs);
   const cif = def.cell ? [def.cell.a, def.cell.b, def.cell.c] : null;
   const drawLat: Vec3 | null = !data
     ? null
@@ -127,6 +145,8 @@ export function buildModel(def: StructureDef, perm: number, data: Cell | null): 
     nOps: ops.length,
     atoms,
     diffs,
+    vectors,
+    vectorsKey: vectorsKey(vectors),
     elements,
     keys,
     fit,

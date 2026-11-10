@@ -32,6 +32,7 @@ import { RUN_STAGES } from "../workers/pyodideShared";
 import { isMobileDevice } from "./device";
 import { clearMainHeap, setMainHeap } from "./engineMemory";
 import { clearFailedRun, clearRefusedLoad, setFailedRun, setRefusedLoad } from "./limitSignals";
+import { decodePairSignal, type PairSignal } from "./pairSignal";
 import { disposeRingPool, ensureRingPool } from "./ringPool";
 import type {
   BraggProfile,
@@ -562,6 +563,10 @@ export const engine = {
   },
   dpdfSlice(volumeId: string, plane: string, value: number): Promise<Slice> {
     return sliceCall("dpdf_slice", [volumeId, plane, value]);
+  },
+  async dpdfPairSignal(volumeId: string, bodyJson: string): Promise<PairSignal> {
+    await ensureBooted();
+    return decodePairSignal((await rpc("slice_call", { method: "dpdf_pair_signal", args: [volumeId, bodyJson] })) as Uint8Array);
   },
   consistencyMeta(
     datasetId: string,
