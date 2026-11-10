@@ -16,6 +16,7 @@
 // nodes), the fill's holes outside their range, the grains (far orbits, the
 // rotated copy's nodes) and a line profile's line.
 
+import { SIGN_WORDS, type MapKind } from "../../structure/signal";
 import type { AgentStep } from "../agent";
 import { found, type Found } from "../readings";
 import { isTable, tableRows } from "../tools/shared/table";
@@ -53,8 +54,8 @@ export type ClassId =
   | "fpRes" // a fitted Bragg peak, resolution-limited on an axis (as the Bragg page flags it): its footprint solid
   | "fpBroad" // one measured wider than the resolution on every axis: dashed
   | "fpNone" // one whose width could not be measured: dotted
-  | "dpos" // a ΔPDF candidate: more pairs than the average structure (+)
-  | "dneg" // fewer (−)
+  | "dpos" // a ΔPDF candidate: more pairs than the average structure (+); on a magnetic map, moments parallel (wordedFor)
+  | "dneg" // fewer (−); antiparallel
   | "turn" // the UB turn: the shift at each Bragg node, scaled up
   | "fillUp" // a punch hole filled above its rim's range
   | "fillDown" // below it
@@ -670,6 +671,26 @@ const braggPeaks: Mapper = (r, _args, data) => {
 };
 
 const DPDF_HELP = "The listed features at every vector, and the vector opposite (the ΔPDF is centrosymmetric): red + more pairs than the average structure, blue − fewer; the ring grows with |σ|. Drawn on a section within half a voxel of it; the strongest 8 named by length.";
+
+// The same marks on a magnetic map (the structure panel's "ΔPDF type"): the
+// signs are the moments' correlation at that separation, in the panel's own
+// words (SIGN_WORDS), never "more pairs" or "fewer pairs".
+const MDPDF_HELP = `The listed features at every vector, and the vector opposite (the ${SIGN_WORDS.magnetic.map} is centrosymmetric): red + moments at that separation ${SIGN_WORDS.magnetic.pos}, blue − ${SIGN_WORDS.magnetic.neg}; the ring grows with |σ|. Drawn on a section within half a voxel of it; the strongest 8 named by length.`;
+const MDPDF_LABEL: Partial<Record<ClassId, string>> = { dpos: `+ ${SIGN_WORDS.magnetic.pos}`, dneg: `− ${SIGN_WORDS.magnetic.neg}` };
+
+/**
+ * A set as the legend and its help word it for the map's kind. An atomic map,
+ * or a set with no ΔPDF feature, is the set itself: the classes' own labels.
+ * The marks, their colours and their counts are the same for both kinds.
+ */
+export function wordedFor(set: OverlaySet, kind: MapKind): OverlaySet {
+  if (kind !== "magnetic" || !set.classes.some((c) => MDPDF_LABEL[c.id])) return set;
+  return {
+    ...set,
+    help: set.help.map((line) => (line === DPDF_HELP ? MDPDF_HELP : line)),
+    classes: set.classes.map((c) => (MDPDF_LABEL[c.id] ? { ...c, label: MDPDF_LABEL[c.id]! } : c)),
+  };
+}
 
 const dpdfPeaks: Mapper = (r, _args, data) => {
   const feats = Array.isArray(r.features) ? r.features.filter(isObj) : [];

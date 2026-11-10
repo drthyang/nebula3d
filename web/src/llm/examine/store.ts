@@ -5,16 +5,18 @@
 // (state/volumeReset.ts); the next step that draws replaces it on the views.
 // useExamine keeps it in step with the chat; mount once (App).
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
 import type { Dataset } from "../../api/types";
 import { useMarkStore } from "../../state/markStore";
+import { useStructureStore } from "../../state/structureStore";
+import type { MapKind } from "../../structure/signal";
 import { resetsWithVolume } from "../../state/volumeReset";
 import type { AgentStep } from "../agent";
 import { useAutoStore } from "../auto/store";
 import { useChatStore } from "../chatStore";
-import { examining, overlaysOf, stepKey, type ClassId, type OverlaySet, type Tone } from "./overlays";
+import { examining, overlaysOf, stepKey, wordedFor, type ClassId, type OverlaySet, type Tone } from "./overlays";
 
 const SWITCH_KEY = "nebula3d.highlights.v1";
 // The sets kept for the steps' Show buttons, newest last.
@@ -76,9 +78,18 @@ export const useExamineStore = create<ExamineState>((set) => ({
 // Closing the volume clears every overlay; the switch is the user's, kept.
 resetsWithVolume(useExamineStore, { keep: ["enabled"] });
 
-/** The set shown now, if any. */
-export const useShownSet = (): ShownSet | null =>
-  useExamineStore((s) => (s.current ? (s.sets.find((x) => x.set.key === s.current) ?? null) : null));
+/** A shown set with its legend worded for the map's kind (overlays.ts `wordedFor`); the same object where no word changes. */
+export function shownFor(shown: ShownSet, kind: MapKind): ShownSet {
+  const set = wordedFor(shown.set, kind);
+  return set === shown.set ? shown : { ...shown, set };
+}
+
+/** The set shown now, if any, worded for the structure panel's "ΔPDF type" (the stored set keeps the classes' own labels). */
+export const useShownSet = (): ShownSet | null => {
+  const shown = useExamineStore((s) => (s.current ? (s.sets.find((x) => x.set.key === s.current) ?? null) : null));
+  const kind = useStructureStore((s) => s.mapKind);
+  return useMemo(() => (shown ? shownFor(shown, kind) : null), [shown, kind]);
+};
 
 /**
  * What a page with overlays reads of the Highlights: the set shown while it

@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentStep } from "../../agent";
 import { toolsWhere } from "../../tools";
 import type { OverlayData } from "../data";
-import { examining, hklLabel, leftoverClass, OVERLAYS, overlaysOf, parseStageShells, ringShells, stepKey, ubOmega } from "../overlays";
+import { examining, hklLabel, leftoverClass, OVERLAYS, overlaysOf, parseStageShells, ringShells, stepKey, ubOmega, wordedFor } from "../overlays";
 
 const step = (name: string, args: Record<string, unknown>, result: unknown, overlay?: OverlayData): AgentStep => ({
   id: "0:c1",
@@ -357,6 +357,46 @@ describe("v2: the ΔPDF features", () => {
     const dpdfVectors = [{ v: [1, 2, 3] as [number, number, number], size: 9, length: 3.74, rank: 0 }];
     const set = overlaysOf(step("dpdf_peaks", {}, result, { dpdfVectors }))!;
     expect(set.items.map((i) => (i.kind === "spot" ? i.at : null))).toEqual([[1, 2, 3], [-1, -2, -3]]);
+  });
+
+  // The legend's words follow the structure panel's "ΔPDF type" (wordedFor); the marks do not change.
+  const ATOMIC_HELP =
+    "The listed features at every vector, and the vector opposite (the ΔPDF is centrosymmetric): red + more pairs than the average structure, blue − fewer; the ring grows with |σ|. Drawn on a section within half a voxel of it; the strongest 8 named by length.";
+  const labels = (set: { classes: { id: string; label: string }[] }) => Object.fromEntries(set.classes.map((c) => [c.id, c.label]));
+
+  it("an atomic map: more pairs and fewer pairs, as the mapper wrote them", () => {
+    const set = overlaysOf(step("dpdf_peaks", {}, result))!;
+    expect(labels(set)).toEqual({ dpos: "+ more pairs", dneg: "− fewer pairs" });
+    expect(set.help).toEqual([ATOMIC_HELP]);
+    expect(wordedFor(set, "atomic")).toBe(set);
+  });
+
+  it("a magnetic map: moments parallel and antiparallel, on the same marks", () => {
+    const set = overlaysOf(step("dpdf_peaks", {}, result))!;
+    const worded = wordedFor(set, "magnetic");
+    expect(labels(worded)).toEqual({ dpos: "+ parallel", dneg: "− antiparallel" });
+    expect(worded.help).toEqual([
+      "The listed features at every vector, and the vector opposite (the mΔPDF is centrosymmetric): red + moments at that separation parallel, blue − antiparallel; the ring grows with |σ|. Drawn on a section within half a voxel of it; the strongest 8 named by length.",
+    ]);
+    expect(JSON.stringify(worded)).not.toMatch(/more pairs|fewer/);
+    // Only the words: the items, the title, the summary, the tones and the views are the set's own.
+    expect(worded.items).toBe(set.items);
+    expect({ ...worded, help: set.help, classes: set.classes }).toEqual(set);
+    expect(worded.classes.map((c) => ({ ...c, label: "" }))).toEqual(set.classes.map((c) => ({ ...c, label: "" })));
+    // The stored set keeps its own words, so Atomic reads as before after a change of kind.
+    expect(labels(set)).toEqual({ dpos: "+ more pairs", dneg: "− fewer pairs" });
+  });
+
+  it("a set with no ΔPDF feature is the same for both kinds", () => {
+    const peaks = {
+      n_peaks: 3,
+      sorted_by: "significance",
+      peaks: { cols: ["hkl", "q", "significance", "resolution_limited"], rows: [[[2, 0, 0], 3.2, 40, [true, false, false]]] },
+    };
+    const bragg = overlaysOf(step("bragg_peaks", {}, peaks, { braggPeaks: [{ hkl: [2, 0, 0], widths: [0.02, 0.03, 0.04], principal: null, dirs: null }] }))!;
+    expect(bragg.classes.length).toBeGreaterThan(0);
+    expect(wordedFor(bragg, "magnetic")).toBe(bragg);
+    expect(wordedFor(bragg, "atomic")).toBe(bragg);
   });
 });
 

@@ -19,3 +19,9 @@
   - Cost: the skill's core read grows by 201 characters (67 estimated tokens);
     the chat's worst turn is unchanged; the auto run's worst fix grows by 67,
     its ceiling raised 10,733 to 10,800 with the user's yes.
+  - The highlights the Pilot draws on the ΔPDF (the `dpdf_peaks` marks) follow
+    the structure panel's "ΔPDF type". With Magnetic the legend reads
+    "+ parallel" and "− antiparallel" and its help says moments parallel or
+    antiparallel; with Atomic (the default) it reads "+ more pairs" and
+    "− fewer pairs" as before. The marks are the same for both. An interface
+    change only: the model reads none of this text.
