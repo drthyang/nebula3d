@@ -4,6 +4,7 @@
 
 import { useMemo } from "react";
 
+import { usePairSignal } from "../api/hooks";
 import type { Lattice } from "../api/types";
 import { toDisplay } from "../components/oblique";
 import { useStructureStore, type StructureDef } from "../state/structureStore";
@@ -25,6 +26,7 @@ import {
   type Marker,
   type PairDiff,
 } from "./pairs";
+import { fillColors, type OverlaySignal, type SignalSource } from "./signal";
 import { symmetryGroup, type Vec3 } from "./symops";
 
 export interface StructureModel {
@@ -242,6 +244,29 @@ export function usePlaneMarkers(
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ranges are compared by value
   }, [model, show, origin, hidden, a, b, c, p.h, p.v, p.cut, p.value, depth, h0, h1, v0, v1]);
+}
+
+/**
+ * What the overlay's markers say about the ΔPDF of `volumeId`: its value at
+ * each pair vector (read once per structure and volume, and only while the
+ * overlay is `on`), the panel's threshold and fade, and the fills of the
+ * colormap `lut`.
+ */
+export function useOverlaySignal(
+  volumeId: string | undefined,
+  model: StructureModel | null,
+  lut: Uint8ClampedArray,
+  on: boolean,
+): OverlaySignal {
+  const threshold = useStructureStore((s) => s.fillAbove);
+  const fade = useStructureStore((s) => s.fadeQuiet);
+  const vectors = useMemo(
+    () => (on && model && model.vectors.length ? { diffs: model.vectors, key: model.vectorsKey } : null),
+    [on, model],
+  );
+  const read = usePairSignal(volumeId, vectors, model?.drawLat ?? null);
+  const source: SignalSource = read.data ?? (read.isError ? "failed" : "pending");
+  return useMemo(() => ({ source, threshold, fade, colors: fillColors(lut) }), [source, threshold, fade, lut]);
 }
 
 /** The markers drawn nearest a display point (all those at that spot), within `radius` Å. */

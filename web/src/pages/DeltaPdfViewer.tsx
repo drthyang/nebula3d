@@ -39,7 +39,7 @@ import { defaultDpdfView, useDpdfStore } from "../state/dpdfStore";
 import { useMarkStore, visibleMarks } from "../state/markStore";
 import { useStructureStore } from "../state/structureStore";
 import type { Marker } from "../structure/pairs";
-import { markersNear, usePlaneMarkers, useStructureModel } from "../structure/useStructure";
+import { markersNear, useOverlaySignal, usePlaneMarkers, useStructureModel } from "../structure/useStructure";
 import { useGlow } from "../llm/highlight";
 import { HighlightLayer } from "../components/HighlightLayer";
 import { ExamineBar, ViewLegend } from "../llm/components/ExamineBar";
@@ -196,6 +196,8 @@ export function DeltaPdfViewer() {
   const setShowStructure = useStructureStore((s) => s.setShow);
   const storedDepth = useStructureStore((s) => s.depth);
   const [structurePanel, setStructurePanel] = useState(false);
+  // What the ΔPDF holds at each pair vector: read once per structure, not per cut.
+  const signal = useOverlaySignal(volumeId, structure, lut, showStructure);
   const depthFor = (a: Ax) => {
     const r = range[a], n = shape[a];
     return storedDepth ?? (r && n && n > 1 ? (r[1] - r[0]) / (n - 1) / 2 : 0);
@@ -297,7 +299,7 @@ export function DeltaPdfViewer() {
           showStructure &&
           structure && (
             <div className="ws-row">
-              <StructureLegend model={structure} />
+              <StructureLegend model={structure} signal={signal} />
             </div>
           )
         }
@@ -424,9 +426,11 @@ export function DeltaPdfViewer() {
                     <StructureOverlay
                       markers={markers[p.plane]}
                       elements={structure.elements}
+                      order={structure.keys}
                       angle={r.data.header.axes_angle ?? 90}
                       viewport={viewport}
                       depth={depthFor(p.cut)}
+                      signal={signal}
                     />
                   )}
                   {r.isFetching && <span className="spin vf-spin" />}
@@ -463,8 +467,10 @@ export function DeltaPdfViewer() {
                     <StructureHits
                       hits={hits}
                       elements={structure.elements}
+                      order={structure.keys}
                       lat={[lat.x ?? 1, lat.y ?? 1, lat.z ?? 1]}
                       angles={cellAngles}
+                      signal={signal}
                     />
                   )}
                 </>
