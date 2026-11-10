@@ -88,6 +88,19 @@ describe("a saved session", () => {
     expect(new Set(useChatStore.getState().turns.map((t) => t.id)).size).toBe(3);
   });
 
+  it("brings back the overlay's fill settings and its ΔPDF type", () => {
+    analysed();
+    useStructureStore.setState({ fillAbove: 4.5, fadeQuiet: false, mapKind: "magnetic" });
+    const saved = JSON.stringify(captureSession(dataset("S-60K", OUTPUTS), new Date("2026-10-20T10:00:00Z")));
+    expect(JSON.parse(saved).structure).toMatchObject({ fillAbove: 4.5, fadeQuiet: false, mapKind: "magnetic" });
+
+    useStructureStore.setState({ def: null, fillAbove: 3, fadeQuiet: true, mapKind: "atomic" });
+    restoreSession(parseSession(saved), [dataset("S-60K", OUTPUTS)]);
+    const st = useStructureStore.getState();
+    expect([st.fillAbove, st.fadeQuiet, st.mapKind]).toEqual([4.5, false, "magnetic"]);
+    useStructureStore.setState({ fillAbove: 3, fadeQuiet: true, mapKind: "atomic" });
+  });
+
   it("keeps the session's settings over the ones the browser remembered for its dataset", () => {
     analysed();
     const saved = JSON.stringify(captureSession(dataset("S-60K", OUTPUTS)));

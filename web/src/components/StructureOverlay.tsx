@@ -25,7 +25,7 @@ const DARK = "rgba(8, 10, 14, 0.85)";
 const LIGHT = "rgba(255, 255, 255, 0.92)";
 
 /** No values: every marker hollow at full size. */
-const NO_SIGNAL: OverlaySignal = { source: "pending", threshold: 3, fade: false, colors: ["none", "none"] };
+const NO_SIGNAL: OverlaySignal = { source: "pending", threshold: 3, fade: false, colors: ["none", "none"], kind: "atomic" };
 
 interface Props {
   markers: Marker[];
@@ -137,7 +137,7 @@ export function StructureHits({
             {signal && (
               <span className={`struct-signal${state === "pos" || state === "neg" ? " on" : ""}`}>
                 {state === "pos" || state === "neg" ? <FillIcon color={signal.colors[state === "pos" ? 0 : 1]} size={12} /> : null}
-                {signalText(s.reading, signal.threshold, origin)}
+                {signalText(s.reading, signal.threshold, origin, signal.kind)}
               </span>
             )}
           </span>

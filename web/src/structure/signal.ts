@@ -2,10 +2,17 @@
 //
 // A marker's value is the ΔPDF at its own vector, in units of the volume's
 // robust σ (the server reads it there, between the voxels; api/pairSignal.ts).
-// At or above the "Fill above" threshold the marker is filled: positive where
-// the pair is more common than in the average structure, negative where it is
-// rarer.  Below it the marker stays hollow.  Element pairs that share a vector
-// share its value and are drawn as nested glyphs, the fill in the inner one.
+// At or above the "Fill above" threshold the marker is filled, in the map's
+// positive or negative colour.  Below it the marker stays hollow.  Element
+// pairs that share a vector share its value and are drawn as nested glyphs,
+// the fill in the inner one.
+//
+// What a sign means depends on the kind of map, which the app cannot tell, so
+// the reader says ("ΔPDF type"): in an atomic ΔPDF positive is a pair more
+// common than in the average structure and negative a rarer one; in a
+// magnetic one (3D-mΔPDF) positive is moments parallel at that separation and
+// negative antiparallel.  SIGN_WORDS is the one place the two vocabularies
+// are written.
 
 import type { PairSignal } from "../api/pairSignal";
 import { isOpenShape, NEST_RADIUS, nestRadii, OPEN_DISC, pairGlyph, shapePath, type Shape } from "./glyphs";
@@ -14,6 +21,56 @@ import type { Vec3 } from "./symops";
 
 /** The "Fill above" slider (σ). */
 export const FILL_ABOVE = { min: 2, max: 6, step: 0.5, initial: 3 } as const;
+
+/** The kind of ΔPDF the map is: the panel's "ΔPDF type". */
+export type MapKind = "atomic" | "magnetic";
+
+export const MAP_KINDS: readonly MapKind[] = ["atomic", "magnetic"];
+
+/** How one kind of map is worded: the legend, the count line, the readout and the panel all read these. */
+export interface SignWords {
+  label: string; // the choice's name
+  title: string; // its hint
+  map: string; // what the readout calls the map
+  pos: string; // a positive fill, in the legend and the count line
+  neg: string; // a negative one
+  saysPos: string; // the readout, after a value at or above the threshold
+  saysNeg: string; // and at or below minus it
+  fills: string; // ends the panel's hint: where each colour fills a marker
+}
+
+// The magnetic words are about the separation vector, never about the two
+// atoms of a pair: which species carry a moment is not known here, and an
+// element pair that shares a vector with a magnetic one shares the marker.
+export const SIGN_WORDS: Record<MapKind, SignWords> = {
+  atomic: {
+    label: "Atomic",
+    title: "Positive: pairs more common than in the average structure. Negative: rarer.",
+    map: "ΔPDF",
+    pos: "more common",
+    neg: "rarer",
+    saysPos: "more common than in the average structure",
+    saysNeg: "rarer than in the average structure",
+    fills:
+      "in the map's positive colour where the pair is more common than in the average structure, in its negative colour where it is rarer.",
+  },
+  magnetic: {
+    label: "Magnetic",
+    title: "3D-mΔPDF. Positive: moments parallel. Negative: antiparallel.",
+    map: "mΔPDF",
+    pos: "parallel",
+    neg: "antiparallel",
+    saysPos: "moments at this separation are parallel",
+    saysNeg: "moments at this separation are antiparallel",
+    fills:
+      "in the map's positive colour where moments at that separation are parallel, in its negative colour where they are antiparallel.",
+  },
+};
+
+/** A stored "ΔPDF type", or atomic for anything else (a store or session from before the setting). */
+export function mapKindOr(v: unknown): MapKind {
+  return v === "magnetic" ? "magnetic" : "atomic";
+}
 
 /** Why a marker has no value. */
 export type NoValue =
@@ -38,7 +95,8 @@ export interface OverlaySignal {
   source: SignalSource; // the ΔPDF at the vectors, or that it is still being read
   threshold: number; // "Fill above" (σ)
   fade: boolean; // "Fade pairs without signal"
-  colors: readonly [string, string]; // fills: more common, rarer
+  colors: readonly [string, string]; // fills: positive, negative
+  kind: MapKind; // "ΔPDF type": how the two signs are worded
 }
 
 /** Why no marker has a value, or null when the table holds them. */
@@ -65,8 +123,8 @@ export function readSignal(source: SignalSource, vec: number, n: Vec3): Reading 
 
 /** How a marker is drawn. */
 export type SignalState =
-  | "pos" // filled: more common than in the average structure
-  | "neg" // filled: rarer
+  | "pos" // filled: a value at or above the threshold
+  | "neg" // filled: at or below minus it
   | "quiet" // a value below the threshold: hollow
   | "none"; // no value: hollow, as "no signal"
 
@@ -88,30 +146,31 @@ function signed(value: number, threshold: number): string {
 }
 
 /** The readout's line for one vector: the value and what it says, or why there is none. */
-export function signalText(r: Reading, threshold: number, originRadius?: number | null): string {
+export function signalText(
+  r: Reading,
+  threshold: number,
+  originRadius?: number | null,
+  kind: MapKind = "atomic",
+): string {
+  const w = SIGN_WORDS[kind];
   if (r.value !== null) {
     const s = signalState(r, threshold);
-    const says =
-      s === "pos"
-        ? "more common than in the average structure"
-        : s === "neg"
-          ? "rarer than in the average structure"
-          : `nothing above ${sigmas(threshold)}σ`;
-    return `ΔPDF ${signed(r.value, threshold)}: ${says}`;
+    const says = s === "pos" ? w.saysPos : s === "neg" ? w.saysNeg : `nothing above ${sigmas(threshold)}σ`;
+    return `${w.map} ${signed(r.value, threshold)}: ${says}`;
   }
   switch (r.why) {
     case "origin":
-      return `ΔPDF not read: inside the origin peak${originRadius ? ` (|u| < ${originRadius.toFixed(1)} Å)` : ""}`;
+      return `${w.map} not read: inside the origin peak${originRadius ? ` (|u| < ${originRadius.toFixed(1)} Å)` : ""}`;
     case "outside":
-      return "ΔPDF not read: outside the volume";
+      return `${w.map} not read: outside the volume`;
     case "pending":
-      return "ΔPDF: reading…";
+      return `${w.map}: reading…`;
     case "too_many":
-      return "ΔPDF not read: too many vectors in this volume";
+      return `${w.map} not read: too many vectors in this volume`;
     case "flat":
-      return "ΔPDF not read: the volume has no spread";
+      return `${w.map} not read: the volume has no spread`;
     default:
-      return "ΔPDF not read: the request failed";
+      return `${w.map} not read: the request failed`;
   }
 }
 
@@ -210,13 +269,14 @@ export function signalCounts(sig: PairSignal, visible: Uint8Array, threshold: nu
   return { total, pos, neg };
 }
 
-/** "Above 3σ: 17 of 138 vectors (10 more common, 7 rarer)". */
-export function countsText(c: SignalCounts, threshold: number): string {
-  return `Above ${sigmas(threshold)}σ: ${c.pos + c.neg} of ${c.total} vectors (${c.pos} more common, ${c.neg} rarer)`;
+/** "Above 3σ: 17 of 138 vectors (10 more common, 7 rarer)"; "(10 parallel, 7 antiparallel)" for a magnetic map. */
+export function countsText(c: SignalCounts, threshold: number, kind: MapKind = "atomic"): string {
+  const w = SIGN_WORDS[kind];
+  return `Above ${sigmas(threshold)}σ: ${c.pos + c.neg} of ${c.total} vectors (${c.pos} ${w.pos}, ${c.neg} ${w.neg})`;
 }
 
 /**
- * The fill colours for a diverging colormap, [more common, rarer]: its own
+ * The fill colours for a diverging colormap, [positive, negative]: its own
  * colours nine tenths of the way to each end, so a filled marker agrees with
  * the lobe under it and still reads against the white ring around the fill
  * (the very ends are darker than most lobes are drawn).

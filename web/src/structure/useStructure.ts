@@ -249,8 +249,8 @@ export function usePlaneMarkers(
 /**
  * What the overlay's markers say about the ΔPDF of `volumeId`: its value at
  * each pair vector (read once per structure and volume, and only while the
- * overlay is `on`), the panel's threshold and fade, and the fills of the
- * colormap `lut`.
+ * overlay is `on`), the panel's threshold, fade and ΔPDF type, and the fills
+ * of the colormap `lut`.
  */
 export function useOverlaySignal(
   volumeId: string | undefined,
@@ -260,13 +260,17 @@ export function useOverlaySignal(
 ): OverlaySignal {
   const threshold = useStructureStore((s) => s.fillAbove);
   const fade = useStructureStore((s) => s.fadeQuiet);
+  const kind = useStructureStore((s) => s.mapKind);
   const vectors = useMemo(
     () => (on && model && model.vectors.length ? { diffs: model.vectors, key: model.vectorsKey } : null),
     [on, model],
   );
   const read = usePairSignal(volumeId, vectors, model?.drawLat ?? null);
   const source: SignalSource = read.data ?? (read.isError ? "failed" : "pending");
-  return useMemo(() => ({ source, threshold, fade, colors: fillColors(lut) }), [source, threshold, fade, lut]);
+  return useMemo(
+    () => ({ source, threshold, fade, colors: fillColors(lut), kind }),
+    [source, threshold, fade, lut, kind],
+  );
 }
 
 /** The markers drawn nearest a display point (all those at that spot), within `radius` Å. */

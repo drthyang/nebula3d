@@ -10,12 +10,15 @@ import {
   FILL_ABOVE,
   fillColors,
   glyphRadius,
+  MAP_KINDS,
+  mapKindOr,
   markerSpots,
   nestGlyphs,
   readSignal,
   signalCounts,
   signalState,
   signalText,
+  SIGN_WORDS,
   spotBatches,
   stateStyle,
   visibleVectors,
@@ -123,6 +126,53 @@ describe("signalText", () => {
     expect(signalText({ value: null, why: "too_many" }, 3)).toBe("ΔPDF not read: too many vectors in this volume");
     expect(signalText({ value: null, why: "flat" }, 3)).toBe("ΔPDF not read: the volume has no spread");
     expect(signalText({ value: null, why: "failed" }, 3)).toBe("ΔPDF not read: the request failed");
+  });
+
+  it("words a magnetic map by the moments at the separation, never by the pair", () => {
+    expect(signalText(value(6.2), 3, null, "magnetic")).toBe("mΔPDF +6.2σ: moments at this separation are parallel");
+    expect(signalText(value(-7.4), 3, null, "magnetic")).toBe("mΔPDF −7.4σ: moments at this separation are antiparallel");
+    expect(signalText(value(1.1), 3, null, "magnetic")).toBe("mΔPDF +1.1σ: nothing above 3σ");
+    expect(signalText({ value: null, why: "origin" }, 3, 2, "magnetic")).toBe("mΔPDF not read: inside the origin peak (|u| < 2.0 Å)");
+    expect(signalText({ value: null, why: "pending" }, 3, null, "magnetic")).toBe("mΔPDF: reading…");
+    expect(signalText({ value: null, why: "too_many" }, 3, null, "magnetic")).toBe("mΔPDF not read: too many vectors in this volume");
+  });
+
+  it("words an atomic map the same whether or not the type is given", () => {
+    for (const r of [value(6.2), value(-7.4), value(1.1), { value: null, why: "outside" } as Reading])
+      expect(signalText(r, 3, null, "atomic")).toBe(signalText(r, 3));
+  });
+});
+
+describe("the two vocabularies", () => {
+  it("offers atomic first, then magnetic, each with its name and hint", () => {
+    expect(MAP_KINDS).toEqual(["atomic", "magnetic"]);
+    expect([SIGN_WORDS.atomic.label, SIGN_WORDS.magnetic.label]).toEqual(["Atomic", "Magnetic"]);
+    expect(SIGN_WORDS.atomic.title).toBe("Positive: pairs more common than in the average structure. Negative: rarer.");
+    expect(SIGN_WORDS.magnetic.title).toBe("3D-mΔPDF. Positive: moments parallel. Negative: antiparallel.");
+  });
+
+  it("names the legend's two fills", () => {
+    expect([SIGN_WORDS.atomic.pos, SIGN_WORDS.atomic.neg]).toEqual(["more common", "rarer"]);
+    expect([SIGN_WORDS.magnetic.pos, SIGN_WORDS.magnetic.neg]).toEqual(["parallel", "antiparallel"]);
+  });
+
+  it("ends the panel's hint with where each colour fills a marker", () => {
+    expect(SIGN_WORDS.atomic.fills).toBe(
+      "in the map's positive colour where the pair is more common than in the average structure, in its negative colour where it is rarer.",
+    );
+    expect(SIGN_WORDS.magnetic.fills).toBe(
+      "in the map's positive colour where moments at that separation are parallel, in its negative colour where they are antiparallel.",
+    );
+  });
+
+  it("says nothing about atoms or elements in the magnetic words", () => {
+    const w = SIGN_WORDS.magnetic;
+    for (const text of [w.title, w.pos, w.neg, w.saysPos, w.saysNeg, w.fills]) expect(text).not.toMatch(/pair|atom|element/i);
+  });
+
+  it("reads anything but magnetic as atomic", () => {
+    expect(mapKindOr("magnetic")).toBe("magnetic");
+    for (const v of ["atomic", undefined, null, "Magnetic", 1, true, {}]) expect(mapKindOr(v)).toBe("atomic");
   });
 });
 
@@ -353,6 +403,9 @@ describe("counts", () => {
   it("words the count line", () => {
     expect(countsText({ total: 138, pos: 10, neg: 7 }, 3)).toBe("Above 3σ: 17 of 138 vectors (10 more common, 7 rarer)");
     expect(countsText({ total: 6, pos: 0, neg: 0 }, 4.5)).toBe("Above 4.5σ: 0 of 6 vectors (0 more common, 0 rarer)");
+    expect(countsText({ total: 138, pos: 10, neg: 7 }, 3, "atomic")).toBe(countsText({ total: 138, pos: 10, neg: 7 }, 3));
+    expect(countsText({ total: 138, pos: 10, neg: 7 }, 3, "magnetic")).toBe("Above 3σ: 17 of 138 vectors (10 parallel, 7 antiparallel)");
+    expect(countsText({ total: 6, pos: 0, neg: 0 }, 4.5, "magnetic")).toBe("Above 4.5σ: 0 of 6 vectors (0 parallel, 0 antiparallel)");
   });
 
   it("counts only the pairs that are drawn", () => {
