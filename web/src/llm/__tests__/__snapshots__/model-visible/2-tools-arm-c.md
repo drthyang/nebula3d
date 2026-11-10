@@ -1,6 +1,6 @@
 # Tool definitions with the skills off (validation arm C)
 
-`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (29 tools, 20839 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
+`toolSpecs(toolsWithSkills(CHAT_TOOLS, false))`: what arm C's model is offered with every request (29 tools, 20837 characters as JSON). A tool whose description holds inference (inference.ts; 6-inference.md lists each span) has its definitions only (`descriptionWithoutSkills`, from the same tagged text), shown in full; every other definition is arm B's.
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -39,7 +39,7 @@ Its parameters are as in 2-tools.md.
 ## dpdf_peaks: its description with the skills off
 
 ```text
-The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed: + more pairs than the average structure, − fewer), n_vectors of one sign, length and size, up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). What a feature means is the user's call.
+The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed; atomic map: + more pairs than average, − fewer), n_vectors of one sign, length and size, up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). What a feature means is the user's call.
 ```
 
 Its parameters are as in 2-tools.md.

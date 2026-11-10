@@ -1,6 +1,6 @@
 # Tool definitions
 
-`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (30 tools, 22561 characters as JSON).
+`toolSpecs(CHAT_TOOLS)`: each tool's name, description and parameters' JSON schema, as sent with every request (30 tools, 22559 characters as JSON).
 
 Update from web/: `npx vitest run src/llm/__tests__/modelVisible.test.ts -u`, then read the diff.
 
@@ -258,7 +258,7 @@ Parameters:
 ## 13. dpdf_peaks
 
 ```text
-The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed: + more pairs than the average structure, − fewer), n_vectors of one sign, length and size (likely symmetry copies), up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). Use it after the trust checks (qmax_coverage, symmetry_check, assess_stage pdf).  What a feature means is the user's call.
+The 3D-ΔPDF's strongest features in the whole volume: extrema above min_sigma (default 5) robust σ outside the origin's disk, each ± pair once. Returns features: length_A, size_sigma (signed; atomic map: + more pairs than average, − fewer), n_vectors of one sign, length and size (likely symmetry copies), up to 4 vectors_rlu (x/a, y/b, z/c) and vectors_A (Å along a, b, c). Use it after the trust checks (qmax_coverage, symmetry_check, assess_stage pdf).  What a feature means is the user's call.
 ```
 
 Parameters:
