@@ -134,7 +134,9 @@ export function Workspace({
               }}
             >
               {v.badge != null && <span className={`view-badge ${v.badgeClass ?? ""}`}>{v.badge}</span>}
-              <span className="view-title">{v.title}</span>
+              <span className="view-title" title={typeof v.title === "string" ? v.title : undefined}>
+                {v.title}
+              </span>
               <span className="view-caption">{v.caption}</span>
               <span className="view-actions">
                 {v.actions}

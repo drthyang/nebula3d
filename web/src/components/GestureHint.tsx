@@ -136,6 +136,7 @@ export function GestureHint() {
   const card = gestureCard({ mac: IS_MAC, touch });
   const [open, setOpen] = useState(false);
   const [shift, setShift] = useState(0);
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
   const wrap = useRef<HTMLSpanElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -153,13 +154,31 @@ export function GestureHint() {
     if (isOpen && !seen) markSeen();
   }, [isOpen, seen, markSeen]);
 
-  // Keep the card inside the window: shift it left when the "?" sits near the right edge.
+  // Keep the card inside the window: shift it left when the "?" sits near the right edge,
+  // and on a short window let it end above the bottom edge and scroll inside itself.
   useLayoutEffect(() => {
     if (!isOpen || !wrap.current || !panel.current) return;
     const left = wrap.current.getBoundingClientRect().left;
     const width = panel.current.offsetWidth;
     const vw = document.documentElement.clientWidth;
     setShift(Math.min(Math.max(8, left), vw - width - 8) - left);
+    // The foot of the card past the window's or the page's foot: scroll the page under it
+    // while the "?" stays in view (in a sticky bar it does); what is still past it scrolls
+    // inside the card.
+    let scroller: HTMLElement | null = wrap.current.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    const box = scroller?.getBoundingClientRect();
+    const foot = Math.min(window.innerHeight, box ? box.bottom : Infinity) - 8;
+    const over = panel.current.getBoundingClientRect().bottom - foot;
+    if (over > 0 && scroller && box) {
+      const before = scroller.scrollTop;
+      scroller.scrollTop = before + Math.min(over, Math.max(0, wrap.current.getBoundingClientRect().top - box.top - 8));
+      const t = trigger.current?.getBoundingClientRect();
+      const hit = t ? document.elementFromPoint(t.left + t.width / 2, t.top + t.height / 2) : null;
+      if (hit && !wrap.current.contains(hit)) scroller.scrollTop = before; // the "?" went under a bar: leave the page
+    }
+    const room = foot - panel.current.getBoundingClientRect().top;
+    setMaxHeight(panel.current.offsetHeight > room && room >= 120 ? Math.floor(room) : undefined);
   }, [isOpen]);
 
   // Esc closes it (before the views' and the layouts' own Esc); a press outside closes it.
@@ -209,7 +228,7 @@ export function GestureHint() {
       </button>
       {isOpen && (
         <div className="gh-pop" style={{ left: shift }}>
-          <div ref={panel} id={id} className="gh-card" role="dialog" aria-modal="false" aria-labelledby={titleId} tabIndex={-1}>
+          <div ref={panel} id={id} className="gh-card" style={maxHeight ? { maxHeight, overflowY: "auto" } : undefined} role="dialog" aria-modal="false" aria-labelledby={titleId} tabIndex={-1}>
             <div className="gh-head">
               <span id={titleId} className="gh-title">
                 Zoom, move, reset

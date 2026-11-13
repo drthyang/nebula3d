@@ -217,17 +217,99 @@ export function Switch({
 }
 
 // A small "?" help icon that reveals a description bubble on hover / focus.
+// The bubble is placed by CSS (above the icon, or as a page's own rule says).
+// When it shows, it is kept inside the part of the window that is in view:
+// moved down or up when a sticky bar, the window's edge or a panel would cut
+// it, and given a height limit (it then scrolls inside itself) when it is
+// taller than that part.
 export function HelpTip({ children, className }: { children: ReactNode; className?: string }) {
+  const bubble = useRef<HTMLSpanElement>(null);
+  const reset = () => {
+    const b = bubble.current;
+    if (!b) return;
+    b.style.translate = "";
+    b.style.maxHeight = "";
+    b.classList.remove("helptip-bubble--moved", "helptip-bubble--scroll");
+  };
+  const place = (e: { currentTarget: HTMLElement }) => {
+    const b = bubble.current;
+    if (!b) return;
+    reset();
+    const area = visibleSpan(e.currentTarget, b.getBoundingClientRect());
+    if (!area) return;
+    const room = area.bottom - area.top;
+    if (b.getBoundingClientRect().height > room) {
+      b.style.maxHeight = `${Math.floor(room)}px`;
+      b.classList.add("helptip-bubble--scroll");
+    }
+    const r = b.getBoundingClientRect();
+    const dy = Math.round(Math.min(Math.max(r.top, area.top), area.bottom - r.height) - r.top);
+    if (dy !== 0) {
+      b.style.translate = `0 ${dy}px`;
+      b.classList.add("helptip-bubble--moved");
+    }
+  };
   return (
-    <span className={`helptip${className ? ` ${className}` : ""}`} tabIndex={0}>
+    <span
+      className={`helptip${className ? ` ${className}` : ""}`}
+      tabIndex={0}
+      onFocus={place}
+      onMouseEnter={place}
+      onBlur={(e) => {
+        if (!e.currentTarget.matches(":hover")) reset();
+      }}
+      onMouseLeave={(e) => {
+        if (document.activeElement !== e.currentTarget) reset();
+      }}
+    >
       <span className="helptip-icon" aria-hidden="true">
         ?
       </span>
-      <span className="helptip-bubble" role="tooltip">
+      <span ref={bubble} className="helptip-bubble" role="tooltip">
         {children}
       </span>
     </span>
   );
+}
+
+/** The vertical span of the window, around `anchor`, in which a bubble with the
+ *  rectangle `r` is in view: not under a sticky or fixed bar, not outside the
+ *  scroll box the anchor is in, not past the window.  Null when the bubble is
+ *  in view already, or when no such span can be told (no layout, as in tests). */
+function visibleSpan(anchor: HTMLElement, r: DOMRect): { top: number; bottom: number } | null {
+  if (typeof document.elementFromPoint !== "function" || r.height === 0) return null;
+  const MARGIN = 6;
+  const vw = document.documentElement.clientWidth;
+  const vh = window.innerHeight;
+  let box: HTMLElement | null = anchor.parentElement;
+  while (box && !/auto|scroll/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+  const xs = [r.left + 10, (r.left + r.right) / 2, r.right - 10].filter((x) => x > 0 && x < vw);
+  if (xs.length === 0) return null;
+  // a point is covered when what is drawn there is not the scroll box's own flowing content
+  const covered = (y: number) =>
+    y < 0 ||
+    y >= vh ||
+    xs.some((x) => {
+      let el = document.elementFromPoint(x, y);
+      if (!el || (box && !box.contains(el))) return true;
+      for (; el && el !== box; el = el.parentElement) {
+        const pos = getComputedStyle(el).position;
+        if (pos === "sticky" || pos === "fixed") return true;
+      }
+      return false;
+    });
+  const a = anchor.getBoundingClientRect();
+  const mid = Math.min(Math.max((a.top + a.bottom) / 2, 1), vh - 1);
+  const STEP = 4;
+  let top = mid;
+  while (top - STEP >= Math.min(r.top, 0) - STEP && !covered(top - STEP)) top -= STEP;
+  let bottom = mid;
+  while (bottom + STEP <= Math.max(r.bottom, vh) + STEP && !covered(bottom + STEP)) bottom += STEP;
+  top += MARGIN;
+  bottom -= MARGIN;
+  if (r.top >= top && r.bottom <= bottom) return null;
+  if (bottom - top < 80) return null;
+  return { top, bottom };
 }
 
 export function Segmented({

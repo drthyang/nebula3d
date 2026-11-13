@@ -408,6 +408,7 @@ export function ConsistencyViewer() {
 
   // Saving reuses the cached reconstruction for the *applied* bands, i.e.
   // exactly what the views show — pending drafts are saved only after Apply.
+  const saveLabel = saveState.status === "saving" ? "Saving…" : PYODIDE_MODE ? "Download ΔPDF" : "Save ΔPDF";
   const saveDpdf = async () => {
     if (!datasetId) return;
     setSaveState({ status: "saving" });
@@ -697,7 +698,7 @@ export function ConsistencyViewer() {
                 <>
                   {saveState.status === "saved" && (
                     <span className="qr-saved" title={saveState.filename}>
-                      <span className="qr-dot" /> {PYODIDE_MODE ? "downloaded" : "saved"}
+                      <span className="qr-dot" /> <span className="qr-saved-label">{PYODIDE_MODE ? "downloaded" : "saved"}</span>
                     </span>
                   )}
                   {saveState.status === "error" && (
@@ -706,6 +707,7 @@ export function ConsistencyViewer() {
                   <button
                     type="button"
                     className="btn btn-primary qr-save-btn"
+                    aria-label={saveLabel}
                     title={
                       PYODIDE_MODE
                         ? "Download the band-limited 3D-ΔPDF (final processed file) as .h5"
@@ -714,7 +716,7 @@ export function ConsistencyViewer() {
                     disabled={!selectedUsable || computing || saveState.status === "saving"}
                     onClick={saveDpdf}
                   >
-                    ↓ {saveState.status === "saving" ? "Saving…" : PYODIDE_MODE ? "Download ΔPDF" : "Save ΔPDF"}
+                    ↓ <span className="qr-save-label">{saveLabel}</span>
                   </button>
                 </>
               ),
