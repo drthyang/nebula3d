@@ -7704,6 +7704,59 @@ h6.md-h {
     flex: none;
   }
 }
+/* A phone held landscape (the panel docked on a screen 500 px tall or less):
+   the dock is two lines as in the sheet, the chips in one row that scrolls
+   sideways and the composer, so the conversation keeps a readable height and
+   the composer stays on screen, also with the context meter's details open. */
+@media (max-height: 500px) {
+  .ai-side[data-mode="docked"] {
+    padding-top: 8px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .ai-side[data-mode="docked"] .ai-panel {
+    gap: 6px;
+  }
+  .ai-side[data-mode="docked"] .ai-panel-head {
+    padding-bottom: 0;
+  }
+  .ai-side[data-mode="docked"] .ai-transcript {
+    min-height: min(96px, 100%);
+  }
+  .ai-side[data-mode="docked"] .ai-dock {
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 6px 8px;
+    padding-top: 0;
+  }
+  .ai-side[data-mode="docked"] .ai-dock > * {
+    flex: 1 0 100%;
+    min-width: 0;
+  }
+  .ai-side[data-mode="docked"] .ai-dock > .ai-reviews {
+    flex: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .ai-side[data-mode="docked"] .ai-dock > .ai-toggles {
+    flex: 1 1 0;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+  .ai-side[data-mode="docked"] .ai-dock > .ai-toggles::-webkit-scrollbar {
+    display: none;
+  }
+  .ai-side[data-mode="docked"] .ai-dock > .ai-toggles > * {
+    flex: none;
+  }
+  .ai-side[data-mode="docked"] .ai-meter-detail {
+    max-height: 38px;
+  }
+}
 /* docked beside the page in landscape: clear the notch on the right */
 .ai-side[data-mode="docked"] {
   padding-right: max(14px, env(safe-area-inset-right));
@@ -8760,6 +8813,36 @@ html.kb-open .ai-side {
   overflow: visible;
   -webkit-mask-image: none;
   mask-image: none;
+}
+/* A finished run in the sheet: "The plan and all … steps" and the Report / Undo
+   row share one line, so the Report button is not cut at the panel's foot. */
+.ai-side[data-mode="sheet"] .auto-panel--done:not(.is-open) {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, auto) auto;
+  align-content: start;
+  column-gap: 8px;
+}
+.ai-side[data-mode="sheet"] .auto-panel--done:not(.is-open) > * {
+  grid-column: 1 / -1;
+}
+.ai-side[data-mode="sheet"] .auto-panel--done:not(.is-open) > .auto-top {
+  grid-row: 1;
+}
+.ai-side[data-mode="sheet"] .auto-panel--done:not(.is-open) > .auto-recent {
+  grid-row: 2;
+}
+/* a short sheet has no room for the last steps: none of them, not a sliver of one */
+.ai-side[data-mode="sheet"] :where(.ai-panel[data-short~="559"]) .auto-panel--done:not(.is-open) > .auto-recent {
+  display: none;
+}
+.ai-side[data-mode="sheet"] .auto-panel--done:not(.is-open) > .auto-more {
+  grid-area: 3 / 1;
+  justify-self: start;
+}
+.ai-side[data-mode="sheet"] .auto-panel--done:not(.is-open) > .auto-msg-row {
+  grid-area: 3 / 2;
+  justify-content: flex-end;
 }
 .auto-refused {
   align-self: center;
