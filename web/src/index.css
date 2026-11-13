@@ -1807,6 +1807,22 @@ input[type="range"]::-moz-range-track {
   opacity: 1;
   visibility: visible;
 }
+/* moved to stay in view (ui.tsx): the arrow no longer points at the icon */
+.helptip-bubble--moved::after {
+  display: none;
+}
+/* taller than the part of the window in view: it scrolls inside itself */
+.helptip-bubble--scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.helptip-bubble--scroll::after {
+  display: none;
+}
+.helptip:hover .helptip-bubble--scroll,
+.helptip:focus .helptip-bubble--scroll {
+  pointer-events: auto;
+}
 /* — key caps: the gesture card's keys and the wheel hint's ⌘ / Ctrl — */
 .kbd {
   display: inline-flex;
@@ -1854,18 +1870,18 @@ input[type="range"]::-moz-range-track {
 .gh-new::after {
   content: "";
   position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 7px;
-  height: 7px;
+  /* on the corner, clear of the "?": the dot and its ring stay outside the glyph */
+  top: -4px;
+  right: -4px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 2px var(--surface);
   animation: gh-pulse 2s ease-out infinite;
 }
 @keyframes gh-pulse {
-  0% { box-shadow: 0 0 0 2px var(--surface), 0 0 0 2px rgba(79, 143, 247, 0.55); }
-  70%, 100% { box-shadow: 0 0 0 2px var(--surface), 0 0 0 9px rgba(79, 143, 247, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(79, 143, 247, 0.55); }
+  70%, 100% { box-shadow: 0 0 0 4px rgba(79, 143, 247, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .gh-new::after { animation: none; }
