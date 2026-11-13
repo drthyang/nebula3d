@@ -7,41 +7,13 @@ rings, Bragg peaks and background out, the crystal's own diffuse kept. It runs
 in the browser (Pyodide, nothing uploaded) or natively, with **NEBULA Pilot**,
 an AI agent that checks, runs and tunes the reduction with you.
 
+**Try it in the browser: https://drthyang.github.io/nebula3d/**
+
 ![NEBULA Pilot's Apply cards beside the Reciprocal cleanup page, with the Bragg punch's highlights on the views](docs/media/pilot-apply-cards.jpg)
 
 *The synthetic demo volume (simulated, not measured) with a scripted model:
 the Pilot proposes a sample fact and two settings as Apply cards, and its
 Bragg punch check is drawn on the views.*
-
-## Quick start
-
-**In the browser:** open **https://drthyang.github.io/nebula3d/**, press
-**Use demo** on the Configure page, then **Run pipeline** (about 15 s on an
-Apple-silicon laptop). Your own `.nxs`/`.h5` loads the same way and stays on
-your machine.
-
-**Natively**, from a clone (Python 3.10+, Node.js):
-
-```bash
-git clone https://github.com/drthyang/nebula3d && cd nebula3d
-pip install -e ".[web]"
-make web-install && make ui        # build the console once
-nebula3d-web                       # http://127.0.0.1:8000, reads ./data
-```
-
-To use the demo volume natively, write it to a data folder first:
-
-```bash
-mkdir -p demo/raw
-python -c "import nebula3d; from nebula3d.demo import demo_volume; nebula3d.save(demo_volume(), 'demo/raw/synthetic_rocksalt.nxs')"
-nebula3d-web --data-root demo
-```
-
-**The Pilot:** open *NEBULA Pilot* in the sidebar and connect a model. A local
-one (Ollama, LM Studio) needs a 32k context; on the Pages site it also needs
-CORS (`OLLAMA_ORIGINS`, or LM Studio's *Enable CORS*). Cloud models (OpenAI,
-Gemini, Anthropic) take an API key and show a warning that run data leaves
-your device. More in [QUICKSTART.md](QUICKSTART.md).
 
 ## What it does
 
@@ -60,23 +32,69 @@ your device. More in [QUICKSTART.md](QUICKSTART.md).
 - **Mantid files in and out:** it reads NeXus Viewer and Mantid exports and
   writes volumes that Mantid's `LoadMD` opens.
 
-| | |
-| --- | --- |
-| ![Reciprocal cleanup: raw, ring-removed, Bragg-punched, backfilled and background-corrected views of one H plane](docs/media/reciprocal-cleanup.jpg) | ![Bragg profile: fitted peak widths against abs Q, the UB turn line and the selected peak's three slices](docs/media/bragg-profile.jpg) |
-| **Reciprocal cleanup:** every stage on one plane and colour range. The *HKL grid* switch draws dashed lines at integer h, k, l. | **Bragg profile:** peak widths against \|Q\|, the UB turn the punch read, and the selected peak's slices. |
-| ![3D-ΔPDF: three orthogonal real-space sections](docs/media/delta-pdf.jpg) | ![Q–R Band Transform: the data, 3D-ΔPDF, back-FFT and residual views with an abs Q band of 0.50 to 5.00 per Å applied, and the pipeline's ΔPDF row offering Use in pipeline for it](docs/media/qr-use-in-pipeline.jpg) |
-| **3D-ΔPDF:** three linked real-space sections. | **Q–R Band Transform:** a \|Q\| band applied here goes to the pipeline with *Use in pipeline*, then *Run from ΔPDF*. |
+![Reciprocal cleanup: raw, ring-removed, Bragg-punched, backfilled and background-corrected views of one H plane](docs/media/reciprocal-cleanup.jpg)
+
+**Reciprocal cleanup:** every stage on one plane and colour range. The *HKL
+grid* switch draws dashed lines at integer h, k, l.
+
+![Bragg profile: fitted peak widths against abs Q, the UB turn line and the selected peak's three slices](docs/media/bragg-profile.jpg)
+
+**Bragg profile:** peak widths against |Q|, the UB turn the punch read, and
+the selected peak's slices.
+
+![3D-ΔPDF: three orthogonal real-space sections](docs/media/delta-pdf.jpg)
+
+**3D-ΔPDF:** three linked real-space sections.
+
+![Q–R Band Transform: the data, 3D-ΔPDF, back-FFT and residual views with an abs Q band of 0.50 to 5.00 per Å applied, and the pipeline's ΔPDF row offering Use in pipeline for it](docs/media/qr-use-in-pipeline.jpg)
+
+**Q–R Band Transform:** a |Q| band applied here goes to the pipeline with
+*Use in pipeline*, then *Run from ΔPDF*.
+
+## Quick start
+
+**In the browser:** open the [live site](https://drthyang.github.io/nebula3d/),
+press **Use demo** on the Configure page, then **Run pipeline** (about 15 s on
+an Apple-silicon laptop). Your own `.nxs`/`.h5` loads the same way and stays
+on your machine.
+
+**Natively**, from a clone (Python 3.10+, Node.js):
+
+```bash
+git clone https://github.com/drthyang/nebula3d
+cd nebula3d
+pip install -e ".[web]"
+make web-install
+make ui          # build the console once
+nebula3d-web     # http://127.0.0.1:8000, reads ./data
+```
+
+To use the demo volume natively, write it to a data folder first:
+
+```bash
+mkdir -p demo/raw
+python - <<'EOF'
+import nebula3d
+from nebula3d.demo import demo_volume
+nebula3d.save(demo_volume(), "demo/raw/synthetic_rocksalt.nxs")
+EOF
+nebula3d-web --data-root demo
+```
+
+**The Pilot:** open *NEBULA Pilot* in the sidebar and connect a model. A local
+one (Ollama, LM Studio) needs a 32k context; on the Pages site it also needs
+CORS (`OLLAMA_ORIGINS`, or LM Studio's *Enable CORS*). Cloud models (OpenAI,
+Gemini, Anthropic) take an API key and show a warning that run data leaves
+your device. More in [QUICKSTART.md](QUICKSTART.md).
 
 ## NEBULA Pilot: how it works
 
 The Pilot is a panel docked beside every page. With *Tools* on, a reply is an
-agent loop of up to 12 rounds over **29 tools**: reading (cuts, the run log,
-the Bragg profile), a powder ring survey before the run (the Al lines, a
-possible other phase, the rings no line explains), assessing (each stage's
-checks, rings, texture, coverage, symmetry, UB, ΔPDF features, Laue classes),
-display, and acting (change settings, run, tune, regrid). **Skills** are the user's written methods, one
-per stage; a stage's settings change or are tuned only after its skill was read
-in the same reply. Each check's result is drawn on the views as
+agent loop of up to 12 rounds over **29 tools**: they read the run, survey the
+powder rings before it, assess each stage, set the display, and act (change
+settings, run, tune, regrid). **Skills** are the user's written methods; a
+stage's settings change or are tuned only after its skill was read in the same
+reply. Each check's result is drawn on the views as
 **highlights**, from results already in memory. Details:
 [docs/pilot.md](docs/pilot.md).
 
@@ -121,16 +139,26 @@ chat box shows how full the model's window is, and from 70 % offers
 *Summarize and continue* (a summary the app writes, with no model call) or
 *Start fresh*.
 
-| | |
-| --- | --- |
-| ![The Auto panel after a run: the plan with each stage's state and the activity log](docs/media/pilot-auto-done.jpg) | ![On a phone: the Auto panel paused, with its Now line and the last steps of the log](docs/media/pilot-auto-phone.jpg) |
-| **Auto mode, finished:** the plan, each stage's state and the activity log. | **On a phone:** the Now line and the last steps, with Resume and Stop. |
-| ![The context meter at 93 percent in red, offering Summarize and continue](docs/media/pilot-context-meter.jpg) | ![The auto run's report: quality checks per stage and the problems the checks found](docs/media/pilot-auto-report.jpg) |
-| **Context meter** at 93 %, offering *Summarize and continue*. | **The report:** each stage's check, and the problems the checks found, written by the app, not the model. |
+![The Auto panel after a run: the plan with each stage's state and the activity log](docs/media/pilot-auto-done.jpg)
 
-All screenshots: the synthetic demo volume with a scripted model (a test
-server with no model behind it), from the demo QA of 2026-11-07
-([docs/demo-qa.md](docs/demo-qa.md)).
+**Auto mode, finished:** the plan, each stage's state and the activity log.
+
+![The auto run's report: quality checks per stage and the problems the checks found](docs/media/pilot-auto-report.jpg)
+
+**The report:** each stage's check, and the problems the checks found, written
+by the app, not the model.
+
+![The context meter at 93 percent in red, offering Summarize and continue](docs/media/pilot-context-meter.jpg)
+
+**Context meter** at 93 %, offering *Summarize and continue*.
+
+<img src="docs/media/pilot-auto-phone.jpg" width="280" alt="On a phone: the Auto panel paused, with its Now line and the last steps of the log">
+
+**On a phone:** the Now line and the last steps, with Resume and Stop.
+
+All screenshots show the synthetic demo volume with a scripted model (a test
+server with no model behind it). The demo's checks and timings are in
+[docs/demo-qa.md](docs/demo-qa.md).
 
 ## Validation
 
@@ -141,56 +169,45 @@ Two layers check the Pilot ([docs/evals.md](docs/evals.md)):
 - **A validation on synthetic cases** with a planted truth: eight fault
   families (a turned UB, a shifted HKL origin, cut coverage, powder rings, a
   diffuse shell to keep, a rising background, rings and shell together, and a
-  control), each as a **dev** case for development and a held-out **test**
-  case. The test split lives in its own module and loads only with an explicit
-  opt-in; a test fails if any tunable file, these docs included, names a test
-  case.
-  - **Arms:** A, the default pipeline with no agent; B, the Pilot as shipped;
-    B-auto, B through auto mode; C, the Pilot with its method (skills and
-    inference) removed and its guardrails kept; D, the planted truth.
-  - **Graders:** all in code and blind to the arm. The outputs are scored
-    against the truth (planted ΔPDF features recovered, real diffuse kept,
-    window on measured space, no pedestal); the conclusion is graded for the
-    fault found, its size, and no false alarm; any unsafe action fails the
-    run. The text graders changed on 2026-11-07 (three artefacts fixed,
-    [Grader changes](docs/evals.md#grader-changes)); a result from before
-    then is comparable only after a re-grade.
-  - **Models:** a local arm (models on Ollama or LM Studio at a 32k context)
-    and a Claude arm (paid, test split only, spend-capped), each request
-    capped at 16,000 output tokens.
+  control), each as a **dev** case and a held-out **test** case. The test
+  split loads only with an explicit opt-in.
+
+The validation compares arms: B is the Pilot as shipped, B-auto is B through
+auto mode, and C is the Pilot with its method (skills and inference) removed
+and its guardrails kept. All graders are code and blind to the arm. A run
+passes only if every check holds: the outputs, the planted faults reported, no
+false alarm and no unsafe action. Each model request is capped at 16,000
+output tokens; local models run at a 32k context.
 
 <!-- THY52-RESULTS -->
-Re-baseline of 2026-11-07, on the **synthetic dev split only** (8 cases with a
-planted truth; the test split stays sealed), graded by the validation graders
-as of 2026-11-07. Arm B has the skills, arm C has none, and B-auto is auto mode.
+Baseline of 2026-11-07, on the **synthetic dev split only** (8 cases; the test
+split stays sealed). "Faults" is planted faults reported.
 
-| Model | Arm | Runs | Passed | Planted faults reported | Unsafe actions |
-| --- | --- | ---: | ---: | ---: | ---: |
-| gemma4:26b (local, 32k) | B | 8 × 1 | 5/8 | 3/6 | 0 |
-| gemma4:26b (local, 32k) | B-auto | 8 × 1 | 4/8 | 3/6 | 0 |
-| Claude Haiku 5.5 | B | 8 × 3 | 9/24 | 11/18 | 0 |
-| Claude Haiku 5.5 | C | 8 × 3 | 6/24 | 10/18 | 0 |
-| Claude Haiku 5.5 | B-auto | 8 × 1 | 3/8 | 3/6 | 0 |
-| Claude Sonnet 5.5, on the cases Haiku failed | B | 13 | 9/13 | 7/7 | 0 |
-| Claude Sonnet 5.5, on the cases Haiku failed | C | 18 | 11/18 | 13/16 | 0 |
+| Model, arm | Passed | Faults |
+| --- | ---: | ---: |
+| gemma4:26b (local), B | 5/8 | 3/6 |
+| gemma4:26b (local), B-auto | 4/8 | 3/6 |
+| Claude Haiku 5.5, B | 9/24 | 11/18 |
+| Claude Haiku 5.5, C | 6/24 | 10/18 |
+| Claude Haiku 5.5, B-auto | 3/8 | 3/6 |
+| Claude Sonnet 5.5, B | 9/13 | 7/7 |
+| Claude Sonnet 5.5, C | 11/18 | 13/16 |
 
-A run passes only if every check holds: the outputs, the planted faults
-reported, no false alarm and no unsafe action. On the same arm and cases as
-the previous frozen baseline, gemma4:26b arm B went from 3/8 to 5/8 with fewer
-tokens per run. Most Claude failures are charged false alarms, and many of
-those read as grader artefacts that are documented but not yet fixed. Details,
-per-case tables and spend are in
-[docs/evals/validation/baseline-2026-11-07/](docs/evals/validation/baseline-2026-11-07/README.md).
+No run took an unsafe action. Sonnet ran only the cases Haiku failed, so its
+pass rate is on the harder cases and is not comparable to Haiku's. Haiku B and
+C ran each case three times; the other rows ran each case once, and Sonnet
+repeated the cases it failed. Most Claude failures are charged false alarms,
+and many of those read as grader artefacts that are documented but not yet
+fixed. Per-case tables, the graders and spend are in
+[the baseline record](docs/evals/validation/baseline-2026-11-07/README.md).
 <!-- /THY52-RESULTS -->
 
 ## Status
 
-Beta. The latest release is **0.4.0** (2026-11-02). `main` carries the
-unreleased work since then: the Pilot's Apply cards and Changes list, sample
-facts on your click, auto mode, highlights, the context meter, the Q–R page's
-*Use in pipeline*, the *HKL grid* name, and runs from a stage that remake
-stale outputs ([CHANGELOG.md](CHANGELOG.md#unreleased)). CI runs the Python
-tests on 3.10–3.13 with ruff and mypy, and the console's tests and both builds,
+Beta. The latest release is **0.4.0** (2026-11-02). `main` and the live site
+carry the unreleased work since then, listed in
+[CHANGELOG.md](CHANGELOG.md#unreleased). CI runs the Python tests on
+3.10–3.13 with ruff and mypy, and the console's lint, tests and both builds,
 including replays of the agent's evals
 ([docs/development.md](docs/development.md#tests-and-ci)).
 
@@ -224,4 +241,5 @@ facility, or other organization.
 Commercial, closed-source, proprietary, or alternative licensing may be available
 only by separate written permission from the copyright holder.
 
-See `PROVENANCE.md` for the project provenance statement.
+See [PROVENANCE.md](PROVENANCE.md) for the project provenance statement and
+[LICENSE](LICENSE) for the licence text.
