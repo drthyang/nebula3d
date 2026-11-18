@@ -29,8 +29,8 @@ Which path is for me:
 | Hosted (OpenAI, Gemini, Anthropic) | An API key from the provider | To that provider |
 | Local (Ollama, LM Studio) | The model server running on your computer | Nowhere: it stays on your computer |
 
-- **A desktop browser.** With a local model on the live site, use Chrome or
-  Edge. Safari cannot reach a local model from the live site
+- **A desktop browser.** With a local model on the live site, use Chrome.
+  Safari cannot reach a local model from the live site
   ([why, and the way out](#safari-and-the-live-site)).
   "Local" means the same device as the browser: on a phone or tablet,
   `localhost` is the phone, so use a hosted model there.
@@ -127,8 +127,8 @@ is in [pilot.md](pilot.md#guardrails).
 4. In the Pilot panel, click the gear, then **Ollama**. The base URL is
    `http://localhost:11434/v1`.
 
-5. On the live site, Chrome or Edge asks whether the site may connect to
-   devices and apps on your local network. Allow it.
+5. On the live site, Chrome asks for permission to reach your local
+   network. Allow it.
 
 6. The chip turns to **Connected**. Pick the model from the menu beside it.
 
@@ -136,8 +136,9 @@ At its usual port, 11434, the app asks Ollama for the context window each
 request needs. There is nothing to set.
 
 Keep Ollama on port 11434. On another port the app uses a different route and
-cannot set the window, so start Ollama with `OLLAMA_CONTEXT_LENGTH=32768`. In
-our check of that route, the replies came back empty; port 11434 worked.
+cannot set the window, so start Ollama with `OLLAMA_CONTEXT_LENGTH=32768`.
+When this page was checked, replies on that route came back empty with one
+model; port 11434 worked.
 
 ### LM Studio
 
@@ -305,26 +306,92 @@ written there.
 
 ## 6. Troubleshooting
 
-The chip says **Offline** for every failure. The gear shows the message.
+The chip says **Offline** for every failure. Click the gear to read the
+message, then find it below.
 
-| What you see | Cause | Fix |
-| --- | --- | --- |
-| "Could not reach http://localhost:11434/v1. Either the server is not running, or it is not allowing this page … via CORS." in **Safari on the live site** | Safari blocks an `https` page from calling `http://localhost`. | Run the app locally ([section 4](#safari-and-the-live-site)), or use Chrome or Edge. |
-| The same message in **Chrome on the live site**, and the server is running | The site was not allowed to reach your local network. | Allow local-network access for the site in the browser's site settings, then click **Test**. |
-| The same message on the live site with **Ollama** | Ollama was started without `OLLAMA_ORIGINS`. It refuses the live site. | Restart it with `OLLAMA_ORIGINS` ([Ollama](#ollama), step 3). |
-| The same message with **LM Studio** | The server is stopped, or **Enable CORS** is off. | Start the server with **Enable CORS** on. |
-| The same message, any page | The server is not running, or the port is wrong. | Run `curl http://localhost:11434/v1/models` (LM Studio: port 1234). No answer means the server is down. |
-| "Got 404 — check that the base URL ends in /v1 (e.g. http://localhost:11434/v1)." | The base URL lacks `/v1`. | Add `/v1`. |
-| The same 404 message with **Gemini** | The API key field is empty. | Paste the key, click **Test**. |
-| "Got 401 — the provider rejected the API key. Check that your key is correct and active." | OpenAI: the key is missing or wrong. | Paste a valid key, click **Test**. |
-| "HTTP 400: Please pass a valid API key" | Gemini: the key is wrong. | Paste a valid key, click **Test**. |
-| "Paste a Claude API key (from the Claude Console) to connect." | Anthropic: no key yet. | Paste the key, click **Test**. |
-| "Anthropic rejected the API key. Check that it is correct and active." | Anthropic: the key is wrong. | Paste a valid key, click **Test**. |
-| "… is not loaded: LM Studio will load it with its default Context Length on the next request." | LM Studio will pick the window itself. | Set the model's default Context Length to 32768. |
-| "The model sent back an empty reply. Ask again, or try another model." | Seen with Ollama on a port other than 11434. | Run Ollama on port 11434. |
-| `Error: listen tcp 127.0.0.1:11434: bind: address already in use` in the terminal | Ollama is already running. | Quit it (the menu-bar app too), then start it again. |
+### "Could not reach …"
+
+The full message: "Could not reach http://localhost:11434/v1. Either the
+server is not running, or it is not allowing this page … via CORS."
+
+- **Safari on the live site.** Safari blocks an `https` page from calling
+  `http://localhost`. Run the app locally
+  ([section 4](#safari-and-the-live-site)), or use Chrome.
+- **Chrome on the live site, and the server is running.** The site was not
+  allowed to reach your local network. Allow local-network access for the
+  site in the browser's site settings, then click **Test**.
+- **Ollama, on the live site.** Ollama was started without
+  `OLLAMA_ORIGINS`, so it refuses the live site. Restart it with
+  `OLLAMA_ORIGINS` ([Ollama](#ollama), step 3).
+- **LM Studio.** The server is stopped, or **Enable CORS** is off. Start the
+  server with **Enable CORS** on.
+- **Any page.** The server is not running, or the port is wrong. Check it:
+
+  ```bash
+  curl http://localhost:11434/v1/models
+  ```
+
+  (LM Studio: port 1234.) No answer means the server is down.
+
+### "Got 404 — check that the base URL ends in /v1 …"
+
+- The base URL lacks `/v1`. Add it.
+- With **Gemini**: the API key field is empty. Paste the key, click
+  **Test**.
+
+### Messages about the API key
+
+- **"Got 401 — the provider rejected the API key. Check that your key is
+  correct and active."** OpenAI: the key is missing or wrong.
+- **"HTTP 400: Please pass a valid API key"** Gemini: the key is wrong.
+- **"Paste a Claude API key (from the Claude Console) to connect."**
+  Anthropic: no key yet.
+- **"Anthropic rejected the API key. Check that it is correct and
+  active."** Anthropic: the key is wrong.
+
+For each: paste a valid key, then click **Test**. Nothing happens until you
+click it.
+
+### Messages about the model
+
+- **"… is not loaded: LM Studio will load it with its default Context
+  Length on the next request."** LM Studio will pick the window itself. Set
+  the model's default Context Length to 32768.
+- **"The model sent back an empty reply. Ask again, or try another
+  model."** Seen with Ollama on a port other than 11434. Run Ollama on port
+  11434.
+
+### In the terminal
+
+- **`bind: address already in use`** when starting `ollama serve`: Ollama
+  is already running. Quit it (the menu-bar app too), then start it again.
 
 Still stuck: hover over the chip. It shows the server's own error text.
+
+## What was checked
+
+Every command and click-path on this page was run before it was written
+down, except where this list says otherwise.
+
+- **Platform:** macOS on Apple silicon; Ollama 0.40.
+- **Browsers:** Chrome's engine (Chromium) and Safari's engine (WebKit),
+  driven by a test tool. The Safari app, Edge, Firefox, Windows and Linux
+  were not checked.
+- **Ollama:** connected and asked a real question from a local page in both
+  engines. From the live site in Chromium, with `OLLAMA_ORIGINS` set, the
+  check used a second Ollama on this computer's network address, not
+  `localhost`.
+- **LM Studio:** connected with **Enable CORS** on, from the live site and
+  from local pages. Its own screens were not driven, and no full question
+  was asked through it.
+- **Hosted providers:** the steps up to **Test** and the error messages for
+  an empty and a wrong key were checked for all three. A connection with a
+  real key was not part of this check; those steps follow the app's code.
+- **A model on another computer:** checked against this computer's own
+  network address only.
+- **Chrome's permission question:** confirmed that the connection fails
+  without the permission and works with it; the wording of the question
+  was not seen.
 
 More about what the Pilot does, its limits and its guardrails:
 [pilot.md](pilot.md).
