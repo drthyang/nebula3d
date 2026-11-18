@@ -44,6 +44,7 @@ viewers, and reproducible command recipes in more detail.
 | [../QUICKSTART.md](../QUICKSTART.md) | Get the app running (native or in-browser). |
 | [web.md](web.md) | Launch, use, or develop the browser console (both run modes + consistency check). |
 | [pilot.md](pilot.md) | Use or understand NEBULA Pilot, the console's agent: Apply cards, auto mode, highlights, the context meter, tools, guardrails, tuning, local models. |
+| [pilot-setup.md](pilot-setup.md) | Connect a model to NEBULA Pilot from nothing: hosted (API key), local (Ollama, LM Studio), Safari, a check with the demo, troubleshooting. |
 | [pilot-auto-mode-design.md](pilot-auto-mode-design.md) | The design behind Apply cards, auto mode and the highlights (the code comments cite it). |
 | [demo-script.md](demo-script.md) | Rehearse a 5–10 minute live demo on the synthetic volume: the click path, timings, fallbacks and a checklist. |
 | [demo-qa.md](demo-qa.md) | Read the demo QA pass on both builds: what was tested, the timings, the fixes and the known issues. |

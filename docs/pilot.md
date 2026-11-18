@@ -7,7 +7,8 @@ provider shows a warning that your run data leaves your device. Every number
 it quotes comes from the app's deterministic, unit-tested metrics and checks,
 run in the browser or by the backend: the model reads and explains them, it
 does not compute them. Getting it running is in
-[QUICKSTART.md](../QUICKSTART.md#using-the-console).
+[QUICKSTART.md](../QUICKSTART.md#using-the-console); connecting a model,
+step by step, is in [pilot-setup.md](pilot-setup.md).
 
 ## Using it
 

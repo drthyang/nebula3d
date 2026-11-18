@@ -85,7 +85,8 @@ nebula3d-web --data-root demo
 one (Ollama, LM Studio) needs a 32k context; on the Pages site it also needs
 CORS (`OLLAMA_ORIGINS`, or LM Studio's *Enable CORS*). Cloud models (OpenAI,
 Gemini, Anthropic) take an API key and show a warning that run data leaves
-your device. More in [QUICKSTART.md](QUICKSTART.md).
+your device. More in [QUICKSTART.md](QUICKSTART.md); step by step, with
+Safari and troubleshooting, in [docs/pilot-setup.md](docs/pilot-setup.md).
 
 ## NEBULA Pilot: how it works
 
