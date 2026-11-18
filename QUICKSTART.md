@@ -90,7 +90,8 @@ reads it from there. A session typically runs top to bottom:
    ([docs/pilot.md](docs/pilot.md#guardrails)). On the Pages site, a local
    model also needs CORS: start Ollama with `OLLAMA_ORIGINS` set to
    `https://drthyang.github.io`, or turn on *Enable CORS* in LM Studio's
-   server settings.
+   server settings. The setup step by step, Safari and troubleshooting:
+   [docs/pilot-setup.md](docs/pilot-setup.md).
 
 ## Going further
 
