@@ -49,22 +49,31 @@ image. With a hosted provider the app shows this warning:
 ### Where the settings are kept
 
 The connection settings are saved in this browser's local storage, under the
-name `nebula3d-llm-settings-v1`: the base URL, the model, the API key, and
-the *Tools*, *Follow* and *Vision* switches.
+name `nebula3d-llm-settings-v1`: the base URL, the model, one API key per
+provider, and the *Tools*, *Follow* and *Vision* switches.
 
 - They stay in this browser. The app sends them to no server of its own.
-- The API key is saved there as plain text. Do not save a key on a shared
+- An API key is saved there as plain text. Do not save a key on a shared
   computer.
-- The key is sent only to the base URL you set, with each request.
+- A key is sent only to the server it was saved for, with each request.
 - Each address keeps its own settings: the live site and a local page do not
   share them.
-- To remove the key, empty the **API key** field, or clear the site's data in
-  the browser.
+- To remove a key, select its provider and empty the **API key** field, or
+  clear the site's data in the browser.
 
-> **One key field for all providers.** The saved key stays when you switch
-> provider, and it is then sent to the new one, a local server included
-> (where the key field is hidden). Empty the **API key** field before you
-> switch away from a hosted provider.
+> **One key per provider.** A key is saved for the provider selected when you
+> typed it, and sent to that provider only. The server is the first part of
+> the base URL (`https://api.openai.com`). Switch provider and the **API key**
+> field shows that provider's own key, or is empty; switch back and the first
+> key is there again. A local server (`localhost`) is sent no key. A custom
+> base URL has no key until you type one for it.
+>
+> A key saved by an older version (one key for all providers) is assigned
+> once, by how it begins: `sk-ant-` to Anthropic, `AIza` to Gemini,
+> `sk-proj-` or `sk-svcacct-` to OpenAI. Any other key stays with the base
+> URL that was set; it is removed when that is a local server, or Anthropic
+> or Gemini (it is not one of their keys). Check the **API key** field of
+> your provider after the update, and paste the key again if it is empty.
 
 ## 2. Hosted model (API key)
 

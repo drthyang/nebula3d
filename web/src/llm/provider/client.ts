@@ -54,9 +54,19 @@ export interface ChatMessage {
 const trimBase = (baseUrl: string): string => (baseUrl || "").replace(/\/+$/, "");
 
 // Cloud providers (OpenAI, Gemini, …) authenticate with a Bearer token; local
-// servers need none, so the header is only added when a key is present.
-const authHeaders = (apiKey?: string): Record<string, string> =>
-  apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+// servers need none, so the header is only added when a key is present. A key
+// is never attached for a server on this machine, or for a base URL that is
+// not a full http(s) one (the request would go to this page's own server): the
+// settings give neither a key (settings.ts), and this holds whoever calls.
+const takesKey = (baseUrl: string): boolean => {
+  try {
+    return /^https?:$/.test(new URL(baseUrl).protocol) && !isLocalUrl(baseUrl);
+  } catch {
+    return false;
+  }
+};
+const authHeaders = (baseUrl: string, apiKey?: string): Record<string, string> =>
+  apiKey && takesKey(baseUrl) ? { Authorization: `Bearer ${apiKey}` } : {};
 
 // A failed fetch to localhost surfaces as a bare TypeError both when the server
 // is not running and when the browser blocked the response for CORS, so the
@@ -136,7 +146,7 @@ export const listModels = async (
   { signal, apiKey }: { signal?: AbortSignal; apiKey?: string } = {},
 ): Promise<string[]> => {
   if (isAnthropicUrl(baseUrl)) return listAnthropicModels({ baseUrl, apiKey, signal });
-  const response = await fetch(`${trimBase(baseUrl)}/models`, { signal, headers: authHeaders(apiKey) });
+  const response = await fetch(`${trimBase(baseUrl)}/models`, { signal, headers: authHeaders(baseUrl, apiKey) });
   if (!response.ok) {
     const error = new Error(await describeHttpError(response)) as HttpError;
     error.status = response.status;
@@ -312,7 +322,7 @@ const postChat = async ({
   const send = (b: Record<string, unknown>) =>
     fetch(`${trimBase(baseUrl)}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders(apiKey) },
+      headers: { "Content-Type": "application/json", ...authHeaders(baseUrl, apiKey) },
       body: JSON.stringify(b),
       signal,
     });

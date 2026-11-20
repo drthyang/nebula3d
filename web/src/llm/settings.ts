@@ -4,12 +4,17 @@
 
 import { useSyncExternalStore } from "react";
 
+import { isLocalUrl, PROVIDER_PRESETS } from "./provider/presets";
+
 const STORAGE_KEY = "nebula3d-llm-settings-v1";
 
 export interface LlmSettings {
   baseUrl: string;
   model: string;
-  // Sent as a Bearer token to cloud providers (OpenAI, Gemini, …). Empty for
+  // The key saved for the server `baseUrl` names, or "": each server has its
+  // own (see apiKeyOrigin), so a key only ever goes to the server it was typed
+  // for. Derived, never stored under this name. Sent as a Bearer token to
+  // OpenAI-compatible cloud providers and through Anthropic's SDK. Empty for
   // local servers, which need none. Persisted in this browser only.
   apiKey: string;
   // Sent with each request. Null: none is sent, for a model that takes no
@@ -40,14 +45,90 @@ export const DEFAULT_SETTINGS: LlmSettings = {
   followViews: true,
 };
 
+/**
+ * The server a key saved while the Base URL is `baseUrl` belongs to: the URL's
+ * origin (scheme, host in lower case, port). Null for a URL that takes no key:
+ * one that does not parse (half typed), is not http(s), or names this machine.
+ * A half-typed host is another origin, so it has no key either.
+ */
+export const apiKeyOrigin = (baseUrl: string): string | null => {
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return isLocalUrl(baseUrl) ? null : url.origin;
+  } catch {
+    return null;
+  }
+};
+
+type ApiKeys = Record<string, string>;
+
+const presetOrigin = (id: string): string | null => apiKeyOrigin(PROVIDER_PRESETS.find((p) => p.id === id)?.baseUrl ?? "");
+
+// Where the single key of an older version goes. That version sent one key to
+// every server, so the Base URL beside it does not say whose key it is. A key
+// whose start names one provider goes to that provider, whatever the URL. Any
+// other key (a plain `sk-` is OpenAI's, but also other services') stays with
+// the stored Base URL's server, and is dropped when that server is local or is
+// Anthropic's or Gemini's, whose own keys are known by their start: a key is
+// never filed under a server it may not belong to.
+const OPENAI_ONLY_PREFIXES = ["sk-proj-", "sk-svcacct-"];
+const legacyKeyOrigin = (key: string, baseUrl: string): string | null => {
+  if (key.startsWith("sk-ant-")) return presetOrigin("anthropic");
+  if (key.startsWith("AIza")) return presetOrigin("gemini");
+  if (OPENAI_ONLY_PREFIXES.some((prefix) => key.startsWith(prefix))) return presetOrigin("openai");
+  const origin = apiKeyOrigin(baseUrl);
+  return origin && origin !== presetOrigin("anthropic") && origin !== presetOrigin("gemini") ? origin : null;
+};
+
+const storedKeys = (raw: unknown): ApiKeys => {
+  const keys: ApiKeys = {};
+  if (!raw || typeof raw !== "object") return keys;
+  for (const [origin, key] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof key === "string" && key && apiKeyOrigin(origin) === origin) keys[origin] = key;
+  }
+  return keys;
+};
+
+// The keys, by server. Kept beside the snapshot, which carries only the
+// current server's.
+let apiKeys: ApiKeys = {};
+
+const persist = (settings: LlmSettings): void => {
+  // The derived key is left out: the keys are stored by server only.
+  const stored: Record<string, unknown> = { ...settings, apiKeys };
+  delete stored.apiKey;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // Private mode or quota errors just mean settings do not persist.
+  }
+};
+
 const readStorage = (): LlmSettings => {
+  let parsed: Record<string, unknown> = {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return { ...DEFAULT_SETTINGS, ...(parsed && typeof parsed === "object" ? parsed : {}) };
+    const value: unknown = raw ? JSON.parse(raw) : null;
+    if (value && typeof value === "object") parsed = value as Record<string, unknown>;
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    // Nothing stored, or nothing readable: the defaults.
   }
+  const { apiKey: legacy, apiKeys: stored, ...rest } = parsed;
+  apiKeys = storedKeys(stored);
+  const settings: LlmSettings = { ...DEFAULT_SETTINGS, ...rest, apiKey: "" };
+  if (typeof settings.baseUrl !== "string") settings.baseUrl = DEFAULT_SETTINGS.baseUrl;
+  if (legacy !== undefined) {
+    // An older version's one key for every server: filed under one server,
+    // once, and the old field removed from the browser's storage.
+    const key = typeof legacy === "string" ? legacy.trim() : "";
+    const origin = key ? legacyKeyOrigin(key, settings.baseUrl) : null;
+    if (origin && !apiKeys[origin]) apiKeys[origin] = key;
+    persist(settings);
+  }
+  const origin = apiKeyOrigin(settings.baseUrl);
+  settings.apiKey = (origin && apiKeys[origin]) || "";
+  return settings;
 };
 
 let snapshot: LlmSettings | null = null;
@@ -58,13 +139,24 @@ export const loadSettings = (): LlmSettings => {
   return snapshot;
 };
 
+/**
+ * Change settings. `apiKey` is saved for the server the Base URL names (the
+ * patch's, when it has one), "" removing it; a URL that takes no key
+ * (apiKeyOrigin) saves none. A new Base URL brings its own server's key.
+ */
 export const saveSettings = (patch: Partial<LlmSettings>): LlmSettings => {
-  snapshot = { ...loadSettings(), ...patch };
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // Private mode or quota errors just mean settings do not persist.
+  const { apiKey, ...rest } = patch;
+  const next: LlmSettings = { ...loadSettings(), ...rest };
+  const origin = apiKeyOrigin(next.baseUrl);
+  if (apiKey !== undefined && origin) {
+    const keys = { ...apiKeys };
+    if (apiKey) keys[origin] = apiKey;
+    else delete keys[origin];
+    apiKeys = keys;
   }
+  next.apiKey = (origin && apiKeys[origin]) || "";
+  snapshot = next;
+  persist(next);
   listeners.forEach((listener) => listener());
   return snapshot;
 };
