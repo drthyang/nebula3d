@@ -90,9 +90,11 @@ const storedKeys = (raw: unknown): ApiKeys => {
 let apiKeys: ApiKeys = {};
 
 const persist = (settings: LlmSettings): void => {
-  const { apiKey: _derived, ...rest } = settings;
+  // The derived key is left out: the keys are stored by server only.
+  const stored: Record<string, unknown> = { ...settings, apiKeys };
+  delete stored.apiKey;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, apiKeys }));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   } catch {
     // Private mode or quota errors just mean settings do not persist.
   }
@@ -142,8 +144,10 @@ export const saveSettings = (patch: Partial<LlmSettings>): LlmSettings => {
   const next: LlmSettings = { ...loadSettings(), ...rest };
   const origin = apiKeyOrigin(next.baseUrl);
   if (apiKey !== undefined && origin) {
-    const { [origin]: _old, ...others } = apiKeys;
-    apiKeys = apiKey ? { ...others, [origin]: apiKey } : others;
+    const keys = { ...apiKeys };
+    if (apiKey) keys[origin] = apiKey;
+    else delete keys[origin];
+    apiKeys = keys;
   }
   next.apiKey = (origin && apiKeys[origin]) || "";
   snapshot = next;
