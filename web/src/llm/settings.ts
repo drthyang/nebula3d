@@ -65,15 +65,20 @@ type ApiKeys = Record<string, string>;
 
 const presetOrigin = (id: string): string | null => apiKeyOrigin(PROVIDER_PRESETS.find((p) => p.id === id)?.baseUrl ?? "");
 
-// Where the single key of an older version goes: to the provider its prefix
-// names, whatever Base URL was set beside it (that version sent one key to
-// every server, so the URL does not say whose key it is); a key with no known
-// prefix goes to the stored Base URL's server, and to none when that is local.
+// Where the single key of an older version goes. That version sent one key to
+// every server, so the Base URL beside it does not say whose key it is. A key
+// whose start names one provider goes to that provider, whatever the URL. Any
+// other key (a plain `sk-` is OpenAI's, but also other services') stays with
+// the stored Base URL's server, and is dropped when that server is local or is
+// Anthropic's or Gemini's, whose own keys are known by their start: a key is
+// never filed under a server it may not belong to.
+const OPENAI_ONLY_PREFIXES = ["sk-proj-", "sk-svcacct-"];
 const legacyKeyOrigin = (key: string, baseUrl: string): string | null => {
   if (key.startsWith("sk-ant-")) return presetOrigin("anthropic");
   if (key.startsWith("AIza")) return presetOrigin("gemini");
-  if (key.startsWith("sk-")) return presetOrigin("openai");
-  return apiKeyOrigin(baseUrl);
+  if (OPENAI_ONLY_PREFIXES.some((prefix) => key.startsWith(prefix))) return presetOrigin("openai");
+  const origin = apiKeyOrigin(baseUrl);
+  return origin && origin !== presetOrigin("anthropic") && origin !== presetOrigin("gemini") ? origin : null;
 };
 
 const storedKeys = (raw: unknown): ApiKeys => {

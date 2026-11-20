@@ -69,10 +69,11 @@ provider, and the *Tools*, *Follow* and *Vision* switches.
 > base URL has no key until you type one for it.
 >
 > A key saved by an older version (one key for all providers) is assigned
-> once, by how it begins: `sk-ant-` to Anthropic, `AIza` to Gemini, another
-> `sk-` to OpenAI. Any other key goes to the base URL that was set, unless
-> that is a local server; then it is removed. Check the **API key** field of
-> your provider after the update.
+> once, by how it begins: `sk-ant-` to Anthropic, `AIza` to Gemini,
+> `sk-proj-` or `sk-svcacct-` to OpenAI. Any other key stays with the base
+> URL that was set; it is removed when that is a local server, or Anthropic
+> or Gemini (it is not one of their keys). Check the **API key** field of
+> your provider after the update, and paste the key again if it is empty.
 
 ## 2. Hosted model (API key)
 

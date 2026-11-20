@@ -9,7 +9,8 @@
   - A local server (`localhost`) and a Base URL that is not complete are sent
     no key.
   - A key saved before this version is assigned once, by how it begins:
-    `sk-ant-` to Anthropic, `AIza` to Gemini, another `sk-` to OpenAI. Any
-    other key goes to the Base URL that was set, unless that is a local
-    server; then it is removed. Check the **API key** field after updating.
+    `sk-ant-` to Anthropic, `AIza` to Gemini, `sk-proj-` or `sk-svcacct-` to
+    OpenAI. Any other key stays with the Base URL that was set; it is removed
+    when that is a local server, or Anthropic or Gemini (it is not one of
+    their keys). Check the **API key** field after updating.
   - More in `docs/pilot-setup.md`, "Where the settings are kept".
