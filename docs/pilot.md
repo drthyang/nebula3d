@@ -576,8 +576,8 @@ miss is a note.
   reply began or 2 min within one (once each). What still fails ends the reply
   with a note that says what happened and what to do; its steps and text stay,
   and the evals record the failure's kind apart from a wrong answer.
-  **`settings.ts`** — a localStorage store (provider, model, key, temperature,
-  vision and tools opt-ins).
+  **`settings.ts`** — a localStorage store (provider, model, one key per
+  provider's server, temperature, vision and tools opt-ins).
 - **Tools** (`tools/`, `agent.ts`) — with *Tools* on, a reply is an agent loop:
   the browser runs each call the model makes against the same API the viewers
   use, sends the JSON back, and the model continues — up to twelve rounds. Every
