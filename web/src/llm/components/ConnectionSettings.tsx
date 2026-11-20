@@ -4,7 +4,7 @@
 
 import { Field } from "../../components/ui";
 import { isLocalUrl, PROVIDER_PRESETS, providerForUrl } from "../provider/presets";
-import { saveSettings, type LlmSettings } from "../settings";
+import { apiKeyOrigin, saveSettings, type LlmSettings } from "../settings";
 import type { ConnectionState } from "../useAssistant";
 
 const origin = typeof window !== "undefined" ? window.location.origin : "this page";
@@ -55,7 +55,10 @@ function HelpConnect() {
         </ol>
 
         <p className="ai-help-h">Cloud — OpenAI / Gemini</p>
-        <p>Pick the provider below and paste an API key. Your run data leaves your device.</p>
+        <p>
+          Pick the provider below and paste an API key. Each provider keeps its own key, sent only to that provider.
+          Your run data leaves your device.
+        </p>
 
         <p className="ai-help-note">
           Use Chrome, Edge, or Firefox — Safari blocks <code>http://localhost</code> from an https
@@ -77,6 +80,9 @@ export function ConnectionSettings({
 }) {
   const preset = providerForUrl(settings.baseUrl);
   const isCloud = preset ? preset.cloud : !isLocalUrl(settings.baseUrl);
+  // Each server has its own key (settings.ts): the field shows this one's, and
+  // takes none until the Base URL is a full one.
+  const keyServer = apiKeyOrigin(settings.baseUrl);
 
   return (
     <div className="ai-settings">
@@ -117,7 +123,7 @@ export function ConnectionSettings({
           <Field
             label={
               <>
-                API key{" "}
+                API key, this provider only{" "}
                 {preset?.keyUrl && (
                   <a href={preset.keyUrl} target="_blank" rel="noreferrer noopener">
                     (get one)
@@ -131,7 +137,9 @@ export function ConnectionSettings({
               type="password"
               className="ai-conn-url"
               value={settings.apiKey}
-              placeholder="sk-…"
+              placeholder={keyServer ? "sk-…" : "Enter the full Base URL first"}
+              disabled={!keyServer}
+              title="Kept in this browser and sent only to this Base URL's server. Other providers keep their own keys."
               spellCheck={false}
               onChange={(e) => saveSettings({ apiKey: e.target.value })}
             />
