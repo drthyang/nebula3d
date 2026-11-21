@@ -53,6 +53,7 @@ from nebula3d.pipeline import (
 )
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import Dataset, artifact_path, find_dataset
+from nebula3d.server.singleflight import SingleFlight
 from nebula3d.server.volumes import PLANES, lattice_parameters, load_volume, pack_slice
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import extract_slice_dpdf
@@ -63,6 +64,8 @@ PANELS: tuple[str, ...] = ("data", "recon", "residual", "dpdf")
 _CACHE_MAX = 4
 _cache: OrderedDict[tuple, dict] = OrderedDict()
 _lock = threading.Lock()
+# Simultaneous requests for one cold key share one round trip (server.singleflight).
+_flights = SingleFlight()
 
 
 def set_cache_max(n: int) -> None:
@@ -257,15 +260,34 @@ def _band_key(q_band: tuple[float, float] | None, r_band: tuple[float, float] | 
 def reconstruction(
     view: ViewInput, q_band: tuple[float, float] | None, r_band: tuple[float, float] | None
 ) -> dict:
-    """LRU-cached ``consistency_reconstruction`` for *view* + bands."""
+    """LRU-cached ``consistency_reconstruction`` for *view* + bands.  Requests
+    that arrive while it is computed (the view's meta and its panels' slices)
+    wait for it and share it."""
     path = view.path
     key = (str(path), path.stat().st_mtime, delta_pdf_transform_config(view.params),
            _band_key(q_band, r_band))
+    hit = _cached(key)
+    if hit is not None:
+        return hit
+    return _flights.run(key, lambda: _reconstruct(view, key, q_band, r_band))
+
+
+def _cached(key: tuple) -> dict | None:
     with _lock:
         hit = _cache.get(key)
         if hit is not None:
             _cache.move_to_end(key)
-            return hit
+        return hit
+
+
+def _reconstruct(
+    view: ViewInput, key: tuple, q_band: tuple[float, float] | None,
+    r_band: tuple[float, float] | None,
+) -> dict:
+    hit = _cached(key)  # computed since the caller looked
+    if hit is not None:
+        return hit
+    path = view.path
     vol = load_volume(path)  # shared with the slice viewers' cache
     # Evict the previous reconstruction(s) BEFORE building the new one.  Each
     # entry holds three volume-sized arrays (data / recon / ΔPDF) —

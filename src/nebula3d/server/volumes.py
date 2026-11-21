@@ -24,13 +24,15 @@ import json
 import struct
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
 
 import nebula3d
 from nebula3d.core import HKLVolume, sigma_note
+from nebula3d.server.singleflight import SingleFlight
 from nebula3d.utils.reciprocal_space import direct_cell
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import _ALIASES, _PLANE, SliceData
@@ -54,6 +56,10 @@ PLANES: tuple[str, ...] = tuple(_PLANE.keys()) + tuple(_ALIASES.keys())
 _CACHE_MAX = 6
 _cache: OrderedDict[tuple[str, float], HKLVolume] = OrderedDict()
 _lock = threading.Lock()
+# Simultaneous requests for one cold key share one load (server.singleflight).
+_flights = SingleFlight()
+
+T = TypeVar("T")
 
 
 def set_cache_max(n: int) -> None:
@@ -65,23 +71,60 @@ def set_cache_max(n: int) -> None:
             _cache.popitem(last=False)
 
 
-def load_volume(path: Path) -> HKLVolume:
-    """Load an nebula3d/Mantid volume, caching by ``(path, mtime)``."""
-    key = (str(path), path.stat().st_mtime)
+def _cached_volume(key: tuple[str, float]) -> HKLVolume | None:
     with _lock:
         vol = _cache.get(key)
         if vol is not None:
             _cache.move_to_end(key)
+        return vol
+
+
+def load_volume(path: Path) -> HKLVolume:
+    """Load an nebula3d/Mantid volume, caching by ``(path, mtime)``.
+
+    Requests that arrive while the file is being read wait for that read and
+    share its volume, instead of each reading the file."""
+    key = (str(path), path.stat().st_mtime)
+
+    def load() -> HKLVolume:
+        vol = _cached_volume(key)  # loaded since this caller looked
+        if vol is not None:
             return vol
-    # dtype=None: keep the artifact's stored precision (float32 stage
-    # files from a float32 run must not double in the viewer cache).
-    vol = nebula3d.load(path, dtype=None)  # heavy I/O outside the lock
-    with _lock:
-        _cache[key] = vol
-        _cache.move_to_end(key)
-        while len(_cache) > _CACHE_MAX:
-            _cache.popitem(last=False)
-    return vol
+        # dtype=None: keep the artifact's stored precision (float32 stage
+        # files from a float32 run must not double in the viewer cache).
+        vol = nebula3d.load(path, dtype=None)  # heavy I/O outside the lock
+        with _lock:
+            _cache[key] = vol
+            _cache.move_to_end(key)
+            while len(_cache) > _CACHE_MAX:
+                _cache.popitem(last=False)
+        return vol
+
+    vol = _cached_volume(key)
+    return vol if vol is not None else _flights.run(("volume", key), load)
+
+
+def _shared(name: str, cache: dict[tuple, T], key: tuple, compute: Callable[[], T]) -> T:
+    """``cache[key]``, else ``compute()``, kept as the cache's only entry.
+    Requests that arrive while it is computed wait for it and share the
+    answer; an error reaches each of them and is not kept."""
+
+    def cached() -> T | None:
+        with _lock:
+            return cache.get(key)
+
+    def load() -> T:
+        hit = cached()
+        if hit is not None:
+            return hit
+        out = compute()
+        with _lock:
+            cache.clear()  # one volume's answer at a time
+            cache[key] = out
+        return out
+
+    hit = cached()
+    return hit if hit is not None else _flights.run((name, key), load)
 
 
 _ring_cache: dict[tuple, dict] = {}
@@ -258,7 +301,7 @@ def pack_slice(sd: SliceData) -> bytes:
     return struct.pack("<I", len(hb)) + hb + data.tobytes()
 
 
-_coverage_cache: dict[tuple[str, float], dict] = {}
+_coverage_cache: dict[tuple, dict] = {}
 
 
 def volume_coverage(path: Path) -> dict:
@@ -270,24 +313,19 @@ def volume_coverage(path: Path) -> dict:
     ``volume_coverage_json``."""
     from nebula3d.analysis.coverage import q_coverage
 
-    key = (str(path), path.stat().st_mtime)
-    with _lock:
-        hit = _coverage_cache.get(key)
-    if hit is not None:
-        return hit
-    c = q_coverage(load_volume(path))
-    out = {
-        "q": [round(float(x), 4) for x in c.q],
-        "counted": [round(float(x), 4) for x in c.counted],
-        "q_min_edge": c.q_min_edge, "q_max_edge": c.q_max_edge,
-        "full_q_min": c.full_q_min, "full_q_max": c.full_q_max,
-        "measured_q_max": c.measured_q_max,
-        "box_q": c.box_q, "box_corner_q": c.box_corner_q, "q_step": c.q_step,
-    }
-    with _lock:
-        _coverage_cache.clear()  # one volume's worth: they are small, but unbounded otherwise
-        _coverage_cache[key] = out
-    return out
+    def compute() -> dict:
+        c = q_coverage(load_volume(path))
+        return {
+            "q": [round(float(x), 4) for x in c.q],
+            "counted": [round(float(x), 4) for x in c.counted],
+            "q_min_edge": c.q_min_edge, "q_max_edge": c.q_max_edge,
+            "full_q_min": c.full_q_min, "full_q_max": c.full_q_max,
+            "measured_q_max": c.measured_q_max,
+            "box_q": c.box_q, "box_corner_q": c.box_corner_q, "q_step": c.q_step,
+        }
+
+    # One volume's worth: they are small, but unbounded otherwise.
+    return _shared("coverage", _coverage_cache, (str(path), path.stat().st_mtime), compute)
 
 
 _ub_cache: dict[tuple, dict] = {}
@@ -358,14 +396,15 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
     ``radial`` gives the peaks' offsets along Q relative to |Q| per |Q| band
     and direction.
     """
-    from nebula3d.analysis.ub_refine import check_ub, mean_offset, radial_offsets
-
     key = (str(path), path.stat().st_mtime, tuple(cell), q_max)
-    with _lock:
-        hit = _ub_cache.get(key)
-    if hit is not None:
-        return hit
+    return _shared("ub", _ub_cache, key, lambda: _ub_check(path, cell, q_max))
+
+
+def _ub_check(path: Path, cell: tuple[int, int, int], q_max: float | None) -> dict:
+    """:func:`volume_ub_check`'s answer, computed."""
     from dataclasses import replace
+
+    from nebula3d.analysis.ub_refine import check_ub, mean_offset, radial_offsets
 
     cached = load_volume(path)
     vol = replace(cached, data=cached.data.copy(), sigma=cached.sigma.copy(),
@@ -409,9 +448,6 @@ def volume_ub_check(path: Path, cell: tuple[int, int, int] = (1, 1, 1),
         # origin, which no UB removes, is this vector before and after the fit.
         "mean_offset_rlu": _mean_offset_out(mean_offset(f, r.centres)),
     }
-    with _lock:
-        _ub_cache.clear()  # one volume's check at a time
-        _ub_cache[key] = out
     return out
 
 
@@ -453,22 +489,18 @@ def volume_ring_isotropy(path: Path, shells: list[tuple[float, float]]) -> dict:
     from nebula3d.preprocessing.ring_isotropy import IsotropyConfig, grid_too_coarse, judge_shells
 
     shells = [(round(float(q), 4), round(float(f), 4)) for q, f in shells]
-    key = (str(path), path.stat().st_mtime, tuple(shells))
-    with _lock:
-        hit = _ring_cache.get(key)
-    if hit is not None:
-        return hit
-    cfg = IsotropyConfig()
-    vol = load_volume(path)
-    out = {
-        "rule": {"direction_share": cfg.direction_share, "height_share": cfg.height_share},
-        "shells": [r.as_dict() for r in judge_shells(vol, shells, cfg)],
-        "not_judged": grid_too_coarse(vol, cfg) or None,
-    }
-    with _lock:
-        _ring_cache.clear()  # one volume's shells at a time
-        _ring_cache[key] = out
-    return out
+
+    def compute() -> dict:
+        cfg = IsotropyConfig()
+        vol = load_volume(path)
+        return {
+            "rule": {"direction_share": cfg.direction_share, "height_share": cfg.height_share},
+            "shells": [r.as_dict() for r in judge_shells(vol, shells, cfg)],
+            "not_judged": grid_too_coarse(vol, cfg) or None,
+        }
+
+    return _shared("rings", _ring_cache, (str(path), path.stat().st_mtime, tuple(shells)),
+                   compute)
 
 
 #: The ring stage's slice axes, the survey's only setting besides the edge trim.
@@ -499,22 +531,18 @@ def volume_ring_survey(path: Path, *, slice_axis: str = "H", edge_trim: int = 1,
         raise ValueError(f"edge_trim takes 0 to 10 voxel layers, not {edge_trim!r}")
     if precision not in ("float64", "float32"):
         raise ValueError(f"precision must be float64 or float32, not {precision!r}")
-    key = (str(path), path.stat().st_mtime, axis, int(edge_trim), precision)
-    with _lock:
-        hit = _survey_cache.get(key)
-    if hit is not None:
-        return hit
-    p = PipelineParams(edge_trim=int(edge_trim), rings=RingParams(slice_axis=axis),
-                       precision=precision)  # type: ignore[arg-type]
-    vol = load_input(path, p)
-    record = survey_rings(vol, pooled_ring_config(p.rings), sample=path.name)
-    del vol
-    out = {**record, "slice_axis": axis, "edge_trim": int(edge_trim),
-           "lines": survey_lines(record)}
-    with _lock:
-        _survey_cache.clear()  # one volume's survey at a time
-        _survey_cache[key] = out
-    return out
+
+    def compute() -> dict:
+        p = PipelineParams(edge_trim=int(edge_trim), rings=RingParams(slice_axis=axis),
+                           precision=precision)  # type: ignore[arg-type]
+        vol = load_input(path, p)
+        record = survey_rings(vol, pooled_ring_config(p.rings), sample=path.name)
+        del vol
+        return {**record, "slice_axis": axis, "edge_trim": int(edge_trim),
+                "lines": survey_lines(record)}
+
+    return _shared("survey", _survey_cache,
+                   (str(path), path.stat().st_mtime, axis, int(edge_trim), precision), compute)
 
 
 def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float | None = None,
@@ -535,6 +563,16 @@ def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float
     where a shell has too few voxels.  Raises ``ValueError`` for settings out
     of range.
     """
+    asked = (q_step, percentile, min_count)
+    key = (str(path), path.stat().st_mtime,
+           None if before is None else (str(before), before.stat().st_mtime), asked)
+    return _shared("floors", _floors_cache, key,
+                   lambda: _shell_floors(path, before, q_step, percentile, min_count))
+
+
+def _shell_floors(path: Path, before: Path | None, q_step: float | None,
+                  percentile: float | None, min_count: int | None) -> dict:
+    """:func:`volume_shell_floors`'s answer, computed."""
     from nebula3d.pipeline import read_flatten_settings
     from nebula3d.preprocessing.flatten_floors import (
         FLOOR_PERCENTILE,
@@ -543,13 +581,6 @@ def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float
         shell_floors,
     )
 
-    asked = (q_step, percentile, min_count)
-    key = (str(path), path.stat().st_mtime,
-           None if before is None else (str(before), before.stat().st_mtime), asked)
-    with _lock:
-        hit = _floors_cache.get(key)
-    if hit is not None:
-        return hit
     recorded = read_flatten_settings(path)
 
     def setting(value: float | None, name: str, default: float) -> float:
@@ -584,9 +615,6 @@ def volume_shell_floors(path: Path, before: Path | None = None, *, q_step: float
         "level_count": int(r.level_count),
         "flatten": recorded,
     }
-    with _lock:
-        _floors_cache.clear()  # one volume's floors at a time
-        _floors_cache[key] = out
     return out
 
 
@@ -629,15 +657,12 @@ def volume_texture(filled: Path, punched: Path, *, limit: int = 20,
     if not 0 <= int(limit) <= TEXTURE_MAX_LIMIT:
         raise ValueError(f"limit must lie in 0–{TEXTURE_MAX_LIMIT}, not {limit!r}")
     key = (str(filled), filled.stat().st_mtime, str(punched), punched.stat().st_mtime)
-    with _lock:
-        holes = _texture_cache.get(key)
-    if holes is None:
+
+    def measure() -> HoleTexture:
         record = read_punch_record(punched)
-        holes = hole_texture(load_volume(punched), load_volume(filled), punch_record=record)
-        del record
-        with _lock:
-            _texture_cache.clear()  # one volume's holes at a time
-            _texture_cache[key] = holes
+        return hole_texture(load_volume(punched), load_volume(filled), punch_record=record)
+
+    holes = _shared("texture", _texture_cache, key, measure)
     t = judge_fill_bias(
         holes,
         min_sigma=MIN_SIGMA if min_sigma is None else float(min_sigma),

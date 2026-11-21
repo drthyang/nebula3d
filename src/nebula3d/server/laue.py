@@ -24,6 +24,7 @@ from typing import Any
 
 from nebula3d.analysis.laue_compare import bragg_radius_from_punch, compare_laue_classes
 from nebula3d.pipeline import PipelineParams, declared_group, load_input
+from nebula3d.server.singleflight import SingleFlight
 
 ProgressFn = Callable[[float, str], None]
 
@@ -31,6 +32,10 @@ _CACHE_MAX = 8
 _cache: OrderedDict[tuple, dict[str, Any]] = OrderedDict()
 _progress: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
+# Simultaneous requests for one cold key share one comparison
+# (server.singleflight); each still hears its progress (_listeners).
+_flights = SingleFlight()
+_listeners: dict[tuple, list[ProgressFn]] = {}
 
 
 class SymmetrizedInputError(ValueError):
@@ -94,24 +99,54 @@ def laue_compare(path: Path, params: PipelineParams, *, extra: Sequence[str] = (
             "its equivalent voxels agree by construction and R_int cannot show which class the "
             "sample has. Compare the classes on the unsymmetrized volume.")
     key = _key(path, params, extra)
-    with _lock:
-        hit = _cache.get(key)
+
+    def cached() -> dict[str, Any] | None:
+        with _lock:
+            hit = _cache.get(key)
+            if hit is not None:
+                _cache.move_to_end(key)
+            return hit
+
+    def report(fraction: float, message: str) -> None:
+        with _lock:
+            heard = list(_listeners.get(key, ()))
+        for fn in heard:
+            fn(fraction, message)
+
+    def compare() -> dict[str, Any]:
+        hit = cached()  # compared since this caller looked
         if hit is not None:
+            return hit
+        report(0.0, "reading the raw volume")
+        vol = load_input(path, params, stage="symmetry_average")
+        cmp = compare_laue_classes(vol, cell=params.punch.supercell, punch=params.punch,
+                                   extra=extra, progress=report)
+        del vol
+        out = {"volume": path.name, "edge_trim": int(params.edge_trim), **cmp.to_dict()}
+        with _lock:
+            _cache[key] = out
             _cache.move_to_end(key)
+            while len(_cache) > _CACHE_MAX:
+                _cache.popitem(last=False)
+        return out
+
+    hit = cached()
     if hit is not None:
         if progress is not None:
             progress(1.0, "done")
         return hit
-    if progress is not None:
-        progress(0.0, "reading the raw volume")
-    vol = load_input(path, params, stage="symmetry_average")
-    cmp = compare_laue_classes(vol, cell=params.punch.supercell, punch=params.punch,
-                               extra=extra, progress=progress)
-    del vol
-    out = {"volume": path.name, "edge_trim": int(params.edge_trim), **cmp.to_dict()}
+    if progress is None:
+        return _flights.run(key, compare)
+    # A request that arrives while the comparison runs waits for it and hears
+    # its progress from then on.
     with _lock:
-        _cache[key] = out
-        _cache.move_to_end(key)
-        while len(_cache) > _CACHE_MAX:
-            _cache.popitem(last=False)
-    return out
+        _listeners.setdefault(key, []).append(progress)
+    try:
+        return _flights.run(key, compare)
+    finally:
+        with _lock:
+            heard = _listeners.get(key, [])
+            if progress in heard:
+                heard.remove(progress)
+            if not heard:
+                _listeners.pop(key, None)
