@@ -199,3 +199,91 @@ def test_the_labels_read_no_volume_and_are_the_same(ran):
     assert _reads(lambda: webbridge.modulation_labels_slice(ran, *cuts[0])) == (0, 0)
     assert _reads(lambda: (webbridge.volume_slice(f"{ran}.backfilled", "kl", 0.0),
                            webbridge.volume_slice(f"{ran}.flattened", "kl", 0.0))) == (0, 0)
+
+
+# ---------------------------------------------------------------------------
+# Several slices of one volume in one call
+# ---------------------------------------------------------------------------
+def _unpack_slices(buf: bytes) -> tuple[dict, list[bytes | str]]:
+    """The header and, per cut, its envelope or its error (webbridge._pack_slices)."""
+    import struct
+
+    (n,) = struct.unpack_from("<I", buf, 0)
+    header = json.loads(buf[4:4 + n].decode("utf-8"))
+    at, out = 4 + n, []
+    for item in header["items"]:
+        if "error" in item:
+            out.append(item["error"])
+        else:
+            out.append(buf[at:at + item["bytes"]])
+            at += item["bytes"]
+    assert at == len(buf)
+    return header, out
+
+
+HKL_CUTS = [["hk0", 0.0, False], ["h0l", 0.0, False], ["0kl", 0.0, False],
+            ["hk", 0.33, True], ["kl", -1.0, False]]
+DPDF_CUTS = [["xy", 0.0], ["xz", 0.0], ["yz", 0.0], ["xy", 2.5]]
+
+
+def test_several_slices_are_the_one_slice_calls_bytes(ran):
+    """volume_slices and dpdf_slices give, for each cut, the bytes the
+    one-slice call gives: from a cold cache and from a warm one."""
+    for name in HKL_STAGES:
+        vid = f"{ran}.{name}"
+        single = [bytes(webbridge.volume_slice(vid, *cut)) for cut in HKL_CUTS]
+        for warm in (False, True):
+            if not warm:
+                webbridge._clear_caches()
+            _header, got = _unpack_slices(webbridge.volume_slices(vid, json.dumps(HKL_CUTS)))
+            assert got == single, (name, warm)
+    did = f"{ran}.delta_pdf"
+    single = [bytes(webbridge.dpdf_slice(did, *cut)) for cut in DPDF_CUTS]
+    for warm in (False, True):
+        if not warm:
+            webbridge._clear_caches()
+        _header, got = _unpack_slices(webbridge.dpdf_slices(did, json.dumps(DPDF_CUTS)))
+        assert got == single, warm
+
+
+def test_several_slices_read_their_volume_once(ran):
+    """One call, one read, whatever the cache held: a check that asks volume
+    by volume reads each of the five stages once, where plane by plane across
+    the stages it read one per slice (two volumes fit the worker's cache)."""
+    cuts = HKL_CUTS[:3]
+    ids = [f"{ran}.{name}" for name in HKL_STAGES]
+    webbridge._clear_caches()
+    together = json.dumps(cuts)
+    assert _reads(lambda: [webbridge.volume_slices(vid, together) for vid in ids]) == (5, 0)
+    assert _counts()["volumes_cached"] <= 2
+    # Plane by plane, as the checks asked before: every slice a read.
+    webbridge._clear_caches()
+    one_by_one = lambda: [webbridge.volume_slice(vid, *cut) for cut in cuts for vid in ids]  # noqa: E731
+    assert _reads(one_by_one) == (15, 0)
+    webbridge._clear_caches()
+    sections = json.dumps(DPDF_CUTS)
+    assert _reads(lambda: webbridge.dpdf_slices(f"{ran}.delta_pdf", sections)) == (0, 1)
+
+
+def test_a_cut_that_fails_leaves_the_others(ran):
+    """A cut the one-slice call refuses gives its error in place; the others
+    still come.  An unknown volume, or cuts that are no list, fail the call."""
+    vid = f"{ran}.raw"
+    cuts = [["hk0", 0.0, False], ["nope", 0.0, False], ["0kl", 0.0, False]]
+    header, got = _unpack_slices(webbridge.volume_slices(vid, json.dumps(cuts)))
+    assert [sorted(i) for i in header["items"]] == [["bytes"], ["error"], ["bytes"]]
+    assert got[0] == bytes(webbridge.volume_slice(vid, "hk0", 0.0, False))
+    assert got[2] == bytes(webbridge.volume_slice(vid, "0kl", 0.0, False))
+    with pytest.raises(ValueError) as one:
+        webbridge.volume_slice(vid, "nope", 0.0, False)
+    assert got[1] == f"ValueError: {one.value}"
+    _header, got = _unpack_slices(webbridge.dpdf_slices(f"{ran}.delta_pdf",
+                                                        json.dumps([["xy", 0.0], ["zz", 0.0]])))
+    assert isinstance(got[0], bytes) and isinstance(got[1], str)
+    with pytest.raises(KeyError):
+        webbridge.volume_slices("nope.raw", json.dumps(cuts))
+    with pytest.raises(ValueError):
+        webbridge.volume_slices(f"{ran}.delta_pdf", json.dumps(cuts))  # not an HKL stage
+    with pytest.raises(ValueError):
+        webbridge.volume_slices(vid, json.dumps([["hk0", 0.0]]))
+    assert _unpack_slices(webbridge.volume_slices(vid, "[]")) == ({"items": []}, [])

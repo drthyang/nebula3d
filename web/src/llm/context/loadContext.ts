@@ -11,12 +11,11 @@ import {
   fetchBraggProfile,
   fetchConsistencyCheck,
   fetchDpdfMeta,
-  fetchDpdfSlice,
   fetchMeta,
   fetchProtectedLabels,
-  fetchSlice,
 } from "../../api/client";
-import type { Dataset, FlattenSettings, ProtectedLabels, VolumeMeta } from "../../api/types";
+import { readDpdfSlices, readSlices } from "../../api/sliceBatch";
+import type { Dataset, FlattenSettings, ProtectedLabels, Slice, VolumeMeta } from "../../api/types";
 import { usePipelineStore } from "../../state/pipelineStore";
 import { buildPipelineContext, type PipelineContext, type StageSlices } from "./pipelineContext";
 import { datasetName } from "../../api/datasetName";
@@ -100,6 +99,41 @@ export interface FlattenRecord {
   settings: FlattenSettings | null | undefined;
 }
 
+/**
+ * The slices several cuts read, asked for volume by volume: each stage's
+ * volume once for all the reciprocal cuts, and the ΔPDF once for all its
+ * sections (api/sliceBatch.ts). A slice that could not be read is null, as
+ * `safe(fetchSlice(…))` gave it.
+ */
+export interface CutSlices {
+  recip: (name: RecipStage, cut: Cut) => Promise<Slice | null>;
+  dpdf: (cut: Cut) => Promise<Slice | null>;
+}
+
+const sameCut = (a: Cut, b: Cut): boolean => a.plane === b.plane && Object.is(a.value, b.value);
+
+/**
+ * Ask now for `recips` on every reciprocal stage `dataset` lists and for
+ * `dpdfs` on its ΔPDF, one volume at a time. A cut asked of the result that
+ * was not among them is read then, alone.
+ */
+export function readCuts(dataset: Dataset, recips: readonly Cut[], dpdfs: readonly Cut[]): CutSlices {
+  const together = (id: string | undefined, cuts: readonly Cut[], read: typeof readSlices): Promise<Slice | null>[] =>
+    id && cuts.length ? read(id, cuts.map(({ plane, value }) => ({ plane, value }))).map(safe) : [];
+  const stages = new Map(RECIP_STAGES.map((name) => [name, together(stageVolumeId(dataset, name), recips, readSlices)]));
+  const dpdfId = dpdfVolumeId(dataset);
+  const sections = together(dpdfId, dpdfs, readDpdfSlices);
+  const alone = (id: string | undefined, cut: Cut, read: typeof readSlices): Promise<Slice | null> =>
+    id ? safe(read(id, [{ plane: cut.plane, value: cut.value }])[0]) : Promise.resolve(null);
+  return {
+    recip: (name, cut) => {
+      const i = recips.findIndex((c) => sameCut(c, cut));
+      return stages.get(name)?.[i] ?? alone(stageVolumeId(dataset, name), cut, readSlices);
+    },
+    dpdf: (cut) => sections[dpdfs.findIndex((c) => sameCut(c, cut))] ?? alone(dpdfId, cut, readDpdfSlices),
+  };
+}
+
 export interface LoadOptions {
   recip?: Cut | null; // null skips the reciprocal stages
   dpdf?: Cut | null; // null skips the ΔPDF section
@@ -110,6 +144,9 @@ export interface LoadOptions {
   // What the flatten recorded, when the caller read it once for several cuts
   // (tune/evaluate.ts); without it, read here from the flattened stage's meta.
   flattenRecord?: FlattenRecord;
+  // The cuts' slices, when the caller asked for several cuts' together
+  // (readCuts; tune/evaluate.ts); without it, this cut's are asked for here.
+  slices?: CutSlices;
 }
 
 /**
@@ -125,7 +162,7 @@ export async function readFlattenRecord(dataset: Dataset): Promise<FlattenRecord
 
 export async function loadPipelineContext(
   dataset: Dataset,
-  { recip = DEFAULT_RECIP_CUT, dpdf = DEFAULT_DPDF_CUT, records = true, allLeftovers = false, flattenRecord }: LoadOptions = {},
+  { recip = DEFAULT_RECIP_CUT, dpdf = DEFAULT_DPDF_CUT, records = true, allLeftovers = false, flattenRecord, slices: asked }: LoadOptions = {},
 ): Promise<AssistantContext> {
   const hklVolId = hklVolumeId(dataset);
   const dpdfVolId = dpdfVolumeId(dataset);
@@ -136,10 +173,9 @@ export async function loadPipelineContext(
   const flatten = flattenRecord ?? (recip && stageVolumeId(dataset, "flattened") ? await readFlattenRecord(dataset) : { settings: undefined });
   const dpdfMeta = dpdfVolId ? await safe(fetchDpdfMeta(dpdfVolId)) : null;
 
-  const getRecip = (name: RecipStage) => {
-    const id = stageVolumeId(dataset, name);
-    return id && recip ? safe(fetchSlice(id, recip.plane, recip.value)) : Promise.resolve(null);
-  };
+  // One volume at a time (readCuts): this cut's slices, or the caller's.
+  const source = asked ?? readCuts(dataset, recip ? [recip] : [], dpdf ? [dpdf] : []);
+  const getRecip = (name: RecipStage) => (recip && stageVolumeId(dataset, name) ? source.recip(name, recip) : Promise.resolve(null));
 
   const [raw, ringremoved, braggpunched, backfilled, flattened, dpdfSlice, braggProfile, consistencyCheck, protectedLabels] =
     await Promise.all([
@@ -148,7 +184,7 @@ export async function loadPipelineContext(
       getRecip("braggpunched"),
       getRecip("backfilled"),
       getRecip("flattened"),
-      dpdfVolId && dpdf ? safe(fetchDpdfSlice(dpdfVolId, dpdf.plane, dpdf.value)) : Promise.resolve(null),
+      dpdfVolId && dpdf ? source.dpdf(dpdf) : Promise.resolve(null),
       records ? safe(fetchBraggProfile(dataset.id)) : Promise.resolve(null),
       // The run's own back-FFT check, not the consistency viewer's recompute:
       // it is a file read, and it describes the ΔPDF the context reports on.

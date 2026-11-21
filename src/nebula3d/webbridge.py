@@ -41,7 +41,7 @@ import struct
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -1339,6 +1339,47 @@ def volume_slice(volume_id: str, plane: str, value: float, interp: bool = False
                                interp=bool(interp))
 
 
+def _cuts(cuts_json: str, width: int) -> list[list[Any]]:
+    """The cuts of a several-slices call: a JSON list of *width*-long lists."""
+    cuts = json.loads(cuts_json)
+    if not isinstance(cuts, list) or not all(
+            isinstance(c, list) and len(c) == width for c in cuts):
+        raise ValueError(f"the cuts are a list of {width}-item lists")
+    return cuts
+
+
+def _pack_slices(slices: list[bytes | Exception]) -> bytes:
+    """Several slice envelopes as one answer:
+
+        [uint32 LE: header_len][JSON header][the envelopes, one after another]
+
+    The header's ``items`` has one entry per cut, in order: ``{"bytes": n}``,
+    the length of its envelope, or ``{"error": message}`` for a cut that
+    failed (it has no envelope; the caller asks for that cut alone to get the
+    error as the one-slice call raises it)."""
+    items = [{"error": f"{type(x).__name__}: {x}"} if isinstance(x, Exception)
+             else {"bytes": len(x)} for x in slices]
+    header = json.dumps({"items": items}).encode("utf-8")
+    return b"".join([struct.pack("<I", len(header)), header,
+                     *(x for x in slices if not isinstance(x, Exception))])
+
+
+def volume_slices(volume_id: str, cuts_json: str) -> bytes:
+    """Several slices of one HKL stage in one call, for a check that reads
+    more than one plane of a volume: the volume is read once for all of them,
+    whatever the worker's cache held before.  *cuts_json* is a JSON list of
+    ``[plane, value, interp]``; the answer (:func:`_pack_slices`) holds, for
+    each, the very envelope :func:`volume_slice` gives."""
+    _resolve(volume_id, "hkl")  # an unknown or missing volume fails the call, as one slice does
+    out: list[bytes | Exception] = []
+    for plane, value, interp in _cuts(cuts_json, 3):
+        try:
+            out.append(volume_slice(volume_id, str(plane), float(value), bool(interp)))
+        except Exception as exc:  # noqa: BLE001 — the cut's own error, the others still come
+            out.append(exc)
+    return _pack_slices(out)
+
+
 # ---------------------------------------------------------------------------
 # Real-space ΔPDF
 # ---------------------------------------------------------------------------
@@ -1521,6 +1562,20 @@ def dpdf_slice(volume_id: str, plane: str, value: float) -> bytes:
     """Binary slice envelope of a ΔPDF stage (mirrors /api/deltapdf/{id}/slice)."""
     stage = _resolve(volume_id, "delta_pdf")
     return _dpdf.dpdf_slice_envelope(stage.path, plane=plane, value=float(value))
+
+
+def dpdf_slices(volume_id: str, cuts_json: str) -> bytes:
+    """Several sections of one ΔPDF in one call (as :func:`volume_slices`):
+    *cuts_json* is a JSON list of ``[plane, value]``, and each envelope is the
+    one :func:`dpdf_slice` gives."""
+    _resolve(volume_id, "delta_pdf")
+    out: list[bytes | Exception] = []
+    for plane, value in _cuts(cuts_json, 2):
+        try:
+            out.append(dpdf_slice(volume_id, str(plane), float(value)))
+        except Exception as exc:  # noqa: BLE001 — the cut's own error, the others still come
+            out.append(exc)
+    return _pack_slices(out)
 
 
 def dpdf_features_json(volume_id: str, min_sigma: float = 5.0, limit: int = 12) -> str:

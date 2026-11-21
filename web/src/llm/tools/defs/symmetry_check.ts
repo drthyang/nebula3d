@@ -4,6 +4,7 @@
 // (metrics/symmetry.ts, operationSymmetry).
 
 import { fetchDpdfSlice } from "../../../api/client";
+import { readDpdfSlices } from "../../../api/sliceBatch";
 import { declaringMeta, dpdfVolumeId } from "../../context/loadContext";
 import { evidence } from "../../inference";
 import {
@@ -84,12 +85,13 @@ export const symmetry_check: ChatTool = {
     const id = dpdfVolumeId(dataset)!;
     // The point group the data were declared symmetrised with (by the volume
     // the ΔPDF was made from, else the raw file); none read: not known.
-    const [xy, xz, yz, rawMeta] = await Promise.all([
-      fetchDpdfSlice(id, "xy", z),
-      fetchDpdfSlice(id, "xz", 0),
-      fetchDpdfSlice(id, "yz", 0),
-      declaringMeta(dataset, "delta_pdf"),
+    // The three sections together: the ΔPDF is read once for them (api/sliceBatch.ts).
+    const [readXy, readXz, readYz] = readDpdfSlices(id, [
+      { plane: "xy", value: z },
+      { plane: "xz", value: 0 },
+      { plane: "yz", value: 0 },
     ]);
+    const [xy, xz, yz, rawMeta] = await Promise.all([readXy, readXz, readYz, declaringMeta(dataset, "delta_pdf")]);
     const label = rawMeta?.symmetry ?? null;
     const declaredOps = rawMeta?.symmetry_ops ?? null;
     // Declared operations without a name are a declaration too.

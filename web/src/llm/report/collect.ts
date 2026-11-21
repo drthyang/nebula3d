@@ -5,7 +5,7 @@
 // and the reply itself.
 
 import { isPutBackMark } from "../putBackMark";
-import { fetchDpdfSlice, fetchSlice } from "../../api/client";
+import { readDpdfSlices, readSlices } from "../../api/sliceBatch";
 import type { Dataset, Slice } from "../../api/types";
 import { autoLevels } from "../../components/colorScale";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../components/dpdfLevels";
@@ -101,7 +101,7 @@ async function figures(dataset: Dataset): Promise<ReportFigure[]> {
   const stageSlices = await Promise.all(
     STAGE_FIGURES.map(async ([name, title]) => {
       const id = stageId(name);
-      const slice = id ? await safe(fetchSlice(id, "hk0", 0, false)) : null;
+      const slice = id ? await safe(readSlices(id, [{ plane: "hk0", value: 0, interp: false }])[0]) : null;
       return slice ? { title: title as string, slice } : null;
     }),
   );
@@ -118,7 +118,8 @@ async function figures(dataset: Dataset): Promise<ReportFigure[]> {
   }
   const dId = dpdfVolumeId(dataset);
   if (dId) {
-    const sections = await Promise.all(DPDF_SECTIONS.map(([plane]) => safe(fetchDpdfSlice(dId, plane, 0))));
+    // Together: the ΔPDF is read once for its sections (api/sliceBatch.ts).
+    const sections = await Promise.all(readDpdfSlices(dId, DPDF_SECTIONS.map(([plane]) => ({ plane, value: 0 }))).map(safe));
     const have = sections.filter((s): s is Slice => s != null);
     if (have.length) {
       const levels = autoLevels(have.map(withoutOrigin), { signed: true, percentile: DPDF_AUTO_PERCENTILE });
