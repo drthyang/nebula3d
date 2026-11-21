@@ -255,6 +255,17 @@ def _clear_caches() -> None:
     _cons.clear_cache()
 
 
+def read_counts_json() -> str:
+    """How often this worker read a whole volume or ΔPDF from its file since it
+    started, and what its caches hold now: JSON ``{volume_reads, dpdf_reads,
+    volumes_cached, dpdfs_cached}``.  A count, for measuring and the tests;
+    nothing is loaded or released."""
+    return _json({
+        "volume_reads": _vol.read_count(), "dpdf_reads": _dpdf.read_count(),
+        "volumes_cached": _vol.cached_count(), "dpdfs_cached": _dpdf.cached_count(),
+    })
+
+
 def _release_other_caches(keep: str) -> None:
     """Free the slice/volume caches for views other than *keep* (they're now
     off-screen).

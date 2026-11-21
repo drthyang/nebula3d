@@ -60,7 +60,22 @@ _lock = threading.Lock()
 # Simultaneous requests for one cold key share one load (server.singleflight).
 _flights = SingleFlight()
 
+# Whole-volume reads since the process started (the tests' and the browser
+# bridge's count: nebula3d.webbridge.read_counts_json).
+_reads = 0
+
 T = TypeVar("T")
+
+
+def read_count() -> int:
+    """How many times a volume's arrays were read from its file (cache misses)."""
+    return _reads
+
+
+def cached_count() -> int:
+    """How many are held in the cache now."""
+    with _lock:
+        return len(_cache)
 
 
 def set_cache_max(n: int) -> None:
@@ -102,6 +117,9 @@ def load_volume(path: Path) -> HKLVolume:
         # dtype=None: keep the artifact's stored precision (float32 stage
         # files from a float32 run must not double in the viewer cache).
         vol = nebula3d.load(path, dtype=None)  # heavy I/O outside the lock
+        global _reads
+        with _lock:
+            _reads += 1  # read, whether or not it is kept
         if not is_current(path, key[1]):
             return vol  # the file changed meanwhile: this version is not kept
         with _lock:

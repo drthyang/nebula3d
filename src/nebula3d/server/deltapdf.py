@@ -66,6 +66,22 @@ _FLOOR_MAX = 16
 _floors: OrderedDict[tuple[str, float], tuple[float, float]] = OrderedDict()
 
 
+# Whole-ΔPDF reads since the process started (cache misses), as
+# nebula3d.server.volumes.read_count counts the volumes'.
+_reads = 0
+
+
+def read_count() -> int:
+    """How many times a ΔPDF's data were read from its file (cache misses)."""
+    return _reads
+
+
+def cached_count() -> int:
+    """How many are held in the cache now."""
+    with _lock:
+        return len(_cache)
+
+
 def set_cache_max(n: int) -> None:
     """Cap the ΔPDF cache (evicting oldest); the browser build shrinks it."""
     global _CACHE_MAX
@@ -145,6 +161,9 @@ def _read_dpdf(path: Path, key: tuple[str, float]) -> DeltaPdfData:
         window_scale=_float_log(f.logs, "window_scale"),
         window_open_weight=_float_log(f.logs, "window_open_weight"),
     )
+    global _reads
+    with _lock:
+        _reads += 1  # read, whether or not it is kept
     if not is_current(path, key[1]):
         return d  # the file changed meanwhile: this version is not kept
     with _lock:
