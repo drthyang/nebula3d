@@ -346,11 +346,18 @@ def _release_other_caches(keep: str) -> None:
     state (never during slider scrubbing of the active view, whose cache is
     kept).  Called only from the per-view *metadata* entry points (once on view
     entry), never from the per-slice ones.
+
+    What is released is the memory: the volumes and the ΔPDF.  The small
+    records computed from a volume (the ring verdicts, the shell floors, the
+    holes' texture) stay; no file changes here, and they stand by their file's
+    path and date until a call that writes clears them (:func:`_clear_caches`).
+    A Pilot check asks for both views' metadata, so dropping them made every
+    check compute them again, each a whole-volume read or two.
     """
     if keep != "vol":
-        _vol.clear_cache()
+        _vol.release_volumes()
     if keep != "dpdf":
-        _dpdf.clear_cache()
+        _dpdf.release_data()
     if keep != "cons":
         _cons.clear_cache()
 

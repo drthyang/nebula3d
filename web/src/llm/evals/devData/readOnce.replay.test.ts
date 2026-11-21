@@ -64,17 +64,15 @@ describe("what a check reads in the worker, on the dev control", () => {
     for (const stage of stages) each[stage] = (await c.tool("assess_stage", { stage })).result;
     expect(sliceStoreCounts().kept).toBe(18); // five volumes' three planes and the ΔPDF's three sections, once
 
-    // The final checks: every stage again. No slice is read again; the
-    // backend's own passes over a volume (the rings' 3-D test on the raw
-    // volume, the shell floors on the flattened one and the flatten's input)
-    // are no slices.
+    // The final checks: every stage again. No slice is read again, and what
+    // the backend computed from a whole volume for the stage checks (the
+    // rings' 3-D test, the shell floors) is still there: no volume is read.
     let all: Awaited<ReturnType<typeof c.tool>> | undefined;
     const again = await reads(async () => {
       all = await c.tool("assess_stage", { stage: "all" });
     });
     expect(all?.ok, all?.summary).toBe(true);
-    expect(again.dpdfs).toBe(0);
-    expect(again.volumes).toBeLessThanOrEqual(3);
+    expect(again).toMatchObject({ volumes: 0, dpdfs: 0 });
     expect(sliceStoreCounts().kept).toBe(18);
     // The same check with nothing kept gives the same result, to the letter.
     forgetSlices();

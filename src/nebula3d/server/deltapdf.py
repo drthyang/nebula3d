@@ -189,6 +189,13 @@ def _float_log(logs: dict, key: str) -> float | None:
     return float(v) if isinstance(v, (int, float)) else None
 
 
+def release_data() -> None:
+    """Drop the cached ΔPDFs, which hold the memory, and keep the few numbers
+    read off each (its σ and origin's radius, by ``(path, mtime)``)."""
+    with _lock:
+        _cache.clear()
+
+
 def clear_cache() -> None:
     with _lock:
         _cache.clear()

@@ -238,6 +238,16 @@ _floors_cache: dict[tuple, dict] = {}
 _texture_cache: dict[tuple, HoleTexture] = {}
 
 
+def release_volumes() -> None:
+    """Drop the cached volumes, which hold the memory, and keep what was
+    computed from one: its facts, the ring verdicts, the shell floors and the
+    holes' texture, a few numbers per shell or per hole, each standing by its
+    file's ``(path, mtime)`` as the volumes do.  For a caller that needs the
+    memory and changes no file (the browser bridge on a change of view)."""
+    with _lock:
+        _cache.clear()
+
+
 def clear_cache() -> None:
     with _lock:
         _cache.clear()

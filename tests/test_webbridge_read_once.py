@@ -295,6 +295,30 @@ def test_a_cut_that_fails_leaves_the_others(ran):
     assert header["items"] == [] and got == []
 
 
+def test_a_change_of_view_keeps_what_was_computed_from_a_volume(ran):
+    """The ΔPDF's meta releases the cleanup view's volumes (the memory) and
+    keeps the ring verdicts, the shell floors and the holes' texture computed
+    from them: asked again, they read no volume and say the same.  A run
+    clears them, and they are computed again from the new files."""
+    calls = {
+        "rings": lambda: webbridge.volume_ring_isotropy_json(f"{ran}.raw", "2.69", "0.05"),
+        "floors": lambda: webbridge.volume_shell_floors_json(f"{ran}.flattened"),
+        "texture": lambda: webbridge.volume_texture_json(f"{ran}.backfilled"),
+    }
+    for name, call in calls.items():
+        first = call()
+        webbridge.volume_slice(f"{ran}.raw", "hk0", 0.0)
+        webbridge.dpdf_meta_json(f"{ran}.delta_pdf")  # the ΔPDF view is entered
+        assert _counts()["volumes_cached"] == 0, name  # the memory is released
+        again: list[str] = []
+        assert _reads(lambda call=call: again.append(call())) == (0, 0), name
+        assert again[0] == first, name
+    floors = calls["floors"]()
+    webbridge.run("", FIX, True, force_from="backfill")
+    assert _reads(calls["floors"])[0] >= 1
+    assert calls["floors"]() != floors
+
+
 # ---------------------------------------------------------------------------
 # Never a file as it was: after every writer, what the bridge reads is the file
 # ---------------------------------------------------------------------------
@@ -332,6 +356,14 @@ def _read_all(dataset_id: str) -> dict[str, object]:
     if any(s["name"] == "braggpunched" and s["exists"] for s in listed):
         out["labels"] = [bytes(webbridge.modulation_labels_slice(dataset_id, *c))
                          for c in READ_CUTS]
+    # What the backend computes from a whole volume and keeps by its file.
+    have = {s["name"]: s["volume_id"] for s in listed if s["exists"]}
+    out["rings"] = webbridge.volume_ring_isotropy_json(have["raw"], "2.69,3.1", "0.05,0.05")
+    out["coverage"] = webbridge.volume_coverage_json(have["raw"])
+    if "flattened" in have:
+        out["floors"] = webbridge.volume_shell_floors_json(have["flattened"])
+    if "backfilled" in have and "braggpunched" in have:
+        out["texture"] = webbridge.volume_texture_json(have["backfilled"])
     return out
 
 
@@ -347,7 +379,9 @@ def _forget_without_a_trace() -> None:
 
     volumes._cache.clear()
     volumes._facts.clear()
-    deltapdf._cache.clear()
+    for records in (volumes._ring_cache, volumes._floors_cache, volumes._texture_cache,
+                    volumes._coverage_cache, deltapdf._cache, deltapdf._floors):
+        records.clear()
 
 
 def _assert_reads_the_files(dataset_id: str) -> dict[str, object]:
