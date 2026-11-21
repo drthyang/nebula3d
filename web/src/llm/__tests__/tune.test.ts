@@ -381,4 +381,81 @@ describe("startTuning", () => {
       expect(stageTimeLeft(budget, "rings")).toBeLessThanOrEqual(0);
     }
   });
+
+  // Trial 1 of a stage whose existing output is what it would compute is not
+  // computed: its job only says the output is there (nebula3d.server.tuning).
+  describe("with trial 1 taken from the existing output", () => {
+    // The job of each trial, as the pipeline store logs it: trial 1 ends on its
+    // skip line after a second when `reuse`, else every trial computes for a minute.
+    const trialJobs = (reuse: boolean, tick: (ms: number) => void) =>
+      vi.fn(async (_stages: string[], opts?: RunOptions) => {
+        const skipped = reuse && opts?.tuning?.trial === "punch-1";
+        tick(skipped ? 1000 : 60_000);
+        usePipelineStore.setState({
+          startedAt: 0,
+          times: [0, skipped ? 1000 : 60_000],
+          events: skipped
+            ? [{ type: "progress", stage: "punch", status: "skip", message: "demo_ringremoved_braggpunched.h5 exists" }, { type: "done" }]
+            : [{ type: "progress", stage: "punch", status: "start" }, { type: "progress", stage: "punch", status: "done", message: "detected 12 peaks" }],
+        });
+        return "done";
+      });
+    // The pipeline run the tuning starts from, whose punch took `punchSeconds`.
+    const lastRun = (datasetId: string, punchSeconds: number) =>
+      usePipelineStore.setState({
+        lastRun: { datasetId, stages: ["punch"], force: false, flattenEnabled: false, params: {} },
+        startedAt: 0,
+        times: [0, punchSeconds * 1000],
+        events: [{ type: "progress", stage: "punch", status: "start" }, { type: "progress", stage: "punch", status: "done", message: "detected 12 peaks" }],
+      });
+    const TWO = '{"candidates": [{"changes": {"punchMinSig": 4}}, {"changes": {"punchMinSig": 6}}]}';
+
+    it("asks the model the same questions and keeps the same trial", async () => {
+      const asked: unknown[][] = [];
+      for (const reuse of [false, true]) {
+        usePipelineStore.setState({ punchMinSig: "", runStages: trialJobs(reuse, () => {}) });
+        llm.completeChat.mockReset().mockResolvedValueOnce(TWO).mockResolvedValueOnce('{"best": 2, "why": "0 leftover peaks"}');
+        api.promoteTrial.mockClear();
+        await startTuning({ dataset: { ...dataset, id: `same-${reuse}` }, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS });
+        const [punch] = useTuneStore.getState().stages;
+        expect(punch.trials.map((t) => [t.n, t.status, t.reused ?? false])).toEqual([[1, "done", reuse], [2, "done", false], [3, "done", false]]);
+        expect(promoted()).toEqual(["punch-2", "backfill-1"]); // the backfill after it is re-run on the kept punch
+        asked.push(llm.completeChat.mock.calls.map(([args]) => (args as { messages: unknown }).messages));
+      }
+      expect(asked[0]).toHaveLength(2); // the proposal and the pick
+      expect(asked[1]).toEqual(asked[0]);
+    });
+
+    it("under auto mode's budget, takes the stage's time in the last run for a trial's length, never the reused trial's second", async () => {
+      // The stage may take two and a half minutes; trial 1 took a second.
+      const outcome = async (id: string, punchSeconds: number | null) => {
+        let clock = 0;
+        const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
+        if (punchSeconds !== null) lastRun(id, punchSeconds);
+        usePipelineStore.setState({ runStages: trialJobs(true, (ms) => (clock += ms)) });
+        llm.completeChat.mockReset().mockResolvedValueOnce(TWO).mockResolvedValueOnce('{"best": 1, "why": "no better"}');
+        const budget = { trials: 3, stageMs: 150_000, spentMs: {} as Record<string, number>, longestMs: {} as Record<string, number> };
+        try {
+          await startTuning({ dataset: { ...dataset, id }, stages: ["punch"], trialsPerStage: 3, llm: DEFAULT_SETTINGS, budget });
+        } finally {
+          now.mockRestore();
+        }
+        const [punch] = useTuneStore.getState().stages;
+        return { trials: punch.trials.map((t) => t.status), budget };
+      };
+      // The punch took 200 s in the last run: a trial would end past the 150 s, so none is started.
+      const long = await outcome("budget-long", 200);
+      expect(long.trials).toEqual(["done", "skipped", "skipped"]);
+      expect(long.budget.spentMs.punch).toBe(1000);
+      expect(long.budget.longestMs.punch).toBe(200_000);
+      expect(stageTimeLeft(long.budget, "punch")).toBeLessThanOrEqual(0);
+      // It took 100 s: trial 2 fits (0:01 + 1:40) and runs for a minute; then that minute is the estimate, and trial 3 fits too.
+      const short = await outcome("budget-short", 100);
+      expect(short.trials).toEqual(["done", "done", "done"]);
+      expect(short.budget.longestMs.punch).toBe(60_000);
+      // No run of the stage in this session to go by: the first candidate is started, the next by its length.
+      const unknown = await outcome("budget-unknown", null);
+      expect(unknown.trials).toEqual(["done", "done", "done"]);
+    });
+  });
 });

@@ -52,6 +52,7 @@ from nebula3d.core import HKLVolume
 from nebula3d.io.mantid_nxs import working_compression
 from nebula3d.pipeline import (
     STAGES,
+    PipelineParams,
     delta_pdf_transform_config,
     finish_ring_stage,
     pdf_consistency_check,
@@ -525,10 +526,16 @@ def _apply_browser_precision(params: object, params_json: str) -> None:
 def _run_target(
     stages: tuple[str, ...], force: bool,
     tuning_run: str | None, tuning_trial: str | None,
+    params: PipelineParams | None = None,
+    pdf_configs: tuple[str, ...] | None = None,
 ) -> tuple[Path, dict[str, Path] | None, bool]:
     """``(proc_dir, inputs, force)`` for a run: ``processed/``, or — for a
     tuning trial — the trial's own folder, reading its inputs from the run
-    (mirrors the native ``POST /api/pipeline/run`` with ``tuning``)."""
+    (mirrors the native ``POST /api/pipeline/run`` with ``tuning``).  A trial
+    is forced, unless it is trial 1 and the stage's existing output is what
+    it would compute with *params*: that output is then put into the trial
+    folder for the run to find (``tuning.reuse_existing_output``;
+    *pdf_configs* as it takes them)."""
     cfg = _require_cfg()
     if not tuning_run and not tuning_trial:
         return cfg.processed_dir, None, force
@@ -537,8 +544,10 @@ def _run_target(
     stage, _ = _tune.parse_trial(tuning_trial)
     if set(stages) - set(_tune.TRIAL_PIPELINE_STAGES[stage]):
         raise ValueError(f"a {stage} trial runs only {_tune.TRIAL_PIPELINE_STAGES[stage]}")
-    _run, proc_dir, inputs = _tune.trial_target(cfg, tuning_run, tuning_trial)
-    return proc_dir, inputs, True
+    run, proc_dir, inputs = _tune.trial_target(cfg, tuning_run, tuning_trial)
+    reused = params is not None and _tune.reuse_existing_output(
+        cfg, run, tuning_trial, params, inputs, pdf_configs=pdf_configs)
+    return proc_dir, inputs, not reused
 
 
 def run(
@@ -569,10 +578,11 @@ def run(
     _clear_caches()
     stages = tuple(s for s in (stages_csv.split(",") if stages_csv else [])
                    if s) or STAGES
-    proc_dir, inputs, force = _run_target(stages, bool(force), tuning_run, tuning_trial)
     params = build_params(_make_request(params_json, flatten_enabled))
     params.pdf_check_figure = False  # browser: no matplotlib, nothing reads the PNG
     _apply_browser_precision(params, params_json)
+    proc_dir, inputs, force = _run_target(stages, bool(force), tuning_run, tuning_trial,
+                                          params)
 
     cb = None
     if progress is not None:
@@ -744,7 +754,6 @@ async def run_async(
     _clear_caches()
     stages = tuple(s for s in (stages_csv.split(",") if stages_csv else [])
                    if s) or STAGES
-    proc_dir, inputs, force = _run_target(stages, bool(force), tuning_run, tuning_trial)
     params = build_params(_make_request(params_json, flatten_enabled))
     params.pdf_check_figure = False  # browser: no matplotlib, nothing reads the PNG
     _apply_browser_precision(params, params_json)
@@ -758,18 +767,6 @@ async def run_async(
     # passes the symmetry average through (run_pipeline decides it again, and
     # logs it, from `params`).
     effective, _ = resolve_symmetry_average(params, _S.input)
-    executor = None
-    pool = _ring_pool_js()
-    if (
-        pool is not None
-        and params.rings.ring_model.strip().lower() in {"patched", "parametric"}
-        and ring_stage_pending(_S.input, effective, proc_dir=proc_dir,
-                               stages=stages, force=bool(force),
-                               force_from=force_from)
-    ):
-        candidate = _JsPlaneExecutor(pool, progress=cb)
-        if candidate.workers() > 0:
-            executor = candidate
 
     # WebGPU ΔPDF core: split pdf/pdf_check out of the CPU run when the GPU
     # is usable (float32 storage only — the GPU path is f32 end to end).
@@ -782,6 +779,23 @@ async def run_async(
     )
     cpu_stages = (tuple(st for st in stages if st not in ("pdf", "pdf_check"))
                   if split_pdf else stages)
+    # A reused ΔPDF trial must carry the transform config this run stamps.
+    proc_dir, inputs, force = _run_target(
+        stages, bool(force), tuning_run, tuning_trial, params,
+        (delta_pdf_transform_config(params.delta_pdf) + _GPU_FFT_TOKEN,) if split_pdf else None)
+
+    executor = None
+    pool = _ring_pool_js()
+    if (
+        pool is not None
+        and params.rings.ring_model.strip().lower() in {"patched", "parametric"}
+        and ring_stage_pending(_S.input, effective, proc_dir=proc_dir,
+                               stages=stages, force=bool(force),
+                               force_from=force_from, inputs=inputs)
+    ):
+        candidate = _JsPlaneExecutor(pool, progress=cb)
+        if candidate.workers() > 0:
+            executor = candidate
 
     if executor is None:
         run_pipeline(

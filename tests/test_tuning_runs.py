@@ -305,3 +305,251 @@ def test_bridge_tuning_run_leaves_processed_byte_identical(tmp_path: Path) -> No
     assert _snapshot(processed) == before
     chain = json.loads(webbridge.dataset_json(start["dataset_id"]))
     assert all(s["exists"] for s in chain["stages"])
+
+
+# ---------------------------------------------------------------------------
+# Trial 1 from the stage's existing output
+# ---------------------------------------------------------------------------
+#: What a file records of when and how long, not of what (the files' ``date``
+#: dataset and ``file_time`` attribute, the ring diagnostics' ``timing_s``):
+#: left out of a comparison of a reused trial with a computed one.
+_CLOCK_KEYS = {"date", "file_time", "timing_s"}
+
+
+def _h5_content(path: Path) -> dict[str, object]:
+    """Every dataset and attribute of an HDF5 file, wall-clock attributes aside."""
+    import h5py
+
+    out: dict[str, object] = {}
+
+    def attrs(name: str, obj: h5py.HLObject) -> None:
+        for key, value in obj.attrs.items():
+            if key not in _CLOCK_KEYS:
+                out[f"{name}@{key}"] = (value.tobytes() if isinstance(value, np.ndarray)
+                                        else value)
+
+    def visit(name: str, obj: h5py.HLObject) -> None:
+        attrs(name, obj)
+        if isinstance(obj, h5py.Dataset) and name.rsplit("/", 1)[-1] not in _CLOCK_KEYS:
+            data = obj[()]
+            out[name] = ((data.dtype.str, data.shape, data.tobytes())
+                         if isinstance(data, np.ndarray) else data)
+
+    with h5py.File(path, "r") as fh:
+        attrs("/", fh)
+        fh.visititems(visit)
+    return out
+
+
+def _json_content(path: Path) -> object:
+    def strip(obj: object) -> object:
+        if isinstance(obj, dict):
+            return {k: strip(v) for k, v in obj.items() if k not in _CLOCK_KEYS}
+        if isinstance(obj, list):
+            return [strip(v) for v in obj]
+        return obj
+
+    return strip(json.loads(path.read_text()))
+
+
+def _folder_content(folder: Path) -> dict[str, object]:
+    out: dict[str, object] = {}
+    for f in sorted(folder.iterdir()):
+        out[f.name] = (_h5_content(f) if f.suffix == ".h5"
+                       else _json_content(f) if f.suffix == ".json"
+                       else f.stat().st_size > 0)
+    return out
+
+
+def _target(cfg: ServerConfig, run_id: str, trial: str,
+            params: PipelineParams) -> tuple[Path, dict[str, Path], bool]:
+    """A trial's folder, inputs and whether it was made from the existing output."""
+    run, folder, inputs = tuning.trial_target(cfg, run_id, trial)
+    return folder, inputs, tuning.reuse_existing_output(cfg, run, trial, params, inputs)
+
+
+def _never(name: str):  # noqa: ANN202
+    def stage(*_a: object, **_k: object) -> None:
+        raise AssertionError(f"{name} ran: the trial was to be taken from the existing output")
+    return stage
+
+
+_STAGE_FUNCTIONS = {"rings": ("remove_rings",), "punch": ("punch_bragg",),
+                    "backfill": ("backfill",), "flatten": ("flatten",),
+                    "pdf": ("delta_pdf", "pdf_consistency_check")}
+
+
+@pytest.mark.parametrize("stage", tuning.TUNE_STAGES)
+def test_trial_1_is_taken_from_the_existing_output(
+        root: Path, stage: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Current settings, unchanged input: trial 1 is the processed output, in
+    the trial folder exactly as a computed trial 1 leaves it, and the stage
+    does not run."""
+    import nebula3d.pipeline as pipeline_mod
+
+    cfg = ServerConfig(data_root=root)
+    before = _snapshot(cfg.processed_dir)
+    (base,) = discover_datasets(cfg)
+    run = tuning.new_run(cfg, base.id, base.raw_path, stage)
+    trial = f"{stage}-1"
+    computed = _folder_content(_trial(cfg, run.id, trial, PipelineParams()))
+
+    folder, inputs, reused = _target(cfg, run.id, trial, PipelineParams())
+    assert reused
+    with monkeypatch.context() as m:
+        for name in _STAGE_FUNCTIONS[stage]:
+            m.setattr(pipeline_mod, name, _never(name))
+        log: list[tuple[str, str]] = []
+        run_pipeline(run.raw_path, PipelineParams(), proc_dir=folder, inputs=inputs,
+                     stages=tuning.TRIAL_PIPELINE_STAGES[stage], force=False,
+                     progress=lambda s, status, _f, _m: log.append((s, status)))
+    assert {status for _s, status in log} == {"skip"}
+    assert _folder_content(folder) == computed
+    assert _snapshot(cfg.processed_dir) == before
+
+    # Not hard links: keeping the trial and clearing the folders leaves processed/ alone.
+    proc = pipeline_paths(base.raw_path, proc_dir=cfg.processed_dir)
+    for f in folder.iterdir():
+        assert f.stat().st_ino != (cfg.processed_dir / f.name).stat().st_ino
+        assert f.stat().st_nlink == 1
+    kept = tuning.promote(cfg, run.id, trial)
+    assert kept and not folder.exists()
+    assert _snapshot(cfg.processed_dir) == before
+    # A file of the chain rewritten, then the run deleted: processed/ still stands.
+    for name in kept:
+        with open(run.chain / name, "r+b") as fh:
+            fh.write(b"\0" * 64)
+    tuning.trial_target(cfg, run.id, trial)  # empties the trial folder again
+    import shutil
+
+    shutil.rmtree(run.root)
+    assert _snapshot(cfg.processed_dir) == before
+    assert proc.ringremoved.exists()
+
+
+def test_trial_1_is_computed_when_the_settings_differ(root: Path) -> None:
+    cfg = ServerConfig(data_root=root)
+    (base,) = discover_datasets(cfg)
+    run = tuning.new_run(cfg, base.id, base.raw_path, "punch")
+    folder, _, reused = _target(cfg, run.id, "punch-1", _params(punch_margin=0.1))
+    assert not reused and not any(folder.iterdir())
+    # … and only trial 1 is ever taken from the existing output.
+    folder, _, reused = _target(cfg, run.id, "punch-2", PipelineParams())
+    assert not reused and not any(folder.iterdir())
+
+
+def test_trial_1_follows_the_chain(root: Path) -> None:
+    """The input an earlier stage of the run left decides: kept as it was,
+    the next stage's trial 1 is still the processed output; made again or
+    made with other settings, it is computed."""
+    cfg = ServerConfig(data_root=root)
+    (base,) = discover_datasets(cfg)
+
+    # Trial 1 of the punch reused and kept: the backfill's input is the same.
+    run = tuning.new_run(cfg, base.id, base.raw_path, "punch")
+    assert _target(cfg, run.id, "punch-1", PipelineParams())[2]
+    tuning.promote(cfg, run.id, "punch-1")
+    folder, inputs, reused = _target(cfg, run.id, "backfill-1", PipelineParams())
+    assert inputs["punch"].parent == run.chain
+    assert reused and any(folder.iterdir())
+
+    # The punch computed again (same settings, a new file): the backfill in
+    # processed/ is older than its input, so it is computed.
+    run = tuning.new_run(cfg, base.id, base.raw_path, "punch")
+    time.sleep(0.05)
+    _trial(cfg, run.id, "punch-1", PipelineParams())
+    tuning.promote(cfg, run.id, "punch-1")
+    folder, _, reused = _target(cfg, run.id, "backfill-1", PipelineParams())
+    assert not reused and not any(folder.iterdir())
+
+    # Another punch kept: the backfill's input is another one.
+    run = tuning.new_run(cfg, base.id, base.raw_path, "punch")
+    _trial(cfg, run.id, "punch-2", _params(punch_min_significance=3.0, punch_margin=0.1))
+    tuning.promote(cfg, run.id, "punch-2")
+    folder, _, reused = _target(cfg, run.id, "backfill-1", PipelineParams())
+    assert not reused and not any(folder.iterdir())
+
+
+def test_trial_1_is_computed_when_the_output_is_missing_or_stale(root: Path) -> None:
+    cfg = ServerConfig(data_root=root)
+    (base,) = discover_datasets(cfg)
+    proc = pipeline_paths(base.raw_path, proc_dir=cfg.processed_dir)
+    run = tuning.new_run(cfg, base.id, base.raw_path, "rings")
+
+    # Older than its input: the ring removal was made again after the punch.
+    stale = time.time() + 5
+    import os
+
+    os.utime(proc.ringremoved, (stale, stale))
+    assert not _target(cfg, run.id, "punch-1", PipelineParams())[2]
+    assert _target(cfg, run.id, "rings-1", PipelineParams())[2]  # itself still current
+
+    # A side file missing: the punch profile, the ring diagnostics, the check.
+    for attr, trial in (("ring_diagnostics_json", "rings-1"), ("pdf_check_json", "pdf-1")):
+        getattr(proc, attr).unlink()
+        folder, _, reused = _target(cfg, run.id, trial, PipelineParams())
+        assert not reused and not any(folder.iterdir()), attr
+    os.utime(proc.ringremoved, None)
+    os.utime(proc.braggpunched, None)
+    proc.bragg_profile_json.unlink()
+    assert not _target(cfg, run.id, "punch-1", PipelineParams())[2]
+
+    # No output at all.
+    proc.flattened.unlink()
+    folder, _, reused = _target(cfg, run.id, "flatten-1", PipelineParams())
+    assert not reused and not any(folder.iterdir())
+
+
+def test_server_and_bridge_take_trial_1_from_the_existing_output(
+        root: Path, tmp_path: Path) -> None:
+    """Through the native server (a real job) and the in-browser bridge: the
+    job of a reused trial 1 only skips, a changed setting computes."""
+    cfg = ServerConfig(data_root=root)
+    before = _snapshot(cfg.processed_dir)
+    client = TestClient(create_app(cfg))
+    (base,) = client.get("/api/datasets").json()
+    run_id = client.post("/api/tuning/runs", json={
+        "dataset_id": base["id"], "first_stage": "punch"}).json()["run_id"]
+
+    def statuses(trial: str, params: dict) -> set[str]:
+        r = client.post("/api/pipeline/run", json={
+            "dataset_id": base["id"], "stages": ["punch"], "params": params,
+            "tuning": {"run_id": run_id, "trial": trial}})
+        assert r.status_code == 200, r.text
+        job = _wait(client, r.json()["id"])
+        assert job["status"] == "done", job
+        events, _ = client.app.state.jobs.get(job["id"]).events_since(0)  # type: ignore[attr-defined]
+        return {e["status"] for e in events if e.get("stage") == "punch"}
+
+    assert statuses("punch-1", {}) == {"skip"}
+    folder = root / "tuning" / run_id / "trials" / "punch-1"
+    assert sorted(f.name for f in folder.iterdir()) == [
+        f"{STEM}_ringremoved_braggpunched.h5", f"{STEM}_ringremoved_braggpunched_profile.json"]
+    assert "done" in statuses("punch-1", {"punch_margin": 0.1})
+    assert "done" in statuses("punch-2", {})
+    assert _snapshot(cfg.processed_dir) == before
+
+    webbridge.setup(workdir=str(tmp_path / "work"))
+    dataset_id = webbridge.make_demo_input(n=25)
+    webbridge.run("", "{}", flatten_enabled=True, force=True)
+    processed = tmp_path / "work" / "processed"
+    before = _snapshot(processed)
+    for stages, trial, sync in (("rings", "rings-1", True), ("punch", "punch-1", False),
+                                ("pdf,pdf_check", "pdf-1", False)):
+        run_id = json.loads(
+            webbridge.tuning_start_json(dataset_id, trial.split("-")[0]))["run_id"]
+        log: list[str] = []
+
+        def progress(_stage: str, status: str, _f: float | None, _m: str,
+                     log: list[str] = log) -> None:
+            log.append(status)
+
+        if sync:
+            webbridge.run(stages, "{}", True, progress=progress,
+                          tuning_run=run_id, tuning_trial=trial)
+        else:
+            asyncio.run(webbridge.run_async(stages, "{}", True, progress=progress,
+                                            tuning_run=run_id, tuning_trial=trial))
+        assert set(log) == {"skip"}, (trial, log)
+        assert json.loads(webbridge.tuning_promote_json(run_id, trial))["files"]
+    assert _snapshot(processed) == before

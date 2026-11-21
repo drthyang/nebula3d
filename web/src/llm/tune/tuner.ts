@@ -17,6 +17,7 @@ import { resetsWithVolume } from "../../state/volumeReset";
 import { fetchDataset, promoteTrial, startTuningRun } from "../../api/client";
 import { queryClient } from "../../api/queryClient";
 import type { Dataset, TuningRun } from "../../api/types";
+import { stageInfo, stageMs } from "../../pages/executionLog";
 import { noteAgentEdit } from "../../state/agentEdits";
 import { pipelineBusy, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { completeChat, type ChatMessage, type TokenUsage, type UsageReport } from "../provider/client";
@@ -47,6 +48,9 @@ export interface Trial {
   evaluation?: StageEvaluation;
   error?: string;
   seconds?: number;
+  // Trial 1 only: its run computed nothing, the server took the stage's existing
+  // output for it (nebula3d.server.tuning). Its seconds say nothing of a trial's length.
+  reused?: boolean;
 }
 
 export type StageStatus =
@@ -141,6 +145,44 @@ export interface TuneBudget {
 export const stageTimeLeft = (budget: TuneBudget | undefined, stage: TuneStage): number =>
   budget ? budget.stageMs - (budget.spentMs[stage] ?? 0) - (budget.longestMs?.[stage] ?? 0) : Infinity;
 
+// What the pipeline store's job (the last run, or the trial that just ran) says
+// of a tuning stage: `reused` when every pipeline stage of it ended on its skip
+// line (the output was there already), and `ms`, the time of those it computed
+// (pages/executionLog.ts stageMs: from the end of the stage before, or the
+// job's start, to its done line).
+function jobOf(stage: TuneStage): { reused: boolean; ms?: number } {
+  const s = pipeline();
+  const info = stageInfo(s.events, s.times, s.startedAt);
+  const ran = TRIAL_STAGES[stage].flatMap((st) => (info[st] ? [info[st]] : []));
+  const computed = ran.filter((i) => i.endedAs === "done");
+  return {
+    reused: ran.length > 0 && ran.every((i) => i.endedAs === "skip"),
+    ...(computed.length ? { ms: computed.reduce((sum, i) => sum + stageMs(i), 0) } : {}),
+  };
+}
+
+// How long each stage last took to compute on the dataset in this session: in
+// the pipeline run the tuning starts from (startTuning), then in its computed
+// trials. The budget's estimate of a trial's length while a tuning has only a
+// reused trial 1 (trialMs).
+const lastComputed: { dataset: string | null; ms: Partial<Record<TuneStage, number>> } = { dataset: null, ms: {} };
+
+const noteComputed = (dataset: string, stage: TuneStage, ms: number | undefined) => {
+  if (lastComputed.dataset !== dataset) Object.assign(lastComputed, { dataset, ms: {} });
+  if (ms !== undefined && ms > 0) lastComputed.ms[stage] = ms;
+};
+
+/**
+ * The budget's estimate of how long one more trial of the stage takes: its
+ * longest computed trial in this tuning; before any (trial 1 was taken from
+ * the existing output, in about a second), how long the stage last took to
+ * compute in this session; 0 when that is not known either.
+ */
+const trialMs = (stage: TuneStage, dataset: string): number => {
+  const longest = Math.max(0, ...getStage(stage).trials.filter((t) => !t.reused).map((t) => (t.seconds ?? 0) * 1000));
+  return longest > 0 ? longest : ((lastComputed.dataset === dataset && lastComputed.ms[stage]) || 0);
+};
+
 // The model's reply as JSON, from one request read whole, as the validation
 // frozen at 812e686 runs its tuning (docs/evals.md, "The freeze"): only the
 // user's Stop ends it. Its tokens count into the reply that runs the tuning
@@ -199,6 +241,10 @@ async function runTrial(
     setTrial(stage, n, { status: "error", error: `the run ended: ${end}`, seconds });
     return false;
   }
+  // Trial 1 taken from the existing output: no measure of a trial's length.
+  const reused = n === 1 && jobOf(stage).reused;
+  if (reused) setTrial(stage, n, { reused });
+  else noteComputed(dataset.id, stage, seconds * 1000);
   try {
     const view = await fetchDataset(`${run.dataset_id}~${trial}`);
     const evaluation = await evaluateStage(stage, view);
@@ -242,8 +288,7 @@ async function tuneStage(
   } finally {
     if (budget) {
       budget.spentMs[stage] = (budget.spentMs[stage] ?? 0) + (performance.now() - t0);
-      const longest = Math.max(0, ...getStage(stage).trials.map((t) => (t.seconds ?? 0) * 1000));
-      budget.longestMs = { ...budget.longestMs, [stage]: Math.max(budget.longestMs?.[stage] ?? 0, longest) };
+      budget.longestMs = { ...budget.longestMs, [stage]: Math.max(budget.longestMs?.[stage] ?? 0, trialMs(stage, dataset.id)) };
     }
   }
 }
@@ -337,8 +382,8 @@ async function tuneStageTrials(
     let outOfTime = 0;
     for (const [i, cand] of accepted.entries()) {
       // Past its time (auto mode's budget), or a trial as long as the longest so far
-      // would end past it: the trials not started stay out; those that ran are judged.
-      const longest = Math.max(0, ...getStage(stage).trials.map((t) => (t.seconds ?? 0) * 1000));
+      // (trialMs) would end past it: the trials not started stay out; those that ran are judged.
+      const longest = trialMs(stage, dataset.id);
       if (deadline !== undefined && performance.now() + longest > deadline) {
         setTrial(stage, i + 2, { status: "skipped", error: "not run: the stage's tuning time was spent" });
         outOfTime += 1;
@@ -432,6 +477,8 @@ export async function startTuning({ dataset, stages, trialsPerStage, llm, onUsag
   // its settings: otherwise they would only reproduce the processed outputs.
   const lastTuned = order.reduce((at, s, i) => (stages.includes(s) ? i : at), -1);
   let changed = false;
+  // The run the tuning starts from, while its log is still the store's: how long each stage took in it.
+  if (cfg.lastRun?.datasetId === dataset.id) for (const stage of TUNE_STAGES) noteComputed(dataset.id, stage, jobOf(stage).ms);
   useTuneStore.setState({
     active: true,
     datasetLabel: dataset.temperature ?? dataset.stem,
