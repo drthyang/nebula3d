@@ -47,7 +47,10 @@
 //    exactly as before the fix; anything less, or nothing set aside (the
 //    disk or the browser's memory short), and the pipeline runs as before.
 //    They are deleted when the fix is kept, and on every other way out of
-//    the fix (a stop, a failure, the volume closed, a reload).
+//    the fix (a stop, a failure, the volume closed, a reload). The sensed
+//    settings judged against the defaults (judgeSensed) get their outputs
+//    back the same way when they are kept: set aside before the defaults'
+//    run, put back on the same two conditions, else the pipeline runs.
 //
 // The record (store.ts) is what the Auto panel (components/AutoPanel.tsx)
 // renders; the app's own step under way is published whole (store.ts, `live`)
@@ -764,7 +767,10 @@ async function setSensed(sense: AgentStep, want: { changes: Record<string, unkno
  * judge them against the defaults, once. They are put back (as an Undo puts
  * them back, logged as auto mode's) and the punch run again from its stage;
  * when the defaults' check is better (madeWorse: the sensed settings made it
- * worse), they stay put back; else the sensed settings are set again and run.
+ * worse), they stay put back; else the sensed settings are set again, and
+ * their outputs, set aside before the defaults' run, are put back in place of
+ * a second run (putBack: the backend's answer and the same checks as before,
+ * `checks`), or the pipeline runs when they cannot be.
  * Returns the punch's checks as they then stand.
  */
 async function judgeSensed(checks: AgentStep[]): Promise<AgentStep[]> {
@@ -774,31 +780,50 @@ async function judgeSensed(checks: AgentStep[]): Promise<AgentStep[]> {
   const { decisions } = useDecisionStore.getState();
   const mine = sensed.decisions.flatMap((id) => decisions.filter((d) => d.id === id && !d.undoneBy));
   if (!mine.length) return checks;
+  // The settings the outputs now in place were made with: only these get them back.
+  const withSensed = JSON.stringify(settingsNow());
   for (const d of [...mine].reverse()) {
     if (undoDecision(d, undefined, "auto")) {
       const undo = useDecisionStore.getState().decisions.find((x) => x.undoes === d.id);
       if (undo) patchRun((x) => ({ decisions: [...x.decisions, undo.id] }));
     }
   }
-  await appRun("punch");
-  const defaults = await checkStage("punch");
-  if (madeWorse("punch", defaults, checks)) {
-    patchRow("punch", { detail: "the sensed settings made its check worse: put back" });
-    return defaults;
+  // The defaults' run is owed from here: a stop while the outputs are set aside leaves it so.
+  patchRun({ pendingRun: "punch" });
+  try {
+    // The sensed settings' outputs, which the defaults' run will overwrite, set aside: kept, they come back without a second run.
+    const held = await setAside("punch");
+    await appRun("punch");
+    const defaults = await checkStage("punch");
+    if (madeWorse("punch", defaults, checks)) {
+      patchRow("punch", { detail: "the sensed settings made its check worse: put back" });
+      return defaults;
+    }
+    // The sensing's step as the run keeps it: its result is all the changes need.
+    const sense = run().steps.find((x) => x.name === "bragg_sense");
+    const want = sensedChanges(sense);
+    if (!sense || !want) return defaults;
+    // The outputs are the defaults' until the sensed settings' are back: a stop meanwhile owes the run.
+    patchRun({ pendingRun: "punch" });
+    const ds = await setSensed(sense, want);
+    patchRun({ sensed: { decisions: ds.map((d) => d.id), judged: true } });
+    // Only with every setting as it was before the undo, and no Run card open that the run would have made its own.
+    const dataset = session!.work.dataset.id;
+    const runCard = useDecisionStore.getState().proposals.some((p) => p.kind === "run" && p.status === "open" && p.dataset === dataset);
+    const back = held && !runCard && JSON.stringify(settingsNow()) === withSensed ? await putBack("punch", "punch", [], checks) : null;
+    if (back) return back;
+    await appRun("punch");
+    return await checkStage("punch");
+  } finally {
+    // Kept, put back, stopped or failed: nothing stays set aside.
+    await dropAside();
   }
-  // The sensing's step as the run keeps it: its result is all the changes need.
-  const sense = run().steps.find((x) => x.name === "bragg_sense");
-  const want = sensedChanges(sense);
-  if (!sense || !want) return defaults;
-  const ds = await setSensed(sense, want);
-  patchRun({ sensed: { decisions: ds.map((d) => d.id), judged: true } });
-  await appRun("punch");
-  return checkStage("punch");
 }
 
 // ---------------------------------------------------------------- outputs set aside for a fix
 //
-// One set at a time: the outputs the run of the fix under way will overwrite,
+// One set at a time: the outputs the run of the fix under way (or the run that
+// judges the sensed settings against the defaults, judgeSensed) will overwrite,
 // kept by the backend (nebula3d.server.setaside). `aside` names the dataset
 // while they are held, whatever becomes of the session.
 
@@ -849,7 +874,8 @@ clearsWithVolume(() => void dropAside());
 
 /**
  * Put a fix's outputs back: the ones set aside before its run, in place of
- * running the pipeline again, once the fix's changes are undone. The backend
+ * running the pipeline again, once the fix's changes are undone (`undone`;
+ * none for the sensed settings set again, judgeSensed). The backend
  * moves them back and answers "restored" only when a run with the settings
  * now in place would compute nothing; the stage's checks then run again and
  * must read exactly as `before`, the checks before the fix (plan.ts,

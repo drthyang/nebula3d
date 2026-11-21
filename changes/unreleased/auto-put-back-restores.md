@@ -22,4 +22,4 @@
   - The activity log, the Changes list and the report then show the
     put-back without a second "Ran the pipeline" entry. No wording changed.
   - Not changed: your own Undo and *Undo auto changes* (they still offer a
-    run), and the comparison of the sensed punch settings with the defaults.
+    run).
