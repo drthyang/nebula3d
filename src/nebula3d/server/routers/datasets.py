@@ -19,6 +19,7 @@ from nebula3d.server import datasets as ds_mod
 from nebula3d.server import deltapdf as dpdf_mod
 from nebula3d.server import laue as laue_mod
 from nebula3d.server import regrid as regrid_mod
+from nebula3d.server import setaside as setaside_mod
 from nebula3d.server import volumes as vol_mod
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.deps import get_config
@@ -50,6 +51,8 @@ def _switch_data_root(root: Path, request: Request) -> DataRootOut:
     if not root.is_dir():
         raise HTTPException(status_code=400, detail=f"Folder does not exist: {root}")
 
+    # Outputs set aside under the folder left (server.setaside) go with it.
+    setaside_mod.sweep(request.app.state.config)
     cfg = ServerConfig(data_root=root)
     request.app.state.config = cfg
     _release_caches()

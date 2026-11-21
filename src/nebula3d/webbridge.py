@@ -70,6 +70,7 @@ from nebula3d.server import laue as _laue
 from nebula3d.server import modulation as _mod
 from nebula3d.server import regrid as _regrid
 from nebula3d.server import rings as _rings
+from nebula3d.server import setaside as _aside
 from nebula3d.server import tuning as _tune
 from nebula3d.server import volumes as _vol
 from nebula3d.server.config import ServerConfig
@@ -89,6 +90,9 @@ __all__ = [
     "run",
     "run_async",
     "datasets_json",
+    "set_aside_json",
+    "set_aside_restore_json",
+    "set_aside_discard_json",
     "volume_meta_json",
     "volume_slice",
     "volume_coverage_json",
@@ -175,6 +179,16 @@ _BROWSER_PEAK_BUDGET_BYTES = 3_200_000_000
 _PHONE_TAB_BUDGET_BYTES = 1_300_000_000
 _PHONE_RUNTIME_BYTES = 550_000_000
 _PHONE_BYTES_PER_VOXEL = 150
+# Outputs set aside before a run that may be put back (server.setaside).  The
+# workspace's files are in memory, outside the WASM heap the budgets above
+# plan (Emscripten's MEMFS keeps them as JS arrays), so a set-aside takes the
+# files' size again from the tab, for as long as it is held.  On a desktop it
+# is taken only up to this cap; larger outputs are not set aside, and the
+# caller runs the pipeline again as before.  The synthetic demo (161³) sets
+# aside 0.25 GB from the ring removal on (measured, Pyodide 0.27.7 in Node).
+# On a phone or tablet nothing is set aside: there the whole tab is budgeted
+# (_PHONE_TAB_BUDGET_BYTES), and the outputs twice over do not fit in it.
+_SET_ASIDE_MAX_BYTES = 768_000_000
 #: Storage precision every browser run uses (overridable per-run via a
 #: ``"precision"`` key in ``params_json`` — a debugging/validation lever).
 _BROWSER_PRECISION = "float32"
@@ -1147,6 +1161,59 @@ def stale_outputs_json(dataset_id: str, params_json: str, flatten_enabled: bool)
     cpu = delta_pdf_transform_config(params.delta_pdf)
     return _json({"stale": _ds.stale_outputs(cfg, ds, params,
                                              pdf_configs=(cpu, cpu + _GPU_FFT_TOKEN))})
+
+
+# ---------------------------------------------------------------------------
+# Outputs set aside before a run that may be put back (mirror the native
+# /api/pipeline/set-aside endpoints; nebula3d.server.setaside)
+# ---------------------------------------------------------------------------
+def _own_dataset(dataset_id: str) -> _ds.Dataset:
+    ds = _ds.find_dataset(_require_cfg(), dataset_id)
+    if ds is None or ds.artifacts is not None:
+        raise KeyError(f"unknown dataset id {dataset_id!r}")
+    return ds
+
+
+def set_aside_json(dataset_id: str, from_stage: str) -> str:
+    """Set aside the dataset's outputs from *from_stage* on; JSON
+    ``{set_aside, reason, files, bytes}``.  Nothing is set aside on a phone or
+    tablet, or when the files are over :data:`_SET_ASIDE_MAX_BYTES`."""
+    cfg = _require_cfg()
+    ds = _own_dataset(dataset_id)
+    if _S.mobile:
+        _aside.discard(cfg, ds.id)
+        return _json({"set_aside": False, "files": [], "bytes": 0,
+                      "reason": "not on a phone or tablet: the tab's memory is budgeted"})
+    return _json(_aside.set_aside(cfg, ds.id, ds.raw_path, from_stage,
+                                  max_bytes=_SET_ASIDE_MAX_BYTES).as_dict())
+
+
+def set_aside_restore_json(dataset_id: str, params_json: str, flatten_enabled: bool) -> str:
+    """Put back what was set aside, for these settings; JSON ``{restored,
+    reason, files}``.  Restored only when a run with them would then compute
+    nothing (a ΔPDF the WebGPU core made follows as one the CPU made, as in
+    :func:`stale_outputs_json`)."""
+    cfg = _require_cfg()
+    ds = _own_dataset(dataset_id)
+    try:
+        params = build_params(_make_request(params_json, flatten_enabled))
+    except ValueError:
+        _aside.discard(cfg, ds.id)
+        raise
+    params.pdf_check_figure = False  # as a browser run: it writes no PNG
+    _apply_browser_precision(params, params_json)
+    cpu = delta_pdf_transform_config(params.delta_pdf)
+    out = _aside.restore(cfg, ds.id, ds.raw_path, params,
+                         pdf_configs=(cpu, cpu + _GPU_FFT_TOKEN))
+    _clear_caches()  # the outputs changed under any cached volume
+    return _json(out.as_dict())
+
+
+def set_aside_discard_json(dataset_id: str) -> str:
+    """Delete what was set aside for the dataset; JSON ``{discarded}``."""
+    cfg = _require_cfg()
+    ds = _ds.find_dataset(cfg, dataset_id)
+    return _json({"discarded": ds is not None and _aside.discard(cfg, ds.id)})
 
 
 # ---------------------------------------------------------------------------

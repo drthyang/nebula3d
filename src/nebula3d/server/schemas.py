@@ -894,6 +894,34 @@ class BraggSenseOut(BaseModel):
     lines: dict[str, str]
 
 
+class SetAsideIn(BaseModel):
+    """Set aside a dataset's outputs from a stage on, before a run that may
+    be put back (server.setaside)."""
+    dataset_id: str
+    from_stage: str
+
+
+class SetAsideOut(BaseModel):
+    set_aside: bool
+    reason: str | None = None  # why nothing was set aside
+    files: list[str] = []
+    bytes: int = 0
+
+
+class SetAsideDiscardIn(BaseModel):
+    dataset_id: str
+
+
+class SetAsideDiscardOut(BaseModel):
+    discarded: bool
+
+
+class SetAsideRestoreOut(BaseModel):
+    restored: bool
+    reason: str | None = None  # why not: the caller then runs the pipeline
+    files: list[str] = []
+
+
 class TuningRunIn(BaseModel):
     dataset_id: str
     first_stage: str

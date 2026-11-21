@@ -13,15 +13,20 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from nebula3d.pipeline import STAGES
-from nebula3d.server import tuning
+from nebula3d.server import setaside, tuning
 from nebula3d.server.config import ServerConfig
-from nebula3d.server.datasets import find_dataset, stale_outputs
+from nebula3d.server.datasets import Dataset, find_dataset, stale_outputs
 from nebula3d.server.deps import get_config
 from nebula3d.server.jobs import JobManager
 from nebula3d.server.params import build_params
 from nebula3d.server.schemas import (
     JobOut,
     PipelineRunRequest,
+    SetAsideDiscardIn,
+    SetAsideDiscardOut,
+    SetAsideIn,
+    SetAsideOut,
+    SetAsideRestoreOut,
     StaleOutputsIn,
     StaleOutputsOut,
 )
@@ -97,6 +102,59 @@ def stale(req: StaleOutputsIn, cfg: ServerConfig = Depends(get_config)) -> Stale
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return StaleOutputsOut(stale=stale_outputs(cfg, ds, params))
+
+
+def _own_dataset(cfg: ServerConfig, dataset_id: str) -> Dataset:
+    """The dataset *dataset_id*, its own ``processed/`` outputs (no tuning view)."""
+    ds = find_dataset(cfg, dataset_id)
+    if ds is None or ds.artifacts is not None:
+        raise HTTPException(404, f"unknown dataset {dataset_id!r}")
+    return ds
+
+
+@router.post("/set-aside", response_model=SetAsideOut)
+def set_aside(req: SetAsideIn, request: Request,
+              cfg: ServerConfig = Depends(get_config)) -> SetAsideOut:
+    """Set aside the dataset's outputs from a stage on, before a run that may
+    be put back (auto mode's fix; :mod:`nebula3d.server.setaside`).  Nothing
+    is set aside while a run is writing them, or when the disk is short."""
+    ds = _own_dataset(cfg, req.dataset_id)
+    if _jobs(request).running():
+        setaside.discard(cfg, ds.id)
+        return SetAsideOut(set_aside=False, reason="a pipeline run is in progress")
+    try:
+        out = setaside.set_aside(cfg, ds.id, ds.raw_path, req.from_stage)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return SetAsideOut(**out.as_dict())  # type: ignore[arg-type]
+
+
+@router.post("/set-aside/restore", response_model=SetAsideRestoreOut)
+def set_aside_restore(req: StaleOutputsIn, request: Request,
+                      cfg: ServerConfig = Depends(get_config)) -> SetAsideRestoreOut:
+    """Put back what was set aside, for the settings given: restored only
+    when a run with them would then compute nothing.  What was set aside is
+    gone afterwards, whatever the answer."""
+    ds = _own_dataset(cfg, req.dataset_id)
+    if _jobs(request).running():
+        setaside.discard(cfg, ds.id)
+        return SetAsideRestoreOut(restored=False, reason="a pipeline run is in progress")
+    try:
+        params = build_params(req)  # type: ignore[arg-type]  # duck-typed: no force/stages
+    except ValueError as exc:
+        setaside.discard(cfg, ds.id)
+        raise HTTPException(400, str(exc)) from exc
+    out = setaside.restore(cfg, ds.id, ds.raw_path, params)
+    return SetAsideRestoreOut(**out.as_dict())  # type: ignore[arg-type]
+
+
+@router.post("/set-aside/discard", response_model=SetAsideDiscardOut)
+def set_aside_discard(req: SetAsideDiscardIn,
+                      cfg: ServerConfig = Depends(get_config)) -> SetAsideDiscardOut:
+    """Delete what was set aside for the dataset (the fix was kept, or the
+    run ended)."""
+    ds = _own_dataset(cfg, req.dataset_id)
+    return SetAsideDiscardOut(discarded=setaside.discard(cfg, ds.id))
 
 
 @router.get("/jobs/{jid}", response_model=JobOut)
