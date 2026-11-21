@@ -123,9 +123,8 @@ def test_the_browsers_copy_is_the_same_file(root: Path, monkeypatch: pytest.Monk
     """In the browser the copy is sized first and filled in place: the same
     bytes and date as the clone the native build makes."""
     cfg, proc = ServerConfig(data_root=root), root / "processed"
-    monkeypatch.setattr(setaside, "_COPY_CHUNK", 1000)
-    monkeypatch.setattr(setaside.sys, "platform", "emscripten")
-    monkeypatch.setattr(setaside, "_clone", lambda *_a: pytest.fail("no clone in the browser"))
+    monkeypatch.setattr(tuning, "_COPY_CHUNK", 1000)
+    monkeypatch.setattr(tuning.sys, "platform", "emscripten")
     kept = setaside.set_aside(cfg, DATASET, _raw(root), "rings")
     monkeypatch.undo()
     assert kept.done

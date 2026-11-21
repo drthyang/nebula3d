@@ -16,7 +16,8 @@ restored after it.
 - :func:`set_aside` copies every output the run will overwrite (the stage
   files from a stage on, their side files, the ΔPDF and its check) with the
   tuning runs' clone helper: a copy-on-write clone where the filesystem has
-  one, else a plain copy; never a hard link.  It is skipped when the disk is
+  one, else a plain copy (in the browser, a copy sized first); never a hard
+  link.  It is skipped when the disk is
   short (:func:`space_refusal`).
 - :func:`restore` moves them back over ``processed/`` with their dates, then
   asks :func:`nebula3d.pipeline.resume_plan` whether a run with the settings
@@ -36,7 +37,6 @@ import json
 import os
 import re
 import shutil
-import sys
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -131,29 +131,6 @@ def _rewritten(p: PipelineParams, paths: PipelinePaths, from_stage: str) -> list
     return out
 
 
-#: Bytes copied at a time where a file is copied by hand (:func:`_copy`).
-_COPY_CHUNK = 4 << 20
-
-
-def _copy(src: Path, dst: Path) -> None:
-    """Copy *src* to *dst*, date included, as a file of its own: the tuning
-    runs' clone helper (a copy-on-write clone, else a plain copy; never a hard
-    link), except in the browser.  There the files are arrays in the tab's
-    memory that grow as they are written, each step a new and larger array:
-    a file written piece by piece leaves several times its size behind until
-    the browser collects it.  So the copy is given its full size first, one
-    array, and filled in place."""
-    if sys.platform != "emscripten":
-        _clone(src, dst)
-        return
-    size = src.stat().st_size
-    with src.open("rb") as fin, dst.open("wb") as fout:
-        fout.truncate(size)
-        while chunk := fin.read(_COPY_CHUNK):
-            fout.write(chunk)
-    shutil.copystat(src, dst)
-
-
 def space_refusal(need: int, free: int) -> str | None:
     """Why *need* bytes are not set aside on a disk with *free* bytes left
     (None: they are): the disk must hold them twice over and
@@ -231,7 +208,7 @@ def set_aside(
         for f in files:
             st = f.stat()
             dst = folder / f.name
-            _copy(f, dst)
+            _clone(f, dst)
             os.utime(dst, ns=(st.st_atime_ns, st.st_mtime_ns))
             copy = dst.stat()
             if copy.st_size != st.st_size:

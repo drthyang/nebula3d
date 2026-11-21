@@ -267,12 +267,34 @@ def _trial_files(stage: str, p: PipelineParams, paths: PipelinePaths) -> list[Pa
     return files
 
 
+#: Bytes copied at a time where a file is copied by hand (:func:`_copy_sized`).
+_COPY_CHUNK = 4 << 20
+
+
+def _copy_sized(src: Path, dst: Path) -> None:
+    """Copy *src* to *dst*, date included, giving *dst* its full size first
+    and filling it in place.  For the browser build, whose files are arrays
+    in the tab's memory that grow as they are written, each step a new and
+    larger array: a file written piece by piece leaves several times its size
+    behind until the browser collects it; sized first, it is one array."""
+    size = src.stat().st_size
+    with src.open("rb") as fin, dst.open("wb") as fout:
+        fout.truncate(size)
+        while chunk := fin.read(_COPY_CHUNK):
+            fout.write(chunk)
+    shutil.copystat(src, dst)
+
+
 def _clone(src: Path, dst: Path) -> None:
     """Copy *src* to *dst*, date included, as a file of its own: a
     copy-on-write clone where the filesystem has one (APFS: no data is
     copied, and neither file changes when the other is rewritten or deleted),
-    else a plain copy.  Never a hard link: a trial folder is emptied and
+    else a plain copy; in the browser build, a copy sized first
+    (:func:`_copy_sized`).  Never a hard link: a trial folder is emptied and
     deleted while ``processed/`` must stay as it is."""
+    if sys.platform == "emscripten":
+        _copy_sized(src, dst)
+        return
     if sys.platform == "darwin":
         try:
             clonefile = ctypes.CDLL(None, use_errno=True).clonefile

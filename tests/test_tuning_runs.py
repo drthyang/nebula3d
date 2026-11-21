@@ -427,6 +427,32 @@ def test_trial_1_is_taken_from_the_existing_output(
     assert proc.ringremoved.exists()
 
 
+def test_the_browsers_copy_is_the_same_file_with_its_date(
+        root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """In the browser build (no clone, files in memory) a file is copied sized
+    first and filled in place: the same bytes and the same date as the native
+    copy, a file of its own."""
+    src = pipeline_paths(root / "raw" / f"{STEM}.nxs", proc_dir=root / "processed").backfilled
+    native, sized, empty_src, empty = (tmp_path / n for n in ("native.h5", "sized.h5", "e", "e2"))
+    tuning._clone(src, native)
+    monkeypatch.setattr(tuning.sys, "platform", "emscripten")
+    monkeypatch.setattr(tuning, "_COPY_CHUNK", 4096)  # many pieces, the last one short
+    assert src.stat().st_size % 4096
+    tuning._clone(src, sized)
+    empty_src.write_bytes(b"")
+    tuning._clone(empty_src, empty)
+    monkeypatch.undo()
+    assert sized.read_bytes() == src.read_bytes() == native.read_bytes()
+    assert sized.stat().st_mtime_ns == src.stat().st_mtime_ns == native.stat().st_mtime_ns
+    assert sized.stat().st_ino != src.stat().st_ino and sized.stat().st_nlink == 1
+    assert empty.read_bytes() == b""
+    # A copy over a file already there replaces it whole (a longer one leaves no tail).
+    sized.write_bytes(src.read_bytes() + b"tail")
+    monkeypatch.setattr(tuning.sys, "platform", "emscripten")
+    tuning._clone(src, sized)
+    assert sized.read_bytes() == src.read_bytes()
+
+
 def test_trial_1_is_computed_when_the_settings_differ(root: Path) -> None:
     cfg = ServerConfig(data_root=root)
     (base,) = discover_datasets(cfg)
