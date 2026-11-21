@@ -8,7 +8,7 @@
 // pattern").
 
 import type { GridSlice } from "./sliceStats";
-import { median, robustStats, roundSig } from "./sliceStats";
+import { median, percentileOfSorted, robustStats, roundSig, sortedCopy } from "./sliceStats";
 
 const localBackground = (grid: GridSlice, filled: Uint8Array, ix: number, iy: number): number => {
   const { nx, ny } = grid.header;
@@ -113,7 +113,8 @@ export const backfillMetrics = (
     }
   }
 
-  const sortedSeams = [...seams].sort((x, y) => x - y);
+  // One sort for the 95th percentile and the median.
+  const sortedSeams = sortedCopy(seams);
   const p95 = sortedSeams.length
     ? sortedSeams[Math.min(sortedSeams.length - 1, Math.floor(0.95 * (sortedSeams.length - 1)))]
     : null;
@@ -121,7 +122,7 @@ export const backfillMetrics = (
   return {
     n_filled: nFilled,
     fill_coverage: nFinite ? roundSig(nFilled / nFinite) : null,
-    median_seam_sigma: seams.length ? roundSig(median(seams)) : null,
+    median_seam_sigma: seams.length ? roundSig(percentileOfSorted(sortedSeams, 0.5)) : null,
     p95_seam_sigma: p95 != null ? roundSig(p95) : null,
     bright_fill_fraction: roundSig(bright / nFilled),
     checkerboard_fraction: pairs ? roundSig(opposite / pairs) : null,

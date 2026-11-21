@@ -244,12 +244,13 @@ export const flattenMetrics = (
   };
   if (!after) return nulls;
   const afterStats = robustStats(after.data);
-  const floorsAfter = floorsIn(after, radius, qRange, percentile);
+  // The outer half of the shells the counts reach (judgedShells), the span a
+  // share of the diffuse level when the flatten's input is at hand. The
+  // shells' floors are measured once, for the floors in range too (floorsIn's).
+  const shells = radialFloorShells(after, NBINS, radius, percentile / 100);
+  const floorsAfter = qRange ? shells.floors.filter((_f, i) => shells.centres[i] >= qRange[0] && shells.centres[i] <= qRange[1]) : shells.floors;
   const sigma = afterStats && afterStats.sigma > 0 ? afterStats.sigma : null;
   const finiteAfter = floorsAfter.filter(Number.isFinite);
-  // The outer half of the shells the counts reach (judgedShells), the span a
-  // share of the diffuse level when the flatten's input is at hand.
-  const shells = radialFloorShells(after, NBINS, radius, percentile / 100);
   const paired = before !== null && before.data.length === after.data.length;
   let base = 0;
   let removedFraction: number | null = null;
