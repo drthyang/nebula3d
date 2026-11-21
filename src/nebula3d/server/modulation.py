@@ -153,7 +153,7 @@ def labels_envelope(cfg: ServerConfig, dataset_id: str, plane: str, value: float
     ``FileNotFoundError`` without a punched stage or its record, and
     ``ValueError`` for an unknown plane.
     """
-    from nebula3d.server.volumes import load_volume
+    from nebula3d.server.volumes import volume_facts
     from nebula3d.visualization.slices import _ALIASES, _PLANE, _format_cut_value
 
     ds = find_dataset(cfg, dataset_id)
@@ -174,7 +174,8 @@ def labels_envelope(cfg: ServerConfig, dataset_id: str, plane: str, value: float
     record = record_out(saved)
     positions = () if record is None else _recorded_positions(record)
 
-    vol = load_volume(punched)
+    # The punched stage's axes alone: the labels read none of its voxels.
+    vol = volume_facts(punched)
     fixed_attr, array_dim, y_attr, x_attr, y_label, x_label, transpose = _PLANE[key]
     fixed = getattr(vol, fixed_attr)
     if interp:

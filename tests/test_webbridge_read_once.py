@@ -176,3 +176,26 @@ def test_a_legacy_dpdfs_meta_is_its_header(tmp_path):
     assert deltapdf.read_count() == before and cold["shape"] == [5, 7, 9]
     deltapdf.load_dpdf(path)
     assert deltapdf.dpdf_meta(path) == cold
+
+
+# ---------------------------------------------------------------------------
+# The punch's labels read the punched stage's axes, not its voxels
+# ---------------------------------------------------------------------------
+def test_the_labels_read_no_volume_and_are_the_same(ran):
+    """modulation_labels_slice reads the punch's record and the punched
+    stage's axes: no volume, held or not, and the same bytes either way."""
+    cuts = (("hk0", 0.0, False), ("h0l", 0.0, False), ("0kl", 0.0, False), ("kl", 0.37, True))
+    webbridge._clear_caches()
+    cold: list[bytes] = []
+    for cut in cuts:
+        assert _reads(lambda: cold.append(webbridge.modulation_labels_slice(ran, *cut))) == (0, 0)
+    assert _counts()["volumes_cached"] == 0
+    webbridge.volume_slice(f"{ran}.braggpunched", "hk", 0.0)  # the punched volume held
+    for cut, was in zip(cuts, cold):
+        assert webbridge.modulation_labels_slice(ran, *cut) == was
+    # Two other volumes held: the labels do not displace them.
+    webbridge.volume_slice(f"{ran}.backfilled", "hk", 0.0)
+    webbridge.volume_slice(f"{ran}.flattened", "hk", 0.0)
+    assert _reads(lambda: webbridge.modulation_labels_slice(ran, *cuts[0])) == (0, 0)
+    assert _reads(lambda: (webbridge.volume_slice(f"{ran}.backfilled", "kl", 0.0),
+                           webbridge.volume_slice(f"{ran}.flattened", "kl", 0.0))) == (0, 0)
