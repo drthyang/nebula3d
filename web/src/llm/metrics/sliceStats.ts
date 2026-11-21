@@ -41,15 +41,56 @@ export const std = (values: number[]): number => {
   return Math.sqrt(values.reduce((s, v) => s + (v - m) * (v - m), 0) / values.length);
 };
 
-// Percentile via linear interpolation on the sorted copy (p in [0, 1]).
-export const percentile = (values: number[], p: number): number => {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
+const ascending = (a: number, b: number): number => a - b;
+
+// Below this many values the comparator sort is as fast as a typed array's.
+const TYPED_SORT_MIN = 16;
+
+/**
+ * `[...values].sort((a, b) => a - b)`, element for element and bit for bit
+ * (Object.is), sorted as a Float64Array where that order is the same.
+ *
+ * Without a NaN, `a - b` orders numbers consistently (±Infinity included: a
+ * difference of NaN reads as equal, and only an infinity against itself gives
+ * one), so the comparator sort has one result up to the order of the values
+ * that compare equal: the same number, bit for bit, or −0 and +0. Its sort is
+ * stable, so the zeros keep the order they came in; a typed array's sort puts
+ * every −0 before every +0, so the zeros are written back in the order they
+ * came in. With a NaN (or anything not a number) the comparator is not
+ * consistent and the order is the engine's own: those are sorted as before.
+ */
+export const sortedCopy = (values: number[]): ArrayLike<number> => {
+  const n = values.length;
+  if (n < TYPED_SORT_MIN) return [...values].sort(ascending);
+  const sorted = new Float64Array(n);
+  let negativeZero = false;
+  for (let i = 0; i < n; i++) {
+    const v = values[i];
+    if (typeof v !== "number" || v !== v) return [...values].sort(ascending);
+    if (v === 0 && 1 / v < 0) negativeZero = true;
+    sorted[i] = v;
+  }
+  sorted.sort();
+  if (negativeZero) {
+    let at = 0;
+    while (sorted[at] < 0) at++;
+    for (let i = 0; i < n; i++) if (values[i] === 0) sorted[at++] = values[i];
+  }
+  return sorted;
+};
+
+/** The percentile of values already sorted (sortedCopy), for several of one data. */
+export const percentileOfSorted = (sorted: ArrayLike<number>, p: number): number => {
+  if (!sorted.length) return 0;
   const idx = Math.max(0, Math.min(sorted.length - 1, p * (sorted.length - 1)));
   const lo = Math.floor(idx);
   const hi = Math.ceil(idx);
   return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 };
+
+// Percentile via linear interpolation on the sorted copy (p in [0, 1]).
+export const percentile = (values: number[], p: number): number =>
+  values.length ? percentileOfSorted(sortedCopy(values), p) : 0;
 
 export const median = (values: number[]): number => percentile(values, 0.5);
 
@@ -71,7 +112,9 @@ export interface RobustStats {
 export const robustStats = (data: Float32Array | number[]): RobustStats | null => {
   const values = finiteOnly(data);
   if (!values.length) return null;
-  const med = median(values);
+  // One sort for the median and the two percentiles below.
+  const sorted = sortedCopy(values);
+  const med = percentileOfSorted(sorted, 0.5);
   const mad = median(values.map((v) => Math.abs(v - med)));
   let negatives = 0;
   let max = -Infinity;
@@ -86,8 +129,8 @@ export const robustStats = (data: Float32Array | number[]): RobustStats | null =
     median: med,
     sigma: mad * 1.4826,
     mad,
-    p01: percentile(values, 0.01),
-    p99: percentile(values, 0.99),
+    p01: percentileOfSorted(sorted, 0.01),
+    p99: percentileOfSorted(sorted, 0.99),
     max,
     min,
     negativeFraction: negatives / values.length,
