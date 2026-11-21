@@ -14,6 +14,11 @@ from ``processed/``.  :func:`promote` copies the chosen trial's files into the
 run's chain (the next stage builds on them) and deletes that stage's trials.
 ``processed/`` is only ever read.
 
+Trial 1 of a stage is the current settings.  When the stage's existing output
+(the run's chain, else ``processed/``) was made from exactly those settings
+and the trial's input, it is not computed again: its files are put into the
+trial folder as they are (:func:`reuse_existing_output`).
+
 A run, or one trial of it, can be viewed as a dataset, so the slice, ΔPDF,
 Bragg-profile and back-FFT-check endpoints measure a trial without knowing
 about tuning:
@@ -28,15 +33,25 @@ No FastAPI here: the in-browser bridge reuses this module.
 
 from __future__ import annotations
 
+import ctypes
 import json
+import os
 import re
 import secrets
 import shutil
+import sys
 import time
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from nebula3d.pipeline import pipeline_paths
+from nebula3d.pipeline import (
+    PipelineParams,
+    PipelinePaths,
+    pipeline_paths,
+    resolve_symmetry_average,
+    resume_plan,
+)
 from nebula3d.server.config import ServerConfig
 
 TUNING_DIR = "tuning"
@@ -223,6 +238,105 @@ def trial_target(cfg: ServerConfig, run_id: str, trial: str) -> tuple[Run, Path,
     # The symmetry average (never tuned) is upstream of every trial.
     inputs["symmetry_average"] = paths["symmetrized"]
     return run, folder, inputs
+
+
+#: The ring models that write the ring diagnostics beside their output
+#: (:func:`nebula3d.pipeline.remove_rings`); the per-plane models write none.
+_RING_MODELS_WITH_DIAGNOSTICS = frozenset({"pooled", "global", "global_v2", "sample_only"})
+
+
+def _trial_files(stage: str, p: PipelineParams, paths: PipelinePaths) -> list[Path]:
+    """The files a computed trial of *stage* leaves with the settings *p*:
+    the stage's output and the side files written with it."""
+    if stage == "rings":
+        files = [paths.ringremoved]
+        if p.rings.ring_model.strip().lower() in _RING_MODELS_WITH_DIAGNOSTICS:
+            files.append(paths.ring_diagnostics_json)
+        return files
+    if stage == "punch":  # the punch record is a dataset of the output itself
+        return [paths.braggpunched, paths.bragg_profile_json]
+    if stage == "backfill":
+        return [paths.backfilled]
+    if stage == "flatten":
+        return [paths.flattened]
+    files = [paths.delta_pdf]
+    if p.pdf_check_enabled:
+        files.append(paths.pdf_check_json)
+        if p.pdf_check_figure:
+            files.append(paths.pdf_check_png)
+    return files
+
+
+def _clone(src: Path, dst: Path) -> None:
+    """Copy *src* to *dst*, date included, as a file of its own: a
+    copy-on-write clone where the filesystem has one (APFS: no data is
+    copied, and neither file changes when the other is rewritten or deleted),
+    else a plain copy.  Never a hard link: a trial folder is emptied and
+    deleted while ``processed/`` must stay as it is."""
+    if sys.platform == "darwin":
+        try:
+            clonefile = ctypes.CDLL(None, use_errno=True).clonefile
+            clonefile.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint32]
+            clonefile.restype = ctypes.c_int
+            if clonefile(os.fsencode(src.resolve()), os.fsencode(dst), 0) == 0:
+                return
+        except (OSError, AttributeError):
+            pass
+        dst.unlink(missing_ok=True)
+    shutil.copy2(src, dst)
+
+
+def reuse_existing_output(
+    cfg: ServerConfig, run: Run, trial: str, params: PipelineParams,
+    inputs: Mapping[str, Path], *,
+    pdf_configs: Collection[str] | None = None,
+) -> bool:
+    """Make trial 1 of a stage from the stage's existing output, when that
+    output is what the trial would compute; True when it was.
+
+    Trial 1 is the current settings.  The stage's existing output (the run's
+    chain, else ``processed/``) is taken when a resumed run would reuse it for
+    this trial: :func:`nebula3d.pipeline.resume_plan`, with the trial's
+    *params* and *inputs*, computes nothing — its record names the trial's
+    input, edge trim, symmetry and settings, and it is not older than that
+    input.  Its files are then cloned into the trial folder (emptied by
+    :func:`trial_target`), every file a computed trial leaves; the plan is
+    checked again on the trial folder, and the caller runs the trial without
+    ``force``, so the run finds its output there and skips the stage.
+
+    False — and the trial folder left empty, for the caller to compute the
+    trial as before — for any other trial, a stage switched off, an output or
+    a side file that is not there, and an output a resumed run would make
+    again.  *pdf_configs*: as :func:`~nebula3d.pipeline.resume_plan` takes it.
+    """
+    stage, n = parse_trial(trial)
+    if n != 1:
+        return False
+    stages = TRIAL_PIPELINE_STAGES[stage]
+    p, _ = resolve_symmetry_average(params, run.raw_path)
+    if not p.stage_enabled(stage):
+        return False
+    folder = run.trial_dir(trial)
+
+    def current(proc_dir: Path) -> bool:
+        files = _trial_files(stage, p, pipeline_paths(run.raw_path, proc_dir=proc_dir))
+        return all(f.is_file() for f in files) and not resume_plan(
+            run.raw_path, params, proc_dir=proc_dir, stages=stages, inputs=inputs,
+            pdf_configs=pdf_configs)
+
+    for source in (run.chain, cfg.processed_dir):
+        try:
+            if not current(source):
+                continue
+            for f in _trial_files(stage, p, pipeline_paths(run.raw_path, proc_dir=source)):
+                _clone(f, folder / f.name)
+            if current(folder):
+                return True
+        except OSError:
+            pass
+        shutil.rmtree(folder, ignore_errors=True)
+        folder.mkdir(parents=True)
+    return False
 
 
 def promote(cfg: ServerConfig, run_id: str, trial: str) -> list[str]:
