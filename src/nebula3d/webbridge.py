@@ -25,6 +25,10 @@ Workflow (one dataset per browser session):
     run(stages, params_json, …)   → run_pipeline (streams per-stage progress)
     datasets_json()               → dataset + per-stage status (for the viewers)
     volume_slice / dpdf_slice / consistency_slice → binary envelopes
+    volume_slices / dpdf_slices   → several of one volume's envelopes in one call
+                                    (a Pilot check's: the volume is read once)
+    slice_version_json(volume_id) → which file, as it is now, a volume's slices
+                                    are read from (what the page keeps a slice by)
     dataset_regrid_json(id, …)    → regrid a raw volume onto its refined UB, as a
                                     new dataset beside it (registered like a load)
 
