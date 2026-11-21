@@ -41,6 +41,7 @@ import numpy as np
 from nebula3d.analysis.delta_pdf import section_geometry
 from nebula3d.io.delta_pdf_file import load_delta_pdf
 from nebula3d.server.singleflight import SingleFlight
+from nebula3d.server.versions import drop_other_versions, is_current
 
 #: Orthoslice plane keys (and the axis each one fixes).
 DPDF_PLANES: tuple[str, ...] = ("xy", "xz", "yz")
@@ -110,7 +111,8 @@ def _cached_dpdf(key: tuple[str, float]) -> DeltaPdfData | None:
 
 def load_dpdf(path: Path) -> DeltaPdfData:
     """Load a ΔPDF ``.h5``, caching by ``(path, mtime)``.  Requests that
-    arrive while the file is being read wait for that read and share it."""
+    arrive while the file is being read wait for that read and share it.
+    One version of a file is kept (:mod:`nebula3d.server.versions`)."""
     key = (str(path), path.stat().st_mtime)
     d = _cached_dpdf(key)
     return d if d is not None else _flights.run(("dpdf", key), lambda: _read_dpdf(path, key))
@@ -120,6 +122,9 @@ def _read_dpdf(path: Path, key: tuple[str, float]) -> DeltaPdfData:
     d = _cached_dpdf(key)  # loaded since the caller looked
     if d is not None:
         return d
+    if is_current(path, key[1]):  # the old version goes before the new one is read
+        with _lock:
+            drop_other_versions(_cache, key)
     f = load_delta_pdf(path)  # dtype=None: keep the ΔPDF's own precision
     lat = f.lattice
     q_max = f.logs.get("q_max")
@@ -140,7 +145,10 @@ def _read_dpdf(path: Path, key: tuple[str, float]) -> DeltaPdfData:
         window_scale=_float_log(f.logs, "window_scale"),
         window_open_weight=_float_log(f.logs, "window_open_weight"),
     )
+    if not is_current(path, key[1]):
+        return d  # the file changed meanwhile: this version is not kept
     with _lock:
+        drop_other_versions(_cache, key)
         _cache[key] = d
         _cache.move_to_end(key)
         while len(_cache) > _CACHE_MAX:

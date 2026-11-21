@@ -54,6 +54,7 @@ from nebula3d.pipeline import (
 from nebula3d.server.config import ServerConfig
 from nebula3d.server.datasets import Dataset, artifact_path, find_dataset
 from nebula3d.server.singleflight import SingleFlight
+from nebula3d.server.versions import drop_other_versions, is_current
 from nebula3d.server.volumes import PLANES, lattice_parameters, load_volume, pack_slice
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import extract_slice_dpdf
@@ -295,11 +296,19 @@ def _reconstruct(
     # browser (cache_max=1, a 4 GB WASM heap that never shrinks) freeing them
     # first reclaims ~4 volumes for the computation to reuse, instead of stacking
     # the old result under the new one's peak and OOM-ing.
+    # One version of a file: its round trips of another date cannot be asked
+    # for again (server.versions), and go first.  Other bands of this date stay.
+    current = is_current(path, key[1])
     with _lock:
+        if current:
+            drop_other_versions(_cache, key)
         while len(_cache) >= _CACHE_MAX:
             _cache.popitem(last=False)
     res = consistency_reconstruction(vol, view.params, q_band=q_band, r_band=r_band)
+    if not is_current(path, key[1]):
+        return res  # the file changed meanwhile: this version is not kept
     with _lock:
+        drop_other_versions(_cache, key)
         _cache[key] = res
         _cache.move_to_end(key)
         while len(_cache) > _CACHE_MAX:
