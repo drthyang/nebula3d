@@ -119,6 +119,25 @@ def test_set_aside_files_are_files_of_their_own(root: Path) -> None:
         assert f.stat().st_mtime_ns == original.stat().st_mtime_ns
 
 
+def test_the_browsers_copy_is_the_same_file(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """In the browser the copy is sized first and filled in place: the same
+    bytes and date as the clone the native build makes."""
+    cfg, proc = ServerConfig(data_root=root), root / "processed"
+    monkeypatch.setattr(setaside, "_COPY_CHUNK", 1000)
+    monkeypatch.setattr(setaside.sys, "platform", "emscripten")
+    monkeypatch.setattr(setaside, "_clone", lambda *_a: pytest.fail("no clone in the browser"))
+    kept = setaside.set_aside(cfg, DATASET, _raw(root), "rings")
+    monkeypatch.undo()
+    assert kept.done
+    folder = setaside.set_aside_root(cfg) / DATASET
+    before = _state(proc)
+    assert {n: s for n, s in _state(folder).items() if n != "manifest.json"} == {
+        n: before[n] for n in kept.files}
+    _fix_run(root, "rings", rings_pooled_sectors=36)
+    assert setaside.restore(cfg, DATASET, _raw(root), PipelineParams()).done
+    assert _state(proc) == before
+
+
 def test_discard_leaves_the_outputs_as_they_are(root: Path) -> None:
     cfg, proc = ServerConfig(data_root=root), root / "processed"
     setaside.set_aside(cfg, DATASET, _raw(root), "punch")

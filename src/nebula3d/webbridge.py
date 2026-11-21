@@ -182,13 +182,17 @@ _PHONE_BYTES_PER_VOXEL = 150
 # Outputs set aside before a run that may be put back (server.setaside).  The
 # workspace's files are in memory, outside the WASM heap the budgets above
 # plan (Emscripten's MEMFS keeps them as JS arrays), so a set-aside takes the
-# files' size again from the tab, for as long as it is held.  On a desktop it
+# files' size again from the tab for as long as it is held.  On a desktop it
 # is taken only up to this cap; larger outputs are not set aside, and the
 # caller runs the pipeline again as before.  The synthetic demo (161³) sets
-# aside 0.25 GB from the ring removal on (measured, Pyodide 0.27.7 in Node).
+# aside 126 MB from the ring removal on (five gzip files of 16–29 MB and the
+# side files); in Chromium the tab's renderer then peaked 0.1–0.2 GB higher
+# during the fix's run than without it (3.2–3.3 GB against 3.1 GB), the WASM
+# heap unchanged.  The cap is four times the demo's, a bound on what the tab
+# is asked for, not a measured limit of any browser.
 # On a phone or tablet nothing is set aside: there the whole tab is budgeted
 # (_PHONE_TAB_BUDGET_BYTES), and the outputs twice over do not fit in it.
-_SET_ASIDE_MAX_BYTES = 768_000_000
+_SET_ASIDE_MAX_BYTES = 512_000_000
 #: Storage precision every browser run uses (overridable per-run via a
 #: ``"precision"`` key in ``params_json`` — a debugging/validation lever).
 _BROWSER_PRECISION = "float32"

@@ -36,6 +36,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -130,6 +131,29 @@ def _rewritten(p: PipelineParams, paths: PipelinePaths, from_stage: str) -> list
     return out
 
 
+#: Bytes copied at a time where a file is copied by hand (:func:`_copy`).
+_COPY_CHUNK = 4 << 20
+
+
+def _copy(src: Path, dst: Path) -> None:
+    """Copy *src* to *dst*, date included, as a file of its own: the tuning
+    runs' clone helper (a copy-on-write clone, else a plain copy; never a hard
+    link), except in the browser.  There the files are arrays in the tab's
+    memory that grow as they are written, each step a new and larger array:
+    a file written piece by piece leaves several times its size behind until
+    the browser collects it.  So the copy is given its full size first, one
+    array, and filled in place."""
+    if sys.platform != "emscripten":
+        _clone(src, dst)
+        return
+    size = src.stat().st_size
+    with src.open("rb") as fin, dst.open("wb") as fout:
+        fout.truncate(size)
+        while chunk := fin.read(_COPY_CHUNK):
+            fout.write(chunk)
+    shutil.copystat(src, dst)
+
+
 def space_refusal(need: int, free: int) -> str | None:
     """Why *need* bytes are not set aside on a disk with *free* bytes left
     (None: they are): the disk must hold them twice over and
@@ -207,11 +231,15 @@ def set_aside(
         for f in files:
             st = f.stat()
             dst = folder / f.name
-            _clone(f, dst)
+            _copy(f, dst)
             os.utime(dst, ns=(st.st_atime_ns, st.st_mtime_ns))
-            if dst.stat().st_size != st.st_size:
+            copy = dst.stat()
+            if copy.st_size != st.st_size:
                 raise OSError(f"{f.name} was not copied whole")
-            kept[f.name] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+            # The copy's own date as its filesystem holds it: the original's,
+            # to that filesystem's resolution (the browser's in-memory one
+            # keeps milliseconds).
+            kept[f.name] = {"size": copy.st_size, "mtime_ns": copy.st_mtime_ns}
         (folder / _MANIFEST).write_text(json.dumps({
             "dataset_id": dataset_id, "raw_name": raw_path.name,
             "from_stage": from_stage, "files": kept}, indent=2))
