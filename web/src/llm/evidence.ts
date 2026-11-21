@@ -10,6 +10,7 @@
 // the model read; an earlier turn's result, as the model read it.
 
 import type { AgentStep } from "./agent";
+import { isPutBackMark } from "./putBackMark";
 import { found, type Found } from "./readings";
 import { factsOf } from "./tools";
 
@@ -22,7 +23,8 @@ export function recomputedAt(steps: readonly AgentStep[]): Record<PipelineStage,
   steps.forEach((step, i) => {
     // Its own check of the status: a run that failed changed nothing, where a
     // run whose result says nothing (`found` reads null) changed every stage.
-    if (!factsOf(step.name).invalidates.includes("outputs") || step.status !== "done") return;
+    // Outputs an auto run put back without a run (putBackMark.ts) changed as a run's do: its mark says which.
+    if (!(factsOf(step.name).invalidates.includes("outputs") || isPutBackMark(step)) || step.status !== "done") return;
     const r = found(step);
     const stages = r && typeof r.stages === "object" ? (r.stages as Readonly<Record<string, unknown>> | null) : null;
     // A result that does not say which stages it computed changed them all.

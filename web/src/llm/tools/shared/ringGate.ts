@@ -19,6 +19,7 @@
 // one outside the console) is none, and the output the verdict judged says it
 // (its mark, state/ringOutput.ts): recomputed since, it is another output.
 
+import { isPutBackMark } from "../../putBackMark";
 import { ringOutputChanged, type RingOutputMark } from "../../../state/ringOutput";
 import type { AgentStep } from "../../agent";
 import { found } from "../../readings";
@@ -76,7 +77,8 @@ export function ringVerdictAllowsChange(ctx: Pick<ToolContext, "replySteps" | "e
  * registry this module's tools sit in.
  */
 const recomputesRings = (s: AgentStep): boolean => {
-  if (s.name !== "run_pipeline" || s.status !== "done") return false;
+  // An auto run's mark of outputs put back without a run (putBackMark.ts) reads as the run it stands for.
+  if ((s.name !== "run_pipeline" && !isPutBackMark(s)) || s.status !== "done") return false;
   const r = found(s);
   const stages = r && typeof r.stages === "object" ? (r.stages as Readonly<Record<string, unknown>> | null) : null;
   return !stages || stages.rings === "computed";

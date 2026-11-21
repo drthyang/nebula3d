@@ -57,7 +57,7 @@ import { discardSetAside, fetchDataset, restoreSetAside, setAsideOutputs } from 
 import { queryClient } from "../../api/queryClient";
 import type { Dataset } from "../../api/types";
 import { configOf } from "../../state/configMemory";
-import { formToParams, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { enabledStages, formToParams, STAGES as PIPELINE_ORDER, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
 import { clearsWithVolume } from "../../state/volumeReset";
 import { toolStepsIn, type AgentStep } from "../agent";
 import { changeText, dismissCard, applyOnClick, mergeIntoTwin, undoable, undoDecision, withdrawRunReasons } from "../apply/actions";
@@ -70,6 +70,7 @@ import { overLimit, pauseClock, resumeClock, startClock, stopClock } from "../cl
 import type { ClickEvent } from "../consent";
 import { hklVolumeId, loadPipelineContext, safe, stageVolumeId } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
+import { putBackMark, putBackMarkId } from "../putBackMark";
 import { askAssistant, type ReplyOutcome } from "../session";
 import type { UsageReport } from "../provider/client";
 import { autoPolicyOf, type RunPolicy } from "../runPolicy";
@@ -855,7 +856,7 @@ clearsWithVolume(() => void dropAside());
  * sameChecks). Returns those checks, the run owed no more; or null, and the
  * caller runs the pipeline from the fix's stage, which makes every output again.
  */
-async function putBack(stage: Stage, undone: readonly Decision[], before: readonly AgentStep[]): Promise<AgentStep[] | null> {
+async function putBack(stage: Stage, from: RunStage, undone: readonly Decision[], before: readonly AgentStep[]): Promise<AgentStep[] | null> {
   const s = session!;
   const dataset = s.work.dataset.id;
   const form = usePipelineStore.getState();
@@ -870,6 +871,14 @@ async function putBack(stage: Stage, undone: readonly Decision[], before: readon
   }
   if (stopped()) halt();
   if (!out?.restored) return null;
+  // The outputs changed, as a run from the fix's stage would have changed them: marked in the run's steps
+  // before the check that follows, so a check made before it is no evidence of them (putBackMark.ts).
+  // The record's alone: no row, no decision, nothing a model reads.
+  const order: readonly string[] = PIPELINE_ORDER;
+  const changed = enabledStages(form).filter((st) => order.indexOf(st) >= order.indexOf(from));
+  stepNumber += 1;
+  const mark = putBackMark(putBackMarkId(run().id, stepNumber), changed);
+  patchRun((x) => ({ steps: [...x.steps, mark] }));
   const again = await checkStage(stage);
   if (!sameChecks(stage, before, again)) return null;
   patchRun({ pendingRun: null });
@@ -992,7 +1001,7 @@ async function stageRow(stage: Stage): Promise<void> {
           if (held && undone.length === changes.length) {
             // The outputs are the fix's until they are put back: a stop meanwhile owes the run.
             patchRun({ pendingRun: from });
-            back = await putBack(stage, undone, checks);
+            back = await putBack(stage, from, undone, checks);
           }
           if (back) {
             checks = back;

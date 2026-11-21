@@ -20,6 +20,8 @@ import { autoLoop, endAuto, resumeAuto, startAuto, stopAuto } from "../auto/cont
 import { sameChecks } from "../auto/plan";
 import { useAutoStore, type AutoRun } from "../auto/store";
 import { isAppStep } from "../auto/transcript";
+import { recomputedAt } from "../evidence";
+import { isPutBackMark } from "../putBackMark";
 import { activityNow } from "../auto/activity";
 import { clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, phaseOf, pipeline, say, SCRIPTED, scriptedStream } from "./autoHarness";
 import { braggSenseKeeping, installBackend } from "./syntheticCrystal";
@@ -169,6 +171,28 @@ describe("a fix that made its check worse, its outputs set aside", () => {
     expect(row.detail).toBe("still needs attention after two fixes (one adopted no change) (one put back: it made it worse)");
   });
 
+  it("marks the put-back in the run's steps before the check that follows, as the run it stands for: no row, no decision", async () => {
+    worseFix();
+    await start();
+    const steps = run().steps;
+    const at = steps.findIndex(isPutBackMark);
+    expect(steps.filter(isPutBackMark)).toHaveLength(1);
+    // After the check on the fix's outputs, before the check on those put back.
+    expect([steps[at - 1].name, steps[at - 1].args, steps[at + 1].name, steps[at + 1].args]).toEqual(["assess_stage", { stage: "punch" }, "assess_stage", { stage: "punch" }]);
+    expect(JSON.parse(steps[at].result!)).toEqual({ stages: { punch: "computed", backfill: "computed", flatten: "computed", pdf: "computed", pdf_check: "computed" } });
+    // The same boundary as the second run made: the fix's check is behind it, the re-check after it.
+    const [, onFix, back] = punchChecks();
+    expect(recomputedAt(steps).punch).toBe(at);
+    expect(steps.indexOf(onFix)).toBeLessThan(at);
+    expect(steps.indexOf(back)).toBeGreaterThan(at);
+    // The record's alone: none of the app's own calls, so no row in the activity log, and no decision.
+    expect(isAppStep(steps[at])).toBe(false);
+    expect(activityNow()!.rows.some((r) => r.step === steps[at].id || /put.?back/i.test(r.title))).toBe(false);
+    expect(decisions().map((d) => d.kind)).toEqual(["run", "setting", "run", "setting"]);
+    // No request sent to the model names it.
+    expect(JSON.stringify(model.sent)).not.toContain("outputs_put_back");
+  });
+
   it("logs the undo as auto mode's and no run after it: the digest and the activity log have no run for the put-back", async () => {
     worseFix();
     await start();
@@ -240,6 +264,8 @@ describe("a put-back that cannot be trusted falls back to a run, as before", () 
     asBefore();
     expect(backend.calls).toContain("restore");
     expect(punchChecks()).toHaveLength(3);
+    // Nothing was put back: no mark; the run is the boundary, as before.
+    expect(run().steps.filter(isPutBackMark)).toEqual([]);
   });
 
   it("the restore failed (the request threw): the pipeline runs again", async () => {
@@ -259,6 +285,10 @@ describe("a put-back that cannot be trusted falls back to a run, as before", () 
     asBefore();
     // Checked after the restore (not as before the fix), then after the run.
     expect(punchChecks()).toHaveLength(4);
+    // The outputs were moved: marked; and the run that followed is a boundary too.
+    const names = run().steps.map((x) => (isPutBackMark(x) ? "mark" : x.name));
+    const at = names.indexOf("mark");
+    expect(names.slice(at, at + 4)).toEqual(["mark", "assess_stage", "run_pipeline", "assess_stage"]);
   });
 
   it("a backend without the calls (an older server): the pipeline runs again", async () => {
