@@ -52,6 +52,8 @@ import type {
   ShellFloors,
   Slice,
   SliceHeader,
+  SetAside,
+  SetAsideRestore,
   StaleOutputs,
   TuningPromote,
   TuningRun,
@@ -502,6 +504,16 @@ export const engine = {
   // The outputs a run with these settings would make again (webbridge.stale_outputs_json).
   staleOutputs(datasetId: string, paramsJson: string, flattenEnabled: boolean): Promise<StaleOutputs> {
     return jsonCall<StaleOutputs>("stale_outputs_json", [datasetId, paramsJson, flattenEnabled]);
+  },
+  // Outputs set aside before a run that may be put back (webbridge.set_aside_json and its twins).
+  setAside(datasetId: string, fromStage: string): Promise<SetAside> {
+    return jsonCall<SetAside>("set_aside_json", [datasetId, fromStage]);
+  },
+  setAsideRestore(datasetId: string, paramsJson: string, flattenEnabled: boolean): Promise<SetAsideRestore> {
+    return jsonCall<SetAsideRestore>("set_aside_restore_json", [datasetId, paramsJson, flattenEnabled]);
+  },
+  setAsideDiscard(datasetId: string): Promise<{ discarded: boolean }> {
+    return jsonCall<{ discarded: boolean }>("set_aside_discard_json", [datasetId]);
   },
   tuningStart(datasetId: string, firstStage: string): Promise<TuningRun> {
     return jsonCall<TuningRun>("tuning_start_json", [datasetId, firstStage]);

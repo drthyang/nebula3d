@@ -441,6 +441,19 @@ export function offerRun(turn: number, dataset: string, stage: RunStage, because
 }
 
 /**
+ * The outputs follow from the settings without the run a change called for
+ * (the change undone before any run; auto mode putting a fix's outputs back,
+ * auto/controller.ts): the dataset's open Run card loses those reasons, and
+ * goes with none left.
+ */
+export function withdrawRunReasons(dataset: string, because: readonly string[]): void {
+  const open = useDecisionStore.getState().proposals.find((x) => x.kind === "run" && x.status === "open" && x.dataset === dataset);
+  if (!open) return;
+  const reasons = open.shown.to.split("; ").filter((x) => x && !because.includes(x));
+  updateProposal(open.id, reasons.length ? { shown: { from: "", to: reasons.join("; ") } } : { status: "dismissed" });
+}
+
+/**
  * Run the pipeline from the card's stage, through run_pipeline (it opens the
  * Execution page); from the symmetry average, which run_pipeline's from_stage
  * does not name, through its own run (runPipelineFrom).
@@ -527,8 +540,7 @@ export function undoDecision(d: Decision, event?: ClickEvent, by: Decision["by"]
   const open = proposals.find((x) => x.kind === "run" && x.status === "open" && x.dataset === p.dataset);
   const text = changeText(d.title, d.shown);
   if (!ranSince && open) {
-    const reasons = open.shown.to.split("; ").filter((x) => x && x !== text);
-    updateProposal(open.id, reasons.length ? { shown: { from: "", to: reasons.join("; ") } } : { status: "dismissed" });
+    withdrawRunReasons(p.dataset, [text]);
     return true;
   }
   if (ranSince) offerRun(p.turn, p.dataset, d.runFrom, `undid ${text}`);

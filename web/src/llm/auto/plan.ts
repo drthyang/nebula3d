@@ -280,6 +280,29 @@ export function madeWorse(stage: Stage, before: readonly AgentStep[], after: rea
   return worse;
 }
 
+/** A step's result as the tool returned it, whole (the model reads it fitted to its room: readings/). */
+const wholeResult = (s: AgentStep): string => s.full ?? s.result ?? "";
+
+/**
+ * Whether a stage's checks read exactly as they did before (`before`), after
+ * its outputs were put back without a run (controller.ts, putBack): the same
+ * checks, each done, with the same result (every number it returned) and the
+ * same outcomes (verdict and reasons), and so the same verdict of the stage.
+ * Anything less and the outputs are made again by a run.
+ */
+export function sameChecks(stage: Stage, before: readonly AgentStep[], after: readonly AgentStep[]): boolean {
+  if (!before.length || before.length !== after.length) return false;
+  for (let i = 0; i < before.length; i += 1) {
+    const b = before[i];
+    const a = after[i];
+    if (b.name !== a.name || b.status !== "done" || a.status !== "done") return false;
+    if (JSON.stringify(b.args ?? {}) !== JSON.stringify(a.args ?? {})) return false;
+    if (wholeResult(b) !== wholeResult(a)) return false;
+    if (JSON.stringify(outcomesOf(b)) !== JSON.stringify(outcomesOf(a))) return false;
+  }
+  return stageKind(stage, before) === stageKind(stage, after);
+}
+
 // ---------------------------------------------------------------- facts
 
 /** Whether a card is a fact the run pauses for: one only the user's own click applies (not a ring change the ring gate holds, which it logs). */
