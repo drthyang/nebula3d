@@ -4,7 +4,10 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless; no display needed
 
+import dataclasses
+
 import numpy as np
+import pytest
 
 from nebula3d.core import HKLVolume
 from nebula3d.visualization import (
@@ -13,6 +16,7 @@ from nebula3d.visualization import (
     plot_overview,
     plot_slice,
 )
+from nebula3d.visualization.slices import _PLANE, _interp_plane
 
 
 def _ramp_volume(shape=(5, 6, 7)):
@@ -144,3 +148,34 @@ def test_interactive_slices_hkl_selector_retargets_slider():
         assert fig.axes[0].get_ylabel() == "K (r.l.u.)"
     finally:
         plt.close(fig)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_extract_slice_masks_only_its_plane_and_equals_the_masked_volume(dtype, monkeypatch):
+    # A slice is the plane of masked_data() (NaN where masked), bit for bit,
+    # without building that volume-sized copy: the server cuts many planes of
+    # several large volumes at once.
+    rng = np.random.default_rng(3)
+    shape = (6, 7, 8)
+    vol = HKLVolume.from_arrays(rng.normal(size=shape), (-1, 1), (-2, 2), (-3, 3), dtype=dtype)
+    vol = dataclasses.replace(vol, mask=rng.random(shape) > 0.3)
+    masked = vol.masked_data()
+    assert np.isnan(masked).any() and np.isfinite(masked).any()
+    monkeypatch.setattr(HKLVolume, "masked_data",
+                        lambda self: pytest.fail("the whole volume was copied for one slice"))
+    for plane, (fixed_attr, dim, *_, transpose) in _PLANE.items():
+        axis = getattr(vol, fixed_attr)
+
+        def of_masked(i, dim=dim, transpose=transpose):
+            cut = np.take(masked, i, axis=dim)
+            return cut.T if transpose else cut
+
+        for i in range(axis.size):
+            got = extract_slice(vol, plane, float(axis[i])).data
+            assert got.dtype == dtype
+            np.testing.assert_array_equal(got, of_masked(i))
+        # Between two planes, and clamped beyond both ends.
+        for value in (float(axis[1] + 0.3 * (axis[2] - axis[1])), -100.0, 100.0):
+            want, _ = _interp_plane(of_masked, axis, value)
+            np.testing.assert_array_equal(
+                extract_slice(vol, plane, value, interp=True).data, want)

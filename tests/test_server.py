@@ -1485,6 +1485,42 @@ def test_modulation_labels_follow_the_runs_record(tmp_path):
     assert client.get("/api/modulation/nope/labels").status_code == 404
 
 
+def test_modulation_labels_read_the_record_once_per_version(tmp_path):
+    """The punch's record is tens of MB on a large volume and a check asks
+    for three planes' labels at once: it is parsed once while it stands, and
+    again when the file changes."""
+    import os
+
+    from nebula3d.modulation import Modulation
+    from nebula3d.server import modulation as mod_mod
+
+    def record(k):
+        return {"declared": Modulation.parse({"k": k, "form": "planes"}).to_json(),
+                "cell": [1, 1, 1], "symmetry_ops": None, "legacy": None, "bunching": None}
+
+    client, _ = _labels_dataset(tmp_path, record("1/3, 0, 0"))
+    profile = pipeline_paths(tmp_path / "raw" / f"{STEM}.nxs",
+                             proc_dir=tmp_path / "processed").bragg_profile_json
+    mod_mod._recorded_modulation.cache_clear()
+
+    def reads():
+        return mod_mod._recorded_modulation.cache_info().misses
+
+    def legend(plane):
+        r = client.get(f"/api/modulation/{SLUG}/labels", params={"plane": plane})
+        return [p["label"] for p in _parse_envelope(r.content)[0]["legend"]]
+
+    assert [legend(p) for p in ("hk", "hl", "kl")] == [["H ≡ 1/3 (mod 1)", "H ≡ 2/3 (mod 1)"]] * 3
+    assert reads() == 1
+    saved = json.loads(profile.read_text(encoding="utf-8"))
+    saved["modulation"] = record("1/4, 0, 0")
+    stamp = os.stat(profile).st_mtime + 5
+    profile.write_text(json.dumps(saved), encoding="utf-8")
+    os.utime(profile, (stamp, stamp))
+    assert legend("hk")[0] == "H ≡ 1/4 (mod 1)"
+    assert reads() == 2
+
+
 def test_modulation_labels_need_a_punch_record(env):
     client, _ = env
     r = client.get(f"/api/modulation/{SLUG}/labels")

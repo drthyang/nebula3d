@@ -19,9 +19,11 @@ Three payloads, FastAPI-free like :mod:`nebula3d.server.rings`, so the router
 
 from __future__ import annotations
 
+import functools
 import json
 import struct
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -121,6 +123,16 @@ def _recorded_positions(record: dict[str, Any]) -> tuple[Position, ...]:
     return tuple(out)
 
 
+@functools.lru_cache(maxsize=8)
+def _recorded_modulation(path: str, mtime_ns: int, size: int) -> str:
+    """The ``modulation`` field of the punch's record at *path*, as JSON text
+    (``null`` without one), as the file was at *mtime_ns*: read once per
+    version of the file.  The record is tens of MB on a large volume, and a
+    check asks for the labels of three planes at once."""
+    saved = json.loads(Path(path).read_text(encoding="utf-8"))
+    return json.dumps(saved.get("modulation") if isinstance(saved, dict) else None)
+
+
 def _pack(header: dict[str, Any], data: NDArray[np.float32]) -> bytes:
     """The slice wire format (:func:`nebula3d.server.volumes.pack_slice`)."""
     hb = json.dumps(header).encode("utf-8")
@@ -155,10 +167,11 @@ def labels_envelope(cfg: ServerConfig, dataset_id: str, plane: str, value: float
     if not punched.exists() or not profile_path.exists():
         raise FileNotFoundError(f"no punch record for {dataset_id!r}")
     try:
-        saved = json.loads(profile_path.read_text(encoding="utf-8"))
+        stat = profile_path.stat()
+        saved = json.loads(_recorded_modulation(str(profile_path), stat.st_mtime_ns, stat.st_size))
     except ValueError as exc:  # not JSON: the server's fault, not the request's
         raise OSError(f"{profile_path.name} is not JSON: {exc}") from exc
-    record = record_out(saved.get("modulation") if isinstance(saved, dict) else None)
+    record = record_out(saved)
     positions = () if record is None else _recorded_positions(record)
 
     vol = load_volume(punched)

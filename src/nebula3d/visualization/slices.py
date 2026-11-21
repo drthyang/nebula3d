@@ -9,9 +9,9 @@ coordinate value at which the third axis is cut.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -125,14 +125,20 @@ def extract_slice(
 
     fixed_attr, array_dim, y_attr, x_attr, y_label, x_label, transpose = _PLANE[key]
     fixed_axis: NDArray[np.float64] = getattr(vol, fixed_attr)
-    masked: NDArray[np.floating] = vol.masked_data()
+
+    def plane_at(i: int) -> NDArray[Any]:
+        # Plane i of vol.masked_data() (NaN where masked), without the
+        # volume-sized copy that makes: only the plane is copied and masked.
+        out = np.take(vol.data, i, axis=array_dim)
+        out[~np.take(vol.mask, i, axis=array_dim)] = np.nan
+        return out
 
     if interp:
-        data_2d, actual = _interp_plane(masked, fixed_axis, float(value), array_dim)
+        data_2d, actual = _interp_plane(plane_at, fixed_axis, float(value))
     else:
         idx = int(np.argmin(np.abs(fixed_axis - value)))
         actual = float(fixed_axis[idx])
-        data_2d = np.take(masked, idx, axis=array_dim)
+        data_2d = plane_at(idx)
 
     # np.take leaves the two non-fixed axes in natural order; for a transposed
     # plane (e.g. "lk") swap them so rows/cols match the requested (y, x).
@@ -185,7 +191,8 @@ def extract_slice_dpdf(
     data: NDArray[np.floating] = vol.data
 
     if interp:
-        data_2d, actual = _interp_plane(data, fixed_axis, float(value), array_dim)
+        data_2d, actual = _interp_plane(
+            lambda i: np.take(data, i, axis=array_dim), fixed_axis, float(value))
     else:
         idx = int(np.argmin(np.abs(fixed_axis - value)))
         actual = float(fixed_axis[idx])
@@ -305,12 +312,12 @@ def plot_slice(
 
 
 def _interp_plane(
-    data: NDArray[np.floating],
+    plane_at: Callable[[int], NDArray[Any]],
     axis_coords: NDArray[np.floating],
     value: float,
-    array_dim: int,
 ) -> tuple[NDArray[np.float64], float]:
-    """Linearly interpolate the 3D *data* to a plane at *value* along *array_dim*.
+    """Linearly interpolate a volume to a plane at *value* along the axis
+    *axis_coords*; ``plane_at(i)`` is the volume's plane *i* along it.
 
     Assumes ascending *axis_coords* (bin centres).  Out-of-range values clamp
     to the first/last plane.  NaN-aware: where exactly one bracketing plane is
@@ -318,17 +325,17 @@ def _interp_plane(
     """
     n = len(axis_coords)
     if value <= axis_coords[0]:
-        return np.take(data, 0, axis=array_dim), float(axis_coords[0])
+        return plane_at(0), float(axis_coords[0])
     if value >= axis_coords[-1]:
-        return np.take(data, n - 1, axis=array_dim), float(axis_coords[-1])
+        return plane_at(n - 1), float(axis_coords[-1])
 
     i1 = int(np.searchsorted(axis_coords, value))  # first coord >= value
     i0 = i1 - 1
     c0, c1 = float(axis_coords[i0]), float(axis_coords[i1])
     w = (value - c0) / (c1 - c0) if c1 != c0 else 0.0
 
-    p0 = np.take(data, i0, axis=array_dim).astype(np.float64)
-    p1 = np.take(data, i1, axis=array_dim).astype(np.float64)
+    p0 = plane_at(i0).astype(np.float64)
+    p1 = plane_at(i1).astype(np.float64)
     out = (1.0 - w) * p0 + w * p1
 
     only0 = np.isfinite(p0) & ~np.isfinite(p1)
