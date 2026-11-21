@@ -283,6 +283,16 @@ export function madeWorse(stage: Stage, before: readonly AgentStep[], after: rea
 /** A step's result as the tool returned it, whole (the model reads it fitted to its room: readings/). */
 const wholeResult = (s: AgentStep): string => s.full ?? s.result ?? "";
 
+// A check's outcomes as judged: without the ring verdict's mark of the output
+// it judged (state/ringOutput.ts), which counts this console's runs and so
+// differs after any run, whatever the output holds.
+const judged = (s: AgentStep): Omit<Outcome, "ringOutput">[] =>
+  outcomesOf(s).map((o) => {
+    const { ringOutput, ...rest } = o;
+    void ringOutput;
+    return rest;
+  });
+
 /**
  * Whether a stage's checks read exactly as they did before (`before`), after
  * its outputs were put back without a run (controller.ts, putBack): the same
@@ -298,7 +308,7 @@ export function sameChecks(stage: Stage, before: readonly AgentStep[], after: re
     if (b.name !== a.name || b.status !== "done" || a.status !== "done") return false;
     if (JSON.stringify(b.args ?? {}) !== JSON.stringify(a.args ?? {})) return false;
     if (wholeResult(b) !== wholeResult(a)) return false;
-    if (JSON.stringify(outcomesOf(b)) !== JSON.stringify(outcomesOf(a))) return false;
+    if (JSON.stringify(judged(b)) !== JSON.stringify(judged(a))) return false;
   }
   return stageKind(stage, before) === stageKind(stage, after);
 }

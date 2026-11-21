@@ -420,6 +420,19 @@ describe("sameChecks: the stage's checks read exactly as before", () => {
     expect(sameChecks("punch", [check(2)], [check(2, { args: { stage: "rings" } })])).toBe(false);
   });
 
+  it("takes no account of the ring verdict's mark of its output, which counts the console's runs", () => {
+    const rings = (runs: number, left: number): AgentStep => ({
+      id: `r${runs}`,
+      name: "assess_stage",
+      args: { stage: "rings" },
+      status: "done",
+      result: JSON.stringify({ rings: { max_ring_left: left, max_ring_dent: 0 } }),
+      outcomes: [{ check: "rings", kind: "attention", reasons: ["ring left"], dataProblems: [], words: "needs attention", ringOutput: { dataset: "d", written: 10, runs } }],
+    });
+    expect(sameChecks("rings", [rings(1, 0.3)], [rings(2, 0.3)])).toBe(true);
+    expect(sameChecks("rings", [rings(1, 0.3)], [rings(2, 0.4)])).toBe(false);
+  });
+
   it("compares the whole result where the model read it fitted", () => {
     const whole = (n: number) => check(2, { full: JSON.stringify({ punch: { leftover_at_nodes: 2, leftover_bragg_tails: n } }) });
     expect(sameChecks("punch", [whole(1)], [whole(1)])).toBe(true);
