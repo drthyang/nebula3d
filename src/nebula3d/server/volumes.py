@@ -7,7 +7,7 @@ Slices are extracted with the *same* :func:`nebula3d.visualization.extract_slice
 primitive the matplotlib viewers use, so the web viewer is pixel-for-pixel
 consistent with them.  A loaded :class:`~nebula3d.core.HKLVolume` is ~130 MB, so a
 small LRU keyed by ``(path, mtime)`` keeps cut-slider scrubbing responsive while
-bounding memory.
+bounding memory, one version of a file at a time.
 
 Wire format for a slice (one request, self-contained):
 
@@ -33,6 +33,7 @@ import numpy as np
 import nebula3d
 from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.server.singleflight import SingleFlight
+from nebula3d.server.versions import drop_other_versions, is_current
 from nebula3d.utils.reciprocal_space import direct_cell
 from nebula3d.visualization import extract_slice
 from nebula3d.visualization.slices import _ALIASES, _PLANE, SliceData
@@ -83,17 +84,28 @@ def load_volume(path: Path) -> HKLVolume:
     """Load an nebula3d/Mantid volume, caching by ``(path, mtime)``.
 
     Requests that arrive while the file is being read wait for that read and
-    share its volume, instead of each reading the file."""
+    share its volume, instead of each reading the file.  The cache keeps one
+    version of a file: storing this one drops the file's entries of any other
+    date, which no request can ask for again (:mod:`nebula3d.server.versions`);
+    a volume whose file changed while it was read is returned and not kept."""
     key = (str(path), path.stat().st_mtime)
 
     def load() -> HKLVolume:
         vol = _cached_volume(key)  # loaded since this caller looked
         if vol is not None:
             return vol
+        # The file's other versions go before the read, not after it, so the
+        # old and the new volume are not both held while the new one loads.
+        if is_current(path, key[1]):
+            with _lock:
+                drop_other_versions(_cache, key)
         # dtype=None: keep the artifact's stored precision (float32 stage
         # files from a float32 run must not double in the viewer cache).
         vol = nebula3d.load(path, dtype=None)  # heavy I/O outside the lock
+        if not is_current(path, key[1]):
+            return vol  # the file changed meanwhile: this version is not kept
         with _lock:
+            drop_other_versions(_cache, key)
             _cache[key] = vol
             _cache.move_to_end(key)
             while len(_cache) > _CACHE_MAX:
