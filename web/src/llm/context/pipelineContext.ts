@@ -4,6 +4,11 @@
 // reasons over.  Everything here is a pure function of already-fetched data — no
 // React, no network — which keeps it the most testable part of the module and
 // mirrors the metrics-compute-the-truth, LLM-narrates design.
+//
+// Each stage's slice metrics are computed once for the slices they are given
+// (metrics/measuredOnce.ts): a check asks for the same cut's again and again.
+// What a metric is given as a function (the cut's |Q|, its H K L) is named
+// there by the values the function is made from, all of them.
 
 import type {
   BraggProfile,
@@ -20,6 +25,7 @@ import { withoutInference } from "../inference";
 import { backfillMetrics } from "../metrics/backfill";
 import { dpdfMetrics } from "../metrics/dpdf";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, flattenMetrics } from "../metrics/flatten";
+import { measuredOnce } from "../metrics/measuredOnce";
 import { ringMetrics } from "../metrics/rings";
 import { scanLeftoverPeaks, summarizePeakProfile } from "../metrics/punch";
 import { roundSig, type RadiusFn } from "../metrics/sliceStats";
@@ -170,11 +176,15 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
   if (hklMeta?.shape) ctx.grid = hklMeta.shape;
   ctx.summary = datasetSummary(hklMeta, input.stages);
 
-  const radius = qRadius(plane, cutValue, hklMeta ?? (lat ? { lattice: lat } : null));
+  const radiusFrom: Pick<VolumeMeta, "lattice" | "ub_matrix"> | null = hklMeta ?? (lat ? { lattice: lat } : null);
+  const radius = qRadius(plane, cutValue, radiusFrom);
+  // What `radius` is made from (qRadius), all of it.
+  const radiusValues = { plane, cutValue, ub: radiusFrom?.ub_matrix, lattice: radiusFrom?.lattice };
 
   // 1. Ring removal — raw vs ring-removed radial profiles.
   if (slices.raw || slices.ringremoved) {
-    ctx.ring_removal = ringMetrics(slices.raw ?? null, slices.ringremoved ?? null, radius);
+    const [before, after] = [slices.raw ?? null, slices.ringremoved ?? null];
+    ctx.ring_removal = measuredOnce("rings", [before, after], radiusValues, () => ringMetrics(before, after, radius));
   } else {
     notes.push("ring removal: no raw/ring-removed slice available at this cut");
   }
@@ -196,17 +206,18 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
     // |Q| of a reciprocal vector, for the Bragg tails' reach and the beam (metrics/punch.ts).
     const G = metricFromUb(hklMeta?.ub_matrix) ?? reciprocalMetric(lat);
     const qOf = G ? (v: [number, number, number]) => qNorm(G, v) : undefined;
+    const protectedLabels = recorded ? labels : null;
+    // The cut before the punch: the maxima beside its holes are judged too (THY-43).
+    const before = slices.ringremoved ?? null;
     ctx.bragg_punch = {
       leftover: punchSlice
-        ? scanLeftoverPeaks(punchSlice, {
-            toHkl,
-            supercell: input.supercell,
-            protectedLabels: recorded ? labels : null,
-            topK: input.leftoverTopK,
-            // The cut before the punch: the maxima beside its holes are judged too (THY-43).
-            before: slices.ringremoved ?? null,
-            qOf,
-          })
+        ? measuredOnce(
+            "leftovers",
+            [punchSlice, protectedLabels, before],
+            // What toHkl and qOf are made from, and the scan's own values.
+            { plane, cutValue, ub: hklMeta?.ub_matrix, lattice: lat, supercell: input.supercell, topK: input.leftoverTopK },
+            () => scanLeftoverPeaks(punchSlice, { toHkl, supercell: input.supercell, protectedLabels, topK: input.leftoverTopK, before, qOf }),
+          )
         : { suspicious_peaks: [], n_suspicious: 0, n_skipped_noisy: 0, scan_sigma_threshold: 8 },
       peak_profile: summarizePeakProfile(braggProfile),
     };
@@ -216,7 +227,8 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
 
   // 3. Backfill — punched (holes) vs backfilled at the same cut.
   if (slices.braggpunched && slices.backfilled) {
-    ctx.backfill = backfillMetrics(slices.braggpunched, slices.backfilled);
+    const [punched, filled] = [slices.braggpunched, slices.backfilled];
+    ctx.backfill = measuredOnce("backfill", [punched, filled], null, () => backfillMetrics(punched, filled));
   } else {
     notes.push("backfill: needs both punched and backfilled slices at this cut");
   }
@@ -225,13 +237,18 @@ export const buildPipelineContext = (input: BuildContextInput): PipelineContext 
   // run's own fit range and at its floor percentile (plan 4.11).
   if (slices.flattened) {
     const judging = flattenJudging(input.flattenSettings);
-    ctx.flatten = flattenMetrics(slices.backfilled ?? null, slices.flattened, radius, radius ? (judging.fitQ ?? undefined) : undefined, judging.percentile);
+    const [before, after] = [slices.backfilled ?? null, slices.flattened];
+    const qRange = radius ? (judging.fitQ ?? undefined) : undefined;
+    ctx.flatten = measuredOnce("flatten", [before, after], { ...radiusValues, qRange, percentile: judging.percentile }, () =>
+      flattenMetrics(before, after, radius, qRange, judging.percentile),
+    );
     if (input.flattenSettings === null) notes.push(`flatten: ${FLATTEN_UNRECORDED_NOTE}`);
   }
 
   // 5. 3D-ΔPDF — feature/anisotropy/trend on the real-space orthoslice.
   if (slices.dpdf) {
-    ctx.delta_pdf = dpdfMetrics(slices.dpdf, { consistency: consistency ?? null });
+    const section = slices.dpdf;
+    ctx.delta_pdf = measuredOnce("dpdf", [section], { consistency: consistency ?? null }, () => dpdfMetrics(section, { consistency: consistency ?? null }));
   } else if (consistency) {
     ctx.delta_pdf = dpdfMetrics(null, { consistency });
     notes.push("delta pdf: no ΔPDF orthoslice; only back-FFT consistency reported");

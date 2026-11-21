@@ -10,6 +10,7 @@ import { declaringMeta, dpdfVolumeId, loadPipelineContext, readFlattenRecord, sa
 import { PLANE_HKL_AXES } from "../context/pipelineContext";
 import { metricFromUb, qNorm, reciprocalMetric } from "../../components/reciprocal";
 import { offLatticeBunching } from "../metrics/bunching";
+import { measuredOnce } from "../metrics/measuredOnce";
 import { scanLeftoverPeaks } from "../metrics/punch";
 import { OPEN_WEIGHT_OK } from "../metrics/coverage";
 import { FLATTEN_UNRECORDED_NOTE, flattenJudging, pedestalLeft, volumePedestal } from "../metrics/flatten";
@@ -133,7 +134,9 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
     // no operations declared, under the cell's in-plane ones, as before. The
     // worst one.
     const xy = sections[0];
-    const worstOp = worstSymmetryOp(xy?.slices.dpdf ?? null, xy?.lattice ?? null, rawMeta?.symmetry_ops ?? null);
+    const [section, cell, declaredOps] = [xy?.slices.dpdf ?? null, xy?.lattice ?? null, rawMeta?.symmetry_ops ?? null];
+    // Once for this section (metrics/measuredOnce.ts).
+    const worstOp = measuredOnce("section symmetry", [section], { cell, declaredOps }, () => worstSymmetryOp(section, cell, declaredOps));
     const perPlane = Object.fromEntries(
       sections.map((s, i) => {
         const d = s.context.delta_pdf;
@@ -342,15 +345,15 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
         hkl[axes[1]] = y;
         return hkl;
       };
-      const scan = scanLeftoverPeaks(backfilled, {
-        toHkl,
-        supercell: c.scan?.supercell,
-        protectedLabels: c.scan?.protectedLabels ?? null,
-        before: ringremoved,
-        punched: braggpunched,
-        qOf,
-        topK: 0,
-      });
+      const supercell = c.scan?.supercell;
+      const protectedLabels = c.scan?.protectedLabels ?? null;
+      // Once for these cuts (metrics/measuredOnce.ts); toHkl and qOf named by what they are made from.
+      const scan = measuredOnce(
+        "leftovers after backfill",
+        [backfilled, protectedLabels, ringremoved, braggpunched],
+        { plane: cuts[i].plane, cutValue: cuts[i].value, ub: meta?.ub_matrix, lattice: meta?.lattice, supercell, topK: 0 },
+        () => scanLeftoverPeaks(backfilled, { toHkl, supercell, protectedLabels, before: ringremoved, punched: braggpunched, qOf, topK: 0 }),
+      );
       return (scan.n_at_nodes ?? 0) + (scan.n_bragg_tails ?? 0);
     });
     const total = (key: "n_at_nodes" | "n_off_nodes" | "n_on_protected" | "n_broad_off_nodes" | "n_bragg_tails" | "n_beside_holes") =>
