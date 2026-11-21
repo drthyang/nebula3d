@@ -64,14 +64,18 @@ def save(vol: HKLVolume, path: _PathLike, **kwargs: object) -> None:
     ``.h5`` / ``.hdf5`` / ``.nxs`` write the Mantid MDHistoWorkspace layout
     (SaveMD version 2, see :func:`nebula3d.io.mantid_nxs.save_mantid_nxs`):
     Mantid Workbench opens the file with LoadMD whatever its extension, and
-    :func:`load` reads it back losslessly.
+    :func:`load` reads it back losslessly.  For these, ``compression=None``
+    stores the intensities and their errors without the gzip filter: written
+    many times faster, a larger file, the same values in the same
+    layout (the default, ``"gzip"``, is the smaller file).
     """
     path = Path(path)
     ext = path.suffix.lower()
     if ext in {".h5", ".hdf5", ".nxs"}:
         from nebula3d.io.mantid_nxs import save_mantid_nxs
+        compression = kwargs.pop("compression", "gzip")
         _reject_kwargs(kwargs)
-        save_mantid_nxs(vol, path)
+        save_mantid_nxs(vol, path, compression=compression)  # type: ignore[arg-type]
     elif ext in {".txt", ".dat", ".hkl"}:
         _reject_kwargs(kwargs)
         _save_ascii(vol, path)

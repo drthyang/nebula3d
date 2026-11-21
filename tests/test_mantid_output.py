@@ -129,7 +129,7 @@ def test_writer_matches_the_savemd_layout(tmp_path):
             assert ds.dtype == np.dtype(dtype), name     # LoadMD accepts nothing else
             assert ds.shape == (nh, nk, nl), name        # stored order, not transposed
             assert ds.chunks == (1, nk, nl), name
-            assert ds.compression == "gzip" and ds.shuffle, name
+            assert ds.compression == "gzip" and ds.shuffle, name  # the default
         np.testing.assert_array_equal(data["mask"][()], (~vol.mask).astype(np.int8))
         np.testing.assert_array_equal(data["num_events"][()], vol.mask.astype(float))
         np.testing.assert_array_equal(data["signal"][()], vol.data.astype(np.float64))

@@ -75,7 +75,7 @@ from nebula3d.analysis.misorientation import Misorientation
 from nebula3d.core import HKLVolume, sigma_note
 from nebula3d.core import low_memory as _low_memory
 from nebula3d.io.delta_pdf_file import load_delta_pdf, save_delta_pdf
-from nebula3d.io.mantid_nxs import NEBULA3D_GROUP
+from nebula3d.io.mantid_nxs import NEBULA3D_GROUP, Compression, working_compression
 from nebula3d.modulation import (
     MIN_HITS,
     SHARP_RATIO,
@@ -1195,7 +1195,7 @@ def finish_ring_stage(out: HKLVolume, input_mask: np.ndarray, p: PipelineParams,
                               stage="rings")
     if symmetry is not None:
         share_ring_removal(out, input_mask, symmetry, progress=progress)
-    nebula3d.save(out, paths.ringremoved)
+    nebula3d.save(out, paths.ringremoved, compression=working_compression())
     _declare_symmetry(paths.ringremoved, symmetry)
     _write_stage_record(paths.ringremoved, stage_record("rings", p, src, paths))
     ring_diagnostics = getattr(out, "_ring_diagnostics", None)
@@ -2537,7 +2537,8 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
                        r_band: tuple[float, float] | None = None,
                        transform_config: str | None = None, *,
                        source_record: str | None = None,
-                       edge_trim: int | None = None) -> None:
+                       edge_trim: int | None = None,
+                       compression: Compression = "gzip") -> None:
     """Write the ΔPDF as a Mantid MDHistoWorkspace NeXus file.
 
     The layout of :func:`nebula3d.io.save_delta_pdf` (read back by
@@ -2547,7 +2548,9 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
     — the same values ``examples/delta_pdf.py`` writes.  A run's ΔPDF also
     records its input's identity (*source_record*, :func:`_pdf_source_record`)
     and, made from the raw input, the *edge_trim* its load took, so a resumed
-    run tells when it no longer follows from them.
+    run tells when it no longer follows from them.  *compression*: a run
+    writes its working ΔPDF with :func:`~nebula3d.io.mantid_nxs.working_compression`;
+    a ΔPDF saved for the user keeps the default, the smaller file.
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2575,7 +2578,8 @@ def write_delta_pdf_h5(dpdf: DeltaPDF, vol: HKLVolume, p: DeltaPdfParams,
                                  else delta_pdf_transform_config(p)),
             **({"source_record": source_record} if source_record is not None else {}),
             **({"edge_trim": int(edge_trim)} if edge_trim is not None else {}),
-        })
+        },
+        compression=compression)
 
 
 def _crop_hkl(vol: HKLVolume, crop_hkl: tuple[float, float, float] | None
@@ -3516,7 +3520,7 @@ def run_pipeline(
             averaged = dict(getattr(out, "_symmetry_average", {}),
                             source_file=paths.input.name, edge_trim=int(p.edge_trim))
             made_from = stage_record("symmetry_average", p, paths.input, paths)
-            nebula3d.save(out, paths.symmetrized)
+            nebula3d.save(out, paths.symmetrized, compression=working_compression())
             _write_symmetry_average(paths.symmetrized, group, averaged)
             _write_stage_record(paths.symmetrized, made_from)
             carry, carry_path = out, paths.symmetrized
@@ -3563,7 +3567,7 @@ def run_pipeline(
             if modulation is not None:
                 facts["modulation"] = modulation
             out = punch_bragg(vol, p.punch, progress=progress, **facts)
-            nebula3d.save(out, paths.braggpunched)
+            nebula3d.save(out, paths.braggpunched, compression=working_compression())
             _declare_symmetry(paths.braggpunched, symmetry)
             _write_stage_record(paths.braggpunched, made_from)
             punch_record = getattr(out, "_punched", None)
@@ -3606,7 +3610,7 @@ def run_pipeline(
                                       progress=progress, stage="backfill")
             out = (backfill(vol, p.backfill, progress=progress) if symmetry is None
                    else backfill(vol, p.backfill, progress=progress, symmetry=symmetry))
-            nebula3d.save(out, paths.backfilled)
+            nebula3d.save(out, paths.backfilled, compression=working_compression())
             _declare_symmetry(paths.backfilled, symmetry)
             _write_stage_record(paths.backfilled, made_from)
             carry, carry_path = out, paths.backfilled
@@ -3635,7 +3639,7 @@ def run_pipeline(
                 _emit(progress, "flatten", "progress", None,
                       f"flatten averaged over {symmetry.order} symmetry operations "
                       f"({n:,} voxels)")
-            nebula3d.save(out, paths.flattened)
+            nebula3d.save(out, paths.flattened, compression=working_compression())
             _write_flatten_settings(paths.flattened, p.flatten)
             _declare_symmetry(paths.flattened, symmetry)
             _write_stage_record(paths.flattened, made_from)
@@ -3663,7 +3667,8 @@ def run_pipeline(
                                pdf_input.name, paths.delta_pdf,
                                source_record=source_record,
                                edge_trim=(int(p.edge_trim) if pdf_input == paths.input
-                                          else None))
+                                          else None),
+                               compression=working_compression())
             # sigma is unused by the ΔPDF and the back-FFT check that follow;
             # free it so it does not sit under the check's inverse-FFT transient.
             if _low_memory():

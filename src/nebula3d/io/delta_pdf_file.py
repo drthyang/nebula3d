@@ -38,6 +38,7 @@ from numpy.typing import NDArray
 
 from nebula3d.io.mantid_nxs import (
     COORDINATE_SYSTEM_NONE,
+    Compression,
     MDDim,
     dim_centers,
     nebula3d_group,
@@ -104,12 +105,15 @@ def save_delta_pdf(
     *,
     ub_matrix: NDArray[np.float64] | None = None,
     logs: Mapping[str, float | str] | None = None,
+    compression: Compression = "gzip",
 ) -> None:
     """Write a ΔPDF ``(na, nb, nc)`` in the MDHistoWorkspace layout.
 
     The array keeps its stored order, so D2 = x (along a), D1 = y (along b),
     D0 = z (along c), in Å.  *ub_matrix* is the source volume's (it carries
     the cell); *logs* are the provenance values (see :data:`LOG_UNITS`).
+    *compression*: ``None`` stores the ΔPDF without the gzip filter (see
+    :data:`nebula3d.io.mantid_nxs.Compression`).
     """
     dims = (
         MDDim("x", x_axis, "Angstrom", "General Frame", (1.0, 0.0, 0.0)),
@@ -118,7 +122,8 @@ def save_delta_pdf(
     )
     write_md_histo(
         path, data, dims, content="delta_pdf", ub_matrix=ub_matrix,
-        coordinate_system=COORDINATE_SYSTEM_NONE, logs=logs, log_units=LOG_UNITS)
+        coordinate_system=COORDINATE_SYSTEM_NONE, logs=logs, log_units=LOG_UNITS,
+        compression=compression)
 
 
 def load_delta_pdf(

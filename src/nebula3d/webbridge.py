@@ -49,6 +49,7 @@ import nebula3d
 from nebula3d._ringplane import RingWorkerContext, _PlaneResult
 from nebula3d.analysis.delta_pdf import FFTOriginError
 from nebula3d.core import HKLVolume
+from nebula3d.io.mantid_nxs import working_compression
 from nebula3d.pipeline import (
     STAGES,
     delta_pdf_transform_config,
@@ -1024,7 +1025,8 @@ async def _run_pdf_stages_gpu(
                 return False
             write_delta_pdf_h5(dpdf, pdf_vol, p, pdf_input.name,
                                paths.delta_pdf, transform_config=gpu_cfg,
-                               source_record=source_record)
+                               source_record=source_record,
+                               compression=working_compression())
             _cb_emit(cb, "pdf", "done", 1.0,
                      f"ΔPDF complete (|Q|max {dpdf.q_max:.2f} Å⁻¹, "
                      f"shape {dpdf.data.shape}) [WebGPU]")

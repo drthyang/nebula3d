@@ -46,12 +46,13 @@ h + k/2, so (−1, 2, 0) is the in-plane direction perpendicular to a*.)
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import permutations
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -107,6 +108,23 @@ _PARAMETER_MAP_DESCRIPTION = (
 # every reader decodes.  Lossless.
 _COMPRESSION: dict[str, object] = {
     "compression": "gzip", "compression_opts": 1, "shuffle": True}
+
+#: How a writer stores ``signal`` and ``errors_squared``: ``"gzip"`` (the
+#: filter above: the smaller file, for one that is kept or passed on) or
+#: ``None`` (no filter: the same chunks stored as they are).  gzip is most of
+#: the time a write takes: about 4 s against 0.1 s per array of some 50
+#: million voxels, for a larger file without it (8 B per voxel).  Either
+#: way the file is standard HDF5 in the same layout, the values are the same
+#: bits, and :func:`load_mantid_nxs` reads both.
+Compression = Literal["gzip"] | None
+
+
+def working_compression() -> Compression:
+    """The compression of a pipeline run's working files (its stage outputs
+    and ΔPDF): none where they are files on a disk, since the run is the one
+    waiting for the write; gzip in the browser build, whose files live in
+    memory (Pyodide's in-memory filesystem, inside the tab's memory limit)."""
+    return "gzip" if sys.platform == "emscripten" else None
 
 
 # ---------------------------------------------------------------------------
@@ -197,13 +215,15 @@ def load_mantid_nxs(
 SIGMA_ESTIMATED = "sqrt_intensity"
 
 
-def save_mantid_nxs(vol: HKLVolume, path: _PathLike) -> None:
+def save_mantid_nxs(vol: HKLVolume, path: _PathLike, *,
+                    compression: Compression = "gzip") -> None:
     """Write *vol* as a Mantid MDHistoWorkspace NeXus file (SaveMD version 2).
 
     The arrays keep their stored (H, K, L) order, so D2 = H, D1 = K, D0 = L
     (``[H,0,0]``, ``[0,K,0]``, ``[0,0,L]`` in r.l.u., frame HKL).  Mantid
     Workbench opens the file with LoadMD; :func:`load_mantid_nxs` reads it back
-    losslessly.  See :func:`write_md_histo` for what goes where.
+    losslessly.  See :func:`write_md_histo` for what goes where, and for
+    *compression*.
     """
     dims = (
         MDDim("[H,0,0]", vol.h_axis, "r.l.u.", "HKL", (1.0, 0.0, 0.0)),
@@ -215,7 +235,8 @@ def save_mantid_nxs(vol: HKLVolume, path: _PathLike) -> None:
         valid=vol.mask, ub_matrix=vol.ub_matrix,
         coordinate_system=COORDINATE_SYSTEM_HKL,
         attrs={"instrument": vol.instrument,
-               "sigma": SIGMA_ESTIMATED if vol.sigma_estimated else "measured"})
+               "sigma": SIGMA_ESTIMATED if vol.sigma_estimated else "measured"},
+        compression=compression)
 
 
 def write_md_histo(
@@ -231,6 +252,7 @@ def write_md_histo(
     logs: Mapping[str, float | str] | None = None,
     log_units: Mapping[str, str] | None = None,
     attrs: Mapping[str, str] | None = None,
+    compression: Compression = "gzip",
 ) -> None:
     """Write a 3-D histogram in the layout Mantid's SaveMD (version 2) writes.
 
@@ -253,6 +275,10 @@ def write_md_histo(
     cell.  Otherwise ``num_oriented_lattice`` is 0.  *logs* become run logs
     (Workbench's Sample Logs): numbers as float64, text as a string, each with
     its *log_units* (blank by default).
+
+    *compression* is how ``signal`` and ``errors_squared`` are stored
+    (:data:`Compression`): gzip, or no filter for a file written faster and
+    larger.  The layout, the values and what reads the file are the same.
 
     What Mantid does not know goes in ``MDHistoWorkspace/nebula3d``: the
     format and package versions, *content* (``"hkl_volume"``,
@@ -299,7 +325,7 @@ def write_md_histo(
             edges = data_grp.create_dataset(f"D{2 - axis}", data=_bin_edges(dim.centers))
             _set_text_attrs(edges, frame=dim.frame, long_name=dim.long_name,
                             units=dim.units)
-        _write_volume(data_grp, signal, sigma, valid)
+        _write_volume(data_grp, signal, sigma, valid, compression)
 
         _write_experiment(entry, dims, _lattice_ub(ub_matrix), logs or {},
                           log_units or {})
@@ -769,20 +795,31 @@ def _write_volume(
     signal: NDArray[np.floating],
     sigma: NDArray[np.floating] | None,
     valid: NDArray[np.bool_] | None,
+    compression: Compression = "gzip",
 ) -> None:
     """signal, errors_squared, num_events (float64) and mask (int8), slab by slab.
 
     Chunked one axis-0 slab per chunk like SaveMD's.  errors_squared, mask and
     num_events have fill values 0, 0 and 1, so they are written only when there
     is a σ or a masked voxel.
+
+    *compression* (:data:`Compression`) is for signal and errors_squared, the
+    two arrays of measured numbers, which gzip shrinks little and slowly.
+    num_events and mask are zeros and ones: gzip takes them to almost nothing
+    in a fraction of a second, so they are compressed either way.
     """
+    if compression not in ("gzip", None):
+        raise ValueError(f"compression must be 'gzip' or None, got {compression!r}")
     shape = signal.shape
     layout: dict[str, object] = {
         "shape": shape, "chunks": (1, shape[1], shape[2]), **_COMPRESSION}
-    sig_ds = grp.create_dataset("signal", dtype="<f8", **layout)
+    values: dict[str, object] = (
+        layout if compression == "gzip"
+        else {"shape": shape, "chunks": (1, shape[1], shape[2])})
+    sig_ds = grp.create_dataset("signal", dtype="<f8", **values)
     _set_text_attrs(sig_ds, axes="D2:D1:D0")
     sig_ds.attrs.create("signal", np.int32(1))
-    err_ds = grp.create_dataset("errors_squared", dtype="<f8", fillvalue=0.0, **layout)
+    err_ds = grp.create_dataset("errors_squared", dtype="<f8", fillvalue=0.0, **values)
     events_ds = grp.create_dataset("num_events", dtype="<f8", fillvalue=1.0, **layout)
     mask_ds = grp.create_dataset("mask", dtype="i1", fillvalue=0, **layout)
 
