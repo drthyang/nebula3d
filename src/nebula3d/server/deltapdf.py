@@ -40,6 +40,7 @@ import numpy as np
 
 from nebula3d.analysis.delta_pdf import section_geometry
 from nebula3d.io.delta_pdf_file import load_delta_pdf
+from nebula3d.server.singleflight import SingleFlight
 
 #: Orthoslice plane keys (and the axis each one fixes).
 DPDF_PLANES: tuple[str, ...] = ("xy", "xz", "yz")
@@ -47,6 +48,8 @@ DPDF_PLANES: tuple[str, ...] = ("xy", "xz", "yz")
 _CACHE_MAX = 3  # keep several DeltaPDF volumes resident for the comparison viewer
 _cache: OrderedDict[tuple[str, float], DeltaPdfData] = OrderedDict()
 _lock = threading.Lock()
+# Simultaneous requests for one cold key share one load (server.singleflight).
+_flights = SingleFlight()
 
 #: The most pair-vector values one request reads (32 MB of float32): about 200
 #: atoms a cell in a volume ±40 Å wide. A structure with more gets no values
@@ -97,14 +100,26 @@ class DeltaPdfData:
             for v in (self.lat_alpha, self.lat_beta, self.lat_gamma))
 
 
-def load_dpdf(path: Path) -> DeltaPdfData:
-    """Load a ΔPDF ``.h5``, caching by ``(path, mtime)``."""
-    key = (str(path), path.stat().st_mtime)
+def _cached_dpdf(key: tuple[str, float]) -> DeltaPdfData | None:
     with _lock:
         d = _cache.get(key)
         if d is not None:
             _cache.move_to_end(key)
-            return d
+        return d
+
+
+def load_dpdf(path: Path) -> DeltaPdfData:
+    """Load a ΔPDF ``.h5``, caching by ``(path, mtime)``.  Requests that
+    arrive while the file is being read wait for that read and share it."""
+    key = (str(path), path.stat().st_mtime)
+    d = _cached_dpdf(key)
+    return d if d is not None else _flights.run(("dpdf", key), lambda: _read_dpdf(path, key))
+
+
+def _read_dpdf(path: Path, key: tuple[str, float]) -> DeltaPdfData:
+    d = _cached_dpdf(key)  # loaded since the caller looked
+    if d is not None:
+        return d
     f = load_delta_pdf(path)  # dtype=None: keep the ΔPDF's own precision
     lat = f.lattice
     q_max = f.logs.get("q_max")
@@ -292,17 +307,25 @@ def dpdf_floor(path: Path) -> tuple[float, float]:
     from nebula3d.analysis.dpdf_features import sigma_outside_origin
 
     key = (str(path), path.stat().st_mtime)
-    with _lock:
-        hit = _floors.get(key)
-    if hit is not None:
-        return hit
-    d = load_dpdf(path)
-    floor = sigma_outside_origin(d.data, d.x_axis, d.y_axis, d.z_axis, d.cell_angles)
-    with _lock:
-        _floors[key] = floor
-        while len(_floors) > _FLOOR_MAX:
-            _floors.popitem(last=False)
-    return floor
+
+    def cached() -> tuple[float, float] | None:
+        with _lock:
+            return _floors.get(key)
+
+    def measure() -> tuple[float, float]:
+        hit = cached()
+        if hit is not None:
+            return hit
+        d = load_dpdf(path)
+        floor = sigma_outside_origin(d.data, d.x_axis, d.y_axis, d.z_axis, d.cell_angles)
+        with _lock:
+            _floors[key] = floor
+            while len(_floors) > _FLOOR_MAX:
+                _floors.popitem(last=False)
+        return floor
+
+    hit = cached()
+    return hit if hit is not None else _flights.run(("floor", key), measure)
 
 
 def _pair_request(diffs: object, lengths: object) -> tuple[np.ndarray, np.ndarray]:

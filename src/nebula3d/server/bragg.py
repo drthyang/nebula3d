@@ -23,6 +23,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from nebula3d.server.singleflight import SingleFlight
+
 if TYPE_CHECKING:
     from nebula3d.pipeline import PipelineParams
 
@@ -60,6 +62,8 @@ def tail_sweep_out(record: object) -> dict[str, Any] | None:
 # The pre-run Bragg sensing's record (analysis.bragg_sense), small: one
 # volume's at a time, keyed by the file, its mtime and every setting it reads.
 _sense_cache: dict[tuple, dict[str, Any]] = {}
+# Simultaneous requests for one cold key share one sensing (server.singleflight).
+_flights = SingleFlight()
 
 
 def volume_bragg_sense(path: Path, params: PipelineParams) -> dict[str, Any]:
@@ -80,14 +84,19 @@ def volume_bragg_sense(path: Path, params: PipelineParams) -> dict[str, Any]:
     punch = params.punch
     key = (str(path), path.stat().st_mtime, int(params.edge_trim), str(params.precision),
            tuple(sorted((k, repr(v)) for k, v in dataclasses.asdict(punch).items())))
+
+    def sense() -> dict[str, Any]:
+        hit = _sense_cache.get(key)
+        if hit is not None:
+            return hit
+        declared = read_symmetry_ops(path) is not None or declared_for(path) is not None
+        vol = load_input(path, params)
+        record = sense_bragg(vol, punch, declared=declared)
+        del vol
+        out = {**record, "lines": sense_lines(record)}
+        _sense_cache.clear()
+        _sense_cache[key] = out
+        return out
+
     hit = _sense_cache.get(key)
-    if hit is not None:
-        return hit
-    declared = read_symmetry_ops(path) is not None or declared_for(path) is not None
-    vol = load_input(path, params)
-    record = sense_bragg(vol, punch, declared=declared)
-    del vol
-    out = {**record, "lines": sense_lines(record)}
-    _sense_cache.clear()
-    _sense_cache[key] = out
-    return out
+    return hit if hit is not None else _flights.run(key, sense)
