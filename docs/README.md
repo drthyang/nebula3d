@@ -127,6 +127,19 @@ included). Files written before this layout (`/entry/{data, sigma, mask, h_axis,
 k_axis, l_axis, ub_matrix}` volumes, root `data`/`x_axis`/… ΔPDFs with `lat_*`
 attributes) still load.
 
+`signal` and `errors_squared` are chunked one axis-0 slab per chunk. In the
+files a run works with on disk (its stage outputs and its ΔPDF) they carry no
+compression filter: gzip was about a third of a run's time on a large volume
+(about 50 million voxels), and without it a file takes 8 B per voxel and
+array. `nebula3d.save(vol, path)` and `nebula3d.io.save_delta_pdf` compress
+them by default (gzip level 1 with byte shuffle; `compression=None` for the
+faster, larger file), as do the ΔPDF the Consistency page saves and every file
+of the in-browser build, whose files live in the tab's memory. `num_events`,
+`mask` and the punch record are zeros and ones and always compressed. Either
+kind is standard HDF5 in the same layout with the same values, and reads the
+same way; outputs written with gzip by an earlier version are reused as they
+are.
+
 ## Terminology
 
 | Term | Meaning |
