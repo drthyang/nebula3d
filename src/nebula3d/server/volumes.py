@@ -192,27 +192,25 @@ def volume_facts(path: Path) -> VolumeFacts:
     """A volume's :class:`VolumeFacts`, without reading its arrays where that
     gives the same answer.
 
-    From the cached volume when it is loaded; else from the file's header
+    Kept by ``(path, mtime)``, as the volumes are.  First asked, they come
+    from the cached volume when it is loaded; else from the file's header
     (:func:`nebula3d.io.mantid_nxs.read_volume_header`, the loader's own code)
     when the file is a Mantid MDHistoWorkspace whose σ came with the data, so
     :func:`~nebula3d.core.sigma_note` has nothing to say; else from the volume,
     loaded (and cached) as before: a legacy or ASCII file, and a volume whose σ
-    is √|I|, whose note is read off its values.  Kept by ``(path, mtime)``, so
-    a volume is not loaded twice for them.
+    is √|I|, whose note is read off its values, once.
     """
     from nebula3d.io.mantid_nxs import is_mantid_nxs, read_volume_header
 
     key = (str(path), path.stat().st_mtime)
-    vol = _cached_volume(key)
-    if vol is not None:
-        return _facts_of(vol)
     with _lock:
         hit = _facts.get(key)
         if hit is not None:
             _facts.move_to_end(key)
             return hit
-    facts = None
-    if path.suffix.lower() in {".h5", ".hdf5", ".nxs"} and is_mantid_nxs(path):
+    vol = _cached_volume(key)
+    facts = None if vol is None else _facts_of(vol)
+    if facts is None and path.suffix.lower() in {".h5", ".hdf5", ".nxs"} and is_mantid_nxs(path):
         header = read_volume_header(path)
         if not header.sigma_estimated:  # sigma_note is None without a look at the data
             facts = VolumeFacts(
