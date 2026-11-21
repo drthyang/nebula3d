@@ -40,6 +40,9 @@
 //   curl 'http://127.0.0.1:18790/scenario?name=tune'   (each stage the run asks
 //                 to fix is tuned: tune_pipeline with two trials, the tuning's
 //                 proposal one setting changed, its judgement the user's settings)
+//   curl 'http://127.0.0.1:18790/scenario?name=worse'  (test only: one ring fix
+//                 that leaves more of the ring on the demo volume, so auto mode
+//                 puts it back)
 // GET /log lists the requests it has served.
 import { createServer } from "node:http";
 const PORT = Number(process.argv[2] ?? 18790);
@@ -47,7 +50,9 @@ const PAUSE = Number(process.argv[3] ?? 600);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
 const STAGE_SKILL = { "the ring removal": "reduction-qc", "the Bragg punch": "bragg-node-audit", "the backfill": "bragg-node-audit", "the flatten": "reduction-qc", "the 3D-ΔPDF": "delta-pdf-interpretation" };
-const SCENARIOS = { clean: {}, fix: { "the ring removal": [{ ringPooledSectors: 36 }] }, tune: {} };
+const SCENARIOS = { clean: {}, fix: { "the ring removal": [{ ringPooledSectors: 36 }] }, tune: {}, worse: { "the ring removal": [{ ringPooledSectors: 12 }] } };
+// What a fix says once its change is made, by scenario ("fix": the default).
+const FIXED = { worse: "I pooled the rings in fewer azimuthal sectors; the run from the ring removal will show whether it helped." };
 // The tune scenario: each stage the run asks to fix is tuned (tune_pipeline),
 // one trial besides the user's settings, which the judgement keeps.
 const TUNE_STAGE = { "the ring removal": "rings", "the Bragg punch": "punch", "the backfill": "backfill", "the flatten": "flatten", "the 3D-ΔPDF": "pdf" };
@@ -172,7 +177,7 @@ createServer(async (req, res) => {
       if (!plan) await say(res, "No setting change would help this stage: its check above reads as it is.");
       else if (calls.length === 0) await toolCall(res, "read_skill", { name: STAGE_SKILL[fix[1]] });
       else if (calls.length <= plan.length) await toolCall(res, "update_settings", { changes: plan[calls.length - 1] });
-      else await say(res, "I halved the ring model's azimuthal sectors so each pools more counts; the run from the punch will show whether it helped.");
+      else await say(res, FIXED[scenario] ?? "I halved the ring model's azimuthal sectors so each pools more counts; the run from the punch will show whether it helped.");
     } else if (report) {
       await say(res, "The auto run is done. Each stage's verdict is in its check above, and the changes the run made are in its decision log.");
     } else if (story(last)) {
