@@ -182,20 +182,12 @@ def load_mantid_nxs(
         raise ImportError("h5py is required to read NeXus files.") from exc
 
     with h5py.File(path, "r") as f:
-        root = _require_md_histo(f)
-        extra = nebula3d_group(root)
-        _require_content(path, extra, "hkl_volume")
-        data_grp = root["data"]
-        axes = _parse_dim_axes(data_grp, _read_w_matrix(root), extra)
-        ub = _resolve_ub(root, ub_matrix, extra)
+        data_grp, extra, axes, ub = _open_volume(f, path, ub_matrix)
         data, sigma, mask = _assemble(data_grp, axes, resolve_dtype(dtype, extra),
                                       keep_masked=extra is not None)
         instrument = (path.stem if extra is None
                       else _as_text(extra.attrs.get("instrument", "")))
-        # σ is √|I| when the file holds none (no errors_squared) or says so.
-        estimated = ("errors_squared" not in data_grp
-                     or (extra is not None
-                         and _as_text(extra.attrs.get("sigma", "")) == SIGMA_ESTIMATED))
+        estimated = _sigma_is_estimated(data_grp, extra)
 
     return HKLVolume(
         data=data,
@@ -210,7 +202,63 @@ def load_mantid_nxs(
     )
 
 
-#: The NEBULA3D group's ``sigma`` attribute on a volume whose σ is √|I|, none
+def _open_volume(
+    f: h5py.File, path: Path, ub_matrix: NDArray[np.float64] | None,
+) -> tuple[h5py.Group, h5py.Group | None,
+           dict[str, tuple[int, NDArray[np.float64]]], NDArray[np.float64]]:
+    """``(data group, nebula3d group, axes, UB)`` of an HKL volume's file: what
+    :func:`load_mantid_nxs` and :func:`read_volume_header` both read first."""
+    root = _require_md_histo(f)
+    extra = nebula3d_group(root)
+    _require_content(path, extra, "hkl_volume")
+    data_grp = root["data"]
+    axes = _parse_dim_axes(data_grp, _read_w_matrix(root), extra)
+    return data_grp, extra, axes, _resolve_ub(root, ub_matrix, extra)
+
+
+def _sigma_is_estimated(data_grp: h5py.Group, extra: h5py.Group | None) -> bool:
+    """σ is √|I| when the file holds none (no errors_squared) or says so."""
+    return ("errors_squared" not in data_grp
+            or (extra is not None
+                and _as_text(extra.attrs.get("sigma", "")) == SIGMA_ESTIMATED))
+
+
+@dataclass(frozen=True)
+class VolumeHeader:
+    """What :func:`load_mantid_nxs` gives of a volume besides its arrays: the
+    shape of ``data`` (H, K, L), the three axes, the UB and whether σ is an
+    estimate.  The same values, read by the same code, without the signal, σ
+    or mask."""
+
+    shape: tuple[int, int, int]
+    h_axis: NDArray[np.float64]
+    k_axis: NDArray[np.float64]
+    l_axis: NDArray[np.float64]
+    ub_matrix: NDArray[np.float64]
+    sigma_estimated: bool
+
+
+def read_volume_header(path: _PathLike) -> VolumeHeader:
+    """The :class:`VolumeHeader` of a Mantid MDHistoWorkspace file, as
+    :func:`load_mantid_nxs` would give it (with no UB override), reading no
+    volume-sized array: cheap on a multi-GB file."""
+    import h5py
+
+    path = Path(path)
+    with h5py.File(path, "r") as f:
+        data_grp, extra, axes, ub = _open_volume(f, path, None)
+        stored = data_grp["signal"].shape
+        perm = (axes["H"][0], axes["K"][0], axes["L"][0])
+        return VolumeHeader(
+            shape=(int(stored[perm[0]]), int(stored[perm[1]]), int(stored[perm[2]])),
+            h_axis=axes["H"][1],
+            k_axis=axes["K"][1],
+            l_axis=axes["L"][1],
+            ub_matrix=ub,
+            sigma_estimated=_sigma_is_estimated(data_grp, extra),
+        )
+
+
 #: having come with the data (``HKLVolume.sigma_estimated``).
 SIGMA_ESTIMATED = "sqrt_intensity"
 

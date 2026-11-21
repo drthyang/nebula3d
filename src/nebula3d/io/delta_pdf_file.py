@@ -74,7 +74,8 @@ LOG_UNITS: dict[str, str] = {
 class DeltaPdfFile:
     """What a ΔPDF file holds, in either layout.
 
-    ``data`` is None when read with ``read_data=False``.  ``lattice`` maps
+    ``data`` is None when read with ``read_data=False``; ``shape`` is its
+    shape either way (the stored array's).  ``lattice`` maps
     a/b/c (Å) and alpha/beta/gamma (degrees) to their values, None for any the
     file does not record; ``ub_matrix`` is the source volume's UB (physics
     convention), None when unknown or in a legacy file.  ``logs`` holds the
@@ -89,6 +90,7 @@ class DeltaPdfFile:
         default_factory=lambda: dict.fromkeys(_CELL_KEYS))
     ub_matrix: NDArray[np.float64] | None = None
     logs: dict[str, float | str] = field(default_factory=dict)
+    shape: tuple[int, ...] | None = None
 
     @property
     def cell(self) -> _Cell | None:
@@ -189,6 +191,7 @@ def _load_md_histo(
                  else dict.fromkeys(_CELL_KEYS)),
         ub_matrix=None if ub is None or np.array_equal(ub, np.eye(3)) else ub,
         logs=read_run_logs(root),
+        shape=tuple(int(n) for n in data_grp["signal"].shape),
     )
 
 
@@ -211,6 +214,7 @@ def _load_legacy(
         z_axis=np.asarray(f["z_axis"][()], dtype=np.float64),
         lattice=_legacy_lattice(attrs),
         logs=logs,
+        shape=tuple(int(n) for n in f["data"].shape),
     )
 
 

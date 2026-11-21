@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 
 from nebula3d.analysis.delta_pdf import section_geometry
-from nebula3d.io.delta_pdf_file import load_delta_pdf
+from nebula3d.io.delta_pdf_file import DeltaPdfFile, load_delta_pdf
 from nebula3d.server.singleflight import SingleFlight
 from nebula3d.server.versions import drop_other_versions, is_current
 
@@ -69,6 +69,10 @@ _floors: OrderedDict[tuple[str, float], tuple[float, float]] = OrderedDict()
 # Whole-ΔPDF reads since the process started (cache misses), as
 # nebula3d.server.volumes.read_count counts the volumes'.
 _reads = 0
+
+_META_FIELDS = ("x_axis", "y_axis", "z_axis", "lat_a", "lat_b", "lat_c", "q_max",
+                "lat_alpha", "lat_beta", "lat_gamma",
+                "window_shape", "window_scale", "window_open_weight")
 
 
 def read_count() -> int:
@@ -142,25 +146,8 @@ def _read_dpdf(path: Path, key: tuple[str, float]) -> DeltaPdfData:
         with _lock:
             drop_other_versions(_cache, key)
     f = load_delta_pdf(path)  # dtype=None: keep the ΔPDF's own precision
-    lat = f.lattice
-    q_max = f.logs.get("q_max")
     assert f.data is not None
-    d = DeltaPdfData(
-        data=f.data,
-        x_axis=f.x_axis,
-        y_axis=f.y_axis,
-        z_axis=f.z_axis,
-        lat_a=lat["a"],
-        lat_b=lat["b"],
-        lat_c=lat["c"],
-        q_max=float(q_max) if isinstance(q_max, float) else None,
-        lat_alpha=lat["alpha"],
-        lat_beta=lat["beta"],
-        lat_gamma=lat["gamma"],
-        window_shape=str(f.logs["window_shape"]) if "window_shape" in f.logs else None,
-        window_scale=_float_log(f.logs, "window_scale"),
-        window_open_weight=_float_log(f.logs, "window_open_weight"),
-    )
+    d = DeltaPdfData(data=f.data, **_described(f))
     global _reads
     with _lock:
         _reads += 1  # read, whether or not it is kept
@@ -175,6 +162,28 @@ def _read_dpdf(path: Path, key: tuple[str, float]) -> DeltaPdfData:
     return d
 
 
+def _described(f: DeltaPdfFile) -> dict:
+    """What a :class:`DeltaPdfData` holds beside its data, from the file as read
+    (with or without its data)."""
+    lat = f.lattice
+    q_max = f.logs.get("q_max")
+    return {
+        "x_axis": f.x_axis,
+        "y_axis": f.y_axis,
+        "z_axis": f.z_axis,
+        "lat_a": lat["a"],
+        "lat_b": lat["b"],
+        "lat_c": lat["c"],
+        "q_max": float(q_max) if isinstance(q_max, float) else None,
+        "lat_alpha": lat["alpha"],
+        "lat_beta": lat["beta"],
+        "lat_gamma": lat["gamma"],
+        "window_shape": str(f.logs["window_shape"]) if "window_shape" in f.logs else None,
+        "window_scale": _float_log(f.logs, "window_scale"),
+        "window_open_weight": _float_log(f.logs, "window_open_weight"),
+    }
+
+
 def _float_log(logs: dict, key: str) -> float | None:
     v = logs.get(key)
     return float(v) if isinstance(v, (int, float)) else None
@@ -187,19 +196,30 @@ def clear_cache() -> None:
 
 
 def dpdf_meta(path: Path) -> dict:
-    d = load_dpdf(path)
+    """A ΔPDF's shape, axis ranges, cell and window.  From the cached ΔPDF when
+    it is loaded, else from the file's header alone (its axes, cell and
+    provenance, ``read_data=False``): the same values, and no volume read."""
+    d = _cached_dpdf((str(path), path.stat().st_mtime))
+    if d is not None:
+        shape: tuple[int, ...] = d.data.shape
+        m = {k: getattr(d, k) for k in _META_FIELDS}
+    else:
+        f = load_delta_pdf(path, read_data=False)
+        assert f.shape is not None
+        shape, m = f.shape, _described(f)
+    x_axis, y_axis, z_axis = m["x_axis"], m["y_axis"], m["z_axis"]
     return {
-        "shape": [int(n) for n in d.data.shape],
-        "x_range": [float(d.x_axis[0]), float(d.x_axis[-1])],
-        "y_range": [float(d.y_axis[0]), float(d.y_axis[-1])],
-        "z_range": [float(d.z_axis[0]), float(d.z_axis[-1])],
-        "lattice": {"a": d.lat_a, "b": d.lat_b, "c": d.lat_c,
-                    "alpha": d.lat_alpha, "beta": d.lat_beta, "gamma": d.lat_gamma},
-        "q_max": d.q_max,
+        "shape": [int(n) for n in shape],
+        "x_range": [float(x_axis[0]), float(x_axis[-1])],
+        "y_range": [float(y_axis[0]), float(y_axis[-1])],
+        "z_range": [float(z_axis[0]), float(z_axis[-1])],
+        "lattice": {"a": m["lat_a"], "b": m["lat_b"], "c": m["lat_c"],
+                    "alpha": m["lat_alpha"], "beta": m["lat_beta"], "gamma": m["lat_gamma"]},
+        "q_max": m["q_max"],
         "planes": list(DPDF_PLANES),
-        "window_shape": d.window_shape,
-        "window_scale": d.window_scale,
-        "window_open_weight": d.window_open_weight,
+        "window_shape": m["window_shape"],
+        "window_scale": m["window_scale"],
+        "window_open_weight": m["window_open_weight"],
     }
 
 
