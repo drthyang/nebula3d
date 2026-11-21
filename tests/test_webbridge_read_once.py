@@ -182,6 +182,28 @@ def test_a_volume_without_sigma_is_loaded_once_for_its_meta(tmp_path):
     assert first[1] == first[0]
 
 
+def test_a_volumes_facts_keep_one_version_of_a_file(tmp_path):
+    """The facts kept for a file are those of the file as it is: rewritten
+    (another date), the earlier ones go, as the cached volumes do."""
+    import os
+
+    import numpy as np
+
+    import nebula3d
+    from nebula3d.demo import demo_volume
+    from nebula3d.server import volumes
+
+    path = tmp_path / "v.nxs"
+    nebula3d.save(demo_volume(9, dtype=np.float32), path)
+    volumes.clear_cache()
+    assert volumes.volume_facts(path).shape == (9, 9, 9)
+    nebula3d.save(demo_volume(11, dtype=np.float32), path)
+    st = path.stat()
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 2_000_000_000))
+    assert volumes.volume_facts(path).shape == (11, 11, 11)
+    assert [k[0] for k in volumes._facts] == [str(path)]
+
+
 def test_a_meta_keeps_the_volumes_the_worker_holds(ran):
     """Asking for a third volume's meta leaves the two cached volumes where
     they are; the ΔPDF's meta reads no ΔPDF, cached or not, and says the same."""

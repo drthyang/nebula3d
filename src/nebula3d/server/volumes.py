@@ -219,7 +219,10 @@ def volume_facts(path: Path) -> VolumeFacts:
                 sigma_estimated=False, sigma_note=None)
     if facts is None:
         facts = _facts_of(load_volume(path))
+    if not is_current(path, key[1]):
+        return facts  # the file changed meanwhile: these are not kept
     with _lock:
+        drop_other_versions(_facts, key)  # one version of a file, as the volumes
         _facts[key] = facts
         _facts.move_to_end(key)
         while len(_facts) > _FACTS_MAX:
