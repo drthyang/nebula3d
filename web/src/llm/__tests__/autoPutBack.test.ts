@@ -5,6 +5,8 @@
 // read exactly as before the fix. Anything less (refused, checks that differ,
 // nothing set aside) and the pipeline runs as it did before; a fix kept, a
 // stop, a failure and a new run delete what was set aside.
+// The sensed settings judged against the defaults (judgeSensed) get their
+// outputs back the same way when they are kept, in place of their second run.
 // The backend here is a stand-in (as autoHarness.ts stubs the runs): what is
 // "set aside" is the settings the outputs were last run with, which the
 // stand-in evaluations follow. Synthetic only: no model, backend or API.
@@ -14,7 +16,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { configOf } from "../../state/configMemory";
 import { usePipelineStore } from "../../state/pipelineStore";
 import type { AgentStep } from "../agent";
-import { useDecisionStore } from "../apply/decisions";
+import { addProposals, useDecisionStore } from "../apply/decisions";
+import { runProposal } from "../apply/proposals";
 import { sinceLine } from "../apply/since";
 import { autoLoop, endAuto, resumeAuto, startAuto, stopAuto } from "../auto/controller";
 import { sameChecks } from "../auto/plan";
@@ -24,7 +27,7 @@ import { recomputedAt } from "../evidence";
 import { isPutBackMark } from "../putBackMark";
 import { activityNow } from "../auto/activity";
 import { clock, CTX, fixWith, freshAuto, holdRuns, model, outputs, phaseOf, pipeline, say, SCRIPTED, scriptedStream } from "./autoHarness";
-import { braggSenseKeeping, installBackend } from "./syntheticCrystal";
+import { braggSense, braggSenseKeeping, installBackend } from "./syntheticCrystal";
 
 const api = vi.hoisted(() => ({
   fetchBraggProfile: vi.fn(),
@@ -423,6 +426,312 @@ describe("what was set aside is deleted on every other way out", () => {
     expect(backend.calls).toEqual(["discard"]);
     expect(backend.held).toBeNull();
     expect(api.discardSetAside).toHaveBeenCalledWith(CTX.dataset.id);
+  });
+});
+
+// ---------------------------------------------------------------- the sensed settings judged against the defaults
+
+describe("the sensed settings judged against the defaults, their outputs set aside", () => {
+  type W = Partial<{ punchFootprint: string; punchFitUnconstrained: boolean }>;
+  const sensed = (w: W) => w.punchFootprint === "ellipsoid" && w.punchFitUnconstrained === true;
+  const form = () => [usePipelineStore.getState().punchFootprint, usePipelineStore.getState().punchFitUnconstrained];
+  const runsSensed = () => pipeline.runs.map((r) => sensed(r.with));
+  const logged = () => decisions().map((d) => [d.kind, d.action, d.by, d.kind === "run" ? (d.runFrom ?? "start") : d.title]);
+  const names = () => run().steps.map((x) => (isPutBackMark(x) ? "mark" : x.name));
+  const fixTexts = () => model.sent.filter((r) => phaseOf(r.messages).kind === "fix").map((r) => r.messages.map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content))).join("\n"));
+
+  // What the block logs up to the run the restore stands for, in either build.
+  const UNTIL_SET_AGAIN = [
+    ["setting", "apply", "auto", "Punch footprint"],
+    ["setting", "apply", "auto", "Punch drop fit constraints"],
+    ["run", "apply", "auto", "start"],
+    ["setting", "undo", "auto", "Punch drop fit constraints"],
+    ["setting", "undo", "auto", "Punch footprint"],
+    ["run", "apply", "auto", "punch"],
+    ["setting", "apply", "auto", "Punch footprint"],
+    ["setting", "apply", "auto", "Punch drop fit constraints"],
+  ];
+  const SECOND_RUN = ["run", "apply", "auto", "punch"];
+
+  /** The sensing recommends the ellipsoid; the punch needs attention either way, with `withSensed` / `withDefaults` nodes missed; no fix changes anything. */
+  function judged(withSensed: number, withDefaults: number, onPunchCheck?: (w: W) => void): void {
+    api.fetchBraggSense.mockImplementation(async (id: string) => braggSense(id));
+    outputs.tweak = (stage, e, w) => {
+      if (stage === "rings") return cleanRings(e);
+      if (stage !== "punch") return e;
+      onPunchCheck?.(w);
+      return { ...e, leftover_at_nodes: sensed(w) ? withSensed : withDefaults };
+    };
+    model.respond = (phase, round) => (phase.kind === "fix" ? fixWith("bragg-node-audit", null)(round) : say("The punch needs attention."));
+  }
+  /** The sensed settings no worse than the defaults: kept. */
+  const sensedWin = (onPunchCheck?: (w: W) => void) => judged(1, 3, onPunchCheck);
+
+  it("kept: their outputs are restored in place of the second run, the checks as before the defaults' run", async () => {
+    sensedWin();
+    await start();
+    expect(run().state).toBe("done");
+    expect(form()).toEqual(["ellipsoid", true]);
+    // The run with them and the defaults' run: theirs were not made again.
+    expect(runsSensed()).toEqual([true, false]);
+    expect(sensed(outputs.ranWith)).toBe(true);
+    // Set aside from the punch before the defaults' run, restored once they were set again; the fixes changed nothing.
+    expect(backend.calls).toEqual(["discard", "set-aside punch", "restore"]);
+    expect(backend.held).toBeNull();
+    expect(run().pendingRun).toBeNull();
+    // The punch's checks: with them, with the defaults, and after the restore, which reads as the first did.
+    const [before, defaults, back] = punchChecks();
+    expect(punchChecks()).toHaveLength(3);
+    expect(back.result).toBe(before.result);
+    expect(sameChecks("punch", [before], [back])).toBe(true);
+    expect(defaults.result).not.toBe(before.result);
+    // The row is judged on the restored checks, as it was on the second run's.
+    const row = run().plan.find((r) => r.id === "punch")!;
+    expect(row).toMatchObject({ status: "attention", outcome: "attention", tries: 2, detail: "still needs attention after two fixes: no change adopted" });
+    expect(row.before!.map((e) => e.step)).toEqual([back.id]);
+    expect(row.before!.map((e) => e.text)).toEqual([before.summary]);
+    // The decisions the run made on them stand, and are the record's.
+    const standing = decisions().filter((d) => d.kind === "setting" && d.action === "apply" && !d.undoneBy);
+    expect(run().sensed).toEqual({ decisions: standing.map((d) => d.id), judged: true });
+  });
+
+  it("kept: the same decisions as with the second run, less that run; no Run card left open", async () => {
+    sensedWin();
+    await start();
+    expect(logged()).toEqual(UNTIL_SET_AGAIN);
+    expect(runCards().filter((p) => p.status === "open")).toEqual([]);
+    // What the first fix reply read of it: the digest's line ends at the settings set again.
+    const line = fixTexts()[0].split("\n").find((l) => l.startsWith("- in this auto run"))!;
+    expect(line).toMatch(/; ran the pipeline from punch; applied punchFootprint own → ellipsoid; .*punchFitUnconstrained[^;]*$/);
+    expect(line.match(/ran the pipeline from punch/g)).toHaveLength(1);
+    expect(activityNow()!.rows.filter((r) => r.title === "Ran the pipeline")).toHaveLength(2);
+  });
+
+  it("kept: the restore is marked in the run's steps before the re-check, as the run it stands for, and nothing a model reads names it", async () => {
+    sensedWin();
+    await start();
+    const steps = run().steps;
+    const at = steps.findIndex(isPutBackMark);
+    expect(steps.filter(isPutBackMark)).toHaveLength(1);
+    // The defaults' check, the settings set again, the mark, the re-check.
+    expect(names().slice(at - 2, at + 2)).toEqual(["assess_stage", "update_settings", "mark", "assess_stage"]);
+    expect(JSON.parse(steps[at].result!)).toEqual({ stages: { punch: "computed", backfill: "computed", flatten: "computed", pdf: "computed", pdf_check: "computed" } });
+    const [, onDefaults, back] = punchChecks();
+    expect(recomputedAt(steps).punch).toBe(at);
+    expect(steps.indexOf(onDefaults)).toBeLessThan(at);
+    expect(steps.indexOf(back)).toBeGreaterThan(at);
+    expect(JSON.stringify(model.sent)).not.toContain("outputs_put_back");
+  });
+
+  it("the defaults better: what was set aside is deleted, never restored, and the run goes as before", async () => {
+    judged(4, 2);
+    await start();
+    expect(run().state).toBe("done");
+    expect(form()).toEqual(["", false]);
+    expect(runsSensed()).toEqual([true, false]);
+    expect(backend.calls).toEqual(["discard", "set-aside punch", "discard"]);
+    expect(backend.held).toBeNull();
+    expect(run().pendingRun).toBeNull();
+    expect(run().steps.filter(isPutBackMark)).toEqual([]);
+    expect(punchChecks()).toHaveLength(2);
+    expect(logged()).toEqual(UNTIL_SET_AGAIN.slice(0, 6));
+    expect(run().sensed?.judged).toBe(true);
+    expect(activityNow()!.rows.find((r) => r.title.startsWith("Set "))!.line).toMatch(/\(it made the punch's check worse: put back\)$/);
+  });
+
+  describe("kept, but the restore cannot be trusted: the second run, as before", () => {
+    const asBefore = () => {
+      expect(run().state).toBe("done");
+      expect(form()).toEqual(["ellipsoid", true]);
+      expect(runsSensed()).toEqual([true, false, true]);
+      expect(sensed(outputs.ranWith)).toBe(true);
+      expect(backend.held).toBeNull();
+      expect(run().pendingRun).toBeNull();
+      expect(logged()).toEqual([...UNTIL_SET_AGAIN, SECOND_RUN]);
+      expect(runCards().filter((p) => p.status === "open")).toEqual([]);
+      const checks = punchChecks();
+      expect(checks[checks.length - 1].result).toBe(checks[0].result);
+    };
+
+    it("nothing set aside (space short): no restore is asked", async () => {
+      sensedWin();
+      backend.refuse = "set-aside";
+      await start();
+      asBefore();
+      expect(backend.calls.filter((c) => c === "restore")).toEqual([]);
+      expect(run().steps.filter(isPutBackMark)).toEqual([]);
+      expect(punchChecks()).toHaveLength(3);
+    });
+
+    it("a backend without the calls (an older server): the run's steps are those of before", async () => {
+      sensedWin();
+      for (const f of [api.setAsideOutputs, api.restoreSetAside, api.discardSetAside]) f.mockRejectedValue(new Error("404 Not Found"));
+      await start();
+      asBefore();
+      const at = names().lastIndexOf("update_settings");
+      expect(names().slice(at - 2, at + 3)).toEqual(["run_pipeline", "assess_stage", "update_settings", "run_pipeline", "assess_stage"]);
+    });
+
+    it("the restore refused", async () => {
+      sensedWin();
+      backend.refuse = "restore";
+      await start();
+      asBefore();
+      expect(backend.calls).toContain("restore");
+      expect(run().steps.filter(isPutBackMark)).toEqual([]);
+      expect(punchChecks()).toHaveLength(3);
+    });
+
+    it("the checks after the restore differ from those before the defaults' run", async () => {
+      sensedWin();
+      backend.restoreWrong = true; // "restored", but the outputs are still the defaults'
+      await start();
+      asBefore();
+      expect(punchChecks()).toHaveLength(4);
+      const at = names().indexOf("mark");
+      expect(names().slice(at, at + 4)).toEqual(["mark", "assess_stage", "run_pipeline", "assess_stage"]);
+    });
+
+    it("a Run card open that the second run would have made its own: no restore is asked, and the run applies it", async () => {
+      let offered = false;
+      sensedWin((w) => {
+        if (sensed(w) || offered) return;
+        offered = true;
+        addProposals([runProposal("P900", 0, CTX.dataset.id, "pdf", "a change of yours", "apply")]);
+      });
+      await start();
+      expect(backend.calls.filter((c) => c === "restore")).toEqual([]);
+      expect(runsSensed()).toEqual([true, false, true]);
+      expect(useDecisionStore.getState().proposals.find((p) => p.id === "P900")!.status).toBe("applied");
+      expect(run().pendingRun).toBeNull();
+      expect(backend.held).toBeNull();
+    });
+  });
+
+  it("Stop while their outputs are being set aside: deleted, the defaults' run owed, and Resume makes it", async () => {
+    sensedWin();
+    const setAside = api.setAsideOutputs.getMockImplementation()!;
+    api.setAsideOutputs.mockImplementation(async (...a: unknown[]) => {
+      const out = await setAside(...a);
+      stopAuto();
+      return out;
+    });
+    await start();
+    expect(run().state).toBe("stopped");
+    expect(form()).toEqual(["", false]);
+    expect(run().pendingRun).toBe("punch");
+    expect(backend.held).toBeNull();
+    expect(runsSensed()).toEqual([true]);
+    await resumeAuto();
+    await (autoLoop() ?? Promise.resolve());
+    expect(run().state).toBe("done");
+    expect(run().pendingRun).toBeNull();
+    expect(runsSensed()).toEqual([true, false]);
+    expect(backend.held).toBeNull();
+  });
+
+  it("Stop in the defaults' run: deleted, the run owed, and Resume makes it", async () => {
+    sensedWin();
+    const setAside = api.setAsideOutputs.getMockImplementation()!;
+    api.setAsideOutputs.mockImplementation(async (...a: unknown[]) => {
+      holdRuns();
+      return setAside(...a);
+    });
+    const started = startAuto({ ctx: CTX, settings: SCRIPTED, now: clock.now });
+    await vi.waitFor(() => expect(usePipelineStore.getState().running && pipeline.hold).toBeTruthy());
+    expect(backend.held).toMatchObject({ from: "punch" });
+    stopAuto();
+    await started;
+    expect(run().state).toBe("stopped");
+    expect(form()).toEqual(["", false]);
+    expect(run().pendingRun).toBe("punch");
+    expect(backend.held).toBeNull();
+    expect(backend.calls.slice(-2)).toEqual(["set-aside punch", "discard"]);
+    pipeline.hold = null;
+    await resumeAuto();
+    await (autoLoop() ?? Promise.resolve());
+    expect(run().state).toBe("done");
+    expect(run().pendingRun).toBeNull();
+    // As before: the run owed is made with the defaults, which stay (the judging is not made twice).
+    expect(pipeline.runs.map((r) => [sensed(r.with), r.ended])).toEqual([[true, "done"], [false, "cancelled"], [false, "done"]]);
+    expect(form()).toEqual(["", false]);
+    expect(backend.calls.filter((c) => c === "restore")).toEqual([]);
+  });
+
+  it("the defaults' run failed: deleted, the run paused with it owed; Retry runs it", async () => {
+    sensedWin();
+    const setAside = api.setAsideOutputs.getMockImplementation()!;
+    api.setAsideOutputs.mockImplementation(async (...a: unknown[]) => {
+      pipeline.fail = true;
+      return setAside(...a);
+    });
+    await start();
+    expect(run()).toMatchObject({ state: "paused", pause: { kind: "failure", what: "run" }, pendingRun: "punch" });
+    expect(backend.held).toBeNull();
+    expect(backend.calls.slice(-2)).toEqual(["set-aside punch", "discard"]);
+    api.setAsideOutputs.mockImplementation(setAside);
+    await resumeAuto();
+    await (autoLoop() ?? Promise.resolve());
+    expect(run().state).toBe("done");
+    expect(pipeline.runs.map((r) => [sensed(r.with), r.ended])).toEqual([[true, "done"], [false, "error"], [false, "done"]]);
+    expect(backend.held).toBeNull();
+  });
+
+  it("Stop while their outputs are being put back: the run stays owed, and Resume makes it with them", async () => {
+    sensedWin();
+    backend.onRestore = () => {
+      backend.onRestore = null;
+      stopAuto();
+    };
+    await start();
+    expect(run().state).toBe("stopped");
+    expect(form()).toEqual(["ellipsoid", true]);
+    expect(run().pendingRun).toBe("punch");
+    expect(backend.held).toBeNull();
+    expect(runsSensed()).toEqual([true, false]);
+    await resumeAuto();
+    await (autoLoop() ?? Promise.resolve());
+    expect(run().state).toBe("done");
+    expect(run().pendingRun).toBeNull();
+    expect(runsSensed()).toEqual([true, false, true]);
+    expect(form()).toEqual(["ellipsoid", true]);
+  });
+
+  it("Stop in the check after the restore: the run stays owed, and Resume makes it with them", async () => {
+    let restored = false;
+    sensedWin(() => {
+      if (!restored) return;
+      restored = false;
+      stopAuto();
+    });
+    backend.onRestore = () => {
+      backend.onRestore = null;
+      restored = true;
+    };
+    await start();
+    expect(run().state).toBe("stopped");
+    expect(form()).toEqual(["ellipsoid", true]);
+    expect(run().pendingRun).toBe("punch");
+    expect(backend.held).toBeNull();
+    expect(names()[names().length - 1]).toBe("mark");
+    await resumeAuto();
+    await (autoLoop() ?? Promise.resolve());
+    expect(run().state).toBe("done");
+    expect(run().pendingRun).toBeNull();
+    expect(runsSensed()).toEqual([true, false, true]);
+  });
+
+  it("Stop for good while their outputs are being put back: the report says the run was owed", async () => {
+    sensedWin();
+    backend.onRestore = () => {
+      backend.onRestore = null;
+      void endAuto();
+    };
+    await start();
+    await vi.waitFor(() => expect(run().state).toBe("done"));
+    expect(run()).toMatchObject({ appReport: "stopped", pendingRun: "punch" });
+    expect(run().ended).toContain("A change's run had not finished (punch on)");
+    expect(backend.held).toBeNull();
   });
 });
 
