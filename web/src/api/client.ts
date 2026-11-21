@@ -1,7 +1,7 @@
 // Typed fetch wrappers for the nebula3d API, including the binary slice envelope.
 
 import { decodePairSignal, type PairSignal } from "./pairSignal";
-import { engine, PYODIDE_MODE } from "./pyodideEngine";
+import { engine, getBootStatus, PYODIDE_MODE } from "./pyodideEngine";
 import type {
   BraggProfile,
   ConsistencyCheck,
@@ -23,6 +23,8 @@ import type {
   RingSurvey,
   BraggSense,
   ServerMemory,
+  SetAside,
+  SetAsideRestore,
   ShellFloors,
   Slice,
   SliceHeader,
@@ -563,6 +565,32 @@ export async function runPipeline(req: PipelineRunRequest): Promise<JobOut> {
 export function fetchStaleOutputs(req: StaleOutputsRequest): Promise<StaleOutputs> {
   if (PYODIDE_MODE) return engine.staleOutputs(req.dataset_id, JSON.stringify(req.params), req.flatten_enabled);
   return postJSON<StaleOutputs>("/api/pipeline/stale", req);
+}
+
+// Outputs set aside before a run that may be put back (auto mode's fix:
+// llm/auto/controller.ts; nebula3d.server.setaside). The backend keeps one
+// set per dataset, beside processed/, listed nowhere.
+
+/** Set aside the dataset's outputs from `fromStage` to the end; not when the disk (the browser: the memory) is short. */
+export function setAsideOutputs(datasetId: string, fromStage: string): Promise<SetAside> {
+  if (PYODIDE_MODE) return engine.setAside(datasetId, fromStage);
+  return postJSON<SetAside>("/api/pipeline/set-aside", { dataset_id: datasetId, from_stage: fromStage });
+}
+
+/** Put back what was set aside, for these settings: restored only when a run with them would then compute nothing. What was set aside is gone afterwards. */
+export function restoreSetAside(req: StaleOutputsRequest): Promise<SetAsideRestore> {
+  if (PYODIDE_MODE) return engine.setAsideRestore(req.dataset_id, JSON.stringify(req.params), req.flatten_enabled);
+  return postJSON<SetAsideRestore>("/api/pipeline/set-aside/restore", req);
+}
+
+/** Delete what was set aside for the dataset. */
+export function discardSetAside(datasetId: string): Promise<{ discarded: boolean }> {
+  if (PYODIDE_MODE) {
+    // An engine not up holds nothing (a restart emptied its workspace): it is not booted to hear so.
+    if (!getBootStatus().ready) return Promise.resolve({ discarded: false });
+    return engine.setAsideDiscard(datasetId);
+  }
+  return postJSON<{ discarded: boolean }>("/api/pipeline/set-aside/discard", { dataset_id: datasetId });
 }
 
 /** A job's status, or null when the server does not know it (it restarted since). */

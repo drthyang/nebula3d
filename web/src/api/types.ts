@@ -1026,6 +1026,21 @@ export interface TuningRun {
   dataset_id: string;
 }
 
+/** A dataset's outputs set aside before a run that may be put back (POST /api/pipeline/set-aside): whether they were, and why not. */
+export interface SetAside {
+  set_aside: boolean;
+  reason: string | null;
+  files: string[];
+  bytes: number;
+}
+
+/** What was set aside put back (POST /api/pipeline/set-aside/restore): restored only when a run with the settings would then compute nothing. */
+export interface SetAsideRestore {
+  restored: boolean;
+  reason: string | null;
+  files: string[];
+}
+
 export interface TuningPromote extends TuningRun {
   trial: string;
   files: string[];

@@ -40,17 +40,27 @@
 //    pipeline run under way; Resume restarts the row it stopped in, running
 //    first a change whose run had not finished. Stop (endAuto) ends the run
 //    there with the app's report from what exists: no model reply, no cost.
+//  - Before a fix's run, the outputs it will overwrite are set aside by the
+//    backend (nebula3d.server.setaside). A fix put back gets them back in
+//    place of a second run (putBack), once the backend says a run with the
+//    settings put back would compute nothing and the stage's checks read
+//    exactly as before the fix; anything less, or nothing set aside (the
+//    disk or the browser's memory short), and the pipeline runs as before.
+//    They are deleted when the fix is kept, and on every other way out of
+//    the fix (a stop, a failure, the volume closed, a reload).
 //
 // The record (store.ts) is what the Auto panel (components/AutoPanel.tsx)
 // renders; the app's own step under way is published whole (store.ts, `live`)
 // for the Highlights to follow.
 
-import { fetchDataset } from "../../api/client";
+import { discardSetAside, fetchDataset, restoreSetAside, setAsideOutputs } from "../../api/client";
+import { queryClient } from "../../api/queryClient";
 import type { Dataset } from "../../api/types";
 import { configOf } from "../../state/configMemory";
-import { formToParams, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { enabledStages, formToParams, STAGES as PIPELINE_ORDER, usePipelineStore, type PipelineConfig } from "../../state/pipelineStore";
+import { clearsWithVolume } from "../../state/volumeReset";
 import { toolStepsIn, type AgentStep } from "../agent";
-import { dismissCard, applyOnClick, mergeIntoTwin, undoable, undoDecision } from "../apply/actions";
+import { changeText, dismissCard, applyOnClick, mergeIntoTwin, undoable, undoDecision, withdrawRunReasons } from "../apply/actions";
 import { addProposals, logDecision, nextProposalNumber, updateProposal, useDecisionStore, type Decision } from "../apply/decisions";
 import { buildProposals, cardSetting, runProposal, runStageFor, SETTING_KEYS, type Proposal } from "../apply/proposals";
 import { marksMade } from "../answerChecks";
@@ -60,6 +70,7 @@ import { overLimit, pauseClock, resumeClock, startClock, stopClock } from "../cl
 import type { ClickEvent } from "../consent";
 import { hklVolumeId, loadPipelineContext, safe, stageVolumeId } from "../context/loadContext";
 import type { PipelineContext } from "../context/pipelineContext";
+import { putBackMark, putBackMarkId } from "../putBackMark";
 import { askAssistant, type ReplyOutcome } from "../session";
 import type { UsageReport } from "../provider/client";
 import { autoPolicyOf, type RunPolicy } from "../runPolicy";
@@ -85,6 +96,7 @@ import {
   countWord,
   rowIndex,
   ROW_IDS,
+  sameChecks,
   stageKind,
   STAGE_CHECKS,
   type AutoLimits,
@@ -179,6 +191,8 @@ export async function startAuto(start: AutoStart): Promise<void> {
   const blocked = startBlocked();
   if (blocked) throw new Error(blocked);
   const s = openSession(start);
+  // Nothing an earlier run set aside outlives it.
+  void dropAside(start.ctx.dataset.id);
   const limits = limitsOf(start.limits);
   useAutoStore.setState({
     run: newRun({
@@ -228,6 +242,8 @@ export async function resumeAuto(start?: AutoStart): Promise<void> {
     if (!start) throw new Error("resume needs the dataset after a reload");
     openSession(start);
   }
+  // Resume restarts the row: what a fix under way had set aside (before a reload, too) is no longer its.
+  void dropAside(r.dataset);
   wake();
   return go();
 }
@@ -266,6 +282,7 @@ export async function endAuto(by = "you"): Promise<void> {
   if (session) session.unwatch = null;
   // One loop at a time: the one the stop ended unwinds before the run ends.
   if (loop) await loop;
+  void dropAside(r.dataset);
   const x = useAutoStore.getState().run;
   if (!x || x.id !== r.id || x.state === "done") return;
   const owed = x.pendingRun ? ` A change's run had not finished (${x.pendingRun} on): the outputs are those from before it.` : "";
@@ -779,6 +796,97 @@ async function judgeSensed(checks: AgentStep[]): Promise<AgentStep[]> {
   return checkStage("punch");
 }
 
+// ---------------------------------------------------------------- outputs set aside for a fix
+//
+// One set at a time: the outputs the run of the fix under way will overwrite,
+// kept by the backend (nebula3d.server.setaside). `aside` names the dataset
+// while they are held, whatever becomes of the session.
+
+let aside: string | null = null;
+
+/** A call that may fail: null then (an older server, a refusal, the engine gone). */
+async function attempt<T>(call: () => Promise<T>): Promise<T | null> {
+  try {
+    return await call();
+  } catch {
+    return null;
+  }
+}
+
+// The backend's set-aside calls go one at a time, in the order asked: a
+// delete not waited for (a new run, a stop) never lands after a later set-aside.
+let asideCalls: Promise<unknown> = Promise.resolve();
+function inTurn<T>(call: () => Promise<T>): Promise<T | null> {
+  const next = asideCalls.then(() => attempt(call));
+  asideCalls = next;
+  return next;
+}
+
+/** Set aside the outputs a run from `from` will overwrite; whether they were (not: the pipeline runs again, as before). */
+async function setAside(from: RunStage): Promise<boolean> {
+  const dataset = session!.work.dataset.id;
+  aside = dataset; // a refusal leaves none; a call that failed may have: either way it is deleted on the way out
+  const out = await inTurn(() => setAsideOutputs(dataset, from));
+  if (stopped()) halt();
+  return !!out?.set_aside;
+}
+
+/** Delete what is set aside (for `dataset`: whatever an earlier run or page left for it). */
+async function dropAside(dataset: string | null = null): Promise<void> {
+  const held = aside ?? dataset;
+  aside = null;
+  if (held) await inTurn(() => discardSetAside(held));
+}
+
+// Closing the volume: what a fix under way had set aside goes with it.
+clearsWithVolume(() => void dropAside());
+
+// A run the page reloaded in (store.ts brings it back stopped): what its fix had set aside is no longer its.
+{
+  const left = useAutoStore.getState().run;
+  if (left && left.state !== "done") void dropAside(left.dataset);
+}
+
+/**
+ * Put a fix's outputs back: the ones set aside before its run, in place of
+ * running the pipeline again, once the fix's changes are undone. The backend
+ * moves them back and answers "restored" only when a run with the settings
+ * now in place would compute nothing; the stage's checks then run again and
+ * must read exactly as `before`, the checks before the fix (plan.ts,
+ * sameChecks). Returns those checks, the run owed no more; or null, and the
+ * caller runs the pipeline from the fix's stage, which makes every output again.
+ */
+async function putBack(stage: Stage, from: RunStage, undone: readonly Decision[], before: readonly AgentStep[]): Promise<AgentStep[] | null> {
+  const s = session!;
+  const dataset = s.work.dataset.id;
+  const form = usePipelineStore.getState();
+  const out = await inTurn(() => restoreSetAside({ dataset_id: dataset, flatten_enabled: form.flatten, params: formToParams(form) }));
+  aside = null; // the backend keeps none of it, whatever it answered
+  // The outputs changed under every view, as after a run (pipelineStore.ts, runStages).
+  await attempt(() => queryClient.invalidateQueries());
+  const fresh = await safe(fetchDataset(dataset));
+  if (fresh) {
+    s.work.dataset = fresh;
+    useAutoStore.setState({ work: fresh });
+  }
+  if (stopped()) halt();
+  if (!out?.restored) return null;
+  // The outputs changed, as a run from the fix's stage would have changed them: marked in the run's steps
+  // before the check that follows, so a check made before it is no evidence of them (putBackMark.ts).
+  // The record's alone: no row, no decision, nothing a model reads.
+  const order: readonly string[] = PIPELINE_ORDER;
+  const changed = enabledStages(form).filter((st) => order.indexOf(st) >= order.indexOf(from));
+  stepNumber += 1;
+  const mark = putBackMark(putBackMarkId(run().id, stepNumber), changed);
+  patchRun((x) => ({ steps: [...x.steps, mark] }));
+  const again = await checkStage(stage);
+  if (!sameChecks(stage, before, again)) return null;
+  patchRun({ pendingRun: null });
+  // The Run card each undo offered (apply/actions.ts, undoDecision) has no run left to make.
+  withdrawRunReasons(dataset, undone.map((d) => `undid ${changeText(d.title, d.shown)}`));
+  return again;
+}
+
 /** A run of the pipeline by the app: from `from`, or (null) what is missing or stale; logged as auto mode's. */
 async function appRun(from: RunStage | null): Promise<AgentStep> {
   if (from) patchRun({ pendingRun: from });
@@ -845,7 +953,7 @@ async function stageRow(stage: Stage): Promise<void> {
     return;
   }
   const limits = run().limits;
-  let putBack = 0; // fixes put back for making it worse
+  let putBackN = 0; // fixes put back for making it worse
   let unchanged = 0; // fixes that adopted no change (a tuning that kept the settings, a reply that changed none)
   while (rowOf(run(), stage).tries < limits.fixesPerStage) {
     holdFor(stage);
@@ -872,23 +980,43 @@ async function stageRow(stage: Stage): Promise<void> {
     if (!changes.length) unchanged += 1;
     if (changes.length) {
       from = run().pendingRun ?? from;
-      await appRun(from);
-      const after = await checkStage(stage);
-      if (madeWorse(stage, checks, after)) {
-        // Put back exactly what the fix changed, while it stands (§8, question 3).
-        for (const d of [...changes].reverse()) {
-          const now = useDecisionStore.getState().decisions.find((x) => x.id === d.id);
-          if (now && undoDecision(now, undefined, "auto")) {
-            const undo = useDecisionStore.getState().decisions.find((x) => x.undoes === d.id);
-            if (undo) patchRun((x) => ({ decisions: [...x.decisions, undo.id] }));
-          }
-        }
+      try {
+        // The outputs the run will overwrite, set aside: a fix put back gets them back without a second run.
+        const held = await setAside(from);
         await appRun(from);
-        checks = await checkStage(stage);
-        putBack += 1;
-        patchRow(stage, { detail: `its ${ordinal(tries)} fix made it worse: put back` });
-      } else {
-        checks = after;
+        const after = await checkStage(stage);
+        if (madeWorse(stage, checks, after)) {
+          // Put back exactly what the fix changed, while it stands (§8, question 3).
+          const undone: Decision[] = [];
+          for (const d of [...changes].reverse()) {
+            const now = useDecisionStore.getState().decisions.find((x) => x.id === d.id);
+            if (now && undoDecision(now, undefined, "auto")) {
+              undone.push(now);
+              const undo = useDecisionStore.getState().decisions.find((x) => x.undoes === d.id);
+              if (undo) patchRun((x) => ({ decisions: [...x.decisions, undo.id] }));
+            }
+          }
+          // Only when every change went back: the outputs set aside are those of the settings before the fix.
+          let back: AgentStep[] | null = null;
+          if (held && undone.length === changes.length) {
+            // The outputs are the fix's until they are put back: a stop meanwhile owes the run.
+            patchRun({ pendingRun: from });
+            back = await putBack(stage, from, undone, checks);
+          }
+          if (back) {
+            checks = back;
+          } else {
+            await appRun(from);
+            checks = await checkStage(stage);
+          }
+          putBackN += 1;
+          patchRow(stage, { detail: `its ${ordinal(tries)} fix made it worse: put back` });
+        } else {
+          checks = after;
+        }
+      } finally {
+        // Kept, put back, stopped or failed: nothing stays set aside.
+        await dropAside();
       }
       kind = stageKind(stage, checks);
       patchRow(stage, { outcome: kind, evidence: evidenceOf(checks) });
@@ -899,7 +1027,7 @@ async function stageRow(stage: Stage): Promise<void> {
     }
   }
   const tries = rowOf(run(), stage).tries;
-  const back = putBack ? ` (${countWord(putBack)} put back: ${putBack === 1 ? "it" : "they"} made it worse)` : "";
+  const back = putBackN ? ` (${countWord(putBackN)} put back: ${putBackN === 1 ? "it" : "they"} made it worse)` : "";
   const kept = !unchanged ? "" : unchanged === tries ? ": no change adopted" : ` (${countWord(unchanged)} adopted no change)`;
   patchRow(stage, { status: "attention", detail: `still needs attention after ${countWord(tries)} fix${tries === 1 ? "" : "es"}${kept}${back}` });
 }

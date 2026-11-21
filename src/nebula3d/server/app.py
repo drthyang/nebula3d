@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from nebula3d import __version__
+from nebula3d.server import setaside
 from nebula3d.server.config import ServerConfig, config_from_env
 from nebula3d.server.jobs import JobManager
 from nebula3d.server.memory import memory_snapshot
@@ -48,6 +49,9 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     app = FastAPI(title="nebula3d", version=__version__)
     app.state.config = config or config_from_env()
     app.state.jobs = JobManager()
+    # Outputs an auto run set aside before a fix (server.setaside): the run
+    # that would put them back went with the server that held it.
+    setaside.sweep(app.state.config)
 
     app.add_middleware(
         CORSMiddleware,

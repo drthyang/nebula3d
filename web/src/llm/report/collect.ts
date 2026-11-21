@@ -4,6 +4,7 @@
 // cleanup stages and the ΔPDF sections, the run's settings, the tuning record,
 // and the reply itself.
 
+import { isPutBackMark } from "../putBackMark";
 import { fetchDpdfSlice, fetchSlice } from "../../api/client";
 import type { Dataset, Slice } from "../../api/types";
 import { autoLevels } from "../../components/colorScale";
@@ -180,7 +181,8 @@ export async function collectReport({ dataset, datasets, turn, question, llm, de
     created: new Date(),
     question,
     answer: turn.content,
-    steps: (turn.steps ?? []).map((st) => ({ tool: st.name, summary: st.summary ?? "", ok: st.status !== "error" })),
+    // An auto run's mark of outputs put back (putBackMark.ts) is no call: not listed.
+    steps: (turn.steps ?? []).filter((st) => !isPutBackMark(st)).map((st) => ({ tool: st.name, summary: st.summary ?? "", ok: st.status !== "error" })),
     model: { provider: preset?.label ?? (isLocalUrl(llm.baseUrl) ? "Local server" : "Custom provider"), model: llm.model, local: isLocalUrl(llm.baseUrl) },
     dataset: { label: datasetLabel(dataset, datasets), rawName: dataset.raw_name, temperature: dataset.temperature },
     settings,

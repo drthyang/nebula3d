@@ -40,7 +40,11 @@ step by step, is in [pilot-setup.md](pilot-setup.md).
   raw volume, a run of what is missing or stale, each stage's checks, then a
   report. The app runs the checks and moves on by their verdicts. The model is
   asked only to fix a stage that needs attention (two tries at most) and to
-  write the report; a fix that made its check worse is put back. Before the
+  write the report; a fix that made its check worse is put back, and its
+  outputs from before the fix are restored, not computed again (they are set
+  aside before the fix's run, in `set-aside/` beside `processed/`, and
+  deleted when the fix is kept; when disk or the browser's memory is short,
+  the pipeline runs again instead). Before the
   run it sets the punch settings the pre-run Bragg sensing recommends (logged
   as its own, undoable), and puts them back if the punch's check is worse
   with them than with the defaults. A sample fact

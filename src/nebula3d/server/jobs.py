@@ -204,6 +204,12 @@ class JobManager:
             job.status = "cancelled"
         return True
 
+    def running(self) -> bool:
+        """Whether any run is still running (its outputs are being written)."""
+        with self._lock:
+            jobs = list(self._jobs.values())
+        return any(job.status == "running" for job in jobs)
+
     def live_pids(self) -> list[int]:
         """Process ids of the runs still running (for ``GET /api/memory``)."""
         with self._lock:
