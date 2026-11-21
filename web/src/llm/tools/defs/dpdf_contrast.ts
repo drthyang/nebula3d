@@ -2,7 +2,7 @@
 // the colour and the FFT ripple stays dim. It acts: what it sets is what the
 // console shows.
 
-import { fetchDpdfSlice } from "../../../api/client";
+import { readDpdfSlices } from "../../../api/sliceBatch";
 import { DPDF_AUTO_PERCENTILE, withoutOrigin } from "../../../components/dpdfLevels";
 import { useDpdfStore } from "../../../state/dpdfStore";
 import { dpdfVolumeId } from "../../context/loadContext";
@@ -48,7 +48,8 @@ export const dpdf_contrast: ChatTool = {
       return { result: { applied: "Auto: the 99.9th percentile of |ΔPDF|" }, summary: "back on Auto", view };
     }
     const id = dpdfVolumeId(dataset)!;
-    const sections = await Promise.all(["xy", "xz", "yz"].map((plane) => fetchDpdfSlice(id, plane, 0)));
+    // Together: the ΔPDF is read once for the three (api/sliceBatch.ts).
+    const sections = await Promise.all(readDpdfSlices(id, ["xy", "xz", "yz"].map((plane) => ({ plane, value: 0 }))));
     const values: number[] = [];
     for (const s of sections) for (const v of withoutOrigin(s)) if (Number.isFinite(v)) values.push(v);
     if (values.length < 16) throw new Error("the ΔPDF sections hold too few values to measure");

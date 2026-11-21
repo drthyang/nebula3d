@@ -4,7 +4,8 @@
 // rule, plan 4.2), which the verdict reads; and the azimuthal texture on cuts,
 // which only a cut measures.
 
-import { fetchSlice, fetchVolumeTexture } from "../../../api/client";
+import { fetchVolumeTexture } from "../../../api/client";
+import { readSlices } from "../../../api/sliceBatch";
 import type { VolumeTexture } from "../../../api/types";
 import { safe, stageVolumeId } from "../../context/loadContext";
 import { qRadius } from "../../context/pipelineContext";
@@ -70,15 +71,17 @@ export const texture_check: ChatTool = {
     const [volume, rows] = await Promise.all([
       // The holes farthest outside their range, for the figure and the Highlights; the summary is over every hole.
       fetchVolumeTexture(ids[2], HOLES_DRAWN, FILL_BIAS_LIMITS),
-      Promise.all(
-        cuts.map(async ({ plane, value }) => {
-          const [before, punched, filled] = await Promise.all(
-            ids.map((id) => (id ? safe(fetchSlice(id, plane, value)) : Promise.resolve(null))),
-          );
-          const { azimuthal_ratio } = azimuthalTexture(before, punched, filled, qRadius(plane, value, meta));
-          return { cut: planeLabel(plane, value), azimuthal_ratio };
-        }),
-      ),
+      (() => {
+        // Volume by volume: each stage's volume is read once for all the cuts (api/sliceBatch.ts).
+        const slices = ids.map((id) => (id ? readSlices(id, cuts).map(safe) : null));
+        return Promise.all(
+          cuts.map(async ({ plane, value }, i) => {
+            const [before, punched, filled] = await Promise.all(slices.map((s) => s?.[i] ?? Promise.resolve(null)));
+            const { azimuthal_ratio } = azimuthalTexture(before, punched, filled, qRadius(plane, value, meta));
+            return { cut: planeLabel(plane, value), azimuthal_ratio };
+          }),
+        );
+      })(),
     ]);
     const other = otherLimits(volume);
     if (other) throw new Error(`the backend judged the fills by other limits (${other}) than the rule's (${JSON.stringify(FILL_BIAS_LIMITS)})`);

@@ -23,9 +23,11 @@
 //   setting gives other slices or values. Where they do give the same content,
 //   the metrics are the same too;
 // - nothing is read from the listing, so a listing read before a run cannot
-//   make a result stale. The slices themselves are fetched on every check, as
-//   before: the backend answers from its own cache of the file as it is now
-//   (its path and modification time), in the native build and in the browser.
+//   make a result stale. The slices themselves are asked for on every check:
+//   the native backend answers from its own cache of the file as it is now
+//   (its path and modification time); in the browser a slice is read from the
+//   worker, or is one the page kept under the worker's own version of its
+//   file, asked of the worker at that check (api/sliceStore.ts).
 //
 // Both stores are bounded, oldest out first, and emptied when the volume
 // closes. A page reload starts empty. A slice given as a plain array (tests),

@@ -25,10 +25,12 @@ import struct
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
+from numpy.typing import NDArray
 
 import nebula3d
 from nebula3d.core import HKLVolume, sigma_note
@@ -60,7 +62,22 @@ _lock = threading.Lock()
 # Simultaneous requests for one cold key share one load (server.singleflight).
 _flights = SingleFlight()
 
+# Whole-volume reads since the process started (the tests' and the browser
+# bridge's count: nebula3d.webbridge.read_counts_json).
+_reads = 0
+
 T = TypeVar("T")
+
+
+def read_count() -> int:
+    """How many times a volume's arrays were read from its file (cache misses)."""
+    return _reads
+
+
+def cached_count() -> int:
+    """How many are held in the cache now."""
+    with _lock:
+        return len(_cache)
 
 
 def set_cache_max(n: int) -> None:
@@ -102,6 +119,9 @@ def load_volume(path: Path) -> HKLVolume:
         # dtype=None: keep the artifact's stored precision (float32 stage
         # files from a float32 run must not double in the viewer cache).
         vol = nebula3d.load(path, dtype=None)  # heavy I/O outside the lock
+        global _reads
+        with _lock:
+            _reads += 1  # read, whether or not it is kept
         if not is_current(path, key[1]):
             return vol  # the file changed meanwhile: this version is not kept
         with _lock:
@@ -139,6 +159,77 @@ def _shared(name: str, cache: dict[tuple, T], key: tuple, compute: Callable[[], 
     return hit if hit is not None else _flights.run((name, key), load)
 
 
+@dataclass(frozen=True)
+class VolumeFacts:
+    """What :func:`volume_meta` and the punch's labels say of a volume itself,
+    none of it a voxel: the shape of its data, its axes, its UB, whether its σ
+    is an estimate, and :func:`~nebula3d.core.sigma_note`'s words."""
+
+    shape: tuple[int, ...]
+    h_axis: NDArray[np.float64]
+    k_axis: NDArray[np.float64]
+    l_axis: NDArray[np.float64]
+    ub_matrix: NDArray[np.float64]
+    sigma_estimated: bool
+    sigma_note: str | None
+
+
+def _facts_of(vol: HKLVolume) -> VolumeFacts:
+    return VolumeFacts(
+        shape=tuple(int(n) for n in vol.data.shape),
+        h_axis=vol.h_axis, k_axis=vol.k_axis, l_axis=vol.l_axis,
+        ub_matrix=vol.ub_matrix, sigma_estimated=vol.sigma_estimated,
+        sigma_note=sigma_note(vol))
+
+
+# The facts of the volumes asked about last, by (path, mtime) as the volumes
+# themselves: a few small arrays each.  Emptied with the volume cache.
+_FACTS_MAX = 16
+_facts: OrderedDict[tuple[str, float], VolumeFacts] = OrderedDict()
+
+
+def volume_facts(path: Path) -> VolumeFacts:
+    """A volume's :class:`VolumeFacts`, without reading its arrays where that
+    gives the same answer.
+
+    Kept by ``(path, mtime)``, as the volumes are.  First asked, they come
+    from the cached volume when it is loaded; else from the file's header
+    (:func:`nebula3d.io.mantid_nxs.read_volume_header`, the loader's own code)
+    when the file is a Mantid MDHistoWorkspace whose σ came with the data, so
+    :func:`~nebula3d.core.sigma_note` has nothing to say; else from the volume,
+    loaded (and cached) as before: a legacy or ASCII file, and a volume whose σ
+    is √|I|, whose note is read off its values, once.
+    """
+    from nebula3d.io.mantid_nxs import is_mantid_nxs, read_volume_header
+
+    key = (str(path), path.stat().st_mtime)
+    with _lock:
+        hit = _facts.get(key)
+        if hit is not None:
+            _facts.move_to_end(key)
+            return hit
+    vol = _cached_volume(key)
+    facts = None if vol is None else _facts_of(vol)
+    if facts is None and path.suffix.lower() in {".h5", ".hdf5", ".nxs"} and is_mantid_nxs(path):
+        header = read_volume_header(path)
+        if not header.sigma_estimated:  # sigma_note is None without a look at the data
+            facts = VolumeFacts(
+                shape=header.shape, h_axis=header.h_axis, k_axis=header.k_axis,
+                l_axis=header.l_axis, ub_matrix=header.ub_matrix,
+                sigma_estimated=False, sigma_note=None)
+    if facts is None:
+        facts = _facts_of(load_volume(path))
+    if not is_current(path, key[1]):
+        return facts  # the file changed meanwhile: these are not kept
+    with _lock:
+        drop_other_versions(_facts, key)  # one version of a file, as the volumes
+        _facts[key] = facts
+        _facts.move_to_end(key)
+        while len(_facts) > _FACTS_MAX:
+            _facts.popitem(last=False)
+    return facts
+
+
 _ring_cache: dict[tuple, dict] = {}
 # One survey's record, small, keyed by its file's mtime: kept through
 # clear_cache, which the browser bridge calls before every survey to free the
@@ -148,9 +239,20 @@ _floors_cache: dict[tuple, dict] = {}
 _texture_cache: dict[tuple, HoleTexture] = {}
 
 
+def release_volumes() -> None:
+    """Drop the cached volumes, which hold the memory, and keep what was
+    computed from one: its facts, the ring verdicts, the shell floors and the
+    holes' texture, a few numbers per shell or per hole, each standing by its
+    file's ``(path, mtime)`` as the volumes do.  For a caller that needs the
+    memory and changes no file (the browser bridge on a change of view)."""
+    with _lock:
+        _cache.clear()
+
+
 def clear_cache() -> None:
     with _lock:
         _cache.clear()
+        _facts.clear()
         _ring_cache.clear()
         _floors_cache.clear()
         _texture_cache.clear()
@@ -159,7 +261,7 @@ def clear_cache() -> None:
 _CELL_KEYS = ("a", "b", "c", "alpha", "beta", "gamma")
 
 
-def lattice_parameters(vol: HKLVolume) -> dict[str, float | None]:
+def lattice_parameters(vol: HKLVolume | VolumeFacts) -> dict[str, float | None]:
     """Direct cell ``a/b/c`` (Å) and ``alpha/beta/gamma`` (degrees) from the UB
     matrix; every value ``None`` if the UB is singular."""
     try:
@@ -266,10 +368,11 @@ def volume_meta(path: Path) -> dict:
     flatten did not write, or wrote before it recorded them)."""
     from nebula3d.pipeline import read_flatten_settings
 
-    vol = load_volume(path)
+    # The volume's own facts, without its arrays where the header says as much.
+    vol = volume_facts(path)
     symmetry, symmetry_ops = declared_symmetry(path)
     return {
-        "shape": [int(n) for n in vol.data.shape],
+        "shape": [int(n) for n in vol.shape],
         "h_range": [float(vol.h_axis[0]), float(vol.h_axis[-1])],
         "k_range": [float(vol.k_axis[0]), float(vol.k_axis[-1])],
         "l_range": [float(vol.l_axis[0]), float(vol.l_axis[-1])],
@@ -280,7 +383,7 @@ def volume_meta(path: Path) -> dict:
         "symmetry_ops": symmetry_ops,
         "declared_for": declared_for(path),
         "sigma": "estimated" if vol.sigma_estimated else "measured",
-        "sigma_note": sigma_note(vol),
+        "sigma_note": vol.sigma_note,
         "flatten_settings": read_flatten_settings(path),
     }
 

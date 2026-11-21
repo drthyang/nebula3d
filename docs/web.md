@@ -691,6 +691,21 @@ In-browser: Browser (React/TS SPA) ──RPC──►  Web Worker → Pyodide  �
   (`volumes`, `deltapdf`, `consistency`, `datasets`, `params`) against a
   virtual `/work` FS — slicing/discovery/consistency are *not* reimplemented in
   JS. `client.ts` branches on `PYODIDE_MODE` for every endpoint.
+- **In-browser, what a Pilot check reads.** The worker keeps two volumes and
+  one ΔPDF in memory (a tab's memory is tight), so a check asks for its slices
+  volume by volume: `webbridge.volume_slices` / `dpdf_slices` give several
+  cuts of one volume in one call, each the envelope the one-slice call gives,
+  and the volume is read once (`api/sliceBatch.ts`). Metadata and a slice's
+  labels are read from the file's header. A slice a check fetched is kept in
+  the page (`api/sliceStore.ts`, 64 slices or 48 MB at most, none on a phone
+  or tablet) under the version the worker read it at, and used again only
+  while the worker, asked at every read (`slice_version_json`), gives the same
+  version: the worker itself, its count of the calls that may have changed a
+  file of its workspace, and the file's path, size, date and inode. Every
+  public call of the bridge is either marked as one that may write
+  (`webbridge._writes`) or listed read-only in
+  `tests/test_webbridge_read_once.py`. The viewers' one-slice calls, and the
+  native build's requests, are as they were.
 
 ### Endpoints (native API)
 

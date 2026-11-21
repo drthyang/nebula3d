@@ -6,7 +6,7 @@
 
 import { fetchBraggProfile, fetchConsistencyCheck, fetchDpdfMeta, fetchMeta, fetchRingDiagnostics, fetchRingIsotropy, fetchShellFloors } from "../../api/client";
 import type { Dataset, RingDiagnostics } from "../../api/types";
-import { declaringMeta, dpdfVolumeId, loadPipelineContext, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
+import { declaringMeta, dpdfVolumeId, loadPipelineContext, readCuts, readFlattenRecord, safe, hklVolumeId, stageVolumeId, type Cut } from "../context/loadContext";
 import { PLANE_HKL_AXES } from "../context/pipelineContext";
 import { metricFromUb, qNorm, reciprocalMetric } from "../../components/reciprocal";
 import { offLatticeBunching } from "../metrics/bunching";
@@ -121,12 +121,14 @@ function worstSymmetryOp(
 export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise<StageEvaluation> {
   if (stage === "pdf") {
     const dId = dpdfVolumeId(dataset);
+    // The three sections together: the ΔPDF is read once for them.
+    const slices = readCuts(dataset, [], DPDF_CUTS);
     const [check, dmeta, rawMeta, ...sections] = await Promise.all([
       safe(fetchConsistencyCheck(dataset.id)),
       dId ? safe(fetchDpdfMeta(dId)) : Promise.resolve(null),
       // the point group the data were declared symmetrised with
       declaringMeta(dataset, "delta_pdf"),
-      ...DPDF_CUTS.map((dpdf) => loadPipelineContext(dataset, { recip: null, dpdf, records: false })),
+      ...DPDF_CUTS.map((dpdf) => loadPipelineContext(dataset, { recip: null, dpdf, records: false, slices })),
     ]);
     // The x–y section through the origin against its images under the
     // operations of the group symmetry_check judges that map it onto itself
@@ -199,7 +201,9 @@ export async function evaluateStage(stage: TuneStage, dataset: Dataset): Promise
   const shellFloors = flatId ? await safe(fetchShellFloors(flatId)) : null;
   const flattenRecord = stage !== "flatten" ? { settings: undefined } : shellFloors ? { settings: shellFloors.flatten } : await readFlattenRecord(dataset);
   // Every leftover peak, marked, not only the strongest few the chat's context lists: the punch counts them by their marks.
-  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false, allLeftovers: true, flattenRecord })));
+  // The cuts' slices volume by volume: each stage's volume is read once for the three planes.
+  const slices = readCuts(dataset, cuts, []);
+  const contexts = await Promise.all(cuts.map((recip) => loadPipelineContext(dataset, { recip, dpdf: null, records: false, allLeftovers: true, flattenRecord, slices })));
   const per = (f: (i: number) => unknown) => Object.fromEntries(cuts.map((c, i) => [c.plane, f(i)]));
 
   if (stage === "rings") {
