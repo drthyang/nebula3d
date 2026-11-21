@@ -34,6 +34,7 @@ import { clearMainHeap, setMainHeap } from "./engineMemory";
 import { clearFailedRun, clearRefusedLoad, setFailedRun, setRefusedLoad } from "./limitSignals";
 import { decodePairSignal, type PairSignal } from "./pairSignal";
 import { disposeRingPool, ensureRingPool } from "./ringPool";
+import { forgetSlices } from "./sliceStore";
 import type {
   BraggProfile,
   ConsistencyCheck,
@@ -178,6 +179,7 @@ function getOrCreateWorker(): Worker {
       bootPromise = null;
       disposeRingPool();
       clearMainHeap(); // its heap went with it
+      forgetSlices(); // and its files (api/sliceStore.ts)
     });
   }
   return workerInstance;
@@ -298,6 +300,7 @@ export function cancelPipeline(why = "Pipeline cancelled"): void {
   }
   disposeRingPool();
   clearMainHeap();
+  forgetSlices(); // the worker's files went with it (api/sliceStore.ts)
   bootPromise = null;
   rejectAllPending(why);
   setBoot({ phase: "idle", message: "not started", ready: false });
@@ -325,15 +328,21 @@ export function decodeSliceBytes(u8: Uint8Array): Slice {
   return { header, data };
 }
 
-/** Several slices' answer (webbridge._pack_slices): per cut its envelope, or the error that cut gave. */
+/**
+ * Several slices' answer (webbridge._pack_slices): per cut its envelope, or
+ * the error that cut gave, and the version of the file they were read from,
+ * as the worker took it in that call (null from a backend that gives none).
+ */
 export interface SliceBatch {
+  version: string | null;
   items: (Uint8Array | Error)[];
 }
 
-// [uint32 LE header_len][JSON {items: [{bytes} | {error}]}][the envelopes, one after another]
+// [uint32 LE header_len][JSON {version, items: [{bytes} | {error}]}][the envelopes, one after another]
 export function decodeSliceBatch(u8: Uint8Array): SliceBatch {
   const headerLen = new DataView(u8.buffer, u8.byteOffset, u8.byteLength).getUint32(0, true);
   const header = JSON.parse(new TextDecoder().decode(u8.subarray(4, 4 + headerLen))) as {
+    version?: string | null;
     items: ({ bytes: number } | { error: string })[];
   };
   let at = 4 + headerLen;
@@ -345,7 +354,7 @@ export function decodeSliceBatch(u8: Uint8Array): SliceBatch {
     return envelope;
   });
   if (at !== u8.byteLength) throw new Error("the batch holds more than its slices");
-  return { items };
+  return { version: typeof header.version === "string" && header.version ? header.version : null, items };
 }
 
 async function sliceBatchCall(method: string, args: unknown[]): Promise<SliceBatch> {
@@ -607,6 +616,13 @@ export const engine = {
   },
   dpdfSlices(volumeId: string, cuts: readonly (readonly [string, number])[]): Promise<SliceBatch> {
     return sliceBatchCall("dpdf_slices", [volumeId, JSON.stringify(cuts)]);
+  },
+  // The version of the file a volume's slices are read from, as the worker
+  // has it now (webbridge.slice_version_json): no volume data is read. null
+  // for a volume that is not there.
+  async sliceVersion(volumeId: string): Promise<string | null> {
+    const { version } = await jsonCall<{ version: string | null }>("slice_version_json", [volumeId]);
+    return typeof version === "string" && version ? version : null;
   },
   dpdfMeta(volumeId: string): Promise<DeltaPdfMeta> {
     return jsonCall<DeltaPdfMeta>("dpdf_meta_json", [volumeId]);

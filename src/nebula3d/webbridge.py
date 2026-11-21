@@ -33,15 +33,18 @@ All file I/O happens in Pyodide's in-memory filesystem; nothing is uploaded.
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import math
 import os
 import shutil
 import struct
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 
@@ -206,9 +209,67 @@ class _State:
     input: Path | None = None
     dataset_id: str | None = None
     mobile: bool = False  # phone / tablet: the tab-wide memory budget applies
+    # How many times a call that may change the workspace's files started or
+    # ended (see :func:`_writes`): the files stand as they were while it stands.
+    writes: int = 0
 
 
 _S = _State()
+
+#: This worker, told from any other: a restarted worker counts its writes from
+#: zero again, over a workspace that starts empty.
+_BOOT = f"{time.time_ns():x}.{os.urandom(8).hex()}"
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _writes(fn: _F) -> _F:
+    """Mark a bridge call that may write, replace, move or remove a file of the
+    workspace (a run, a load, a restore, a promote, a regrid, ...).
+
+    Every file here lives in this worker's own filesystem, and only the
+    bridge's calls change it, one call at a time.  So counting the calls that
+    may (when one starts, and when it ends, however it ends) gives a number
+    that stands exactly while no file can have changed: the page keeps a slice
+    it fetched only under a version that holds this number
+    (:func:`_file_version`), and asks for the version again, from here, at
+    every check.  A public function of this module is either marked, or listed
+    read-only in ``tests/test_webbridge_read_once.py``, which fails on one that
+    is neither and on a read-only one that changes a file.
+    """
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def marked_async(*args: object, **kwargs: object) -> object:
+            _S.writes += 1
+            try:
+                return await fn(*args, **kwargs)
+            finally:
+                _S.writes += 1
+
+        marked: Callable[..., Any] = marked_async
+    else:
+        @functools.wraps(fn)
+        def marked_sync(*args: object, **kwargs: object) -> object:
+            _S.writes += 1
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                _S.writes += 1
+
+        marked = marked_sync
+    marked.writes_files = True  # type: ignore[attr-defined]
+    return cast(_F, marked)
+
+
+def _file_version(path: Path) -> str:
+    """What tells a file of the workspace, as it is now, from the same path at
+    any other time: this worker, the count of the calls that may have changed
+    a file (:func:`_writes`), and the file's own path, size, modification time
+    (ns) and inode.  Two equal versions name the same bytes: no call that can
+    write came between them.  It reads the file's directory entry, never its
+    data."""
+    st = path.stat()
+    return f"{_BOOT}:{_S.writes}:{path}:{st.st_size}:{st.st_mtime_ns}:{st.st_ino}"
 
 
 def _require_cfg() -> ServerConfig:
@@ -218,6 +279,7 @@ def _require_cfg() -> ServerConfig:
     return _S.cfg
 
 
+@_writes
 def setup(workdir: str = "/work", mobile: bool = False) -> str:
     """Create the virtual workspace (``raw/`` + ``processed/``); return its root.
 
@@ -250,6 +312,9 @@ def setup(workdir: str = "/work", mobile: bool = False) -> str:
 
 
 def _clear_caches() -> None:
+    # Every caller is about to change the files, or just did: none of the
+    # versions given so far stands (see _writes), whoever forgot the mark.
+    _S.writes += 1
     _vol.clear_cache()
     _dpdf.clear_cache()
     _cons.clear_cache()
@@ -442,6 +507,7 @@ def _gate_report(name: str, path: Path | None) -> dict[str, object]:
     }
 
 
+@_writes
 def load_input(name: str, tmp_path: str) -> str:
     """Register an uploaded volume (already written to *tmp_path* in the FS).
 
@@ -480,6 +546,7 @@ def select_input(dataset_id: str) -> str:
     return _json(False)
 
 
+@_writes
 def make_demo_input(n: int = 161) -> str:
     """Write the synthetic demo volume to the workspace; return its id.
 
@@ -579,6 +646,7 @@ def _run_target(
     return proc_dir, inputs, not reused
 
 
+@_writes
 def run(
     stages_csv: str,
     params_json: str,
@@ -753,6 +821,7 @@ class _JsPlaneExecutor:
         return failed
 
 
+@_writes
 async def run_async(
     stages_csv: str,
     params_json: str,
@@ -1189,6 +1258,7 @@ def _own_dataset(dataset_id: str) -> _ds.Dataset:
     return ds
 
 
+@_writes
 def set_aside_json(dataset_id: str, from_stage: str) -> str:
     """Set aside the dataset's outputs from *from_stage* on; JSON
     ``{set_aside, reason, files, bytes}``.  Nothing is set aside on a phone or
@@ -1203,6 +1273,7 @@ def set_aside_json(dataset_id: str, from_stage: str) -> str:
                                   max_bytes=_SET_ASIDE_MAX_BYTES).as_dict())
 
 
+@_writes
 def set_aside_restore_json(dataset_id: str, params_json: str, flatten_enabled: bool) -> str:
     """Put back what was set aside, for these settings; JSON ``{restored,
     reason, files}``.  Restored only when a run with them would then compute
@@ -1224,6 +1295,7 @@ def set_aside_restore_json(dataset_id: str, params_json: str, flatten_enabled: b
     return _json(out.as_dict())
 
 
+@_writes
 def set_aside_discard_json(dataset_id: str) -> str:
     """Delete what was set aside for the dataset; JSON ``{discarded}``."""
     cfg = _require_cfg()
@@ -1234,6 +1306,7 @@ def set_aside_discard_json(dataset_id: str) -> str:
 # ---------------------------------------------------------------------------
 # Tuning runs (mirror the native /api/tuning endpoints)
 # ---------------------------------------------------------------------------
+@_writes
 def tuning_start_json(dataset_id: str, first_stage: str) -> str:
     """Create a tuning-run folder; JSON ``{run_id, dataset_id}``."""
     cfg = _require_cfg()
@@ -1244,6 +1317,7 @@ def tuning_start_json(dataset_id: str, first_stage: str) -> str:
     return _json({"run_id": run.id, "dataset_id": _tune.view_id(ds.id, run.id)})
 
 
+@_writes
 def tuning_promote_json(run_id: str, trial: str) -> str:
     """Copy a trial into its run's chain; JSON ``{run_id, trial, files, dataset_id}``."""
     cfg = _require_cfg()
@@ -1348,7 +1422,7 @@ def _cuts(cuts_json: str, width: int) -> list[list[Any]]:
     return cuts
 
 
-def _pack_slices(slices: list[bytes | Exception]) -> bytes:
+def _pack_slices(version: str, slices: list[bytes | Exception]) -> bytes:
     """Several slice envelopes as one answer:
 
         [uint32 LE: header_len][JSON header][the envelopes, one after another]
@@ -1356,10 +1430,12 @@ def _pack_slices(slices: list[bytes | Exception]) -> bytes:
     The header's ``items`` has one entry per cut, in order: ``{"bytes": n}``,
     the length of its envelope, or ``{"error": message}`` for a cut that
     failed (it has no envelope; the caller asks for that cut alone to get the
-    error as the one-slice call raises it)."""
+    error as the one-slice call raises it).  ``version`` is the file's
+    (:func:`_file_version`) as these slices were read from it: taken in this
+    same call, which nothing can interrupt."""
     items = [{"error": f"{type(x).__name__}: {x}"} if isinstance(x, Exception)
              else {"bytes": len(x)} for x in slices]
-    header = json.dumps({"items": items}).encode("utf-8")
+    header = json.dumps({"version": version, "items": items}).encode("utf-8")
     return b"".join([struct.pack("<I", len(header)), header,
                      *(x for x in slices if not isinstance(x, Exception))])
 
@@ -1370,14 +1446,28 @@ def volume_slices(volume_id: str, cuts_json: str) -> bytes:
     whatever the worker's cache held before.  *cuts_json* is a JSON list of
     ``[plane, value, interp]``; the answer (:func:`_pack_slices`) holds, for
     each, the very envelope :func:`volume_slice` gives."""
-    _resolve(volume_id, "hkl")  # an unknown or missing volume fails the call, as one slice does
+    # An unknown or missing volume fails the call, as one slice does.
+    version = _file_version(_resolve(volume_id, "hkl").path)
     out: list[bytes | Exception] = []
     for plane, value, interp in _cuts(cuts_json, 3):
         try:
             out.append(volume_slice(volume_id, str(plane), float(value), bool(interp)))
         except Exception as exc:  # noqa: BLE001 — the cut's own error, the others still come
             out.append(exc)
-    return _pack_slices(out)
+    return _pack_slices(version, out)
+
+
+def slice_version_json(volume_id: str) -> str:
+    """The version (:func:`_file_version`) of the file a stage's slices are
+    read from, HKL or ΔPDF: JSON ``{"version": text}``, or ``null`` for a
+    volume that is unknown or not there.  The page asks at every check, and
+    reuses a slice it fetched only when the version it was read under
+    (:func:`volume_slices`, :func:`dpdf_slices`) is this one, to the letter.
+    Reads no volume data and touches no cache."""
+    stage = _ds.resolve_volume(_require_cfg(), volume_id)
+    if stage is None or not stage.path.exists():
+        return _json({"version": None})
+    return _json({"version": _file_version(stage.path)})
 
 
 # ---------------------------------------------------------------------------
@@ -1412,6 +1502,7 @@ def volume_ub_check_json(volume_id: str, cell: str = "1,1,1",
     return _json({**m, "id": volume_id})
 
 
+@_writes
 def volume_laue_compare_json(volume_id: str, params_json: str = "{}", extra_json: str = "[]",
                              progress: Callable[[float, str], None] | None = None) -> str:
     """Every candidate Laue class of an HKL stage compared by R_int, with the
@@ -1440,6 +1531,7 @@ def volume_laue_compare_json(volume_id: str, params_json: str = "{}", extra_json
     return _json({**out, "id": volume_id})
 
 
+@_writes
 def dataset_regrid_json(dataset_id: str, cell: str = "1,1,1", q_max: float | None = None,
                         symmetrise: bool = False) -> str:
     """Regrid a dataset's raw volume onto its refined UB, as a new dataset
@@ -1479,6 +1571,7 @@ def volume_ring_isotropy_json(volume_id: str, q: str, fwhm: str) -> str:
     return _json({**m, "id": volume_id})
 
 
+@_writes
 def volume_ring_survey_json(volume_id: str, slice_axis: str = "H", edge_trim: int = 1) -> str:
     """The pre-run powder ring survey of an HKL stage, the raw volume before a
     run, nothing removed (mirrors GET /api/volumes/{id}/ring-survey). The
@@ -1492,6 +1585,7 @@ def volume_ring_survey_json(volume_id: str, slice_axis: str = "H", edge_trim: in
     return _json({**m, "id": volume_id})
 
 
+@_writes
 def volume_bragg_sense_json(volume_id: str, params_json: str = "{}") -> str:
     """The pre-run Bragg sensing of an HKL stage, the raw volume before a run,
     nothing punched (mirrors POST /api/volumes/{id}/bragg-sense). *params_json*
@@ -1568,14 +1662,14 @@ def dpdf_slices(volume_id: str, cuts_json: str) -> bytes:
     """Several sections of one ΔPDF in one call (as :func:`volume_slices`):
     *cuts_json* is a JSON list of ``[plane, value]``, and each envelope is the
     one :func:`dpdf_slice` gives."""
-    _resolve(volume_id, "delta_pdf")
+    version = _file_version(_resolve(volume_id, "delta_pdf").path)
     out: list[bytes | Exception] = []
     for plane, value in _cuts(cuts_json, 2):
         try:
             out.append(dpdf_slice(volume_id, str(plane), float(value)))
         except Exception as exc:  # noqa: BLE001 — the cut's own error, the others still come
             out.append(exc)
-    return _pack_slices(out)
+    return _pack_slices(version, out)
 
 
 def dpdf_features_json(volume_id: str, min_sigma: float = 5.0, limit: int = 12) -> str:
@@ -1668,6 +1762,7 @@ def consistency_slice(
         panel=panel, plane=plane, value=float(value))
 
 
+@_writes
 def save_dpdf(
     dataset_id: str,
     q_min: float | None = None,
