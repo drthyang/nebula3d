@@ -108,6 +108,48 @@ def test_a_volumes_facts_from_its_header_are_the_loaded_volumes(ran):
         assert np.asarray(facts.shape).tolist() == list(vol.shape)
 
 
+def test_a_raw_mantid_files_header_is_the_loaders(tmp_path):
+    """A file Mantid wrote, its dimensions in another order than H, K, L and
+    of three different lengths: the header's shape, axes, UB and σ's origin
+    are the loaded volume's, and its meta reads no volume.  Without
+    ``errors_squared`` the header says σ is an estimate, as the loader does."""
+    import h5py
+    import numpy as np
+
+    from nebula3d.io.mantid_nxs import load_mantid_nxs, read_volume_header
+    from nebula3d.server import volumes
+    from tests.test_nonorthogonal_cells import (
+        _CORELLI_LABELS,
+        _CORELLI_W,
+        CELLS,
+        _ub_from_cell,
+        _write_mdhisto,
+    )
+
+    path = tmp_path / "corelli.nxs"
+    ub = _ub_from_cell(*CELLS["hexagonal"])
+    _write_mdhisto(path, _CORELLI_LABELS, orientation=ub / (2 * np.pi), w_matrix=_CORELLI_W)
+    vol, header = load_mantid_nxs(path), read_volume_header(path)
+    assert header.shape == vol.data.shape == (4, 5, 6)
+    for mine, theirs in ((header.h_axis, vol.h_axis), (header.k_axis, vol.k_axis),
+                         (header.l_axis, vol.l_axis), (header.ub_matrix, vol.ub_matrix)):
+        assert mine.dtype == theirs.dtype and mine.tobytes() == theirs.tobytes()
+    assert header.sigma_estimated is vol.sigma_estimated is False
+
+    volumes.clear_cache()
+    before = volumes.read_count()
+    cold = volumes.volume_meta(path)
+    assert volumes.read_count() == before
+    volumes.load_volume(path)
+    assert json.dumps(volumes.volume_meta(path)) == json.dumps(cold)
+    assert cold["shape"] == [4, 5, 6]
+
+    with h5py.File(path, "r+") as f:
+        del f["MDHistoWorkspace/data/errors_squared"]
+    assert read_volume_header(path).sigma_estimated is True
+    assert load_mantid_nxs(path).sigma_estimated is True
+
+
 def test_a_volume_without_sigma_is_loaded_once_for_its_meta(tmp_path):
     """A volume whose σ is √|I| has its note read off its values: its meta
     loads it, once, and says what it said before."""
