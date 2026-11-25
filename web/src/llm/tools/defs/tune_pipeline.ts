@@ -11,7 +11,7 @@ import { ALL_STAGES, keysOf } from "../facts";
 import { num, oneOf } from "../shared/args";
 import { checkIdle, unique } from "../shared/pipeline";
 import { namesRingTuning, ringEvidenceRefusal, ringVerdictAllowsChange } from "../shared/ringGate";
-import { STAGE_NAMES } from "../../verdicts/rules";
+import { judge, STAGE_NAMES, type Outcome } from "../../verdicts/rules";
 import { ToolArgError, type ChatTool } from "../types";
 
 // Two evaluations with the same numbers: the change had no measurable effect.
@@ -150,11 +150,21 @@ export const tune_pipeline: ChatTool = {
       note: tune.finishedNote,
       ...(heldOut.length ? { held_out: heldOut } : {}),
     };
+    // Each tuned stage's verdict on the trial it kept, by the checks' own rule
+    // (judge), beside the result: the answer checks hold a claim about the
+    // stage to it, not to a check from before the tuning (THY-82,
+    // verdicts/recorded.ts: TRIAL_VERDICT_TOOLS). The outputs on disk are not
+    // the trial's until the pipeline runs again, so nothing else reads it.
+    const skills = skillsOn(ctx);
+    const outcomes: Outcome[] = tune.stages.flatMap((r) => {
+      const best = r.trials.find((t) => t.n === r.best);
+      return best?.evaluation ? [judge(r.stage, best.evaluation, { skills })] : [];
+    });
     const changed = result.stages.filter((r) => r.changes && Object.keys(r.changes).length).length;
     // Writing the dataset's outputs is worth it only when a stage's settings changed.
     if (changed) {
       Object.assign(result, { write_outputs_with: { tool: "run_pipeline", from_stage: TUNE_STAGES.find((st) => stages.includes(st)) } });
     }
-    return { result, summary: `${minutes} min · settings changed on ${changed} of ${stages.length} stages` };
+    return { result, summary: `${minutes} min · settings changed on ${changed} of ${stages.length} stages`, outcomes };
   },
 };
