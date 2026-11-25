@@ -275,3 +275,25 @@ def test_symmetry_average_holds_no_volume_sized_array():
         _, peak_small = _traced_peak(symmetry_average, small, small_sym, slab_voxels=1 << 16)
         _, peak_big = _traced_peak(symmetry_average, big, big_sym, slab_voxels=1 << 16)
         assert peak_big - peak_small < 0.15 * (big.data.nbytes - small.data.nbytes), laue
+
+
+def test_global_ring_model_holds_its_shell_basis_once(monkeypatch):
+    """The global ring model (THY-51): its radial profile reads the valid voxels
+    without copying them twice, before the accumulators exist, and a shell's
+    harmonic basis is built in place. On the browser's 4 GB heap the model
+    peaked at ~75 B/voxel on a 48.6 M-voxel float32 demo (3.6 GiB), too much
+    for the 64.5 M voxels the size gate admits. Traced peak over the input:
+    under nine float64 volumes (it was over ten)."""
+    from nebula3d.demo import demo_volume
+    from nebula3d.pipeline import RingParams, remove_rings
+    from nebula3d.preprocessing import global_rings
+
+    # The b·C·b chunk is a fixed row count (13 MB): at a test's grid that is a
+    # volume, at a measured volume's a fraction of a byte per voxel.
+    monkeypatch.setattr(global_rings, "_QUAD_FORM_CHUNK", 1024)
+    vol = demo_volume(81, dtype=np.float32)
+    # A low SNR gate, so the demo's rings are fitted shell by shell.
+    params = RingParams(ring_model="global", global_min_snr=0.5)
+    out, peak = _traced_peak(remove_rings, vol, params)
+    assert out._ring_diagnostics["n_fitted_shells"] > 0
+    assert peak < 9 * 8 * vol.data.size, peak / vol.data.size
