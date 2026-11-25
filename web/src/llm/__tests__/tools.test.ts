@@ -20,7 +20,7 @@ import { callTool, CHAT_TOOLS, toolsWithSkills, type Args, type RunModel, type T
 import { offLatticeBunching } from "../metrics/bunching";
 import { cut, DECLARED, directGroup, HEXAGONAL, orbit } from "./constructedDpdf";
 import { tableRows } from "../tools/shared/table";
-import { TERSE_CRITERION, WORDS } from "../verdicts/rules";
+import { judge, TERSE_CRITERION, WORDS } from "../verdicts/rules";
 import { BUNCHED_AT_THIRDS, makeSlice, recordOf } from "./helpers";
 import braggOverDiffuse from "../../state/__tests__/__fixtures__/laue-compare-bragg-over-diffuse.json";
 import hex6m from "../../state/__tests__/__fixtures__/laue-compare-hex-6m.json";
@@ -769,6 +769,33 @@ describe("tune_pipeline", () => {
     expect(trials[2].no_effect).toBeUndefined();
     expect(trials[2].result).toMatch(/punched 0.102/);
     expect(out.write_outputs_with).toBeUndefined();
+  });
+
+  it("judges each stage's kept trial by the checks' rule, beside its result and never in it (THY-82)", async () => {
+    const pedestal = { floor_trend: 0.97, floor_span_fraction: 0.97 };
+    const flat = { floor_trend: 0.04, floor_span_fraction: 0.6 };
+    tuner.startTuning.mockImplementation(async () => {
+      useTuneStore.setState({
+        active: false,
+        finishedNote: "Done.",
+        stages: [
+          stage({
+            stage: "flatten",
+            status: "done",
+            best: 2,
+            trials: [
+              { n: 1, changes: {}, settings: {}, status: "done", evaluation: pedestal },
+              { n: 2, changes: { flattenQ2: true }, settings: {}, status: "done", evaluation: flat },
+            ],
+          }),
+          stage({ stage: "pdf", status: "failed", trials: [{ n: 1, changes: {}, settings: {}, status: "error", error: "x" }] }),
+        ],
+      });
+    });
+    const r = await callTool({ ...ctx }, "tune_pipeline", { stages: ["flatten", "pdf"] });
+    expect(r.ok && r.outcomes).toEqual([judge("flatten", flat)]); // the kept trial's; none for the stage that kept none
+    expect(r.ok && r.outcomes?.[0].kind).toBe("pass");
+    expect(r.ok && r.text).not.toMatch(/outcome|meets its goal|needs attention/); // what the model reads is unchanged
   });
 
   it("reports a tuning run that stopped on an error", async () => {

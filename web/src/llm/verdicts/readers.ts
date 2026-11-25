@@ -13,7 +13,7 @@
 import type { AgentStep } from "../agent";
 import { current, recomputedAt, type PipelineStage } from "../evidence";
 import type { Measured } from "../report/report";
-import { outcomesOf, outcomesOfMeasured } from "./recorded";
+import { outcomesOf, outcomesOfMeasured, trialOutcomesOf } from "./recorded";
 import { isOriginProblem, judge, STAGE_NAMES, STAGES, type CheckId, type Kind, type Outcome, type Reason, type Stage } from "./rules";
 
 /** The verdict on a run: computed from its checks, never from the model's words. The validation's records persist it as computed_verdict. */
@@ -538,5 +538,8 @@ export function verdicts(run: { reply: readonly AgentStep[] } | { report: Measur
   const steps = run.reply;
   const at = recomputedAt(steps);
   const found = steps.flatMap((step, index) => outcomesOf(step).map((o) => ({ index, o })));
-  return { achieved: achievedOf(found, at), checks: answerOf(found, at) };
+  // A tuning's verdict on the trial it kept is the answer checks' newest on
+  // the stage it tuned (THY-82); {{achieved}} reads the outputs on disk alone.
+  const withTrials = steps.flatMap((step, index) => [...outcomesOf(step), ...trialOutcomesOf(step)].map((o) => ({ index, o })));
+  return { achieved: achievedOf(found, at), checks: answerOf(withTrials, at) };
 }

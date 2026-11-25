@@ -153,7 +153,7 @@ export const D17_REPEAT_POINTER_READS_AS_A_RESULT = false;
  * parse.
  */
 export function outcomesOf(step: AgentStep): Outcome[] {
-  if (step.status !== "done") return [];
+  if (step.status !== "done" || TRIAL_VERDICT_TOOLS.has(step.name)) return [];
   if (step.outcomes) return step.outcomes;
   const r = found(step); // what the tool found, whole; null for a result that holds no fields
   if (!r || (!D17_REPEAT_POINTER_READS_AS_A_RESULT && "already_called" in r)) return [];
@@ -178,6 +178,23 @@ export function outcomesOf(step: AgentStep): Outcome[] {
       return [];
   }
 }
+
+/**
+ * The tools whose outcomes judge a trial they kept, not the outputs on disk
+ * (THY-82, the owner's decision of 2026-11-25): tune_pipeline judges the
+ * trial it keeps for each stage it tuned, by the same rule and numbers as the
+ * checks, and the app writes the outputs only when the pipeline runs again.
+ * Only the answer checks read them (trialOutcomesOf; verdicts/readers.ts):
+ * there a tuning's verdict is the newest on the stage it tuned, so a claim
+ * about the stage is held to it, not to a check from before the tuning.
+ * {{achieved}}, the report, the ring gate and auto mode's problems and plan
+ * read the outputs on disk alone (outcomesOf gives them none).
+ */
+export const TRIAL_VERDICT_TOOLS: ReadonlySet<string> = new Set(["tune_pipeline"]);
+
+/** A tuning's verdicts on the trials it kept, as the answer checks read them; none for any other step. */
+export const trialOutcomesOf = (step: AgentStep): Outcome[] =>
+  step.status === "done" && TRIAL_VERDICT_TOOLS.has(step.name) ? (step.outcomes ?? []) : [];
 
 /** The outcomes a report's measurements hold, each tool's result read as a recorded step's is: for the checks whose outcomes the measurement pass did not keep. A stage, from its numbers (D18). */
 export function outcomesOfMeasured(m: Measured): Outcome[] {
