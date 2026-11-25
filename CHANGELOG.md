@@ -36,6 +36,9 @@ release folds them in here; no release is cut yet.
 - Fix: the console reads the Bragg punch's record once per version of its
   file, not on every read of the run; a memory check of a whole scripted auto
   run ([browser-memory](changes/unreleased/browser-memory.md)).
+- Fix: NEBULA Pilot holds a claim about a stage it just tuned to the tuning's
+  verdict on the trial it kept, not to the check from before the tuning
+  ([tuning-verdict-in-answer-checks](changes/unreleased/tuning-verdict-in-answer-checks.md)).
 - Validation: three grader artefacts fixed on 2026-11-07, before the THY-52
   re-baseline
   ([validation-grader-artefacts](changes/unreleased/validation-grader-artefacts.md)).

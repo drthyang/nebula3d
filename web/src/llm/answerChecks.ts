@@ -52,6 +52,7 @@ import { REFERENCE } from "./references";
 import { factsOf, toolsWhere } from "./tools";
 import type { VerdictTopic } from "./tools/facts";
 import { verdicts, type CheckId, type ComputedVerdict } from "./verdicts";
+import { trialOutcomesOf } from "./verdicts/recorded";
 
 /**
  * Å as an answer writes it, in LaTeX too: Å, \AA, \text{Å}, \mathrm{\AA},
@@ -255,7 +256,10 @@ export function evidenceGaps(text: string, steps: readonly AgentStep[]): { missi
   const stale: Topic[] = [];
   for (const t of TOPICS) {
     if (!claimed.has(t.id)) continue;
-    const ran = steps.map((s, i) => [s, i] as const).filter(([s]) => s.status === "done" && settles(s, t.id));
+    // A tuning is evidence on a stage it judged a kept trial of (THY-82: trialOutcomesOf).
+    const ran = steps
+      .map((s, i) => [s, i] as const)
+      .filter(([s]) => s.status === "done" && (settles(s, t.id) || trialOutcomesOf(s).some((o) => o.check === t.id)));
     if (ran.some(([, i]) => current(at, t.stage, i))) continue;
     (ran.length ? stale : missing).push(t);
   }
