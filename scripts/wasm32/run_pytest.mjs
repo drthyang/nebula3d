@@ -7,15 +7,30 @@
 //
 //   timeout 1800 node --experimental-wasm-jspi run_pytest.mjs ../.. -q -rfE --tb=short
 //
+// --skip-env-only (first, before the pytest arguments) leaves out the tests in
+// env-only.txt, which cannot run in Pyodide for reasons of the environment;
+// the CI job runs so.
+//
 // About 8 minutes for the whole suite. Failures that are the environment, not
 // 32-bit numpy, are expected: no processes (subprocess, the native server's
 // multiprocessing), no threads, file times in whole seconds, and the
 // browser-only choices the package makes under Emscripten (gzip working files).
 // Look for TypeError "Cannot cast ... int64 to int32", ValueError "iterator is
 // too large" or "broadcast dimensions too large", and MemoryError.
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { loadNebula } from "./pyodide.mjs";
 
-const [repo, ...args] = process.argv.slice(2);
+let [repo, ...args] = process.argv.slice(2);
+if (args[0] === "--skip-env-only") {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const listed = readFileSync(join(here, "env-only.txt"), "utf8")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"));
+  args = [...listed.map((id) => (id.includes("::") ? `--deselect=${id}` : `--ignore=${id}`)), ...args.slice(1)];
+}
 if (!repo) {
   console.error("usage: node --experimental-wasm-jspi run_pytest.mjs <repo root> [pytest args...]");
   process.exit(2);

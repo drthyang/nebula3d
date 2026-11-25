@@ -1,0 +1,66 @@
+# The tests that cannot pass in Pyodide under Node for reasons of the
+# environment, not of 32-bit numpy: run_pytest.mjs --skip-env-only leaves them
+# out (the CI job "test (wasm32, Pyodide 0.27.7)"). One test id or module per
+# line, under the reason it cannot run there. A module is left out whole when
+# it fails at collection. Listed 2026-11-25 from a full run on main (1228
+# passed); a test added here needs the reason it cannot run in Pyodide.
+
+# The native server: its FastAPI app imports multiprocessing, which Pyodide
+# does not ship (ModuleNotFoundError: _multiprocessing).
+tests/test_bragg_sense.py
+tests/test_consistency_run_settings.py
+tests/test_laue_compare_api.py
+tests/test_native_browser_parity.py
+tests/test_ring_survey.py
+tests/test_server.py
+tests/test_server_memory.py
+tests/test_server_single_flight.py
+tests/test_set_aside.py
+tests/test_tuning_runs.py
+tests/test_ub_regrid.py
+tests/test_misorientation_punch.py::test_the_run_writes_the_record_and_the_api_serves_it
+tests/test_record_staleness.py::test_the_server_and_the_browser_list_a_stale_average
+tests/test_record_staleness.py::test_the_server_lists_the_outputs_a_run_would_make_again
+tests/test_symmetry_average_stage.py::test_the_server_runs_the_stage_and_refuses_a_bad_laue_class
+tests/test_webbridge_read_once.py::test_no_stale_slice_after_a_regrid
+tests/test_webbridge.py::test_bragg_profile_json_is_the_servers_response
+tests/test_webbridge.py::test_dpdf_features_json_is_the_servers_response[False]
+tests/test_webbridge.py::test_dpdf_features_json_is_the_servers_response[True]
+tests/test_webbridge.py::test_modulation_payloads_are_the_servers
+tests/test_webbridge.py::test_ring_diagnostics_json_is_the_servers_response
+tests/test_webbridge.py::test_volume_coverage_json_is_the_servers_response[nan]
+tests/test_webbridge.py::test_volume_coverage_json_is_the_servers_response[zeros]
+tests/test_webbridge.py::test_volume_shell_floors_json_is_the_servers_response
+tests/test_webbridge.py::test_volume_texture_json_is_the_servers_response
+
+# A subprocess (Emscripten: "does not support processes").
+tests/test_build_web_wheel.py::test_end_to_end_build_excludes_static_data_and_wheels
+tests/test_package_env.py::test_the_bridge_tests_then_the_pooled_rings_tests_pass
+tests/test_ring_parallel.py::test_ringworker_import_is_matplotlib_free
+tests/test_validation.py::test_a_mistyped_opt_in_stops_the_run
+tests/test_validation.py::test_the_default_run_leaves_the_test_split_out
+tests/test_validation.py::test_the_opt_in_runs_the_test_split_under_masked_names_only
+tests/test_validation.py::test_the_test_split_is_unreachable_without_the_opt_in
+tests/test_webbridge.py::test_browser_run_is_matplotlib_free
+tests/test_webbridge.py::test_the_bridge_check_reads_the_browser_pins
+tests/test_webbridge.py::test_the_stdio_bridge_answers_every_message_type
+tests/test_webbridge.py::test_webbridge_imports_without_fastapi
+
+# Threads ("can't start new thread").
+tests/test_server_cache_versions.py::test_many_requests_across_a_rewrite_end_with_one_version_cached
+tests/test_server_cache_versions.py::test_two_versions_loading_at_once_end_with_the_current_one_cached
+
+# File times: Node's file system as Pyodide mounts it keeps whole seconds, so
+# a file rewritten within the second reads as unchanged.
+tests/test_pipeline_orchestration.py::test_real_pdf_older_than_its_input_is_recomputed
+tests/test_server_cache_versions.py::test_a_new_delta_pdf_replaces_the_old_one
+tests/test_server_cache_versions.py::test_a_restored_file_loads_and_the_version_cached_meanwhile_goes
+tests/test_webbridge_read_once.py::test_a_version_never_names_two_contents
+tests/test_webbridge_read_once.py::test_no_stale_slice_after_a_set_aside_and_a_restore
+
+# Off-browser behaviour: under Emscripten the package writes its working files
+# gzip-compressed, as the browser build does (io.mantid_nxs.working_compression).
+tests/test_stage_file_compression.py::test_a_run_writes_its_stage_files_and_dpdf_uncompressed
+tests/test_stage_file_compression.py::test_a_stage_record_does_not_depend_on_how_its_input_is_stored
+tests/test_stage_file_compression.py::test_outputs_written_with_gzip_are_reused_and_read
+tests/test_stage_file_compression.py::test_the_working_files_are_uncompressed_off_the_browser
