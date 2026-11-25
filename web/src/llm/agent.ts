@@ -32,6 +32,7 @@ import { baseTokens, DATA_CHARS_PER_TOKEN, estimateTokens, observeTokens, PROSE_
 import { planWindow } from "./provider/window";
 import { seen, shorten, whole } from "./readings";
 import { runPolicyOf, type RunPolicy } from "./runPolicy";
+import { endsRepeating, revisionOutputCap } from "./revisionLimits";
 import { estimated, measured, notCounted, ranNothing, type Usage } from "./usage";
 import type { LlmSettings } from "./settings";
 import { skillsOn } from "./skills";
@@ -133,6 +134,10 @@ export const TOOLS_UNSUPPORTED_NOTE =
 // scripts/measure_pilot_context.sh prints them): restate them when they move.
 export const CUT_OFF_NOTE =
   "The reply was cut off: the model ran out of room (its context window, or its output limit), so its last step was not run. Load the model with a larger Context Length (32k or more: with Tools on, the first request alone is about 7k tokens, and a full assessment that reads two skills about 26k with room for the reply, before earlier turns add theirs), or turn Tools off; Clear starts a shorter conversation.";
+
+// A revision stopped because its text, or its thinking, started repeating
+// itself (revisionLimits.ts). Shown under the reply, never sent to the model.
+export const REVISION_STOPPED_NOTE = "Its revision was stopped when it started repeating itself, so the answer it revised stands.";
 
 // A reply its server could not parse ran none of its tools, so the same request
 // is sent again, at most this many times in one reply.
@@ -288,6 +293,9 @@ export async function runAgent({
   let revisions = 0;
   let rejected = ""; // the last answer sent back, kept if the revision writes nothing
   let rejectedIssues: ReturnType<typeof answerIssues> = null; // what it failed, noted if it is kept
+  // The output cap of the next request when it is the revision of an answer
+  // sent back (revisionLimits.ts), which is also watched for repetition; null otherwise.
+  let revisionCap: number | null = null;
   let unsupported: string[] = []; // the claims of an answer kept although it failed, marked in `shown`
   let useTools = tools.length > 0 && ctx !== null && !toolsKnownUnsupported(settings);
   let content = "";
@@ -380,6 +388,11 @@ export async function runAgent({
     let cutOff = false;
     const reasoningBefore = reasoning;
     let reported: TokenUsage | undefined; // the request's counts, as its server gave them
+    // This request revises a sent-back answer: its own cap and the repetition watch.
+    const revising = revisionCap;
+    revisionCap = null;
+    let checkedAt = 0; // the length of the text and thinking at the last repetition check
+    let repeated = false; // stopped for repeating itself, not cut by the server
     const specs = useTools ? toolSpecs(offered) : undefined;
     if (policy.pruning && softBudget !== undefined && estimateTokens(baseTokens(convo, specs), windowKey) > softBudget) {
       compactOlder(policy.pruning.keepFull);
@@ -426,7 +439,7 @@ export async function runAgent({
         // the reply (usage.ts), and a local server's calibrate the token estimate.
         includeUsage: !usageRefused(settings.baseUrl),
         numCtx: plan.numCtx,
-        ...(policy.outputCap.loop != null ? { maxTokens: policy.outputCap.loop } : {}),
+        ...(revising != null ? { maxTokens: revising } : policy.outputCap.loop != null ? { maxTokens: policy.outputCap.loop } : {}),
       })) {
         // A request the provider dropped and sent again itself (anthropic.ts).
         if (delta.discarded) {
@@ -451,6 +464,17 @@ export async function runAgent({
         if (delta.native) native = delta.native;
         if (delta.truncated) cutOff = true;
         emit(roundText);
+        // A revision that starts repeating itself is stopped there, as if cut at its cap.
+        const grown = roundText.length + reasoning.length;
+        if (revising != null && grown - checkedAt >= 256) {
+          checkedAt = grown;
+          if (endsRepeating(roundText) || endsRepeating(reasoning.slice(reasoningBefore.length))) {
+            cutOff = true;
+            repeated = true;
+            onTruncated?.({ request: sent, reason: "repetition" });
+            break;
+          }
+        }
       }
       requests += 1;
       attempts = 0;
@@ -555,7 +579,11 @@ export async function runAgent({
     // A reply that ran out of room may end mid-call: never run that round's tools.
     if (cutOff) {
       const failed = keepRejected({ cut: true });
-      note = failed ? `${failed} ${CUT_OFF_NOTE}` : CUT_OFF_NOTE;
+      // A revision stopped for repeating itself ran out of nothing: the note
+      // says so. One cut at an output limit (its own cap is one) keeps the
+      // loop's note, as before.
+      const why = repeated ? REVISION_STOPPED_NOTE : CUT_OFF_NOTE;
+      note = failed ? `${failed} ${why}` : why;
       break;
     }
     if (!calls.length || !useTools) {
@@ -569,6 +597,7 @@ export async function runAgent({
         revisions += 1;
         rejected = roundText;
         rejectedIssues = issues;
+        revisionCap = revisionOutputCap(roundText, policy.outputCap.loop);
         content = before;
         convo.push({ role: "assistant", content: roundText });
         // The tools the fix asks for are offered. With the skills off the

@@ -43,6 +43,8 @@ release folds them in here; no release is cut yet.
 - Fix: NEBULA Pilot holds a claim about a stage it just tuned to the tuning's
   verdict on the trial it kept, not to the check from before the tuning
   ([tuning-verdict-in-answer-checks](changes/unreleased/tuning-verdict-in-answer-checks.md)).
+- Fix: a sent-back answer's revision has its own output cap and stops when it
+  repeats itself ([revision-limits](changes/unreleased/revision-limits.md)).
 - Validation: three grader artefacts fixed on 2026-11-07, before the THY-52
   re-baseline
   ([validation-grader-artefacts](changes/unreleased/validation-grader-artefacts.md)).
