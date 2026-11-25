@@ -36,6 +36,10 @@ release folds them in here; no release is cut yet.
 - Fix: the console reads the Bragg punch's record once per version of its
   file, not on every read of the run; a memory check of a whole scripted auto
   run ([browser-memory](changes/unreleased/browser-memory.md)).
+- Fix: the global ring model no longer runs the in-browser engine out of
+  memory at the size the gate admits; outputs unchanged. A 32-bit check runs
+  the package in real Pyodide, and a test lists the calls only 32-bit numpy
+  rejects ([wasm32-audit](changes/unreleased/wasm32-audit.md)).
 - Validation: three grader artefacts fixed on 2026-11-07, before the THY-52
   re-baseline
   ([validation-grader-artefacts](changes/unreleased/validation-grader-artefacts.md)).
