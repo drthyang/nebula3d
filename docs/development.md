@@ -127,6 +127,12 @@ with `NEBULA_HOLDOUT_TESTS=1`:
   `.github/constraints/typecheck.txt` (mypy's verdict depends on them);
 - the tests again under the numpy, scipy, h5py and matplotlib that Pyodide
   0.27.7 ships, the stack the browser build runs on;
+- the tests in real Pyodide 0.27.7 under Node, the browser's own 32-bit build
+  (["The 32-bit check"](#the-32-bit-check-the-package-in-real-pyodide)), less
+  the tests the environment cannot run (`scripts/wasm32/env-only.txt`). It is
+  not yet required: its test step may fail without failing the job. After a
+  week of green runs, from 2026-12-02, it is made required by removing that
+  step's `continue-on-error`;
 - the console's lint, tests and both builds (native and Pages); its replay
   tests run on that same stack, on Python 3.12, the CPython Pyodide 0.27.7
   ships, and a step checks both against `.github/constraints/pyodide-0.27.7.txt`
@@ -163,10 +169,14 @@ NEB_N=365 timeout 1800 node --experimental-wasm-jspi run_bridge.mjs ../..
 
 `NEB_PARAMS` gives `run_bridge.mjs` the stage parameters as the console sends
 them (JSON), and `NEB_ENDPOINTS=min` keeps to the cheaper analysis calls. Some
-test failures there are the environment, not numpy: no processes (subprocess,
-the native server's multiprocessing), no threads, file times in whole seconds,
-and the package's browser-only choices (gzip working files). The ones to look
-for are the two errors above and `MemoryError`. Synthetic data only.
+tests cannot pass there for reasons of the environment, not numpy: the native
+server's multiprocessing, subprocesses, threads, file times in whole seconds,
+and the package's browser-only choices (gzip working files). They are listed,
+by reason, in `scripts/wasm32/env-only.txt`, and `run_pytest.mjs
+--skip-env-only` (first after the repository root) leaves them out, as CI
+does; a new test that cannot run in Pyodide is added there with its reason.
+The failures to look for are the two errors above and `MemoryError`.
+Synthetic data only.
 
 ### The replay tests: the dev cases through the Pages path
 

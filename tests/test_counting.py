@@ -49,7 +49,7 @@ def test_the_stand_in_refuses_int64_as_the_browser_did(wasm32):
 @pytest.mark.parametrize("dtype", [np.int64, np.uint32, np.int32, np.uint8, np.bool_])
 def test_counts_any_index_dtype_on_32_bit(wasm32, dtype):
     x = np.array([0, 1, 1, 3] if dtype is not np.bool_ else [0, 1, 1, 0], dtype=dtype)
-    expected = np.bincount(x.astype(np.int64), minlength=5)
+    expected = np.bincount(x.astype(np.intp), minlength=5)  # intp: also on the real 32-bit build
     np.testing.assert_array_equal(bincount(x, minlength=5), expected)
 
 

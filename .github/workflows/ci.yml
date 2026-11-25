@@ -83,6 +83,41 @@ jobs:
       - name: Run tests
         run: pytest --tb=short
 
+  # The suite in real Pyodide 0.27.7 under Node: the browser's own 32-bit
+  # (wasm32) build, where intp and numpy's default integer are int32 and the
+  # heap stops at 4 GiB. The job above runs Pyodide's pins on 64-bit CPython,
+  # which is how two browser-only crashes passed CI (#119, #128). The tests
+  # that cannot run there for reasons of the environment (the native server's
+  # multiprocessing, subprocesses, threads, whole-second file times, the
+  # browser's gzip working files) are left out: scripts/wasm32/env-only.txt.
+  # Not yet required (the owner, 2026-11-25): the test step may fail without
+  # failing the job, so a red result shows on the step and blocks no merge.
+  # After a week of green runs (from 2026-12-02) it is made required by
+  # removing `continue-on-error`.
+  test-wasm32:
+    name: test (wasm32, Pyodide 0.27.7)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: scripts/wasm32
+    steps:
+      - uses: actions/checkout@v4
+
+      # JSPI (--experimental-wasm-jspi) runs the async bridge: run_async, the ring pool, the WebGPU seam.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: scripts/wasm32/package-lock.json
+
+      - name: Install Pyodide 0.27.7
+        run: npm ci
+
+      - name: Run tests on wasm32
+        continue-on-error: true
+        run: node --experimental-wasm-jspi run_pytest.mjs ../.. --skip-env-only -q -rfE --tb=short
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
