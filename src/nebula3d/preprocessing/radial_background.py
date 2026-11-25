@@ -1022,8 +1022,14 @@ def _robust_radial_profile(
     lo_p, hi_p = percentiles
     bin_idx = np.digitize(q, edges) - 1
     valid = (bin_idx >= 0) & (bin_idx < n_bins)
-    bi = bin_idx[valid]
-    Iv = I[valid]
+    # Callers mostly pass values already inside the edges: the selections would
+    # then be whole copies (an index and a value array per voxel, at the stage's
+    # peak in the browser's 4 GB heap), so the arrays are used as they are.
+    if valid.all():
+        bi, Iv = bin_idx, I
+    else:
+        bi, Iv = bin_idx[valid], I[valid]
+    del bin_idx, valid
 
     # Group voxels by bin with one sort instead of re-scanning the whole array
     # once per bin (`I[bin_idx == b]` is O(N) × n_bins).  For the default
@@ -1034,7 +1040,9 @@ def _robust_radial_profile(
         n = bincount(bi, minlength=n_bins)             # bin counts, no sort
         counts = n.astype(np.float64)
         order = np.lexsort((Iv, bi))                   # sort within bin by value
+        del bi                                         # before the sorted copy
         I_sorted = Iv[order]
+        del order
         starts = np.zeros(n_bins, dtype=np.intp)       # segment offsets via cumsum
         np.cumsum(n[:-1], out=starts[1:])
         nz = np.nonzero(n > 0)[0]

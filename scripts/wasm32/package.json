@@ -1,0 +1,9 @@
+{
+  "name": "nebula3d-wasm32-check",
+  "private": true,
+  "type": "module",
+  "description": "Runs the package in real Pyodide 0.27.7 (wasm32) under Node: the browser build's runtime",
+  "dependencies": {
+    "pyodide": "0.27.7"
+  }
+}

@@ -134,6 +134,40 @@ with `NEBULA_HOLDOUT_TESTS=1`:
 
 The Pages workflow deploys `main` to GitHub Pages after CI passes on it.
 
+### The 32-bit check: the package in real Pyodide
+
+CI runs the tests on Pyodide's numpy, but on 64-bit CPython. The browser runs
+them on wasm32, where `intp` and numpy's default integer are int32 and the heap
+stops at 4 GiB, so some calls fail only there: an int64 or uint32 index array
+into `bincount`, `take`, `repeat`, `put`, `choose` or `ufunc.reduceat`
+("Cannot cast array data from dtype('int64') to dtype('int32')"), and an
+iterator over more than 2³¹ − 1 elements ("iterator is too large"), which a
+three-operand `einsum` or a reduction over a `broadcast_to` view can reach
+before the heap runs out. `tests/test_wasm32_patterns.py` lists every such call
+in the package with the reason it is safe; a new one fails it until it is
+checked and listed.
+
+`scripts/wasm32/` runs the package itself in Pyodide 0.27.7 under Node, the
+runtime the browser pins. Install once (`npm ci` there; Pyodide fetches its
+packages from its CDN on the first run), then from `scripts/wasm32`:
+
+```bash
+# The test suite on wasm32: about 8 minutes.
+timeout 1800 node --experimental-wasm-jspi run_pytest.mjs ../.. -q -rfE --tb=short
+
+# The bridge on the synthetic demo at a measured volume's size (365³ ≈ 48.6 M
+# voxels; 401³ = 64.5 M is what the size gate admits): every stage, then the
+# console's analysis calls, each with its time and the heap's high-water mark.
+NEB_N=365 timeout 1800 node --experimental-wasm-jspi run_bridge.mjs ../..
+```
+
+`NEB_PARAMS` gives `run_bridge.mjs` the stage parameters as the console sends
+them (JSON), and `NEB_ENDPOINTS=min` keeps to the cheaper analysis calls. Some
+test failures there are the environment, not numpy: no processes (subprocess,
+the native server's multiprocessing), no threads, file times in whole seconds,
+and the package's browser-only choices (gzip working files). The ones to look
+for are the two errors above and `MemoryError`. Synthetic data only.
+
 ### The replay tests: the dev cases through the Pages path
 
 The console's tests are two vitest projects (`web/vitest.config.ts`):

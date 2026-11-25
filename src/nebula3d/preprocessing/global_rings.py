@@ -29,7 +29,7 @@ import dataclasses
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -222,15 +222,17 @@ def fit_global_rings(
              & (q >= cfg.q_min) & (q <= cfg.q_max))
     diagnostics = GlobalRingDiagnostics(
         material_mode=cfg.material, subtraction_policy=cfg.subtraction)
-    # Full-volume accumulators follow the storage precision (float32 halves
-    # them in the browser); the per-shell fits stay float64 below.
-    ring_mean = np.zeros(vol.shape, dtype=vol.data.dtype)
-    ring_var = np.zeros(vol.shape, dtype=vol.data.dtype)
+
+    def accumulators() -> tuple[NDArray[Any], NDArray[Any]]:
+        # Full-volume accumulators follow the storage precision (float32 halves
+        # them in the browser); the per-shell fits stay float64 below.
+        return (np.zeros(vol.shape, dtype=vol.data.dtype),
+                np.zeros(vol.shape, dtype=vol.data.dtype))
 
     if int(valid.sum()) < 32:
         diagnostics.status = "failed"
         diagnostics.warnings.append("too few valid voxels in the requested Q range")
-        return _finish_result(vol, ring_mean, ring_var, diagnostics, cfg)
+        return _finish_result(vol, *accumulators(), diagnostics, cfg)
 
     # Shape-agnostic annotation + explicit float64: numpy's stubs (2.2 → 2.5,
     # one per CI Python) disagree on the shape/dtype `arange`/`append` return.
@@ -242,6 +244,9 @@ def fit_global_rings(
     pooled, counts = _robust_radial_profile(
         q[valid], np.asarray(vol.data[valid], dtype=np.float64), edges,
         (10.0, 80.0), min_per_bin=3, method="median")
+    # Made after the profile: its sort of every valid voxel is the stage's peak
+    # in the browser's 4 GB heap, and the accumulators are zeros until a shell.
+    ring_mean, ring_var = accumulators()
     pooled_filled = _fill_nan_1d(pooled)
     adaptive_width = _adaptive_ring_width_profile(
         q_grid, pooled_filled, cfg.q_step, cfg.max_fwhm, 3.0, 0.9, counts)
@@ -253,6 +258,7 @@ def fit_global_rings(
     diagnostics.n_detected_candidates = int(centers.size)
 
     if centers.size == 0:
+        del q, valid
         return _finish_result(vol, ring_mean, ring_var, diagnostics, cfg)
 
     noise = _profile_noise(excess, centers, widths, q_grid)
@@ -262,6 +268,7 @@ def fit_global_rings(
     centers, widths, amps, snr = centers[keep], widths[keep], amps[keep], snr[keep]
     if centers.size == 0:
         diagnostics.warnings.append("radial candidates did not pass the SNR gate")
+        del q, valid
         return _finish_result(vol, ring_mean, ring_var, diagnostics, cfg)
 
     al_matches, fitted_a = _match_aluminum(centers, amps, cfg)
@@ -273,6 +280,7 @@ def fit_global_rings(
         al_matches = [m for m in al_matches if m is not None]
         if centers.size == 0:
             diagnostics.warnings.append("no detected shell matched the FCC Al prior")
+            del q, valid
             return _finish_result(vol, ring_mean, ring_var, diagnostics, cfg)
 
     for q0, fwhm, pooled_amp, shell_snr, al_line in zip(
@@ -315,6 +323,7 @@ def fit_global_rings(
         diagnostics.status = "no_rings"
         diagnostics.warnings.append("no shell had enough angular support to fit")
 
+    del q, valid  # two volumes _finish_result does not read (so above too)
     return _finish_result(vol, ring_mean, ring_var, diagnostics, cfg)
 
 
@@ -597,7 +606,10 @@ def _real_spherical_basis(
     """Orthonormal real spherical harmonics through degree ``lmax``."""
     z = np.clip(directions[:, 2], -1.0, 1.0)
     phi = np.arctan2(directions[:, 1], directions[:, 0])
-    cols: list[NDArray[np.float64]] = []
+    # Each column is written into the basis as it is made: a list of columns
+    # stacked at the end held the shell's basis twice at once (the stage's
+    # peak in the browser's 4 GB heap). Same values, same C order.
+    basis = np.empty((z.size, (lmax + 1) ** 2), dtype=np.float64)
     degrees: list[float] = []
     for ell in range(lmax + 1):
         for m in range(-ell, ell + 1):
@@ -610,9 +622,9 @@ def _real_spherical_basis(
                 col = np.sqrt(2.0) * col * np.sin(am * phi)
             elif m > 0:
                 col = np.sqrt(2.0) * col * np.cos(am * phi)
-            cols.append(np.asarray(col, dtype=np.float64))
+            basis[:, len(degrees)] = col
             degrees.append(float(ell))
-    return np.column_stack(cols), np.asarray(degrees)
+    return basis, np.asarray(degrees)
 
 
 def _ridge_irls(
