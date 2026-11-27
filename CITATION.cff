@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use NEBULA3D in your work, please cite it as below."
+type: software
+title: "NEBULA3D: 3D diffuse-scattering cleanup and 3D-ΔPDF"
+abstract: >-
+  Cleans 3D diffuse-scattering volumes and computes 3D-ΔPDF maps, in Python or entirely
+  in the browser, with NEBULA Pilot, an AI agent that measures, grades and tunes each
+  pipeline stage.
+authors:
+  - family-names: "Yang"
+    given-names: "Tsung-Han"
+    orcid: "https://orcid.org/0000-0003-0186-302X"
+version: "0.4.0"
+date-released: "2026-11-03"
+license: AGPL-3.0-or-later
+repository-code: "https://github.com/drthyang/nebula3d"
+url: "https://drthyang.github.io/nebula3d/"
+keywords: [diffuse scattering, 3D-ΔPDF, pair distribution function, single-crystal diffraction, neutron scattering, X-ray scattering]
